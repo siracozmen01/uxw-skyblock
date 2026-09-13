@@ -7,15 +7,16 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 1 — Implementation (P1-001 Completed, P1-002 Not Started)
+* **Phase:** Phase 1 — Implementation (P1-001 & P1-002 Completed, P1-003 Not Started)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES
 * **P1-001 Status:** COMPLETED
-* **P1-002 Status:** NOT STARTED
+* **P1-002 Status:** COMPLETED
+* **P1-003 Status:** NOT STARTED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Completion:** 65% (Phase 0 Architecture Complete & Frozen)
+* **Overall Completion:** 66% (Phase 0 Architecture Frozen; P1-001 & P1-002 Completed)
 
 ---
 
@@ -30,7 +31,8 @@
 * [ ] **[NET-001]** Velocity / Redis cross-server island visit bus (`uxmlib-redis`)
 
 ### 📌 To Do (Upcoming Tasks)
-* [ ] **[TST-001]** Test infrastructure setup (ArchUnit drift tests, MockBukkit harness, jqwik)
+* [ ] **[P1-003]** Pure Domain Primitives & Package Foundation
+* [ ] **[TST-001]** Test infrastructure setup (MockBukkit harness, jqwik)
 * [ ] **[CORE-001]** Core Domain: `Island`, `IslandId`, `IslandRole`, `IslandFlags` records
 * [ ] **[CORE-002]** Core Domain: `IslandRepository` and `WorldGridPort` interfaces
 * [ ] **[WRD-001]** Spiral grid coordinate allocator & chunk safety engine
@@ -44,6 +46,8 @@
 * *No active items currently in review. Architecture baseline is FROZEN by Product Owner (2026-09-13).*
 
 ### ✅ Done (Completed)
+* [x] **[P1-002]** Architecture Dependency Fences (ArchUnit fences for `:api`, `:core`, `:persistence-adapter`, `:bukkit-adapter`) — COMPLETED
+* [x] **[P1-001]** Build Foundation & Multi-Module Scaffolding (`:api`, `:core`, `:persistence-adapter`, `:bukkit-adapter`) — COMPLETED
 * [x] **[ARCH-002]** Skyblock Core Architecture & Gameplay Specification (`docs/superpowers/specs/2026-09-12-skyblock-core-design.md`) — FROZEN by Product Owner (2026-09-13)
 * [x] **[ARCH-003]** Persistence & Database Schema Specification (`docs/PERSISTENCE_SPECIFICATION.md`) — FROZEN by Product Owner (2026-09-13)
 * [x] **[ARCH-004]** GameMode Architecture Specification (`docs/GAMEMODE_ARCHITECTURE.md`) — FROZEN by Product Owner (2026-09-13)

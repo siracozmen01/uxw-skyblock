@@ -4,4 +4,6 @@ plugins {
 
 dependencies {
     compileOnly(libs.jspecify)
+
+    testImplementation(libs.archunit.junit)
 }

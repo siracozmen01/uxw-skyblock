@@ -11,6 +11,7 @@ dependencies {
 
     compileOnly(libs.paper.api)
     compileOnly(libs.bundles.adventure)
+    testImplementation(libs.paper.api)
 
     // uxmLib modules (Platform UI, commands, HUD, bedrock, integrations)
     implementation(libs.uxmlib.common)
