@@ -7,16 +7,17 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 1 — Implementation (P1-001 & P1-002 Completed, P1-003 Not Started)
+* **Phase:** Phase 1 — Implementation (P1-001, P1-002, P1-003 Completed; P1-004 In Progress)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES
 * **P1-001 Status:** COMPLETED
 * **P1-002 Status:** COMPLETED
-* **P1-003 Status:** NOT STARTED
+* **P1-003 Status:** COMPLETED
+* **P1-004 Status:** IN PROGRESS
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Completion:** 66% (Phase 0 Architecture Frozen; P1-001 & P1-002 Completed)
+* **Overall Completion:** 73% (Phase 0 Frozen; P1-001/P1-002/P1-003 Completed)
 
 ---
 
@@ -31,7 +32,6 @@
 * [ ] **[NET-001]** Velocity / Redis cross-server island visit bus (`uxmlib-redis`)
 
 ### 📌 To Do (Upcoming Tasks)
-* [ ] **[P1-003]** Pure Domain Primitives & Package Foundation
 * [ ] **[TST-001]** Test infrastructure setup (MockBukkit harness, jqwik)
 * [ ] **[CORE-001]** Core Domain: `Island`, `IslandId`, `IslandRole`, `IslandFlags` records
 * [ ] **[CORE-002]** Core Domain: `IslandRepository` and `WorldGridPort` interfaces
@@ -40,12 +40,13 @@
 * [ ] **[GUI-001]** Main island management menu via `uxmlib-menu` & `uxmlib-bedrock`
 
 ### 🔄 In Progress
-* [ ] *No active tasks currently in progress.*
+* [ ] **[P1-004]** Public API Foundation (`:api` module contracts) — IN PROGRESS
 
 ### 🔍 In Review
-* *No active items currently in review. Architecture baseline is FROZEN by Product Owner (2026-09-13).*
+* *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[P1-003]** Pure Domain Primitives & Package Foundation (`PlayerUuid`, `ProfileId`, `IslandId`, `Result`, `Unit`) — COMPLETED
 * [x] **[P1-002]** Architecture Dependency Fences (ArchUnit fences for `:api`, `:core`, `:persistence-adapter`, `:bukkit-adapter`) — COMPLETED
 * [x] **[P1-001]** Build Foundation & Multi-Module Scaffolding (`:api`, `:core`, `:persistence-adapter`, `:bukkit-adapter`) — COMPLETED
 * [x] **[ARCH-002]** Skyblock Core Architecture & Gameplay Specification (`docs/superpowers/specs/2026-09-12-skyblock-core-design.md`) — FROZEN by Product Owner (2026-09-13)
