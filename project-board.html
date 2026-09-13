@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UXPLIMA Skyblock — Engineering Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #ffffff;
+      --bg-subtle: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f1f5f9;
+      --border-subtle: #e2e8f0;
+      --border-strong: #cbd5e1;
+
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-tertiary: #94a3b8;
+
+      --brand-blue: #2563eb;
+      --brand-blue-subtle: #eff6ff;
+      --brand-blue-border: #bfdbfe;
+
+      --status-done: #16a34a;
+      --status-done-bg: #f0fdf4;
+      --status-done-border: #bbf7d0;
+
+      --status-progress: #d97706;
+      --status-progress-bg: #fffbeb;
+      --status-progress-border: #fde68a;
+
+      --status-review: #7c3aed;
+      --status-review-bg: #f5f3ff;
+      --status-review-border: #ddd6fe;
+
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+    }
+
+    [data-theme="dark"] {
+      --bg-page: #09090b;
+      --bg-subtle: #121215;
+      --bg-card: #18181b;
+      --bg-card-hover: #202024;
+      --border-subtle: #27272a;
+      --border-strong: #3f3f46;
+
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-tertiary: #71717a;
+
+      --brand-blue: #3b82f6;
+      --brand-blue-subtle: #172554;
+      --brand-blue-border: #1e40af;
+
+      --status-done: #22c55e;
+      --status-done-bg: #052e16;
+      --status-done-border: #14532d;
+
+      --status-progress: #f59e0b;
+      --status-progress-bg: #451a03;
+      --status-progress-border: #78350f;
+
+      --status-review: #a855f7;
+      --status-review-bg: #2e1065;
+      --status-review-border: #581c87;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    /* Top Navigation */
+    nav {
+      border-bottom: 1px solid var(--border-subtle);
+      background-color: var(--bg-page);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .nav-container {
+      max-width: 1720px;
+      margin: 0 auto;
+      padding: 0.85rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .brand-icon {
+      width: 26px;
+      height: 26px;
+      background-color: var(--brand-blue);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 0.75rem;
+      font-family: 'Geist Mono', monospace;
+    }
+
+    .brand-text {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .brand-sep {
+      color: var(--text-tertiary);
+      font-weight: 400;
+    }
+
+    .brand-sub {
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.75rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--text-primary);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .tag-mono {
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.25rem 0.55rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.35rem 0.65rem;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    /* Hero Section */
+    .hero-section {
+      max-width: 1720px;
+      margin: 0 auto;
+      padding: 3rem 2rem 2rem;
+      width: 100%;
+    }
+
+    .kicker {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--brand-blue);
+      margin-bottom: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .hero-title {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      line-height: 1.15;
+      color: var(--text-primary);
+      margin-bottom: 0.85rem;
+    }
+
+    .hero-desc {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      max-width: 780px;
+      line-height: 1.6;
+      font-weight: 400;
+    }
+
+    /* Metrics Strip */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 2rem;
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    @media (max-width: 1024px) {
+      .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 1.15rem 1.25rem;
+    }
+
+    .metric-label {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 0.35rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .metric-val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+      font-family: 'Geist Mono', monospace;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 4px;
+      background-color: var(--border-subtle);
+      border-radius: 999px;
+      margin-top: 0.65rem;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-color: var(--brand-blue);
+      border-radius: 999px;
+      width: 48%;
+      transition: width 0.4s ease;
+    }
+
+    /* Toolbar & Search */
+    .toolbar {
+      max-width: 1720px;
+      margin: 1.5rem auto 1rem;
+      padding: 0 2rem;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .segmented-control {
+      display: flex;
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .segmented-btn {
+      background: none;
+      border: none;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    .segmented-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .segmented-btn.active {
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      font-weight: 600;
+    }
+
+    .search-input {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.42rem 0.85rem;
+      font-size: 0.82rem;
+      font-family: inherit;
+      color: var(--text-primary);
+      width: 240px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: var(--brand-blue);
+    }
+
+    /* Kanban Layout */
+    .board-wrapper {
+      flex: 1;
+      max-width: 1720px;
+      margin: 0 auto 3rem;
+      padding: 0 2rem;
+      width: 100%;
+    }
+
+    .board-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    @media (max-width: 1300px) {
+      .board-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+    }
+
+    .column {
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      min-height: 520px;
+    }
+
+    .column.drag-hover {
+      border-color: var(--brand-blue);
+      background-color: var(--brand-blue-subtle);
+    }
+
+    .column-header {
+      padding: 0.85rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .column-title-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .status-indicator {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--text-tertiary);
+    }
+
+    .col-backlog .status-indicator { background-color: var(--text-tertiary); }
+    .col-todo .status-indicator { background-color: var(--brand-blue); }
+    .col-progress .status-indicator { background-color: var(--status-progress); }
+    .col-review .status-indicator { background-color: var(--status-review); }
+    .col-done .status-indicator { background-color: var(--status-done); }
+
+    .column-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+
+    .column-count {
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 0.1rem 0.45rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .card-stack {
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      flex: 1;
+    }
+
+    /* Cards */
+    .item-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem;
+      cursor: grab;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    }
+
+    .item-card:hover {
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      transform: translateY(-1px);
+    }
+
+    .item-card.dragging {
+      opacity: 0.35;
+      cursor: grabbing;
+    }
+
+    .card-meta-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.7rem;
+    }
+
+    .card-id {
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .card-label {
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .card-heading {
+      font-size: 0.86rem;
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+
+    .card-snippet {
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    .card-foot {
+      margin-top: 0.2rem;
+      padding-top: 0.45rem;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .badge-category {
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background-color: var(--bg-subtle);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .badge-status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.7rem;
+      color: var(--text-tertiary);
+      font-family: 'Geist Mono', monospace;
+    }
+
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 1.5rem 2rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-align: center;
+      background-color: var(--bg-subtle);
+    }
+
+    footer a {
+      color: var(--brand-blue);
+      text-decoration: none;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <nav>
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <div class="brand-icon">UX</div>
+        <div class="brand-text">
+          <span>uxplima</span>
+          <span class="brand-sep">/</span>
+          <span class="brand-sub">uxm-skyblock</span>
+        </div>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="docs/README.md" class="active">Engineering Specs</a></li>
+        <li><a href="docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="docs/CODING_STANDARDS.md">Standards</a></li>
+        <li><a href="docs/TESTING_STANDARDS.md">Verification</a></li>
+        <li><a href="docs/PROJECT_RULES.md">Rules</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <span class="tag-mono">Paper 26.2+</span>
+        <span class="tag-mono">Java 25</span>
+        <button class="theme-toggle" id="theme-btn">
+          <span id="theme-icon">◐</span>
+          <span id="theme-label">Theme</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="kicker">Project Governance & Task Pipeline</div>
+    <h1 class="hero-title">Engineering Roadmap & Live State</h1>
+    <p class="hero-desc">
+      Every architectural boundary, domain context, and verification gate is monitored in real time.
+      Strict Hexagonal and Domain-Driven Design (DDD) with zero hardcoded values.
+    </p>
+
+    <!-- Metrics Strip -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">
+          <span>Overall Progress</span>
+          <span id="metric-percent">76%</span>
+        </div>
+        <div class="metric-val" id="metric-ratio">22 / 29</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="metric-fill" style="width: 76%;"></div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Core Target</div>
+        <div class="metric-val">Folia 26.2</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Quality Standard</div>
+        <div class="metric-val">JDK 25 -Werror</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Architecture</div>
+        <div class="metric-val">Hexagonal / DDD</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toolbar & Filters -->
+  <div class="toolbar">
+    <div class="segmented-control">
+      <button class="segmented-btn active" data-filter="all">All Modules</button>
+      <button class="segmented-btn" data-filter="Governance">Governance</button>
+      <button class="segmented-btn" data-filter="Architecture">Architecture</button>
+      <button class="segmented-btn" data-filter="Build">Build & Gradle</button>
+      <button class="segmented-btn" data-filter="Testing">Testing</button>
+      <button class="segmented-btn" data-filter="Core">Core Domain</button>
+    </div>
+
+    <input type="text" id="task-search" class="search-input" placeholder="Search tasks or IDs...">
+  </div>
+
+  <!-- Kanban Board -->
+  <main class="board-wrapper">
+    <div class="board-grid">
+
+      <!-- Column 1: Backlog -->
+      <div class="column col-backlog" data-col="backlog">
+        <div class="column-header">
+          <div class="column-title-group">
+            <span class="status-indicator"></span>
+            <span class="column-title">Backlog</span>
+          </div>
+          <span class="column-count" id="count-backlog">4</span>
+        </div>
+        <div class="card-stack" id="stack-backlog">
+
+          <div class="item-card" draggable="true" data-id="ISL-010" data-tag="Core">
+            <div class="card-meta-line">
+              <span class="card-id">ISL-010</span>
+              <span class="card-label">Phase 2</span>
+            </div>
+            <div class="card-heading">Biome Modification Engine</div>
+            <div class="card-snippet">Folia region-scheduled asynchronous biome mutation engine with interactive UI selector.</div>
+            <div class="card-foot">
+              <span class="badge-category">Core</span>
+              <span class="badge-status-dot">Queued</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="ISL-011" data-tag="Core">
+            <div class="card-meta-line">
+              <span class="card-id">ISL-011</span>
+              <span class="card-label">Phase 2</span>
+            </div>
+            <div class="card-heading">Starter Island Schematics</div>
+            <div class="card-snippet">Configurable starter island presets (Desert, Nether, Classic) streaming via FAWE/native.</div>
+            <div class="card-foot">
+              <span class="badge-category">Core</span>
+              <span class="badge-status-dot">Queued</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="LVL-003" data-tag="Core">
+            <div class="card-meta-line">
+              <span class="card-id">LVL-003</span>
+              <span class="card-label">Phase 3</span>
+            </div>
+            <div class="card-heading">Level Leaderboard & Holograms</div>
+            <div class="card-snippet">Top 10 cached island leaderboards rendered via uxmlib-integration Display holograms.</div>
+            <div class="card-foot">
+              <span class="badge-category">Core</span>
+              <span class="badge-status-dot">Queued</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="NET-001" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">NET-001</span>
+              <span class="card-label">Phase 4</span>
+            </div>
+            <div class="card-heading">Redis Visiting Bus Transport</div>
+            <div class="card-snippet">Cross-server island discovery and proxy warp dispatching using uxmlib-redis pub/sub.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Queued</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Column 2: To Do -->
+      <div class="column col-todo" data-col="todo">
+        <div class="column-header">
+          <div class="column-title-group">
+            <span class="status-indicator"></span>
+            <span class="column-title">To Do</span>
+          </div>
+          <span class="column-count" id="count-todo">4</span>
+        </div>
+        <div class="card-stack" id="stack-todo">
+
+          <div class="item-card" draggable="true" data-id="TST-001" data-tag="Testing">
+            <div class="card-meta-line">
+              <span class="card-id">TST-001</span>
+              <span class="card-label">Quality</span>
+            </div>
+            <div class="card-heading">ArchUnit & MockBukkit Harness</div>
+            <div class="card-snippet">Deploy FoliaThreadingDriftTest, LegacyChatApiDriftTest, and MockBukkit server harness.</div>
+            <div class="card-foot">
+              <span class="badge-category">Testing</span>
+              <span class="badge-status-dot">Sprint 1</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="CORE-001" data-tag="Core">
+            <div class="card-meta-line">
+              <span class="card-id">CORE-001</span>
+              <span class="card-label">Domain</span>
+            </div>
+            <div class="card-heading">Core Domain Records & Value Objects</div>
+            <div class="card-snippet">Implement immutable Java records: Island, IslandId, IslandMember, IslandRole, and Flags.</div>
+            <div class="card-foot">
+              <span class="badge-category">Core</span>
+              <span class="badge-status-dot">Sprint 2</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Column 3: In Progress -->
+      <div class="column col-progress" data-col="progress">
+        <div class="column-header">
+          <div class="column-title-group">
+            <span class="status-indicator"></span>
+            <span class="column-title">In Progress</span>
+          </div>
+          <span class="column-count" id="count-progress">1</span>
+        </div>
+        <div class="card-stack" id="stack-progress">
+
+          <div class="item-card" draggable="true" data-id="GOV-001" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">GOV-001</span>
+              <span class="card-label">Active</span>
+            </div>
+            <div class="card-heading">Governance & Standards Specification</div>
+            <div class="card-snippet">Complete rulebook establishing DoD, Coding Standards, Naming, Error Handling, and uxm-lib mapping.</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Working</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Column 4: In Review -->
+      <div class="column col-review" data-col="review">
+        <div class="column-header">
+          <div class="column-title-group">
+            <span class="status-indicator"></span>
+            <span class="column-title">In Review</span>
+          </div>
+          <span class="column-count" id="count-review">0</span>
+        </div>
+        <div class="card-stack" id="stack-review">
+        </div>
+      </div>
+
+      <!-- Column 5: Done -->
+      <div class="column col-done" data-col="done">
+        <div class="column-header">
+          <div class="column-title-group">
+            <span class="status-indicator"></span>
+            <span class="column-title">Done</span>
+          </div>
+          <span class="column-count" id="count-done">22</span>
+        </div>
+        <div class="card-stack" id="stack-done">
+
+          <div class="item-card" draggable="true" data-id="ARCH-002" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">ARCH-002</span>
+              <span class="card-label">Frozen by PO</span>
+            </div>
+            <div class="card-heading">Skyblock Mechanics Specification</div>
+            <div class="card-snippet">Core specification finalized: ECONOMIC_ITEM_STATE boundary, safe restore modes, player authority local self-fencing, cross-region trade 2PC journal, and Hybrid durability model (60s default ambient checkpoint). Frozen by Product Owner (2026-09-13).</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Frozen</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="ARCH-003" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">ARCH-003</span>
+              <span class="card-label">Frozen by PO</span>
+            </div>
+            <div class="card-heading">Persistence & SQL Schema Spec</div>
+            <div class="card-snippet">Persistence specification finalized: exact acquire/takeover SQL predicates, restore_unit_progress write-ahead state machine, SQLite FULL durability enforcement, and general object storage integration. Frozen by Product Owner (2026-09-13).</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Frozen</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="REV-001" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">REV-001</span>
+              <span class="card-label">Approved by PO</span>
+            </div>
+            <div class="card-heading">Project Governance Review</div>
+            <div class="card-snippet">Review of project governance, quality mandates, testing rules, and architecture baseline approved and frozen by Product Owner (2026-09-13).</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Frozen</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="ARCH-004" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">ARCH-004</span>
+              <span class="card-label">Frozen by PO</span>
+            </div>
+            <div class="card-heading">GameMode Architecture Specification</div>
+            <div class="card-snippet">Decoupled GameMode architecture: Ruleset vs GameMode separation, zero core branching, declarative composition for 12 target modes, and 68 verified test contracts. Frozen by Product Owner (2026-09-13).</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Frozen</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="SETUP-001" data-tag="Build">
+            <div class="card-meta-line">
+              <span class="card-id">SETUP-001</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Repository Initialization</div>
+            <div class="card-snippet">Initialized Git boundaries and configured .gitignore for references and build outputs.</div>
+            <div class="card-foot">
+              <span class="badge-category">Build</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="REF-001" data-tag="Build">
+            <div class="card-meta-line">
+              <span class="card-id">REF-001</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Local References Cloned</div>
+            <div class="card-snippet">Cloned UXPLIMA/uxm-lib and UXPLIMA/uxm-essentials into local directory for fast inspection.</div>
+            <div class="card-foot">
+              <span class="badge-category">Build</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="REF-002" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">REF-002</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Competitor Repositories Cloned</div>
+            <div class="card-snippet">Cloned Skyllia, SuperiorSkyblock2, BentoBox, bskyblock, IridiumSkyblock, NewSky, and FabledSkyBlock.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="ANA-001" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">ANA-001</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Competitor Analysis & Benchmark</div>
+            <div class="card-snippet">Published docs/COMPETITOR_ANALYSIS.md with 12-dimension feature matrix, antipatterns, and strategic goals.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="BLD-001" data-tag="Build">
+            <div class="card-meta-line">
+              <span class="card-id">BLD-001</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Gradle Multi-Project Architecture</div>
+            <div class="card-snippet">Configured multi-module Gradle Kotlin DSL, settings.gradle.kts, composite build, and version catalog.</div>
+            <div class="card-foot">
+              <span class="badge-category">Build</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="BLD-002" data-tag="Build">
+            <div class="card-meta-line">
+              <span class="card-id">BLD-002</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">buildSrc Convention Plugins</div>
+            <div class="card-snippet">Configured Java 25 Adoptium toolchain, Spotless Palantir format, Error Prone, NullAway, and verifyNoSkippedTests.</div>
+            <div class="card-foot">
+              <span class="badge-category">Build</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-001" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-001</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Hexagonal & DDD Architecture</div>
+            <div class="card-snippet">Created docs/ARCHITECTURE.md specifying bounded contexts and clean module wiring.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-002" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-002</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Java 25 Coding Standards</div>
+            <div class="card-snippet">Created docs/CODING_STANDARDS.md enforcing JSpecify, NullAway, and Palantir Spotless.</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-003" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-003</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Naming & Method Standards</div>
+            <div class="card-snippet">Created docs/NAMING_AND_METHOD_CONVENTIONS.md establishing universal English and CQS.</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-004" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-004</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Commenting & Documentation</div>
+            <div class="card-snippet">Created docs/DOCUMENTATION_AND_COMMENTS.md enforcing 'Why, not what' and zero dead code.</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-005" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-005</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Zero-Hardcoding & i18n</div>
+            <div class="card-snippet">Created docs/CONFIGURATION_AND_LOCALIZATION.md with HOCON records and MiniMessage.</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-006" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-006</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Error Handling & Sealed Results</div>
+            <div class="card-snippet">Created docs/ERROR_HANDLING.md defining typed domain outcomes and structured logging.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-007" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-007</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Platform & Folia Concurrency</div>
+            <div class="card-snippet">Created docs/PLATFORM_AND_TECH_STACK.md with Folia Scheduler and uxm-lib mapping.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-008" data-tag="Testing">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-008</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Testing & ArchUnit Drift Guards</div>
+            <div class="card-snippet">Created docs/TESTING_STANDARDS.md integrating ArchUnit, MockBukkit, and jqwik property tests.</div>
+            <div class="card-foot">
+              <span class="badge-category">Testing</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-009" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-009</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Project Rules & Definition of Done</div>
+            <div class="card-snippet">Created docs/PROJECT_RULES.md binding approval protocol, DoD, and live board updates.</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-010" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-010</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Enterprise Foundation Spec</div>
+            <div class="card-snippet">Dual-layer API (:api & :bukkit-api), embedded REST API (:rest-adapter), Brigadier commands, and permissions.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-011" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-011</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Network & Platform Integration</div>
+            <div class="card-snippet">Velocity proxy broker, Redis pub/sub bus, Folia region scheduler, and Day-0 Geyser/Floodgate Bedrock forms.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="DOC-012" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">DOC-012</span>
+              <span class="card-label">Verified</span>
+            </div>
+            <div class="card-heading">Extreme Scale: 100k Players</div>
+            <div class="card-snippet">Unload on Idle memory policy, Keyed Lock Striping (Striped<Lock>), TxSql ACID transactions, and O(1) delta leveling.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    UXPLIMA Skyblock &bull; Corporate Engineering System &bull; Synced with <a href="docs/PROJECT_BOARD.md">docs/PROJECT_BOARD.md</a>
+  </footer>
+
+  <script>
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-btn');
+    const htmlEl = document.documentElement;
+
+    themeBtn.addEventListener('click', () => {
+      const current = htmlEl.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      htmlEl.setAttribute('data-theme', next);
+    });
+
+    // Metrics calculation
+    function recalculateMetrics() {
+      const cols = ['backlog', 'todo', 'progress', 'review', 'done'];
+      let total = 0;
+      let doneCount = 0;
+
+      cols.forEach(col => {
+        const stack = document.getElementById(`stack-${col}`);
+        const countBadge = document.getElementById(`count-${col}`);
+        const count = stack ? stack.children.length : 0;
+        if (countBadge) countBadge.textContent = count;
+        total += count;
+        if (col === 'done') doneCount = count;
+      });
+
+      const percent = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+      const fill = document.getElementById('metric-fill');
+      const ratio = document.getElementById('metric-ratio');
+      const pctText = document.getElementById('metric-percent');
+
+      if (fill) fill.style.width = percent + '%';
+      if (ratio) ratio.textContent = `${doneCount} / ${total}`;
+      if (pctText) pctText.textContent = `${percent}%`;
+    }
+
+    // Drag and drop
+    let currentCard = null;
+
+    document.querySelectorAll('.item-card').forEach(card => {
+      card.addEventListener('dragstart', () => {
+        currentCard = card;
+        card.classList.add('dragging');
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        currentCard = null;
+        recalculateMetrics();
+      });
+    });
+
+    document.querySelectorAll('.column').forEach(col => {
+      col.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        col.classList.add('drag-hover');
+      });
+
+      col.addEventListener('dragleave', () => {
+        col.classList.remove('drag-hover');
+      });
+
+      col.addEventListener('drop', (e) => {
+        e.preventDefault();
+        col.classList.remove('drag-hover');
+        if (currentCard) {
+          const stack = col.querySelector('.card-stack');
+          if (stack) {
+            stack.appendChild(currentCard);
+            recalculateMetrics();
+          }
+        }
+      });
+    });
+
+    // Filter by category
+    document.querySelectorAll('.segmented-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const filter = btn.getAttribute('data-filter');
+
+        document.querySelectorAll('.item-card').forEach(card => {
+          const tag = card.getAttribute('data-tag');
+          if (filter === 'all' || tag === filter) {
+            card.style.display = 'flex';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      });
+    });
+
+    // Search filter
+    const searchInput = document.getElementById('task-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        document.querySelectorAll('.item-card').forEach(card => {
+          const match = card.textContent.toLowerCase().includes(query);
+          card.style.display = match ? 'flex' : 'none';
+        });
+      });
+    }
+
+    // Run initial calc
+    recalculateMetrics();
+  </script>
+</body>
+</html>

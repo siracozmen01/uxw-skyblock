@@ -1,0 +1,16 @@
+# Local References
+references/
+
+# Build & Gradle
+.gradle/
+build/
+bin/
+out/
+
+# IDE
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+*.log

@@ -1,0 +1,90 @@
+[versions]
+# Platform & Language
+java           = "25"
+paper          = "26.2.build.112-stable"
+adventure      = "5.2.0"
+
+# UXPLIMA Toolkit
+uxmlib         = "0.88.0"
+
+# Runtime Database Drivers (selected network drivers required at runtime; SQLite is provided by uxmlib-storage)
+sqlite-jdbc    = "3.49.1.0"
+mariadb-jdbc   = "3.5.3"
+postgresql     = "42.7.4"
+gson           = "2.11.0"
+jspecify       = "1.0.0"
+slf4j          = "2.0.16"
+
+# Testing
+junit          = "5.12.1"
+assertj        = "3.27.3"
+mockito        = "5.23.0"
+mockbukkit     = "4.116.1"
+jqwik          = "1.9.3"
+archunit       = "1.4.2"
+testcontainers = "1.20.4"
+
+# Quality & Tooling
+errorprone     = "2.50.0"
+nullaway       = "0.13.7"
+spotless       = "8.7.0"
+palantir-fmt   = "2.93.0"
+shadow         = "9.4.1"
+paperweight    = "2.0.0-beta.22"
+run-paper      = "3.0.2"
+
+[libraries]
+# Server & Adventure
+paper-api         = { module = "io.papermc.paper:paper-api",                     version.ref = "paper" }
+adventure-api     = { module = "net.kyori:adventure-api",                        version.ref = "adventure" }
+adventure-mini    = { module = "net.kyori:adventure-text-minimessage",           version.ref = "adventure" }
+
+# uxmLib Modules
+uxmlib-bom        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-bom",                  version.ref = "uxmlib" }
+uxmlib-common     = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-common",               version.ref = "uxmlib" }
+uxmlib-item       = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-item",                 version.ref = "uxmlib" }
+uxmlib-gui        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-gui",                  version.ref = "uxmlib" }
+uxmlib-menu       = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-menu",                 version.ref = "uxmlib" }
+uxmlib-command    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-command",              version.ref = "uxmlib" }
+uxmlib-storage    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-storage",              version.ref = "uxmlib" }
+uxmlib-hud        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-hud",                  version.ref = "uxmlib" }
+uxmlib-bedrock    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-bedrock",              version.ref = "uxmlib" }
+uxmlib-condition  = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-condition",            version.ref = "uxmlib" }
+uxmlib-integration = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-integration",        version.ref = "uxmlib" }
+uxmlib-redis      = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-redis",                version.ref = "uxmlib" }
+
+# Utilities & Infrastructure
+sqlite-jdbc       = { module = "org.xerial:sqlite-jdbc",                         version.ref = "sqlite-jdbc" }
+mariadb-jdbc      = { module = "org.mariadb.jdbc:mariadb-java-client",           version.ref = "mariadb-jdbc" }
+postgresql        = { module = "org.postgresql:postgresql",                      version.ref = "postgresql" }
+gson              = { module = "com.google.code.gson:gson",                      version.ref = "gson" }
+jspecify          = { module = "org.jspecify:jspecify",                          version.ref = "jspecify" }
+slf4j-api         = { module = "org.slf4j:slf4j-api",                            version.ref = "slf4j" }
+
+# Testing Harness
+junit-bom         = { module = "org.junit:junit-bom",                            version.ref = "junit" }
+junit-jupiter     = { module = "org.junit.jupiter:junit-jupiter" }
+assertj           = { module = "org.assertj:assertj-core",                       version.ref = "assertj" }
+mockito-core      = { module = "org.mockito:mockito-core",                       version.ref = "mockito" }
+mockito-jupiter   = { module = "org.mockito:mockito-junit-jupiter",              version.ref = "mockito" }
+mockbukkit        = { module = "org.mockbukkit.mockbukkit:mockbukkit-v26.2",    version.ref = "mockbukkit" }
+jqwik             = { module = "net.jqwik:jqwik",                                version.ref = "jqwik" }
+archunit-junit    = { module = "com.tngtech.archunit:archunit-junit5",           version.ref = "archunit" }
+testcontainers    = { module = "org.testcontainers:testcontainers",              version.ref = "testcontainers" }
+
+# Tooling Dependencies (buildSrc & compilation)
+errorprone-core   = { module = "com.google.errorprone:error_prone_core",         version.ref = "errorprone" }
+errorprone-annotations = { module = "com.google.errorprone:error_prone_annotations", version.ref = "errorprone" }
+nullaway          = { module = "com.uber.nullaway:nullaway",                     version.ref = "nullaway" }
+
+[bundles]
+testing    = ["junit-jupiter", "assertj", "mockito-core", "mockito-jupiter"]
+adventure  = ["adventure-api", "adventure-mini"]
+
+[plugins]
+shadow          = { id = "com.gradleup.shadow",                version.ref = "shadow" }
+paperweight     = { id = "io.papermc.paperweight.userdev",     version.ref = "paperweight" }
+run-paper       = { id = "xyz.jpenilla.run-paper",             version.ref = "run-paper" }
+spotless        = { id = "com.diffplug.spotless",              version.ref = "spotless" }
+errorprone      = { id = "net.ltgt.errorprone",                version = "5.1.0" }
+nullaway-plugin = { id = "net.ltgt.nullaway",                  version = "3.1.0" }
