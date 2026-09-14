@@ -596,11 +596,11 @@
       <div class="metric-card">
         <div class="metric-label">
           <span>Overall Card Completion</span>
-          <span id="metric-percent">79%</span>
+          <span id="metric-percent">82%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">26 / 33</div>
+        <div class="metric-val" id="metric-ratio">27 / 33</div>
         <div class="progress-track">
-          <div class="progress-fill" id="metric-fill" style="width: 79%;"></div>
+          <div class="progress-fill" id="metric-fill" style="width: 82%;"></div>
         </div>
       </div>
 
@@ -646,7 +646,7 @@
             <span class="status-indicator"></span>
             <span class="column-title">Backlog</span>
           </div>
-          <span class="column-count" id="count-backlog">4</span>
+          <span class="column-count" id="count-backlog">3</span>
         </div>
         <div class="card-stack" id="stack-backlog">
 
@@ -689,19 +689,6 @@
             </div>
           </div>
 
-          <div class="item-card" draggable="true" data-id="NET-001" data-tag="Architecture">
-            <div class="card-meta-line">
-              <span class="card-id">NET-001</span>
-              <span class="card-label">Phase 4</span>
-            </div>
-            <div class="card-heading">Redis Visiting Bus Transport</div>
-            <div class="card-snippet">Cross-server island discovery and proxy warp dispatching using uxmlib-redis pub/sub.</div>
-            <div class="card-foot">
-              <span class="badge-category">Architecture</span>
-              <span class="badge-status-dot">Queued</span>
-            </div>
-          </div>
-
         </div>
       </div>
 
@@ -712,7 +699,7 @@
             <span class="status-indicator"></span>
             <span class="column-title">To Do</span>
           </div>
-          <span class="column-count" id="count-todo">4</span>
+          <span class="column-count" id="count-todo">2</span>
         </div>
         <div class="card-stack" id="stack-todo">
 
@@ -768,15 +755,15 @@
           <span class="column-count" id="count-review">1</span>
         </div>
         <div class="card-stack" id="stack-review">
-          <div class="item-card" draggable="true" data-id="P1-004" data-tag="Architecture">
+          <div class="item-card" draggable="true" data-id="P1-005" data-tag="Configuration">
             <div class="card-meta-line">
-              <span class="card-id">P1-004</span>
+              <span class="card-id">P1-005</span>
               <span class="card-label">Review</span>
             </div>
-            <div class="card-heading">Public API Foundation</div>
-            <div class="card-snippet">Platform-neutral NamespacedId value object in :api. Zero :core leakage. Implementation complete; manager approval pending.</div>
+            <div class="card-heading">Configuration Boundary Separation</div>
+            <div class="card-snippet">:bukkit-adapter PlayerStateConfigurationAdapter translates external HOCON into pure :core PlayerStateDurabilityConfig. Zero Configurate/platform leakage.</div>
             <div class="card-foot">
-              <span class="badge-category">Architecture</span>
+              <span class="badge-category">Configuration</span>
               <span class="badge-status-dot">In Review</span>
             </div>
           </div>
@@ -790,9 +777,22 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">26</span>
+          <span class="column-count" id="count-done">27</span>
         </div>
         <div class="card-stack" id="stack-done">
+
+          <div class="item-card" draggable="true" data-id="P1-004" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">P1-004</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Public API Foundation</div>
+            <div class="card-snippet">Platform-neutral NamespacedId value object in :api. Zero :core leakage. Minimal frozen contract accepted in commit e8175c5.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
 
           <div class="item-card" draggable="true" data-id="P1-003" data-tag="Core">
             <div class="card-meta-line">

@@ -7,19 +7,20 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 1 — Implementation (P1-001, P1-002, P1-003 Completed; P1-004 Implementation Complete, Manager Approval Pending)
+* **Phase:** Phase 1 — Implementation (P1-001, P1-002, P1-003, P1-004 Completed; P1-005 Implementation Complete, Manager Approval Pending)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES
 * **P1-001 Status:** COMPLETED
 * **P1-002 Status:** COMPLETED
 * **P1-003 Status:** COMPLETED
-* **P1-004 Status:** IMPLEMENTATION COMPLETE (Manager Approval PENDING)
-* **P1-005 Started:** NO
+* **P1-004 Status:** COMPLETED
+* **P1-005 Status:** IMPLEMENTATION COMPLETE (Manager Approval PENDING)
+* **P1-006 Started:** NO
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 79% (26 / 33 cards completed)
-* **Phase 1 Tasks Completed:** 3 / 4 active (P1-001, P1-002, P1-003 Completed; P1-004 in review)
+* **Overall Card Completion:** 82% (27 / 33 cards completed)
+* **Phase 1 Tasks Completed:** 4 / 5 active (P1-001, P1-002, P1-003, P1-004 Completed; P1-005 in review)
 
 ---
 
@@ -45,10 +46,10 @@
 * *No active items currently in progress.*
 
 ### 🔍 In Review
-* [ ] **[P1-004]** Public API Foundation (`:api` module contracts — `NamespacedId`) — IMPLEMENTATION COMPLETE (Awaiting Manager Review)
-
+* [ ] **[P1-005]** Configuration Boundary Separation (`:bukkit-adapter` config loader -> pure `:core` policy `PlayerStateDurabilityConfig`) — IMPLEMENTATION COMPLETE (Awaiting Manager Review)
 
 ### ✅ Done (Completed)
+* [x] **[P1-004]** Public API Foundation (`:api` module contracts — `NamespacedId`) — COMPLETED (commit `e8175c5`)
 * [x] **[P1-003]** Pure Domain Primitives & Package Foundation (`PlayerUuid`, `ProfileId`, `IslandId`, `Result`, `Unit`) — COMPLETED
 * [x] **[P1-002]** Architecture Dependency Fences (ArchUnit fences for `:api`, `:core`, `:persistence-adapter`, `:bukkit-adapter`) — COMPLETED
 * [x] **[P1-001]** Build Foundation & Multi-Module Scaffolding (`:api`, `:core`, `:persistence-adapter`, `:bukkit-adapter`) — COMPLETED

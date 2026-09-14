@@ -220,4 +220,13 @@ class BukkitArchitectureTest {
                         "nonBootstrapBukkitAdapterMustNotDependOnPersistenceImplementations must permit persistence implementation wiring in bootstrap package")
                 .isFalse();
     }
+
+    @Test
+    @DisplayName("Production :bukkit-adapter classes must contain real P1-005 configuration adapter classes")
+    void productionBukkitContainsRealClasses() {
+        JavaClasses production = importProductionClasses();
+        assertThat(production).isNotEmpty();
+        assertThat(production.contain(com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter.class))
+                .isTrue();
+    }
 }

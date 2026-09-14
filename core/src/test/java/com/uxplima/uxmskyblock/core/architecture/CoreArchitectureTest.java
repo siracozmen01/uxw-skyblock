@@ -143,6 +143,33 @@ class CoreArchitectureTest {
                 .allowEmptyShould(true);
     }
 
+    static ArchRule coreMustNotOwnInfrastructureConfiguration() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.core..")
+                .should()
+                .haveSimpleNameEndingWith("DatabaseConfig")
+                .orShould()
+                .haveSimpleNameEndingWith("StorageConfig")
+                .orShould()
+                .haveSimpleNameEndingWith("ModulesConfig")
+                .because(
+                        "infrastructure configuration (DatabaseConfig, StorageConfig, ModulesConfig) belongs to adapter/composition layers, not :core")
+                .allowEmptyShould(true);
+    }
+
+    static ArchRule domainMustNotDependOnFilesystem() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.core.domain..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage("java.nio.file..")
+                .because(
+                        "pure domain policies and entities must not depend on physical filesystem or java.nio.file types")
+                .allowEmptyShould(true);
+    }
+
     private static JavaClasses importProductionClasses() {
         return new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -246,6 +273,36 @@ class CoreArchitectureTest {
         EvaluationResult result = coreMustNotDependOnAdapters().evaluate(fixture);
         assertThat(result.hasViolation())
                 .as("coreMustNotDependOnAdapters must catch fixture class importing adapter type")
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName(
+            "Production :core classes must not own infrastructure configuration (DatabaseConfig, StorageConfig, ModulesConfig)")
+    void productionCoreHasNoInfrastructureConfiguration() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> coreMustNotOwnInfrastructureConfiguration().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Production :core domain classes must not depend on physical filesystem / java.nio.file")
+    void productionDomainHasNoFilesystemDependencies() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> domainMustNotDependOnFilesystem().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Production :core classes must contain real P1-005 domain durability policy classes")
+    void productionCoreContainsRealClasses() {
+        JavaClasses production = importProductionClasses();
+        assertThat(production).isNotEmpty();
+        assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig.class))
+                .isTrue();
+        assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.durability.DurabilityMode.class))
+                .isTrue();
+        assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.durability.DurabilityClassification.class))
                 .isTrue();
     }
 }
