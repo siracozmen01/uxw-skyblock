@@ -15,4 +15,27 @@ dependencies {
     testImplementation(libs.archunit.junit)
     testImplementation(libs.jqwik)
     testImplementation(libs.testcontainers)
+    testImplementation(libs.testcontainers.mariadb)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit)
+}
+
+tasks.test {
+    useJUnitPlatform {
+        excludeTags("database-integration")
+    }
+}
+
+val databaseIntegrationTest by tasks.registering(Test::class) {
+    description = "Runs containerized database integration tests against MariaDB and PostgreSQL"
+    group = "verification"
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("database-integration")
+    }
+    shouldRunAfter(tasks.test)
 }

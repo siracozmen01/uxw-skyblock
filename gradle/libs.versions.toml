@@ -69,8 +69,11 @@ mockito-core      = { module = "org.mockito:mockito-core",                      
 mockito-jupiter   = { module = "org.mockito:mockito-junit-jupiter",              version.ref = "mockito" }
 mockbukkit        = { module = "org.mockbukkit.mockbukkit:mockbukkit-v26.2",    version.ref = "mockbukkit" }
 jqwik             = { module = "net.jqwik:jqwik",                                version.ref = "jqwik" }
-archunit-junit    = { module = "com.tngtech.archunit:archunit-junit5",           version.ref = "archunit" }
-testcontainers    = { module = "org.testcontainers:testcontainers",              version.ref = "testcontainers" }
+archunit-junit            = { module = "com.tngtech.archunit:archunit-junit5",           version.ref = "archunit" }
+testcontainers            = { module = "org.testcontainers:testcontainers",              version.ref = "testcontainers" }
+testcontainers-mariadb    = { module = "org.testcontainers:mariadb",                     version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql",                  version.ref = "testcontainers" }
+testcontainers-junit      = { module = "org.testcontainers:junit-jupiter",                version.ref = "testcontainers" }
 
 # Tooling Dependencies (buildSrc & compilation)
 errorprone-core   = { module = "com.google.errorprone:error_prone_core",         version.ref = "errorprone" }

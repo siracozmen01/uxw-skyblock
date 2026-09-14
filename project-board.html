@@ -596,11 +596,11 @@
       <div class="metric-card">
         <div class="metric-label">
           <span>Overall Card Completion</span>
-          <span id="metric-percent">82%</span>
+          <span id="metric-percent">86%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">28 / 34</div>
+        <div class="metric-val" id="metric-ratio">30 / 35</div>
         <div class="progress-track">
-          <div class="progress-fill" id="metric-fill" style="width: 82%;"></div>
+          <div class="progress-fill" id="metric-fill" style="width: 86%;"></div>
         </div>
       </div>
 
@@ -752,21 +752,9 @@
             <span class="status-indicator"></span>
             <span class="column-title">In Review</span>
           </div>
-          <span class="column-count" id="count-review">1</span>
+          <span class="column-count" id="count-review">0</span>
         </div>
         <div class="card-stack" id="stack-review">
-          <div class="item-card" draggable="true" data-id="P1-006" data-tag="Persistence">
-            <div class="card-meta-line">
-              <span class="card-id">P1-006</span>
-              <span class="card-label">Review</span>
-            </div>
-            <div class="card-heading">Persistence / MigrationRunner Harness</div>
-            <div class="card-snippet">:persistence-adapter integration harness verifying uxmlib-storage MigrationRunner directly. History table schema, version ordering, transactional execution, and idempotent reruns verified.</div>
-            <div class="card-foot">
-              <span class="badge-category">Persistence</span>
-              <span class="badge-status-dot">In Review</span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -777,9 +765,35 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">28</span>
+          <span class="column-count" id="count-done">30</span>
         </div>
         <div class="card-stack" id="stack-done">
+
+          <div class="item-card" draggable="true" data-id="P1-007" data-tag="Testing">
+            <div class="card-meta-line">
+              <span class="card-id">P1-007</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Dual-Lane Database Test Foundation</div>
+            <div class="card-snippet">Dual-lane database test foundation (:persistence-adapter): SQLite fast lane and Testcontainers MariaDB/PostgreSQL integration lane verified. Portable SQL contract, MigrationRunner parity, and SELECT ... FOR UPDATE row-locking verified.</div>
+            <div class="card-foot">
+              <span class="badge-category">Testing</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="P1-006" data-tag="Persistence">
+            <div class="card-meta-line">
+              <span class="card-id">P1-006</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Persistence / MigrationRunner Harness</div>
+            <div class="card-snippet">:persistence-adapter integration harness verifying uxmlib-storage MigrationRunner directly. History table schema, version ordering, transactional execution, and idempotent reruns verified. Accepted in commit 5b1550f.</div>
+            <div class="card-foot">
+              <span class="badge-category">Persistence</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
 
           <div class="item-card" draggable="true" data-id="P1-005" data-tag="Configuration">
             <div class="card-meta-line">
