@@ -304,5 +304,14 @@ class CoreArchitectureTest {
                 .isTrue();
         assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.durability.DurabilityClassification.class))
                 .isTrue();
+        assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.session.ServerNodeId.class))
+                .isTrue();
+        assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.session.SessionState.class))
+                .isTrue();
+        assertThat(production.contain(com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome.class))
+                .isTrue();
+        assertThat(production.contain(
+                        com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort.class))
+                .isTrue();
     }
 }

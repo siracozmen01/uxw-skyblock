@@ -7,11 +7,11 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 2 — Persistence & Multi-Profile Authority (Phase 1 COMPLETE — WP2-001 In Review)
+* **Phase:** Phase 2 — Persistence & Multi-Profile Authority (Phase 1 COMPLETE — WP2-002 COMPLETED)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES (Phase 1 COMPLETE — 7 / 7 completed)
-* **Phase 2 Started:** YES (WP2-001 In Review)
+* **Phase 2 Started:** YES (WP2-002 COMPLETED)
 * **P1-001 Status:** COMPLETED (commit `906bba0`)
 * **P1-002 Status:** COMPLETED (commit `1ea566b`)
 * **P1-003 Status:** COMPLETED (commit `da7e626`)
@@ -19,10 +19,11 @@
 * **P1-005 Status:** COMPLETED (commit `f4e8b7e`)
 * **P1-006 Status:** COMPLETED (commit `5b1550f`)
 * **P1-007 Status:** COMPLETED (commit `0c681c0`)
-* **WP2-001 Status:** IN REVIEW
+* **WP2-001 Status:** COMPLETED (commit `fd90b2d`)
+* **WP2-002 Status:** COMPLETED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 83% (30 / 36 cards completed)
+* **Overall Card Completion:** 86% (32 / 37 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -42,9 +43,11 @@
 * *No active items currently in progress.*
 
 ### 🔍 In Review
-* [ ] **[WP2-001]** Production Persistence Foundation (`:persistence-adapter` production schema V1 migrations for `player_accounts`, `player_profiles`, `player_sessions`, `SkyblockMigrations` registry, `SkyblockDatabase` boundary, SQLite fast lane and Testcontainers MariaDB/PostgreSQL cross-dialect verification) — IN REVIEW
+* *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[WP2-002]** Player Session Authority Lifecycle (`:core` domain/application session authority contracts, `:persistence-adapter` canonical SQL-backed player session fencing lifecycle around `player_sessions`, DB clock leasing, SQLite writer serialization, Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED
+* [x] **[WP2-001]** Production Persistence Foundation (`:persistence-adapter` production schema V1 migrations for `player_accounts`, `player_profiles`, `player_sessions`, `SkyblockMigrations` registry, SQLite fast lane and Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED (commit `fd90b2d`)
 * [x] **[P1-007]** Dual-Lane Database Test Foundation (`:persistence-adapter` test infrastructure for SQLite fast lane & Testcontainers MariaDB/PostgreSQL integration lane; portable SQL contract, MigrationRunner parity, `SELECT ... FOR UPDATE` row locking) — COMPLETED
 * [x] **[P1-006]** Persistence / MigrationRunner Harness (`:persistence-adapter` integration harness verifying uxmlib-storage MigrationRunner directly) — COMPLETED (commit `5b1550f`)
 * [x] **[P1-005]** Configuration Boundary Separation (`:bukkit-adapter` config loader -> pure `:core` policy `PlayerStateDurabilityConfig`) — COMPLETED (commit `f4e8b7e`)
