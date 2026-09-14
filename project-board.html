@@ -598,7 +598,7 @@
           <span>Overall Card Completion</span>
           <span id="metric-percent">82%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">27 / 33</div>
+        <div class="metric-val" id="metric-ratio">28 / 34</div>
         <div class="progress-track">
           <div class="progress-fill" id="metric-fill" style="width: 82%;"></div>
         </div>
@@ -755,15 +755,15 @@
           <span class="column-count" id="count-review">1</span>
         </div>
         <div class="card-stack" id="stack-review">
-          <div class="item-card" draggable="true" data-id="P1-005" data-tag="Configuration">
+          <div class="item-card" draggable="true" data-id="P1-006" data-tag="Persistence">
             <div class="card-meta-line">
-              <span class="card-id">P1-005</span>
+              <span class="card-id">P1-006</span>
               <span class="card-label">Review</span>
             </div>
-            <div class="card-heading">Configuration Boundary Separation</div>
-            <div class="card-snippet">:bukkit-adapter PlayerStateConfigurationAdapter translates external HOCON into pure :core PlayerStateDurabilityConfig. Zero Configurate/platform leakage.</div>
+            <div class="card-heading">Persistence / MigrationRunner Harness</div>
+            <div class="card-snippet">:persistence-adapter integration harness verifying uxmlib-storage MigrationRunner directly. History table schema, version ordering, transactional execution, and idempotent reruns verified.</div>
             <div class="card-foot">
-              <span class="badge-category">Configuration</span>
+              <span class="badge-category">Persistence</span>
               <span class="badge-status-dot">In Review</span>
             </div>
           </div>
@@ -777,9 +777,22 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">27</span>
+          <span class="column-count" id="count-done">28</span>
         </div>
         <div class="card-stack" id="stack-done">
+
+          <div class="item-card" draggable="true" data-id="P1-005" data-tag="Configuration">
+            <div class="card-meta-line">
+              <span class="card-id">P1-005</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Configuration Boundary Separation</div>
+            <div class="card-snippet">:bukkit-adapter PlayerStateConfigurationAdapter translates external HOCON into pure :core PlayerStateDurabilityConfig. Zero Configurate/platform leakage. Accepted in commit f4e8b7e.</div>
+            <div class="card-foot">
+              <span class="badge-category">Configuration</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
 
           <div class="item-card" draggable="true" data-id="P1-004" data-tag="Architecture">
             <div class="card-meta-line">
