@@ -7,20 +7,22 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 1 — Implementation (P1-001..P1-007 Completed — Phase 1 COMPLETE)
+* **Phase:** Phase 2 — Persistence & Multi-Profile Authority (Phase 1 COMPLETE — WP2-001 In Review)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
-* **Phase 1 Started:** YES
-* **P1-001 Status:** COMPLETED
-* **P1-002 Status:** COMPLETED
-* **P1-003 Status:** COMPLETED
-* **P1-004 Status:** COMPLETED
+* **Phase 1 Started:** YES (Phase 1 COMPLETE — 7 / 7 completed)
+* **Phase 2 Started:** YES (WP2-001 In Review)
+* **P1-001 Status:** COMPLETED (commit `906bba0`)
+* **P1-002 Status:** COMPLETED (commit `1ea566b`)
+* **P1-003 Status:** COMPLETED (commit `da7e626`)
+* **P1-004 Status:** COMPLETED (commit `e8175c5`)
 * **P1-005 Status:** COMPLETED (commit `f4e8b7e`)
 * **P1-006 Status:** COMPLETED (commit `5b1550f`)
-* **P1-007 Status:** COMPLETED
+* **P1-007 Status:** COMPLETED (commit `0c681c0`)
+* **WP2-001 Status:** IN REVIEW
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 86% (30 / 35 cards completed)
+* **Overall Card Completion:** 83% (30 / 36 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -40,7 +42,7 @@
 * *No active items currently in progress.*
 
 ### 🔍 In Review
-* *No active items currently in review.*
+* [ ] **[WP2-001]** Production Persistence Foundation (`:persistence-adapter` production schema V1 migrations for `player_accounts`, `player_profiles`, `player_sessions`, `SkyblockMigrations` registry, `SkyblockDatabase` boundary, SQLite fast lane and Testcontainers MariaDB/PostgreSQL cross-dialect verification) — IN REVIEW
 
 ### ✅ Done (Completed)
 * [x] **[P1-007]** Dual-Lane Database Test Foundation (`:persistence-adapter` test infrastructure for SQLite fast lane & Testcontainers MariaDB/PostgreSQL integration lane; portable SQL contract, MigrationRunner parity, `SELECT ... FOR UPDATE` row locking) — COMPLETED

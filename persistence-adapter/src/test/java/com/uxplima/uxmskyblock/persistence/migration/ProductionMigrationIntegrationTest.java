@@ -1,0 +1,377 @@
+package com.uxplima.uxmskyblock.persistence.migration;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+
+import com.uxplima.uxmlib.storage.migration.MigrationRunner;
+import com.uxplima.uxmlib.storage.sql.Database;
+import com.uxplima.uxmlib.storage.sql.Dialect;
+import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.testcontainers.containers.MariaDBContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/**
+ * P2 Integration Lane test suite verifying production persistence foundation (WP2-001)
+ * across real server SQL databases (MariaDB 10.11.11 and PostgreSQL 15.12-alpine).
+ *
+ * <p>Tagged {@code @Tag("database-integration")} so it runs exclusively under the dedicated
+ * {@code :persistence-adapter:databaseIntegrationTest} task.
+ */
+@Tag("database-integration")
+@Execution(ExecutionMode.SAME_THREAD)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+class ProductionMigrationIntegrationTest {
+
+    private static MariaDBContainer<?> mariaDbContainer;
+    private static PostgreSQLContainer<?> postgresContainer;
+
+    private static Database mariaDatabase;
+    private static Database postgresDatabase;
+
+    private static MigrationRunner mariaRunner;
+    private static MigrationRunner postgresRunner;
+
+    @BeforeAll
+    static void setUpAll() {
+        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
+        mariaDbContainer.start();
+        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+        mariaRunner = new MigrationRunner(mariaDatabase);
+
+        postgresContainer = DatabaseTestFixture.newPostgresContainer();
+        postgresContainer.start();
+        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+        postgresRunner = new MigrationRunner(postgresDatabase);
+    }
+
+    @AfterAll
+    static void tearDownAll() {
+        if (mariaDatabase != null && !mariaDatabase.isClosed()) {
+            mariaDatabase.close();
+        }
+        if (mariaDbContainer != null) {
+            mariaDbContainer.stop();
+        }
+
+        if (postgresDatabase != null && !postgresDatabase.isClosed()) {
+            postgresDatabase.close();
+        }
+        if (postgresContainer != null) {
+            postgresContainer.stop();
+        }
+    }
+
+    // ==========================================
+    // MariaDB Integration Tests
+    // ==========================================
+
+    @Test
+    @Order(1)
+    @DisplayName("MariaDB 1: Clean database migrates to LATEST_VERSION")
+    void mariaDbMigratesCleanDatabase() {
+        assertThat(mariaRunner.currentVersion()).isEqualTo(0);
+        int applied = mariaRunner.apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+        assertThat(applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+    }
+
+    @Test
+    @Order(2)
+    @DisplayName("MariaDB 2: Idempotent migration rerun applies zero migrations")
+    void mariaDbIdempotentRerun() {
+        int rerun = mariaRunner.apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+        assertThat(rerun).isEqualTo(0);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+    }
+
+    @Test
+    @Order(3)
+    @DisplayName("MariaDB 3: Verified tables exist and deferred/future tables are absent")
+    void mariaDbVerifiesTables() throws Exception {
+        verifyCanonicalTables(mariaDatabase);
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("MariaDB 4: Verified columns exist on canonical foundation tables")
+    void mariaDbVerifiesColumns() throws Exception {
+        verifyCanonicalColumns(mariaDatabase);
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("MariaDB 5: Non-circular lifecycle, composite FK, and cascade delete")
+    void mariaDbVerifiesLifecycleAndConstraints() throws Exception {
+        verifyLifecycleAndConstraints(mariaDatabase, "maria");
+    }
+
+    // ==========================================
+    // PostgreSQL Integration Tests
+    // ==========================================
+
+    @Test
+    @Order(6)
+    @DisplayName("PostgreSQL 1: Clean database migrates to LATEST_VERSION")
+    void postgresMigratesCleanDatabase() {
+        assertThat(postgresRunner.currentVersion()).isEqualTo(0);
+        int applied = postgresRunner.apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+        assertThat(applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+    }
+
+    @Test
+    @Order(7)
+    @DisplayName("PostgreSQL 2: Idempotent migration rerun applies zero migrations")
+    void postgresIdempotentRerun() {
+        int rerun = postgresRunner.apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+        assertThat(rerun).isEqualTo(0);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("PostgreSQL 3: Verified tables exist and deferred/future tables are absent")
+    void postgresVerifiesTables() throws Exception {
+        verifyCanonicalTables(postgresDatabase);
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("PostgreSQL 4: Verified columns exist on canonical foundation tables")
+    void postgresVerifiesColumns() throws Exception {
+        verifyCanonicalColumns(postgresDatabase);
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("PostgreSQL 5: Non-circular lifecycle, composite FK, and cascade delete")
+    void postgresVerifiesLifecycleAndConstraints() throws Exception {
+        verifyLifecycleAndConstraints(postgresDatabase, "pg");
+    }
+
+    // ==========================================
+    // Shared Verification Logic
+    // ==========================================
+
+    private static void verifyCanonicalTables(Database db) throws Exception {
+        try (Connection conn = db.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            Set<String> tables = new HashSet<>();
+            try (ResultSet rs = meta.getTables(null, null, "%", new String[] {"TABLE"})) {
+                while (rs.next()) {
+                    tables.add(rs.getString("TABLE_NAME").toLowerCase(Locale.ROOT));
+                }
+            }
+
+            assertThat(tables)
+                    .contains("player_accounts", "player_profiles", "player_sessions", "uxmlib_schema_history");
+
+            assertThat(tables)
+                    .doesNotContain(
+                            "islands",
+                            "island_members",
+                            "island_locations",
+                            "profile_inventories",
+                            "inventory_mutation_journals",
+                            "profile_switch_operations",
+                            "outbox_events",
+                            "inbox_events");
+        }
+    }
+
+    private static void verifyCanonicalColumns(Database db) throws Exception {
+        try (Connection conn = db.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+
+            Set<String> accountCols = getColumnNames(meta, "player_accounts");
+            assertThat(accountCols)
+                    .contains(
+                            "player_uuid",
+                            "active_profile_id",
+                            "active_switch_operation_id",
+                            "created_at",
+                            "updated_at");
+
+            Set<String> profileCols = getColumnNames(meta, "player_profiles");
+            assertThat(profileCols).contains("profile_id", "player_uuid", "profile_type", "created_at");
+
+            Set<String> sessionCols = getColumnNames(meta, "player_sessions");
+            assertThat(sessionCols)
+                    .contains(
+                            "player_uuid",
+                            "active_profile_id",
+                            "authoritative_node",
+                            "session_epoch",
+                            "state",
+                            "handoff_id",
+                            "handoff_target_node",
+                            "handoff_expires_at",
+                            "last_durable_inventory_version",
+                            "lease_expires_at",
+                            "updated_at");
+        }
+    }
+
+    private static void verifyLifecycleAndConstraints(Database db, String prefix) throws Exception {
+        String p1 = prefix + "-p1";
+        String prof1 = prefix + "-prof1";
+        String p2 = prefix + "-p2";
+        String prof2 = prefix + "-prof2";
+
+        try (Connection conn = db.connection()) {
+            // 1. Initial non-circular account creation with null active profile
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO player_accounts (player_uuid, active_profile_id) VALUES (?, NULL)")) {
+                stmt.setString(1, p1);
+                stmt.executeUpdate();
+            }
+
+            // 2. Profile creation for p1
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
+                stmt.setString(1, prof1);
+                stmt.setString(2, p1);
+                stmt.executeUpdate();
+            }
+
+            // 3. Update account active profile
+            try (PreparedStatement stmt =
+                    conn.prepareStatement("UPDATE player_accounts SET active_profile_id = ? WHERE player_uuid = ?")) {
+                stmt.setString(1, prof1);
+                stmt.setString(2, p1);
+                stmt.executeUpdate();
+            }
+
+            // 4. Create player session
+            try (PreparedStatement stmt = conn.prepareStatement("""
+                    INSERT INTO player_sessions (
+                        player_uuid, active_profile_id, authoritative_node, session_epoch,
+                        state, last_durable_inventory_version, lease_expires_at
+                    ) VALUES (?, ?, ?, 1, 'ACTIVE', 1, CURRENT_TIMESTAMP)
+                    """)) {
+                stmt.setString(1, p1);
+                stmt.setString(2, prof1);
+                stmt.setString(3, "node-server");
+                stmt.executeUpdate();
+            }
+
+            // 5. Account 2 & Profile 2
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO player_accounts (player_uuid, active_profile_id) VALUES (?, NULL)")) {
+                stmt.setString(1, p2);
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
+                stmt.setString(1, prof2);
+                stmt.setString(2, p2);
+                stmt.executeUpdate();
+            }
+
+            // 6. Cross-tenant composite FK violation attempt on player_accounts
+            assertThatThrownBy(() -> {
+                        try (PreparedStatement stmt = conn.prepareStatement(
+                                "UPDATE player_accounts SET active_profile_id = ? WHERE player_uuid = ?")) {
+                            stmt.setString(1, prof2);
+                            stmt.setString(2, p1);
+                            stmt.executeUpdate();
+                        }
+                    })
+                    .isInstanceOf(SQLException.class);
+
+            // 7. Cross-tenant composite FK violation attempt on player_sessions
+            assertThatThrownBy(() -> {
+                        try (PreparedStatement stmt = conn.prepareStatement("""
+                        INSERT INTO player_sessions (
+                            player_uuid, active_profile_id, authoritative_node, session_epoch,
+                            state, last_durable_inventory_version, lease_expires_at
+                        ) VALUES (?, ?, 'bad-node', 1, 'ACTIVE', 1, CURRENT_TIMESTAMP)
+                        """)) {
+                            stmt.setString(1, p1);
+                            stmt.setString(2, prof2);
+                            stmt.executeUpdate();
+                        }
+                    })
+                    .isInstanceOf(SQLException.class);
+
+            // 8. Terminate active session, break circular reference, then delete account
+            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM player_sessions WHERE player_uuid = ?")) {
+                stmt.setString(1, p1);
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "UPDATE player_accounts SET active_profile_id = NULL WHERE player_uuid = ?")) {
+                stmt.setString(1, p1);
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM player_accounts WHERE player_uuid = ?")) {
+                stmt.setString(1, p1);
+                stmt.executeUpdate();
+            }
+
+            // Confirm profiles are deleted by cascade
+            assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_profiles WHERE player_uuid = '" + p1 + "'"))
+                    .isEqualTo(0);
+            assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_sessions WHERE player_uuid = '" + p1 + "'"))
+                    .isEqualTo(0);
+
+            // 9. Direct cascade delete on account with profiles (no active session)
+            String pDirect = prefix + "-p-direct";
+            String profDirect = prefix + "-prof-direct";
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO player_accounts (player_uuid, active_profile_id) VALUES (?, NULL)")) {
+                stmt.setString(1, pDirect);
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
+                stmt.setString(1, profDirect);
+                stmt.setString(2, pDirect);
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM player_accounts WHERE player_uuid = ?")) {
+                stmt.setString(1, pDirect);
+                stmt.executeUpdate();
+            }
+            assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_profiles WHERE player_uuid = '" + pDirect + "'"))
+                    .isEqualTo(0);
+        }
+    }
+
+    private static int queryCount(Connection conn, String sql) throws SQLException {
+        try (Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)) {
+            return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+
+    private static Set<String> getColumnNames(DatabaseMetaData meta, String tableName) throws SQLException {
+        Set<String> columns = new HashSet<>();
+        try (ResultSet rs = meta.getColumns(null, null, tableName, "%")) {
+            while (rs.next()) {
+                columns.add(rs.getString("COLUMN_NAME").toLowerCase(Locale.ROOT));
+            }
+        }
+        return columns;
+    }
+}
