@@ -595,12 +595,12 @@
     <div class="metrics-grid">
       <div class="metric-card">
         <div class="metric-label">
-          <span>Overall Progress</span>
-          <span id="metric-percent">76%</span>
+          <span>Overall Card Completion</span>
+          <span id="metric-percent">79%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">22 / 29</div>
+        <div class="metric-val" id="metric-ratio">26 / 33</div>
         <div class="progress-track">
-          <div class="progress-fill" id="metric-fill" style="width: 76%;"></div>
+          <div class="progress-fill" id="metric-fill" style="width: 79%;"></div>
         </div>
       </div>
 
@@ -752,23 +752,9 @@
             <span class="status-indicator"></span>
             <span class="column-title">In Progress</span>
           </div>
-          <span class="column-count" id="count-progress">1</span>
+          <span class="column-count" id="count-progress">0</span>
         </div>
         <div class="card-stack" id="stack-progress">
-
-          <div class="item-card" draggable="true" data-id="GOV-001" data-tag="Governance">
-            <div class="card-meta-line">
-              <span class="card-id">GOV-001</span>
-              <span class="card-label">Active</span>
-            </div>
-            <div class="card-heading">Governance & Standards Specification</div>
-            <div class="card-snippet">Complete rulebook establishing DoD, Coding Standards, Naming, Error Handling, and uxm-lib mapping.</div>
-            <div class="card-foot">
-              <span class="badge-category">Governance</span>
-              <span class="badge-status-dot">Working</span>
-            </div>
-          </div>
-
         </div>
       </div>
 
@@ -779,9 +765,21 @@
             <span class="status-indicator"></span>
             <span class="column-title">In Review</span>
           </div>
-          <span class="column-count" id="count-review">0</span>
+          <span class="column-count" id="count-review">1</span>
         </div>
         <div class="card-stack" id="stack-review">
+          <div class="item-card" draggable="true" data-id="P1-004" data-tag="Architecture">
+            <div class="card-meta-line">
+              <span class="card-id">P1-004</span>
+              <span class="card-label">Review</span>
+            </div>
+            <div class="card-heading">Public API Foundation</div>
+            <div class="card-snippet">Platform-neutral NamespacedId value object in :api. Zero :core leakage. Implementation complete; manager approval pending.</div>
+            <div class="card-foot">
+              <span class="badge-category">Architecture</span>
+              <span class="badge-status-dot">In Review</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -792,9 +790,61 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">22</span>
+          <span class="column-count" id="count-done">26</span>
         </div>
         <div class="card-stack" id="stack-done">
+
+          <div class="item-card" draggable="true" data-id="P1-003" data-tag="Core">
+            <div class="card-meta-line">
+              <span class="card-id">P1-003</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Pure Domain Primitives & Foundation</div>
+            <div class="card-snippet">Implemented PlayerUuid, ProfileId, IslandId (canonical unsigned 128-bit order), Result&lt;T,E&gt;, and Unit singleton enum in :core. Accepted in commit da7e626.</div>
+            <div class="card-foot">
+              <span class="badge-category">Core</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="P1-002" data-tag="Testing">
+            <div class="card-meta-line">
+              <span class="card-id">P1-002</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Architecture Dependency Fences</div>
+            <div class="card-snippet">ArchUnit drift guards enforcing Hexagonal/DDD boundaries, platform-neutral :api/:core, and scheduler isolation. Accepted in commit 1ea566b.</div>
+            <div class="card-foot">
+              <span class="badge-category">Testing</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="P1-001" data-tag="Build">
+            <div class="card-meta-line">
+              <span class="card-id">P1-001</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Build Foundation & Module Scaffolding</div>
+            <div class="card-snippet">Configured 4-module build baseline (:api, :core, :persistence-adapter, :bukkit-adapter) on Java 25 Adoptium. Accepted in commit 906bba0.</div>
+            <div class="card-foot">
+              <span class="badge-category">Build</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="GOV-001" data-tag="Governance">
+            <div class="card-meta-line">
+              <span class="card-id">GOV-001</span>
+              <span class="card-label">Approved by PO</span>
+            </div>
+            <div class="card-heading">Governance & Standards Specification</div>
+            <div class="card-snippet">Complete rulebook establishing DoD, Coding Standards, Naming, Error Handling, and uxm-lib mapping. Frozen by Product Owner (2026-09-13).</div>
+            <div class="card-foot">
+              <span class="badge-category">Governance</span>
+              <span class="badge-status-dot">Frozen</span>
+            </div>
+          </div>
 
           <div class="item-card" draggable="true" data-id="ARCH-002" data-tag="Architecture">
             <div class="card-meta-line">

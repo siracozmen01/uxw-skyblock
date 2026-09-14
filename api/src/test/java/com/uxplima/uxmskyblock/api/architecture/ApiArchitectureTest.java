@@ -172,4 +172,13 @@ class ApiArchitectureTest {
                 .as("apiMustNotDependOnPlatform must catch fixture class importing Bukkit type")
                 .isTrue();
     }
+
+    @Test
+    @DisplayName("Production :api classes must contain real P1-004 API classes")
+    void productionApiContainsRealClasses() {
+        JavaClasses production = importProductionClasses();
+        assertThat(production).isNotEmpty();
+        assertThat(production.contain(com.uxplima.uxmskyblock.api.NamespacedId.class))
+                .isTrue();
+    }
 }
