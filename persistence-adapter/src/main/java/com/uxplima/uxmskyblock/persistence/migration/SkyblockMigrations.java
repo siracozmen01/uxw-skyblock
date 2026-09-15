@@ -21,10 +21,13 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 1;
+    public static final int LATEST_VERSION = 2;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
+
+    /** Human-readable description of migration V2. */
+    public static final String V2_DESCRIPTION = "create profile inventories";
 
     private SkyblockMigrations() {}
 
@@ -42,13 +45,25 @@ public final class SkyblockMigrations {
      */
     public static List<Migration> getMigrations(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
-        return List.of(v1Migration(dialect));
+        return List.of(v1Migration(dialect), v2Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
         return switch (dialect) {
             case SQLITE -> new Migration(1, V1_DESCRIPTION, SQLITE_V1_DDL);
             case MYSQL, POSTGRES -> new Migration(1, V1_DESCRIPTION, SERVER_V1_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v2Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(2, V2_DESCRIPTION, SQLITE_V2_DDL);
+            case MYSQL -> new Migration(2, V2_DESCRIPTION, MYSQL_V2_DDL);
+            case POSTGRES -> new Migration(2, V2_DESCRIPTION, POSTGRES_V2_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -147,5 +162,74 @@ public final class SkyblockMigrations {
 
             ALTER TABLE player_accounts ADD CONSTRAINT fk_player_accounts_active_profile
                 FOREIGN KEY (player_uuid, active_profile_id) REFERENCES player_profiles (player_uuid, profile_id);
+            """;
+
+    private static final String SQLITE_V2_DDL = """
+            CREATE TABLE IF NOT EXISTS profile_inventories (
+                profile_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                profile_inventory_version BIGINT NOT NULL DEFAULT 1,
+                inventory_nbt BLOB NOT NULL,
+                enderchest_nbt BLOB NOT NULL,
+                experience_points INT NOT NULL DEFAULT 0,
+                health DOUBLE NOT NULL DEFAULT 20.0,
+                food_level INT NOT NULL DEFAULT 20,
+                saturation FLOAT NOT NULL DEFAULT 5.0,
+                active_potion_effects_nbt BLOB NULL,
+                logout_world VARCHAR(64) NULL,
+                logout_x DOUBLE NULL,
+                logout_y DOUBLE NULL,
+                logout_z DOUBLE NULL,
+                gamemode VARCHAR(16) NOT NULL DEFAULT 'SURVIVAL',
+                flight_allowed BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_profile_inventories_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+            """;
+
+    private static final String MYSQL_V2_DDL = """
+            CREATE TABLE IF NOT EXISTS profile_inventories (
+                profile_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                profile_inventory_version BIGINT NOT NULL DEFAULT 1,
+                inventory_nbt MEDIUMBLOB NOT NULL,
+                enderchest_nbt MEDIUMBLOB NOT NULL,
+                experience_points INT NOT NULL DEFAULT 0,
+                health DOUBLE NOT NULL DEFAULT 20.0,
+                food_level INT NOT NULL DEFAULT 20,
+                saturation FLOAT NOT NULL DEFAULT 5.0,
+                active_potion_effects_nbt MEDIUMBLOB NULL,
+                logout_world VARCHAR(64) NULL,
+                logout_x DOUBLE NULL,
+                logout_y DOUBLE NULL,
+                logout_z DOUBLE NULL,
+                gamemode VARCHAR(16) NOT NULL DEFAULT 'SURVIVAL',
+                flight_allowed BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_profile_inventories_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+            """;
+
+    private static final String POSTGRES_V2_DDL = """
+            CREATE TABLE IF NOT EXISTS profile_inventories (
+                profile_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                profile_inventory_version BIGINT NOT NULL DEFAULT 1,
+                inventory_nbt BYTEA NOT NULL,
+                enderchest_nbt BYTEA NOT NULL,
+                experience_points INT NOT NULL DEFAULT 0,
+                health DOUBLE PRECISION NOT NULL DEFAULT 20.0,
+                food_level INT NOT NULL DEFAULT 20,
+                saturation REAL NOT NULL DEFAULT 5.0,
+                active_potion_effects_nbt BYTEA NULL,
+                logout_world VARCHAR(64) NULL,
+                logout_x DOUBLE PRECISION NULL,
+                logout_y DOUBLE PRECISION NULL,
+                logout_z DOUBLE PRECISION NULL,
+                gamemode VARCHAR(16) NOT NULL DEFAULT 'SURVIVAL',
+                flight_allowed BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_profile_inventories_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
             """;
 }

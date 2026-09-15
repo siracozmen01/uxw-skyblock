@@ -11,9 +11,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.uxplima.uxmlib.storage.migration.Migration;
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
@@ -23,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Fast-lane SQLite test suite verifying the production persistence foundation (WP2-001).
+ * Fast-lane SQLite test suite verifying the production persistence foundation (WP2-001 & WP2-003).
  *
  * <p>Validates {@link SkyblockMigrations} and upstream {@link MigrationRunner} against in-memory
  * and file-backed SQLite instances without requiring external containers.
@@ -41,7 +43,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(0);
 
             int applied = runner.apply(SkyblockMigrations.getMigrations(db.dialect()));
-            assertThat(applied).isEqualTo(1);
+            assertThat(applied).isEqualTo(SkyblockMigrations.LATEST_VERSION);
             assertThat(runner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
         }
     }
@@ -76,17 +78,21 @@ class ProductionMigrationFastLaneTest {
                     }
                 }
 
-                // Canonical tables that MUST exist
+                // Canonical tables that MUST exist in WP2-003
                 assertThat(tables)
-                        .contains("player_accounts", "player_profiles", "player_sessions", "uxmlib_schema_history");
+                        .contains(
+                                "player_accounts",
+                                "player_profiles",
+                                "player_sessions",
+                                "profile_inventories",
+                                "uxmlib_schema_history");
 
-                // Future / deferred tables that MUST NOT exist in WP2-001
+                // Future / deferred tables that MUST NOT exist
                 assertThat(tables)
                         .doesNotContain(
                                 "islands",
                                 "island_members",
                                 "island_locations",
-                                "profile_inventories",
                                 "inventory_mutation_journals",
                                 "profile_switch_operations",
                                 "outbox_events",
@@ -134,6 +140,27 @@ class ProductionMigrationFastLaneTest {
                                 "handoff_expires_at",
                                 "last_durable_inventory_version",
                                 "lease_expires_at",
+                                "updated_at");
+
+                // profile_inventories columns (V2)
+                Set<String> inventoryCols = getColumnNames(meta, "profile_inventories");
+                assertThat(inventoryCols)
+                        .containsExactlyInAnyOrder(
+                                "profile_id",
+                                "profile_inventory_version",
+                                "inventory_nbt",
+                                "enderchest_nbt",
+                                "experience_points",
+                                "health",
+                                "food_level",
+                                "saturation",
+                                "active_potion_effects_nbt",
+                                "logout_world",
+                                "logout_x",
+                                "logout_y",
+                                "logout_z",
+                                "gamemode",
+                                "flight_allowed",
                                 "updated_at");
             }
         }
@@ -291,14 +318,14 @@ class ProductionMigrationFastLaneTest {
         try (Database db = DatabaseTestFixture.createSqliteFile(dbFile)) {
             MigrationRunner runner = new MigrationRunner(db);
             int applied = runner.apply(SkyblockMigrations.getMigrations(db.dialect()));
-            assertThat(applied).isEqualTo(1);
-            assertThat(runner.currentVersion()).isEqualTo(1);
+            assertThat(applied).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+            assertThat(runner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
         }
 
         // Second run: reopen existing database file
         try (Database db = DatabaseTestFixture.createSqliteFile(dbFile)) {
             MigrationRunner runner = new MigrationRunner(db);
-            assertThat(runner.currentVersion()).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
             int rerun = runner.apply(SkyblockMigrations.getMigrations(db.dialect()));
             assertThat(rerun).isEqualTo(0);
         }
@@ -322,6 +349,71 @@ class ProductionMigrationFastLaneTest {
         assertThatThrownBy(() -> SkyblockMigrations.getMigrations(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("dialect");
+    }
+
+    @Test
+    @DisplayName("11. Upgrade from existing V1 database applies V2 cleanly and preserves data")
+    void upgradeFromV1AppliesV2Cleanly() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Apply only V1 migration
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            Migration v1 = allMigrations.get(0);
+            int v1Applied = runner.apply(List.of(v1));
+            assertThat(v1Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(1);
+
+            // 2. Verify pre-V2 schema state: profile_inventories does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "profile_inventories", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V1 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-upg', 'p-upg')");
+                execute(conn, "UPDATE player_accounts SET active_profile_id = 'prof-upg' WHERE player_uuid = 'p-upg'");
+                execute(conn, """
+                        INSERT INTO player_sessions (
+                            player_uuid, active_profile_id, authoritative_node, session_epoch,
+                            state, last_durable_inventory_version, lease_expires_at
+                        ) VALUES ('p-upg', 'prof-upg', 'node-1', 1, 'ACTIVE', 1, CURRENT_TIMESTAMP)
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V2 should be applied)
+            int v2Applied = runner.apply(allMigrations);
+            assertThat(v2Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(2);
+
+            // 5. Verify seeded V1 data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_accounts WHERE player_uuid = 'p-upg'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_profiles WHERE profile_id = 'prof-upg'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_sessions WHERE player_uuid = 'p-upg'"))
+                        .isEqualTo(1);
+
+                // 6. Verify profile_inventories table now exists and can accept rows
+                execute(conn, """
+                        INSERT INTO profile_inventories (profile_id, inventory_nbt, enderchest_nbt)
+                        VALUES ('prof-upg', X'0102', X'0304')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM profile_inventories WHERE profile_id = 'prof-upg'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(2);
+        }
     }
 
     private static void enableForeignKeys(Connection conn) throws SQLException {

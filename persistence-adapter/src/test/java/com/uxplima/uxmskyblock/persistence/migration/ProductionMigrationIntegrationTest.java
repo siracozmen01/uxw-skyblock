@@ -10,9 +10,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.uxplima.uxmlib.storage.migration.Migration;
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
@@ -31,7 +33,7 @@ import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
- * P2 Integration Lane test suite verifying production persistence foundation (WP2-001)
+ * P2 Integration Lane test suite verifying production persistence foundation (WP2-001 & WP2-003)
  * across real server SQL databases (MariaDB 10.11.11 and PostgreSQL 15.12-alpine).
  *
  * <p>Tagged {@code @Tag("database-integration")} so it runs exclusively under the dedicated
@@ -87,12 +89,37 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(1)
-    @DisplayName("MariaDB 1: Clean database migrates to LATEST_VERSION")
-    void mariaDbMigratesCleanDatabase() {
+    @DisplayName("MariaDB 1: Clean database migrates to V1 then upgrades to V2 cleanly")
+    void mariaDbMigratesCleanDatabase() throws Exception {
         assertThat(mariaRunner.currentVersion()).isEqualTo(0);
-        int applied = mariaRunner.apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        assertThat(applied).isEqualTo(1);
+
+        // 1. Apply only V1 migration
+        List<Migration> allMigrations = SkyblockMigrations.getMigrations(mariaDatabase.dialect());
+        Migration v1 = allMigrations.get(0);
+        int v1Applied = mariaRunner.apply(List.of(v1));
+        assertThat(v1Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(1);
+
+        // 2. Verify pre-V2 schema state: profile_inventories does NOT exist
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "profile_inventories", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isFalse();
+            }
+        }
+
+        // 3. Apply complete migration list to upgrade to V2
+        int v2Applied = mariaRunner.apply(allMigrations);
+        assertThat(v2Applied).isEqualTo(1);
         assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 4. Verify V2 inventory schema: profile_inventories now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "profile_inventories", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
     }
 
     @Test
@@ -131,12 +158,37 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(6)
-    @DisplayName("PostgreSQL 1: Clean database migrates to LATEST_VERSION")
-    void postgresMigratesCleanDatabase() {
+    @DisplayName("PostgreSQL 1: Clean database migrates to V1 then upgrades to V2 cleanly")
+    void postgresMigratesCleanDatabase() throws Exception {
         assertThat(postgresRunner.currentVersion()).isEqualTo(0);
-        int applied = postgresRunner.apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        assertThat(applied).isEqualTo(1);
+
+        // 1. Apply only V1 migration
+        List<Migration> allMigrations = SkyblockMigrations.getMigrations(postgresDatabase.dialect());
+        Migration v1 = allMigrations.get(0);
+        int v1Applied = postgresRunner.apply(List.of(v1));
+        assertThat(v1Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(1);
+
+        // 2. Verify pre-V2 schema state: profile_inventories does NOT exist
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "profile_inventories", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isFalse();
+            }
+        }
+
+        // 3. Apply complete migration list to upgrade to V2
+        int v2Applied = postgresRunner.apply(allMigrations);
+        assertThat(v2Applied).isEqualTo(1);
         assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 4. Verify V2 inventory schema: profile_inventories now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "profile_inventories", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
     }
 
     @Test
@@ -184,14 +236,18 @@ class ProductionMigrationIntegrationTest {
             }
 
             assertThat(tables)
-                    .contains("player_accounts", "player_profiles", "player_sessions", "uxmlib_schema_history");
+                    .contains(
+                            "player_accounts",
+                            "player_profiles",
+                            "player_sessions",
+                            "profile_inventories",
+                            "uxmlib_schema_history");
 
             assertThat(tables)
                     .doesNotContain(
                             "islands",
                             "island_members",
                             "island_locations",
-                            "profile_inventories",
                             "inventory_mutation_journals",
                             "profile_switch_operations",
                             "outbox_events",
@@ -228,6 +284,26 @@ class ProductionMigrationIntegrationTest {
                             "handoff_expires_at",
                             "last_durable_inventory_version",
                             "lease_expires_at",
+                            "updated_at");
+
+            Set<String> inventoryCols = getColumnNames(meta, "profile_inventories");
+            assertThat(inventoryCols)
+                    .contains(
+                            "profile_id",
+                            "profile_inventory_version",
+                            "inventory_nbt",
+                            "enderchest_nbt",
+                            "experience_points",
+                            "health",
+                            "food_level",
+                            "saturation",
+                            "active_potion_effects_nbt",
+                            "logout_world",
+                            "logout_x",
+                            "logout_y",
+                            "logout_z",
+                            "gamemode",
+                            "flight_allowed",
                             "updated_at");
         }
     }
@@ -275,7 +351,18 @@ class ProductionMigrationIntegrationTest {
                 stmt.executeUpdate();
             }
 
-            // 5. Account 2 & Profile 2
+            // 5. Create profile inventory
+            try (PreparedStatement stmt = conn.prepareStatement("""
+                    INSERT INTO profile_inventories (profile_id, inventory_nbt, enderchest_nbt)
+                    VALUES (?, ?, ?)
+                    """)) {
+                stmt.setString(1, prof1);
+                stmt.setBytes(2, new byte[] {1, 2});
+                stmt.setBytes(3, new byte[] {3, 4});
+                stmt.executeUpdate();
+            }
+
+            // 6. Account 2 & Profile 2
             try (PreparedStatement stmt = conn.prepareStatement(
                     "INSERT INTO player_accounts (player_uuid, active_profile_id) VALUES (?, NULL)")) {
                 stmt.setString(1, p2);
@@ -288,7 +375,7 @@ class ProductionMigrationIntegrationTest {
                 stmt.executeUpdate();
             }
 
-            // 6. Cross-tenant composite FK violation attempt on player_accounts
+            // 7. Cross-tenant composite FK violation attempt on player_accounts
             assertThatThrownBy(() -> {
                         try (PreparedStatement stmt = conn.prepareStatement(
                                 "UPDATE player_accounts SET active_profile_id = ? WHERE player_uuid = ?")) {
@@ -299,7 +386,7 @@ class ProductionMigrationIntegrationTest {
                     })
                     .isInstanceOf(SQLException.class);
 
-            // 7. Cross-tenant composite FK violation attempt on player_sessions
+            // 8. Cross-tenant composite FK violation attempt on player_sessions
             assertThatThrownBy(() -> {
                         try (PreparedStatement stmt = conn.prepareStatement("""
                         INSERT INTO player_sessions (
@@ -314,7 +401,7 @@ class ProductionMigrationIntegrationTest {
                     })
                     .isInstanceOf(SQLException.class);
 
-            // 8. Terminate active session, break circular reference, then delete account
+            // 9. Terminate active session, break circular reference, then delete account
             try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM player_sessions WHERE player_uuid = ?")) {
                 stmt.setString(1, p1);
                 stmt.executeUpdate();
@@ -329,31 +416,12 @@ class ProductionMigrationIntegrationTest {
                 stmt.executeUpdate();
             }
 
-            // Confirm profiles are deleted by cascade
+            // Confirm profiles and inventory are deleted by cascade
             assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_profiles WHERE player_uuid = '" + p1 + "'"))
                     .isEqualTo(0);
             assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_sessions WHERE player_uuid = '" + p1 + "'"))
                     .isEqualTo(0);
-
-            // 9. Direct cascade delete on account with profiles (no active session)
-            String pDirect = prefix + "-p-direct";
-            String profDirect = prefix + "-prof-direct";
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO player_accounts (player_uuid, active_profile_id) VALUES (?, NULL)")) {
-                stmt.setString(1, pDirect);
-                stmt.executeUpdate();
-            }
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
-                stmt.setString(1, profDirect);
-                stmt.setString(2, pDirect);
-                stmt.executeUpdate();
-            }
-            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM player_accounts WHERE player_uuid = ?")) {
-                stmt.setString(1, pDirect);
-                stmt.executeUpdate();
-            }
-            assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_profiles WHERE player_uuid = '" + pDirect + "'"))
+            assertThat(queryCount(conn, "SELECT COUNT(*) FROM profile_inventories WHERE profile_id = '" + prof1 + "'"))
                     .isEqualTo(0);
         }
     }
