@@ -1,7 +1,9 @@
 package com.uxplima.uxmskyblock.persistence.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -10,10 +12,12 @@ import java.sql.Statement;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
@@ -28,12 +32,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Fast-lane SQLite test suite for {@link PlayerProfileInventoryAdapter} (WP2-003).
  *
- * <p>Verifies optimistic concurrency control (OCC), session authority fencing, DB lease checks,
- * rollback guarantees, and SQLite writer serialization.
+ * <p>Verifies optimistic concurrency control (OCC), session authority fencing, active-profile binding,
+ * DB lease checks, rollback guarantees, and SQLite writer serialization via {@code BEGIN IMMEDIATE}.
  */
 class PlayerProfileInventorySqliteTest {
 
@@ -118,27 +123,21 @@ class PlayerProfileInventorySqliteTest {
     void staleVersionIsRejected() {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
-        byte[] v1Nbt = new byte[] {1, 1};
-        byte[] v2Nbt = new byte[] {2, 2};
-        byte[] staleAttemptNbt = new byte[] {9, 9};
+        byte[] initialNbt = new byte[] {1, 2, 3};
 
         seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false);
-        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, v1Nbt, new byte[] {0}));
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
-        // Advance to version 2
-        adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2Nbt);
+        // Call with stale expectedVersion 99L (current is 1L)
+        ProfileInventoryMutationOutcome outcome =
+                adapter.checkpointInventory(player, profile, NODE_A, 1L, 99L, new byte[] {99});
 
-        // Attempt mutation with stale expectedVersion = 1L
-        ProfileInventoryMutationOutcome staleOutcome =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, staleAttemptNbt);
+        assertThat(outcome.isRejected()).isTrue();
 
-        assertThat(staleOutcome.isRejected()).isTrue();
-
-        // Verify state is still at v2
         Optional<ProfileInventoryRecord> loaded = adapter.loadInventory(profile);
         assertThat(loaded).isPresent();
-        assertThat(loaded.get().version()).isEqualTo(2L);
-        assertThat(loaded.get().inventoryNbt()).isEqualTo(v2Nbt);
+        assertThat(loaded.get().version()).isEqualTo(1L);
+        assertThat(loaded.get().inventoryNbt()).isEqualTo(initialNbt);
     }
 
     @Test
@@ -146,12 +145,12 @@ class PlayerProfileInventorySqliteTest {
     void wrongNodeIsRejected() {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
-        byte[] initialNbt = new byte[] {1};
+        byte[] initialNbt = new byte[] {1, 2, 3};
 
         seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false);
-        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {0}));
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
-        // Wrong node NODE_B attempts mutation
+        // Calling from NODE_B when session is owned by NODE_A
         ProfileInventoryMutationOutcome outcome =
                 adapter.checkpointInventory(player, profile, NODE_B, 1L, 1L, new byte[] {99});
 
@@ -168,12 +167,13 @@ class PlayerProfileInventorySqliteTest {
     void staleEpochIsRejected() {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
-        byte[] initialNbt = new byte[] {1};
+        byte[] initialNbt = new byte[] {1, 2, 3};
 
+        // Seed with session epoch 2
         seedSession(database, player, profile, NODE_A, 2L, "ACTIVE", false);
-        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {0}));
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
-        // Stale epoch 1L attempted
+        // Calling with stale epoch 1L
         ProfileInventoryMutationOutcome outcome =
                 adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99});
 
@@ -186,15 +186,52 @@ class PlayerProfileInventorySqliteTest {
     }
 
     @Test
-    @DisplayName("6. Expired lease by DB clock is rejected and aggregate is untouched")
+    @DisplayName(
+            "6. Cross-profile mismatch is rejected: Player A session with active Profile A cannot mutate Profile B")
+    void crossProfileMismatchIsRejected() {
+        PlayerUuid playerA = PlayerUuid.of(UUID.randomUUID());
+        ProfileId profileA = ProfileId.of(UUID.randomUUID());
+        ProfileId profileB = ProfileId.of(UUID.randomUUID());
+        byte[] nbtA = new byte[] {1, 1, 1};
+        byte[] nbtB = new byte[] {2, 2, 2};
+
+        // Seed playerA session with active_profile_id = profileA
+        seedSession(database, playerA, profileA, NODE_A, 1L, "ACTIVE", false);
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profileA, nbtA, new byte[] {0}));
+
+        // Seed profileB with a valid inventory row
+        seedSecondProfile(database, playerA, profileB);
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profileB, nbtB, new byte[] {0}));
+
+        // Calling routine checkpoint for playerA session but targeting profileB
+        ProfileInventoryMutationOutcome outcome =
+                adapter.checkpointInventory(playerA, profileB, NODE_A, 1L, 1L, new byte[] {9, 9, 9});
+
+        assertThat(outcome.isRejected()).isTrue();
+
+        // Verify Profile A unchanged
+        Optional<ProfileInventoryRecord> loadedA = adapter.loadInventory(profileA);
+        assertThat(loadedA).isPresent();
+        assertThat(loadedA.get().version()).isEqualTo(1L);
+        assertThat(loadedA.get().inventoryNbt()).isEqualTo(nbtA);
+
+        // Verify Profile B unchanged
+        Optional<ProfileInventoryRecord> loadedB = adapter.loadInventory(profileB);
+        assertThat(loadedB).isPresent();
+        assertThat(loadedB.get().version()).isEqualTo(1L);
+        assertThat(loadedB.get().inventoryNbt()).isEqualTo(nbtB);
+    }
+
+    @Test
+    @DisplayName("7. Expired lease by DB clock is rejected and aggregate is untouched")
     void expiredLeaseIsRejected() {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
-        byte[] initialNbt = new byte[] {1};
+        byte[] initialNbt = new byte[] {1, 2, 3};
 
-        // Seed with expired lease
+        // Seed expired session (lease_expires_at in past)
         seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", true);
-        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {0}));
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         ProfileInventoryMutationOutcome outcome =
                 adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99});
@@ -208,33 +245,32 @@ class PlayerProfileInventorySqliteTest {
     }
 
     @Test
-    @DisplayName("7. Non-ACTIVE session states (DRAINING, HANDOFF_READY, RECOVERING) are rejected")
+    @DisplayName("8. Non-ACTIVE session states (DRAINING, HANDOFF_READY, RECOVERING) are rejected")
     void nonActiveSessionStatesAreRejected() {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
-        byte[] initialNbt = new byte[] {1};
+        byte[] initialNbt = new byte[] {1, 2, 3};
 
         seedSession(database, player, profile, NODE_A, 1L, "DRAINING", false);
-        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {0}));
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
-        // DRAINING -> rejected
+        // DRAINING rejected
         assertThat(adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99})
                         .isRejected())
                 .isTrue();
 
-        // Update to HANDOFF_READY -> rejected
+        // HANDOFF_READY rejected
         setSessionState(database, player, "HANDOFF_READY");
         assertThat(adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99})
                         .isRejected())
                 .isTrue();
 
-        // Update to RECOVERING -> rejected
+        // RECOVERING rejected
         setSessionState(database, player, "RECOVERING");
         assertThat(adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99})
                         .isRejected())
                 .isTrue();
 
-        // Aggregate remained completely untouched throughout
         Optional<ProfileInventoryRecord> loaded = adapter.loadInventory(profile);
         assertThat(loaded).isPresent();
         assertThat(loaded.get().version()).isEqualTo(1L);
@@ -242,55 +278,140 @@ class PlayerProfileInventorySqliteTest {
     }
 
     @Test
-    @DisplayName("8. SQLite writer serialization via BEGIN IMMEDIATE")
-    void sqliteWriterSerialization() throws Exception {
+    @DisplayName("9. Transaction rollback on failure: failure after profile inventory update rolls back cleanly")
+    void transactionRollbackPreservesInventoryWithoutProductionCallback() throws SQLException {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
-        seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false);
-        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {2}));
+        byte[] initialNbt = new byte[] {1, 2, 3};
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        CountDownLatch aStarted = new CountDownLatch(1);
-        CountDownLatch aRelease = new CountDownLatch(1);
+        seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false);
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
+
+        // Install a test-only trigger on profile_inventories to fail the update
+        try (Connection conn = database.connection();
+                Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TRIGGER fail_profile_inv AFTER UPDATE ON profile_inventories "
+                    + "BEGIN "
+                    + "  SELECT RAISE(ABORT, 'Simulated failure after profile inventory update'); "
+                    + "END;");
+        }
 
         try {
-            // Thread A: executes checkpoint holding BEGIN IMMEDIATE transaction via hook
-            Future<ProfileInventoryMutationOutcome> futureA = executor.submit(() -> {
-                return adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {10}, () -> {
-                    aStarted.countDown();
-                    try {
-                        aRelease.await(5, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                });
-            });
+            assertThatThrownBy(() -> adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99}))
+                    .isInstanceOf(InventoryPersistenceException.class);
 
-            assertThat(aStarted.await(5, TimeUnit.SECONDS)).isTrue();
-
-            // Release A to commit
-            aRelease.countDown();
-
-            ProfileInventoryMutationOutcome outcomeA = futureA.get(5, TimeUnit.SECONDS);
-            assertThat(outcomeA).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
-
-            // Thread B can now proceed
-            ProfileInventoryMutationOutcome outcomeB =
-                    adapter.checkpointInventory(player, profile, NODE_A, 1L, 2L, new byte[] {20});
-            assertThat(outcomeB).isEqualTo(ProfileInventoryMutationOutcome.success(3L));
-
+            // Verify row was rolled back cleanly
             Optional<ProfileInventoryRecord> loaded = adapter.loadInventory(profile);
             assertThat(loaded).isPresent();
-            assertThat(loaded.get().version()).isEqualTo(3L);
-            assertThat(loaded.get().inventoryNbt()).isEqualTo(new byte[] {20});
+            assertThat(loaded.get().version()).isEqualTo(1L);
+            assertThat(loaded.get().inventoryNbt()).isEqualTo(initialNbt);
         } finally {
-            executor.shutdownNow();
+            try (Connection conn = database.connection();
+                    Statement stmt = conn.createStatement()) {
+                stmt.execute("DROP TRIGGER IF EXISTS fail_profile_inv;");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("10. SQLite writer serialization via BEGIN IMMEDIATE with temporal pre-release verification")
+    void sqliteWriterSerialization(@TempDir Path tempDir) throws Exception {
+        Path dbFile = tempDir.resolve("inventory-serialization.db");
+        try (Database fileDb = DatabaseTestFixture.createSqliteFile(dbFile)) {
+            new MigrationRunner(fileDb).apply(SkyblockMigrations.getMigrations(fileDb.dialect()));
+            PlayerProfileInventoryAdapter fileAdapter = new PlayerProfileInventoryAdapter(fileDb);
+
+            PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
+            ProfileId profile = ProfileId.of(UUID.randomUUID());
+            byte[] v1 = new byte[] {1};
+            byte[] v2 = new byte[] {10};
+
+            seedSession(fileDb, player, profile, NODE_A, 1L, "ACTIVE", false);
+            fileAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, v1, new byte[] {2}));
+
+            String jdbcUrl = "jdbc:sqlite:" + dbFile.toAbsolutePath();
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            CountDownLatch txAWriterAcquired = new CountDownLatch(1);
+            CountDownLatch txBAttemptStarted = new CountDownLatch(1);
+            CountDownLatch releaseTxA = new CountDownLatch(1);
+
+            try (Connection connA = java.sql.DriverManager.getConnection(jdbcUrl)) {
+                // TxA: raw test connection acquires BEGIN IMMEDIATE exclusive writer lock
+                Future<Boolean> txAFuture = executor.submit(() -> {
+                    try (Statement stmt = connA.createStatement()) {
+                        stmt.execute("BEGIN IMMEDIATE");
+                        txAWriterAcquired.countDown();
+                        boolean released = releaseTxA.await(5, TimeUnit.SECONDS);
+                        if (!released) {
+                            throw new RuntimeException("Timeout waiting for releaseTxA latch");
+                        }
+                        stmt.execute("ROLLBACK");
+                        return true;
+                    }
+                });
+
+                assertThat(txAWriterAcquired.await(5, TimeUnit.SECONDS))
+                        .as("TxA must acquire BEGIN IMMEDIATE writer lock")
+                        .isTrue();
+
+                // TxB: calls the REAL production checkpointInventory (competing writer)
+                Future<ProfileInventoryMutationOutcome> txBFuture = executor.submit(() -> {
+                    txBAttemptStarted.countDown();
+                    return fileAdapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2);
+                });
+
+                assertThat(txBAttemptStarted.await(5, TimeUnit.SECONDS))
+                        .as("TxB must signal attempt started")
+                        .isTrue();
+
+                // TEMPORAL PRE-RELEASE PROOF:
+                // While TxA holds BEGIN IMMEDIATE, TxB must either remain blocked or fail with busy.
+                // It MUST NOT acquire and commit writer authority!
+                boolean txBCompletedPrematurely = false;
+                try {
+                    ProfileInventoryMutationOutcome prematureResult = txBFuture.get(300, TimeUnit.MILLISECONDS);
+                    assertThat(prematureResult.isSuccess())
+                            .as("TxB must NOT commit writer authority while TxA holds BEGIN IMMEDIATE")
+                            .isFalse();
+                    txBCompletedPrematurely = true;
+                } catch (TimeoutException e) {
+                    // Allowed outcome A: TxB is blocked waiting for writer lock
+                    assertThat(txBFuture.isDone()).isFalse();
+                } catch (ExecutionException e) {
+                    // Allowed outcome B: SQLite busy error rejected the competing writer
+                    assertThat(e.getCause()).isInstanceOf(InventoryPersistenceException.class);
+                    txBCompletedPrematurely = true;
+                }
+
+                // Release TxA so it relinquishes the exclusive writer lock
+                releaseTxA.countDown();
+                assertThat(txAFuture.get(5, TimeUnit.SECONDS)).isTrue();
+
+                // After TxA releases, prove database remains usable and final canonical state is correct
+                if (!txBCompletedPrematurely) {
+                    ProfileInventoryMutationOutcome finalResult = txBFuture.get(5, TimeUnit.SECONDS);
+                    assertThat(finalResult.isSuccess()).isTrue();
+                    assertThat(finalResult).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
+                    assertThat(fileAdapter.loadInventory(profile).get().version())
+                            .isEqualTo(2L);
+                } else {
+                    // If TxB failed with busy, subsequent call now succeeds cleanly
+                    ProfileInventoryMutationOutcome retryResult =
+                            fileAdapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2);
+                    assertThat(retryResult.isSuccess()).isTrue();
+                    assertThat(retryResult).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
+                    assertThat(fileAdapter.loadInventory(profile).get().version())
+                            .isEqualTo(2L);
+                }
+            } finally {
+                executor.shutdownNow();
+            }
         }
     }
 
     @Test
     @DisplayName(
-            "9. Database lease boundary predicate: equality lease_expires_at >= CURRENT_TIMESTAMP evaluates to 1 deterministically")
+            "11. Database lease boundary predicate: equality lease_expires_at >= CURRENT_TIMESTAMP evaluates to 1 deterministically")
     void databaseLeaseBoundaryEqualitySemantics() throws SQLException {
         // Deterministic equality evaluation: comparator >= considers exact timestamp match valid (1),
         // and strictly past timestamp invalid (0), with zero timing sleeps or JVM clock dependencies.
@@ -357,6 +478,18 @@ class PlayerProfileInventorySqliteTest {
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to seed SQLite test session", e);
+        }
+    }
+
+    private static void seedSecondProfile(Database database, PlayerUuid player, ProfileId profile) {
+        try (Connection conn = database.connection();
+                PreparedStatement ps =
+                        conn.prepareStatement("INSERT INTO player_profiles (profile_id, player_uuid) VALUES (?, ?)")) {
+            ps.setString(1, profile.value().toString());
+            ps.setString(2, player.value().toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to seed second profile", e);
         }
     }
 

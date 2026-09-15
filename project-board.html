@@ -598,7 +598,7 @@
           <span>Overall Card Completion</span>
           <span id="metric-percent">87%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">33 / 38</div>
+        <div class="metric-val" id="metric-ratio">34 / 39</div>
         <div class="progress-track">
           <div class="progress-fill" id="metric-fill" style="width: 87%;"></div>
         </div>
@@ -754,7 +754,7 @@
           </div>
           <span class="column-count" id="count-review">0</span>
         </div>
-        <div class="card-stack" id="stack-review">
+                <div class="card-stack" id="stack-review">
         </div>
 
       <!-- Column 5: Done -->
@@ -764,9 +764,35 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">33</span>
+          <span class="column-count" id="count-done">34</span>
         </div>
         <div class="card-stack" id="stack-done">
+          <div class="item-card" draggable="true" data-id="WP2-004" data-tag="Persistence">
+            <div class="card-meta-line">
+              <span class="card-id">WP2-004</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Handoff Finalization &amp; Durable Inventory Version</div>
+            <div class="card-snippet">:core domain/application finalization port; :persistence-adapter canonical SQL-backed handoff finalization flush under DRAINING session; atomic synchronization of profile_inventories.profile_inventory_version and player_sessions.last_durable_inventory_version; crash-window recoverability; SQLite writer serialization via BEGIN IMMEDIATE; Testcontainers MariaDB/PostgreSQL SELECT ... FOR UPDATE row-lock serialization proof.</div>
+            <div class="card-foot">
+              <span class="badge-category">Persistence</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
+          <div class="item-card" draggable="true" data-id="WP2-003" data-tag="Persistence">
+            <div class="card-meta-line">
+              <span class="card-id">WP2-003</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Authoritative Mutation &amp; OCC Foundation</div>
+            <div class="card-snippet">:core domain/application inventory checkpoint port and outcome records; :persistence-adapter canonical SQL-backed profile inventory mutation with OCC versioning on profile_inventories; session-guarded transactions; DB clock leasing; SQLite writer serialization via BEGIN IMMEDIATE; Testcontainers MariaDB/PostgreSQL SELECT ... FOR UPDATE row-lock serialization proof.</div>
+            <div class="card-foot">
+              <span class="badge-category">Persistence</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
 
           <div class="item-card" draggable="true" data-id="WP2-002" data-tag="Persistence">
             <div class="card-meta-line">

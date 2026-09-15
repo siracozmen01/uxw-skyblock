@@ -43,8 +43,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * P2 Integration Lane test suite for {@link PlayerProfileInventoryAdapter} (WP2-003).
  *
  * <p>Runs against real MariaDB 10.11.11 and PostgreSQL 15.12-alpine Testcontainers.
- * Proves optimistic concurrency control (OCC), session authority fencing, DB lease checks,
- * and temporal row-level lock serialization with zero {@code Thread.sleep}.
+ * Proves optimistic concurrency control (OCC), session authority fencing, active profile binding,
+ * DB lease checks, and temporal row-level lock serialization with zero {@code Thread.sleep}.
  */
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
@@ -113,22 +113,36 @@ class PlayerProfileInventoryIntegrationTest {
         verifyRowLockSerialization(mariaDatabase, mariaAdapter);
     }
 
+    @Test
+    @Order(3)
+    @DisplayName("MariaDB 3: Cross-Profile Mismatch is Rejected without Mutating Profile")
+    void mariaDbCrossProfileRejection() {
+        verifyCrossProfileRejection(mariaDatabase, mariaAdapter);
+    }
+
     // ==========================================
     // PostgreSQL Integration Tests
     // ==========================================
 
     @Test
-    @Order(3)
+    @Order(4)
     @DisplayName("PostgreSQL 1: Checkpoint Lifecycle and OCC Mutation")
     void postgresCheckpointLifecycleAndOcc() {
         verifyCheckpointLifecycleAndOcc(postgresDatabase, postgresAdapter);
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     @DisplayName("PostgreSQL 2: Canonical Row Lock Serialization via SELECT ... FOR UPDATE")
     void postgresRowLockSerialization() throws Exception {
         verifyRowLockSerialization(postgresDatabase, postgresAdapter);
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("PostgreSQL 3: Cross-Profile Mismatch is Rejected without Mutating Profile")
+    void postgresCrossProfileRejection() {
+        verifyCrossProfileRejection(postgresDatabase, postgresAdapter);
     }
 
     // ==========================================
@@ -204,13 +218,58 @@ class PlayerProfileInventoryIntegrationTest {
         assertThat(finalRecord.get().inventoryNbt()).isEqualTo(v3Nbt);
     }
 
+    private static void verifyCrossProfileRejection(Database database, PlayerProfileInventoryAdapter adapter) {
+        PlayerUuid playerA = PlayerUuid.of(UUID.randomUUID());
+        ProfileId profileA = ProfileId.of(UUID.randomUUID());
+        ProfileId profileB = ProfileId.of(UUID.randomUUID());
+        byte[] vA = new byte[] {1, 1};
+        byte[] vB = new byte[] {2, 2};
+        byte[] payload = new byte[] {9, 9};
+
+        // Player A has active session with profileA
+        seedSession(database, playerA, profileA, NODE_A, 1L, "ACTIVE", false);
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profileA, vA, new byte[] {0}));
+
+        // Profile B exists in the database with version 1
+        try (Connection conn = database.connection()) {
+            try (PreparedStatement ps =
+                    conn.prepareStatement("INSERT INTO player_profiles (profile_id, player_uuid) VALUES (?, ?)")) {
+                ps.setString(1, profileB.value().toString());
+                ps.setString(2, playerA.value().toString());
+                ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to seed profile B", e);
+        }
+        adapter.initializeInventory(ProfileInventoryRecord.createDefault(profileB, vB, new byte[] {0}));
+
+        // Player A attempts to checkpoint Profile B with matching expected version (1L)
+        ProfileInventoryMutationOutcome outcome =
+                adapter.checkpointInventory(playerA, profileB, NODE_A, 1L, 1L, payload);
+
+        assertThat(outcome.isRejected())
+                .as("Cross-profile mutation must be rejected")
+                .isTrue();
+
+        // Verify Profile A is untouched
+        Optional<ProfileInventoryRecord> loadedA = adapter.loadInventory(profileA);
+        assertThat(loadedA).isPresent();
+        assertThat(loadedA.get().version()).isEqualTo(1L);
+        assertThat(loadedA.get().inventoryNbt()).isEqualTo(vA);
+
+        // Verify Profile B is untouched
+        Optional<ProfileInventoryRecord> loadedB = adapter.loadInventory(profileB);
+        assertThat(loadedB).isPresent();
+        assertThat(loadedB.get().version()).isEqualTo(1L);
+        assertThat(loadedB.get().inventoryNbt()).isEqualTo(vB);
+    }
+
     private static void verifyRowLockSerialization(Database database, PlayerProfileInventoryAdapter adapter)
             throws Exception {
         PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
         ProfileId profile = ProfileId.of(UUID.randomUUID());
         byte[] v1Nbt = new byte[] {1, 1, 1};
         byte[] v2Nbt = new byte[] {2, 2, 2};
-        byte[] vBAttemptNbt = new byte[] {9, 9, 9};
 
         seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false);
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, v1Nbt, new byte[] {0}));
@@ -221,50 +280,54 @@ class PlayerProfileInventoryIntegrationTest {
         CountDownLatch aReleaseSignal = new CountDownLatch(1);
 
         try {
-            // Transaction A: locks player_sessions row for player, validates authority, and holds lock
-            Future<ProfileInventoryMutationOutcome> futureA = executor.submit(() -> {
-                return adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2Nbt, () -> {
-                    aLockAcquired.countDown();
-                    try {
-                        boolean release = aReleaseSignal.await(10, TimeUnit.SECONDS);
-                        assertThat(release).isTrue();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+            // TxA: raw test connection holding SELECT ... FOR UPDATE on player_sessions
+            Future<?> txAFuture = executor.submit(() -> {
+                try (Connection txAConn = database.connection()) {
+                    txAConn.setAutoCommit(false);
+                    try (PreparedStatement ps = txAConn.prepareStatement(
+                            "SELECT player_uuid FROM player_sessions WHERE player_uuid = ? FOR UPDATE")) {
+                        ps.setString(1, player.value().toString());
+                        ps.executeQuery();
                     }
-                });
+                    aLockAcquired.countDown();
+                    boolean released = aReleaseSignal.await(10, TimeUnit.SECONDS);
+                    assertThat(released).isTrue();
+                    txAConn.rollback();
+                } catch (Exception e) {
+                    throw new RuntimeException("TxA failed", e);
+                }
             });
 
-            // Wait for Transaction A to acquire the lock
-            assertThat(aLockAcquired.await(10, TimeUnit.SECONDS)).isTrue();
+            // Wait for TxA to acquire the row lock
+            assertThat(aLockAcquired.await(10, TimeUnit.SECONDS))
+                    .as("TxA must acquire row lock")
+                    .isTrue();
 
-            // Transaction B: attempts conflicting checkpoint on the SAME player while A holds the row lock
-            Future<ProfileInventoryMutationOutcome> futureB = executor.submit(() -> {
+            // TxB: calls real production checkpointInventory on the SAME player_uuid
+            Future<ProfileInventoryMutationOutcome> txBFuture = executor.submit(() -> {
                 bAttemptStarted.countDown();
-                // This call blocks on SELECT player_sessions ... FOR UPDATE until Transaction A commits
-                return adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, vBAttemptNbt);
+                return adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2Nbt);
             });
 
-            // Wait for Transaction B to enter its execution attempt
-            assertThat(bAttemptStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            // Wait for TxB to begin its execution attempt
+            assertThat(bAttemptStarted.await(10, TimeUnit.SECONDS))
+                    .as("TxB must start attempt")
+                    .isTrue();
 
-            // Transaction B demonstrably cannot pass while Transaction A holds the authority row
-            assertThatThrownBy(() -> futureB.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            // Prove TxB is blocked behind TxA's row lock: short get() must time out, and txBFuture is not done
+            assertThatThrownBy(() -> txBFuture.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            assertThat(txBFuture.isDone()).isFalse();
 
-            // Release Transaction A to complete its mutation and commit
+            // Release TxA so it rolls back and relinquishes the lock
             aReleaseSignal.countDown();
+            txAFuture.get(5, TimeUnit.SECONDS);
 
-            // Both transactions complete
-            ProfileInventoryMutationOutcome outcomeA = futureA.get(10, TimeUnit.SECONDS);
-            ProfileInventoryMutationOutcome outcomeB = futureB.get(10, TimeUnit.SECONDS);
+            // TxB unblocks, acquires row lock, executes OCC, and succeeds
+            ProfileInventoryMutationOutcome outcomeB = txBFuture.get(10, TimeUnit.SECONDS);
+            assertThat(outcomeB.isSuccess()).isTrue();
+            assertThat(outcomeB).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
 
-            // Transaction A succeeded, advancing version to 2
-            assertThat(outcomeA).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
-
-            // Transaction B unblocked after A committed, but its expectedVersion was 1L (stale),
-            // so Transaction B was rejected without lost updates!
-            assertThat(outcomeB.isRejected()).isTrue();
-
-            // Final state: version 2 with A's committed NBT
+            // Final state: version 2 with v2Nbt
             Optional<ProfileInventoryRecord> loaded = adapter.loadInventory(profile);
             assertThat(loaded).isPresent();
             assertThat(loaded.get().version()).isEqualTo(2L);

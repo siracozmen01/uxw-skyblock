@@ -5,59 +5,59 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
 import java.util.Objects;
-import java.util.Optional;
+import java.util.OptionalLong;
 
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
-import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
+import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinalizationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
-import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 
 /**
- * Canonical SQL persistence adapter implementing {@link ProfileInventoryCheckpointPort}.
+ * Canonical SQL persistence adapter implementing {@link ProfileHandoffFinalizationPort}.
  *
  * <p>Durability Scope and Invariants:
  * <ul>
- *   <li>This adapter strictly implements routine ambient {@code CHECKPOINTED} snapshot persistence under Hybrid durability.</li>
+ *   <li>This adapter strictly implements the source-node final durable inventory persistence contract
+ *       executed while session state is {@code DRAINING}.</li>
  *   <li>It is strictly NOT an {@code InventoryMutationJournal} replacement.</li>
  *   <li>It is strictly NOT valid for {@code IMMEDIATE}, economic, or value-sensitive item mutation execution.</li>
  *   <li>Immediate, economic, and value-sensitive mutations remain strictly owned by the {@code InventoryMutationJournal}
- *       protocol and must not be downgraded or routed through this ambient checkpoint path.</li>
+ *       protocol and must not be downgraded or routed through this finalization path.</li>
  * </ul>
  *
  * <p>Enforces the frozen transaction protocol:
  * <ul>
  *   <li>SQLite: writer serialization via {@code BEGIN IMMEDIATE} transactions.</li>
  *   <li>MariaDB / PostgreSQL: row lock serialization via {@code SELECT player_sessions ... FOR UPDATE}.</li>
- *   <li>Atomic authority check under the same transaction (node, epoch, ACTIVE state, active profile binding, DB clock lease).</li>
- *   <li>OCC mutation on {@code profile_inventories} updating version = version + 1.</li>
- *   <li>Asserts affectedRows == 1; aborts/rolls back on authority or version mismatch.</li>
+ *   <li>Atomic authority check under the same transaction (node, epoch, DRAINING state, active profile binding, DB clock lease).</li>
+ *   <li>OCC mutation on {@code profile_inventories} updating version = version + 1 (affectedRows == 1).</li>
+ *   <li>Atomic update on {@code player_sessions.last_durable_inventory_version} to match the new version (affectedRows == 1).</li>
+ *   <li>Asserts both affectedRows == 1; aborts/rolls back both on any authority or version mismatch.</li>
  * </ul>
  */
-public final class PlayerProfileInventoryAdapter implements ProfileInventoryCheckpointPort {
+public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHandoffFinalizationPort {
 
     private final Database database;
     private final Dialect dialect;
 
     private final String selectSessionAuthoritySql;
     private final String updateInventoryOccSql;
-    private final String selectInventorySql;
-    private final String insertInventorySql;
+    private final String updateSessionLastDurableVersionSql;
+    private final String selectLastDurableVersionSql;
 
-    public PlayerProfileInventoryAdapter(Database database) {
+    public PlayerProfileHandoffFinalizationAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
         validateDialect(this.dialect);
 
         this.selectSessionAuthoritySql = buildSelectSessionAuthoritySql(this.dialect);
         this.updateInventoryOccSql = buildUpdateInventoryOccSql();
-        this.selectInventorySql = buildSelectInventorySql();
-        this.insertInventorySql = buildInsertInventorySql();
+        this.updateSessionLastDurableVersionSql = buildUpdateSessionLastDurableVersionSql();
+        this.selectLastDurableVersionSql = buildSelectLastDurableVersionSql();
     }
 
     private static void validateDialect(Dialect dialect) {
@@ -87,24 +87,19 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                 + "AND profile_inventory_version = ?";
     }
 
-    private static String buildSelectInventorySql() {
-        return "SELECT profile_id, profile_inventory_version, inventory_nbt, enderchest_nbt, "
-                + "experience_points, health, food_level, saturation, active_potion_effects_nbt, "
-                + "logout_world, logout_x, logout_y, logout_z, gamemode, flight_allowed "
-                + "FROM profile_inventories "
-                + "WHERE profile_id = ?";
+    private static String buildUpdateSessionLastDurableVersionSql() {
+        return "UPDATE player_sessions "
+                + "SET last_durable_inventory_version = ?, "
+                + "updated_at = CURRENT_TIMESTAMP "
+                + "WHERE player_uuid = ?";
     }
 
-    private static String buildInsertInventorySql() {
-        return "INSERT INTO profile_inventories ("
-                + "profile_id, profile_inventory_version, inventory_nbt, enderchest_nbt, "
-                + "experience_points, health, food_level, saturation, active_potion_effects_nbt, "
-                + "logout_world, logout_x, logout_y, logout_z, gamemode, flight_allowed, updated_at"
-                + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+    private static String buildSelectLastDurableVersionSql() {
+        return "SELECT last_durable_inventory_version FROM player_sessions WHERE player_uuid = ?";
     }
 
     @Override
-    public ProfileInventoryMutationOutcome checkpointInventory(
+    public ProfileInventoryMutationOutcome finalizeHandoffFlush(
             PlayerUuid playerUuid,
             ProfileId profileId,
             ServerNodeId currentNode,
@@ -117,14 +112,14 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
         Objects.requireNonNull(inventoryNbt, "inventoryNbt");
 
         if (dialect == Dialect.SQLITE) {
-            return executeSqliteCheckpoint(
+            return executeSqliteFinalization(
                     playerUuid, profileId, currentNode, expectedEpoch, expectedVersion, inventoryNbt);
         }
-        return executeServerCheckpoint(
+        return executeServerFinalization(
                 playerUuid, profileId, currentNode, expectedEpoch, expectedVersion, inventoryNbt);
     }
 
-    private ProfileInventoryMutationOutcome executeSqliteCheckpoint(
+    private ProfileInventoryMutationOutcome executeSqliteFinalization(
             PlayerUuid playerUuid,
             ProfileId profileId,
             ServerNodeId currentNode,
@@ -142,26 +137,33 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                     return ProfileInventoryMutationOutcome.rejected();
                 }
 
-                int affected = updateOcc(conn, profileId, expectedVersion, inventoryNbt);
-                if (affected == 1) {
-                    try (Statement stmt = conn.createStatement()) {
-                        stmt.execute("COMMIT");
-                    }
-                    return ProfileInventoryMutationOutcome.success(expectedVersion + 1);
-                } else {
+                int affectedInventory = updateOcc(conn, profileId, expectedVersion, inventoryNbt);
+                if (affectedInventory != 1) {
                     rollbackSqlite(conn);
                     return ProfileInventoryMutationOutcome.rejected();
                 }
+
+                long newVersion = expectedVersion + 1;
+                int affectedSession = updateSessionLastDurableVersion(conn, playerUuid, newVersion);
+                if (affectedSession != 1) {
+                    rollbackSqlite(conn);
+                    return ProfileInventoryMutationOutcome.rejected();
+                }
+
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("COMMIT");
+                }
+                return ProfileInventoryMutationOutcome.success(newVersion);
             } catch (Exception e) {
                 rollbackSqlite(conn);
                 throw e;
             }
         } catch (SQLException e) {
-            throw new InventoryPersistenceException("Failed SQLite inventory checkpoint", e);
+            throw new InventoryPersistenceException("Failed SQLite handoff finalization flush", e);
         }
     }
 
-    private ProfileInventoryMutationOutcome executeServerCheckpoint(
+    private ProfileInventoryMutationOutcome executeServerFinalization(
             PlayerUuid playerUuid,
             ProfileId profileId,
             ServerNodeId currentNode,
@@ -177,14 +179,21 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                     return ProfileInventoryMutationOutcome.rejected();
                 }
 
-                int affected = updateOcc(conn, profileId, expectedVersion, inventoryNbt);
-                if (affected == 1) {
-                    conn.commit();
-                    return ProfileInventoryMutationOutcome.success(expectedVersion + 1);
-                } else {
+                int affectedInventory = updateOcc(conn, profileId, expectedVersion, inventoryNbt);
+                if (affectedInventory != 1) {
                     conn.rollback();
                     return ProfileInventoryMutationOutcome.rejected();
                 }
+
+                long newVersion = expectedVersion + 1;
+                int affectedSession = updateSessionLastDurableVersion(conn, playerUuid, newVersion);
+                if (affectedSession != 1) {
+                    conn.rollback();
+                    return ProfileInventoryMutationOutcome.rejected();
+                }
+
+                conn.commit();
+                return ProfileInventoryMutationOutcome.success(newVersion);
             } catch (Exception e) {
                 try {
                     conn.rollback();
@@ -194,7 +203,7 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                 throw e;
             }
         } catch (SQLException e) {
-            throw new InventoryPersistenceException("Failed server DB inventory checkpoint", e);
+            throw new InventoryPersistenceException("Failed server DB handoff finalization flush", e);
         }
     }
 
@@ -216,7 +225,7 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                 return profileId.value().toString().equals(activeProfileId)
                         && currentNode.value().equals(authNode)
                         && epoch == expectedEpoch
-                        && "ACTIVE".equals(state)
+                        && "DRAINING".equals(state)
                         && leaseValid == 1;
             }
         }
@@ -232,6 +241,15 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
         }
     }
 
+    private int updateSessionLastDurableVersion(Connection conn, PlayerUuid playerUuid, long newVersion)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(updateSessionLastDurableVersionSql)) {
+            ps.setLong(1, newVersion);
+            ps.setString(2, playerUuid.value().toString());
+            return ps.executeUpdate();
+        }
+    }
+
     private static void rollbackSqlite(Connection conn) {
         try (Statement stmt = conn.createStatement()) {
             stmt.execute("ROLLBACK");
@@ -241,95 +259,20 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
     }
 
     @Override
-    public Optional<ProfileInventoryRecord> loadInventory(ProfileId profileId) {
-        Objects.requireNonNull(profileId, "profileId");
+    public OptionalLong loadLastDurableInventoryVersion(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid");
         try (Connection conn = database.connection();
-                PreparedStatement ps = conn.prepareStatement(selectInventorySql)) {
-            ps.setString(1, profileId.value().toString());
+                PreparedStatement ps = conn.prepareStatement(selectLastDurableVersionSql)) {
+            ps.setString(1, playerUuid.value().toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
-                    return Optional.empty();
+                    return OptionalLong.empty();
                 }
-                ProfileId id = ProfileId.fromString(rs.getString("profile_id"));
-                long version = rs.getLong("profile_inventory_version");
-                byte[] inv = rs.getBytes("inventory_nbt");
-                byte[] ec = rs.getBytes("enderchest_nbt");
-                int xp = rs.getInt("experience_points");
-                double hp = rs.getDouble("health");
-                int food = rs.getInt("food_level");
-                float sat = rs.getFloat("saturation");
-                byte[] potion = rs.getBytes("active_potion_effects_nbt");
-                String world = rs.getString("logout_world");
-                double x = rs.getDouble("logout_x");
-                Double logoutX = rs.wasNull() ? null : x;
-                double y = rs.getDouble("logout_y");
-                Double logoutY = rs.wasNull() ? null : y;
-                double z = rs.getDouble("logout_z");
-                Double logoutZ = rs.wasNull() ? null : z;
-                String gamemode = rs.getString("gamemode");
-                boolean flight = rs.getBoolean("flight_allowed");
-
-                return Optional.of(new ProfileInventoryRecord(
-                        id, version, inv, ec, xp, hp, food, sat, potion, world, logoutX, logoutY, logoutZ, gamemode,
-                        flight));
+                return OptionalLong.of(rs.getLong("last_durable_inventory_version"));
             }
-        } catch (SQLException e) {
-            throw new InventoryPersistenceException("Failed to load profile inventory for " + profileId, e);
-        }
-    }
-
-    @Override
-    public void initializeInventory(ProfileInventoryRecord record) {
-        Objects.requireNonNull(record, "record");
-        try (Connection conn = database.connection();
-                PreparedStatement ps = conn.prepareStatement(insertInventorySql)) {
-            ps.setString(1, record.profileId().value().toString());
-            ps.setLong(2, record.version());
-            ps.setBytes(3, record.inventoryNbt());
-            ps.setBytes(4, record.enderchestNbt());
-            ps.setInt(5, record.experiencePoints());
-            ps.setDouble(6, record.health());
-            ps.setInt(7, record.foodLevel());
-            ps.setFloat(8, record.saturation());
-
-            byte[] potion = record.activePotionEffectsNbt();
-            if (potion != null) {
-                ps.setBytes(9, potion);
-            } else {
-                ps.setNull(9, Types.BINARY);
-            }
-
-            if (record.logoutWorld() != null) {
-                ps.setString(10, record.logoutWorld());
-            } else {
-                ps.setNull(10, Types.VARCHAR);
-            }
-
-            if (record.logoutX() != null) {
-                ps.setDouble(11, record.logoutX());
-            } else {
-                ps.setNull(11, Types.DOUBLE);
-            }
-
-            if (record.logoutY() != null) {
-                ps.setDouble(12, record.logoutY());
-            } else {
-                ps.setNull(12, Types.DOUBLE);
-            }
-
-            if (record.logoutZ() != null) {
-                ps.setDouble(13, record.logoutZ());
-            } else {
-                ps.setNull(13, Types.DOUBLE);
-            }
-
-            ps.setString(14, record.gamemode());
-            ps.setBoolean(15, record.flightAllowed());
-
-            ps.executeUpdate();
         } catch (SQLException e) {
             throw new InventoryPersistenceException(
-                    "Failed to initialize profile inventory for " + record.profileId(), e);
+                    "Failed to load last durable inventory version for " + playerUuid, e);
         }
     }
 }
