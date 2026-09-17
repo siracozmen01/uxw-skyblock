@@ -78,13 +78,15 @@ class ProductionMigrationFastLaneTest {
                     }
                 }
 
-                // Canonical tables that MUST exist in WP2-003
+                // Canonical tables that MUST exist in WP2-005
                 assertThat(tables)
                         .contains(
                                 "player_accounts",
                                 "player_profiles",
                                 "player_sessions",
                                 "profile_inventories",
+                                "inventory_mutation_journals",
+                                "inventory_mutation_participants",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -93,7 +95,6 @@ class ProductionMigrationFastLaneTest {
                                 "islands",
                                 "island_members",
                                 "island_locations",
-                                "inventory_mutation_journals",
                                 "profile_switch_operations",
                                 "outbox_events",
                                 "inbox_events");
@@ -161,6 +162,38 @@ class ProductionMigrationFastLaneTest {
                                 "logout_z",
                                 "gamemode",
                                 "flight_allowed",
+                                "updated_at");
+
+                // inventory_mutation_journals columns (V3)
+                Set<String> journalCols = getColumnNames(meta, "inventory_mutation_journals");
+                assertThat(journalCols)
+                        .containsExactlyInAnyOrder(
+                                "operation_id",
+                                "operation_type",
+                                "state",
+                                "participant_count",
+                                "payload",
+                                "expires_at",
+                                "created_at",
+                                "updated_at");
+
+                // inventory_mutation_participants columns (V3)
+                Set<String> participantCols = getColumnNames(meta, "inventory_mutation_participants");
+                assertThat(participantCols)
+                        .containsExactlyInAnyOrder(
+                                "operation_id",
+                                "participant_index",
+                                "inventory_type",
+                                "owner_root_type",
+                                "owner_root_id",
+                                "expected_version",
+                                "authority_type",
+                                "authority_id",
+                                "authority_epoch",
+                                "before_fingerprint",
+                                "after_fingerprint",
+                                "durable_apply_state",
+                                "mutation_delta_payload",
                                 "updated_at");
             }
         }
@@ -386,8 +419,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V2 should be applied)
-            int v2Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V1 + V2 migrations (only V2 should be applied)
+            int v2Applied = runner.apply(allMigrations.subList(0, 2));
             assertThat(v2Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(2);
 
@@ -410,9 +443,98 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 2));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    @DisplayName("12. Upgrade from existing V2 database applies V3 cleanly and preserves data")
+    void upgradeFromV2AppliesV3Cleanly() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Apply V1 + V2 migrations
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v2Applied = runner.apply(allMigrations.subList(0, 2));
+            assertThat(v2Applied).isEqualTo(2);
+            assertThat(runner.currentVersion()).isEqualTo(2);
+
+            // 2. Verify pre-V3 schema state: inventory_mutation_journals does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_journals", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V2 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v3-upg')");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v3-upg', 'p-v3-upg')");
+                execute(
+                        conn,
+                        "UPDATE player_accounts SET active_profile_id = 'prof-v3-upg' WHERE player_uuid = 'p-v3-upg'");
+                execute(conn, """
+                        INSERT INTO player_sessions (
+                            player_uuid, active_profile_id, authoritative_node, session_epoch,
+                            state, last_durable_inventory_version, lease_expires_at
+                        ) VALUES ('p-v3-upg', 'prof-v3-upg', 'node-1', 1, 'ACTIVE', 1, CURRENT_TIMESTAMP)
+                        """);
+                execute(conn, """
+                        INSERT INTO profile_inventories (profile_id, inventory_nbt, enderchest_nbt)
+                        VALUES ('prof-v3-upg', X'0102', X'0304')
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V3 should be applied)
+            int v3Applied = runner.apply(allMigrations);
+            assertThat(v3Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(3);
+
+            // 5. Verify seeded V1 and V2 data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_accounts WHERE player_uuid = 'p-v3-upg'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_profiles WHERE profile_id = 'prof-v3-upg'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_sessions WHERE player_uuid = 'p-v3-upg'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(
+                                conn, "SELECT COUNT(*) FROM profile_inventories WHERE profile_id = 'prof-v3-upg'"))
+                        .isEqualTo(1);
+
+                // 6. Verify inventory_mutation_journals and participants accept rows
+                execute(conn, """
+                        INSERT INTO inventory_mutation_journals (
+                            operation_id, operation_type, state, participant_count, payload, expires_at
+                        ) VALUES ('op-1', 'TRADE', 'INTENT', 1, '{}', CURRENT_TIMESTAMP)
+                        """);
+                execute(conn, """
+                        INSERT INTO inventory_mutation_participants (
+                            operation_id, participant_index, inventory_type, owner_root_type, owner_root_id,
+                            expected_version, authority_type, authority_id, authority_epoch,
+                            before_fingerprint, after_fingerprint, durable_apply_state, mutation_delta_payload
+                        ) VALUES ('op-1', 0, 'PLAYER_INVENTORY', 'PROFILE', 'prof-v3-upg', 1, 'SERVER_NODE', 'node-1', 1, 'fp1', 'fp2', 'PENDING', '{}')
+                        """);
+
+                assertThat(queryCount(
+                                conn, "SELECT COUNT(*) FROM inventory_mutation_journals WHERE operation_id = 'op-1'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(
+                                conn,
+                                "SELECT COUNT(*) FROM inventory_mutation_participants WHERE operation_id = 'op-1'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(3);
         }
     }
 

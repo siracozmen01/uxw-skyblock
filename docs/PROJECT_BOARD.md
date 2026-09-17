@@ -7,11 +7,11 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 2 — Persistence & Multi-Profile Authority (Phase 1 COMPLETE — WP2-004 COMPLETED)
+* **Phase:** Phase 2 — Persistence & Multi-Profile Authority (Phase 1 COMPLETE — WP2-005 COMPLETED)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES (Phase 1 COMPLETE — 7 / 7 completed)
-* **Phase 2 Started:** YES (WP2-002 COMPLETED)
+* **Phase 2 Started:** YES (WP2-005 COMPLETED)
 * **P1-001 Status:** COMPLETED (commit `906bba0`)
 * **P1-002 Status:** COMPLETED (commit `1ea566b`)
 * **P1-003 Status:** COMPLETED (commit `da7e626`)
@@ -22,10 +22,11 @@
 * **WP2-001 Status:** COMPLETED (commit `fd90b2d`)
 * **WP2-002 Status:** COMPLETED (commit `e458bdd`)
 * **WP2-003 Status:** COMPLETED (commit `909c7f4`)
-* **WP2-004 Status:** COMPLETED
+* **WP2-004 Status:** COMPLETED (commit `5e74f76`)
+* **WP2-005 Status:** COMPLETED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 87% (34 / 39 cards completed)
+* **Overall Card Completion:** 88% (35 / 40 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -48,6 +49,7 @@
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[WP2-005]** Immediate Economic Inventory Mutation Journal (`:core` domain/application inventory mutation journal port and outcomes, `:persistence-adapter` canonical SQL-backed two-phase write-ahead journal and participant adapter, V3 migrations for `inventory_mutation_journals` and `inventory_mutation_participants`, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED
 * [x] **[WP2-004]** Handoff Finalization & Durable Inventory Version (`:core` domain/application finalization port, `:persistence-adapter` canonical SQL-backed handoff finalization flush under DRAINING session, atomic synchronization of `profile_inventories.profile_inventory_version` and `player_sessions.last_durable_inventory_version`, crash-window recoverability, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED
 * [x] **[WP2-003]** Authoritative Mutation & OCC Foundation (`:core` domain/application inventory checkpoint port and outcome records, `:persistence-adapter` canonical SQL-backed profile inventory mutation with OCC versioning on `profile_inventories`, session-guarded transactions, DB clock leasing, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED
 * [x] **[WP2-002]** Player Session Authority Lifecycle (`:core` domain/application session authority contracts, `:persistence-adapter` canonical SQL-backed player session fencing lifecycle around `player_sessions`, DB clock leasing, SQLite writer serialization, Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED

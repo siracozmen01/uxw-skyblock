@@ -108,15 +108,34 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 3. Apply complete migration list to upgrade to V2
-        int v2Applied = mariaRunner.apply(allMigrations);
+        // 3. Apply V1 + V2 to upgrade to V2
+        int v2Applied = mariaRunner.apply(allMigrations.subList(0, 2));
         assertThat(v2Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(2);
 
-        // 4. Verify V2 inventory schema: profile_inventories now exists
+        // 4. Verify V2 inventory schema: profile_inventories now exists, journals do not
         try (Connection conn = mariaDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "profile_inventories", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+            try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_journals", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isFalse();
+            }
+        }
+
+        // 5. Apply all migrations to upgrade to V3
+        int v3Applied = mariaRunner.apply(allMigrations);
+        assertThat(v3Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 6. Verify V3 schema: journals and participants now exist
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_journals", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+            try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_participants", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -177,15 +196,34 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 3. Apply complete migration list to upgrade to V2
-        int v2Applied = postgresRunner.apply(allMigrations);
+        // 3. Apply V1 + V2 to upgrade to V2
+        int v2Applied = postgresRunner.apply(allMigrations.subList(0, 2));
         assertThat(v2Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(2);
 
-        // 4. Verify V2 inventory schema: profile_inventories now exists
+        // 4. Verify V2 inventory schema: profile_inventories now exists, journals do not
         try (Connection conn = postgresDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "profile_inventories", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+            try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_journals", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isFalse();
+            }
+        }
+
+        // 5. Apply all migrations to upgrade to V3
+        int v3Applied = postgresRunner.apply(allMigrations);
+        assertThat(v3Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 6. Verify V3 schema: journals and participants now exist
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_journals", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+            try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_participants", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -241,6 +279,8 @@ class ProductionMigrationIntegrationTest {
                             "player_profiles",
                             "player_sessions",
                             "profile_inventories",
+                            "inventory_mutation_journals",
+                            "inventory_mutation_participants",
                             "uxmlib_schema_history");
 
             assertThat(tables)
@@ -248,7 +288,6 @@ class ProductionMigrationIntegrationTest {
                             "islands",
                             "island_members",
                             "island_locations",
-                            "inventory_mutation_journals",
                             "profile_switch_operations",
                             "outbox_events",
                             "inbox_events");
@@ -304,6 +343,36 @@ class ProductionMigrationIntegrationTest {
                             "logout_z",
                             "gamemode",
                             "flight_allowed",
+                            "updated_at");
+
+            Set<String> journalCols = getColumnNames(meta, "inventory_mutation_journals");
+            assertThat(journalCols)
+                    .contains(
+                            "operation_id",
+                            "operation_type",
+                            "state",
+                            "participant_count",
+                            "payload",
+                            "expires_at",
+                            "created_at",
+                            "updated_at");
+
+            Set<String> participantCols = getColumnNames(meta, "inventory_mutation_participants");
+            assertThat(participantCols)
+                    .contains(
+                            "operation_id",
+                            "participant_index",
+                            "inventory_type",
+                            "owner_root_type",
+                            "owner_root_id",
+                            "expected_version",
+                            "authority_type",
+                            "authority_id",
+                            "authority_epoch",
+                            "before_fingerprint",
+                            "after_fingerprint",
+                            "durable_apply_state",
+                            "mutation_delta_payload",
                             "updated_at");
         }
     }

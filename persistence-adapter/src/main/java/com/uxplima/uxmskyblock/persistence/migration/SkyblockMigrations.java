@@ -21,13 +21,16 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 2;
+    public static final int LATEST_VERSION = 3;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
 
     /** Human-readable description of migration V2. */
     public static final String V2_DESCRIPTION = "create profile inventories";
+
+    /** Human-readable description of migration V3. */
+    public static final String V3_DESCRIPTION = "create inventory mutation journals";
 
     private SkyblockMigrations() {}
 
@@ -45,7 +48,7 @@ public final class SkyblockMigrations {
      */
     public static List<Migration> getMigrations(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
-        return List.of(v1Migration(dialect), v2Migration(dialect));
+        return List.of(v1Migration(dialect), v2Migration(dialect), v3Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -231,5 +234,128 @@ public final class SkyblockMigrations {
                 CONSTRAINT fk_profile_inventories_profile FOREIGN KEY (profile_id)
                     REFERENCES player_profiles (profile_id) ON DELETE CASCADE
             );
+            """;
+
+    private static Migration v3Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(3, V3_DESCRIPTION, SQLITE_V3_DDL);
+            case MYSQL -> new Migration(3, V3_DESCRIPTION, MYSQL_V3_DDL);
+            case POSTGRES -> new Migration(3, V3_DESCRIPTION, POSTGRES_V3_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static final String SQLITE_V3_DDL = """
+            CREATE TABLE inventory_mutation_journals (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_type VARCHAR(64) NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'INTENT',
+                participant_count INT NOT NULL DEFAULT 1,
+                payload TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_inv_journal_state ON inventory_mutation_journals (state, expires_at);
+
+            CREATE TABLE inventory_mutation_participants (
+                operation_id VARCHAR(36) NOT NULL,
+                participant_index INT NOT NULL,
+                inventory_type VARCHAR(32) NOT NULL,
+                owner_root_type VARCHAR(32) NOT NULL,
+                owner_root_id VARCHAR(64) NOT NULL,
+                expected_version BIGINT NOT NULL,
+                authority_type VARCHAR(32) NOT NULL,
+                authority_id VARCHAR(64) NOT NULL,
+                authority_epoch BIGINT NOT NULL,
+                before_fingerprint VARCHAR(64) NOT NULL,
+                after_fingerprint VARCHAR(64) NOT NULL,
+                durable_apply_state VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+                mutation_delta_payload TEXT NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (operation_id, participant_index),
+                CONSTRAINT fk_inv_participant_journal FOREIGN KEY (operation_id)
+                    REFERENCES inventory_mutation_journals (operation_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_inv_participant_lookup ON inventory_mutation_participants (owner_root_type, owner_root_id, durable_apply_state);
+            """;
+
+    private static final String MYSQL_V3_DDL = """
+            CREATE TABLE inventory_mutation_journals (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_type VARCHAR(64) NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'INTENT',
+                participant_count INT NOT NULL DEFAULT 1,
+                payload JSON NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_inv_journal_state ON inventory_mutation_journals (state, expires_at);
+
+            CREATE TABLE inventory_mutation_participants (
+                operation_id VARCHAR(36) NOT NULL,
+                participant_index INT NOT NULL,
+                inventory_type VARCHAR(32) NOT NULL,
+                owner_root_type VARCHAR(32) NOT NULL,
+                owner_root_id VARCHAR(64) NOT NULL,
+                expected_version BIGINT NOT NULL,
+                authority_type VARCHAR(32) NOT NULL,
+                authority_id VARCHAR(64) NOT NULL,
+                authority_epoch BIGINT NOT NULL,
+                before_fingerprint VARCHAR(64) NOT NULL,
+                after_fingerprint VARCHAR(64) NOT NULL,
+                durable_apply_state VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+                mutation_delta_payload JSON NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (operation_id, participant_index),
+                CONSTRAINT fk_inv_participant_journal FOREIGN KEY (operation_id)
+                    REFERENCES inventory_mutation_journals (operation_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_inv_participant_lookup ON inventory_mutation_participants (owner_root_type, owner_root_id, durable_apply_state);
+            """;
+
+    private static final String POSTGRES_V3_DDL = """
+            CREATE TABLE inventory_mutation_journals (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_type VARCHAR(64) NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'INTENT',
+                participant_count INT NOT NULL DEFAULT 1,
+                payload JSON NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_inv_journal_state ON inventory_mutation_journals (state, expires_at);
+
+            CREATE TABLE inventory_mutation_participants (
+                operation_id VARCHAR(36) NOT NULL,
+                participant_index INT NOT NULL,
+                inventory_type VARCHAR(32) NOT NULL,
+                owner_root_type VARCHAR(32) NOT NULL,
+                owner_root_id VARCHAR(64) NOT NULL,
+                expected_version BIGINT NOT NULL,
+                authority_type VARCHAR(32) NOT NULL,
+                authority_id VARCHAR(64) NOT NULL,
+                authority_epoch BIGINT NOT NULL,
+                before_fingerprint VARCHAR(64) NOT NULL,
+                after_fingerprint VARCHAR(64) NOT NULL,
+                durable_apply_state VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+                mutation_delta_payload JSON NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (operation_id, participant_index),
+                CONSTRAINT fk_inv_participant_journal FOREIGN KEY (operation_id)
+                    REFERENCES inventory_mutation_journals (operation_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_inv_participant_lookup ON inventory_mutation_participants (owner_root_type, owner_root_id, durable_apply_state);
             """;
 }
