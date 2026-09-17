@@ -3,7 +3,6 @@ package com.uxplima.uxmskyblock.bukkit.command;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -65,7 +64,6 @@ public final class IslandCommandTree {
     private final SchedulerPort schedulerPort;
     private final ServerNodeId serverNodeId;
     private final String worldName;
-    private final AtomicLong nextIslandIndex = new AtomicLong(1);
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -158,11 +156,10 @@ public final class IslandCommandTree {
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        long seqIndex = nextIslandIndex.getAndIncrement();
 
         schedulerPort.async(() -> {
             CreateIslandUseCase.CreateIslandResult result =
-                    createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, worldName, seqIndex);
+                    createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, worldName);
 
             schedulerPort.onEntity(playerUuid, () -> {
                 if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {

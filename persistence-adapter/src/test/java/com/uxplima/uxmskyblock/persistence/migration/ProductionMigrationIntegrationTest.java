@@ -205,10 +205,10 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 17. Apply all migrations to upgrade to V9
-        int v9Applied = mariaRunner.apply(allMigrations);
+        // 17. Apply V9 migration
+        int v9Applied = mariaRunner.apply(allMigrations.subList(0, 9));
         assertThat(v9Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(9);
 
         // 18. Verify V9 schema: outbox_events and consumer_inbox now exist
         try (Connection conn = mariaDatabase.connection()) {
@@ -217,6 +217,19 @@ class ProductionMigrationIntegrationTest {
                 assertThat(rs.next()).isTrue();
             }
             try (ResultSet rs = meta.getTables(null, null, "consumer_inbox", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 19. Apply all migrations to upgrade to V10
+        int v10Applied = mariaRunner.apply(allMigrations);
+        assertThat(v10Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 20. Verify V10 schema: world_grid_allocations now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "world_grid_allocations", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -374,10 +387,10 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 17. Apply all migrations to upgrade to V9
-        int v9Applied = postgresRunner.apply(allMigrations);
+        // 17. Apply V9 migration
+        int v9Applied = postgresRunner.apply(allMigrations.subList(0, 9));
         assertThat(v9Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(9);
 
         // 18. Verify V9 schema: outbox_events and consumer_inbox now exist
         try (Connection conn = postgresDatabase.connection()) {
@@ -386,6 +399,19 @@ class ProductionMigrationIntegrationTest {
                 assertThat(rs.next()).isTrue();
             }
             try (ResultSet rs = meta.getTables(null, null, "consumer_inbox", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 19. Apply all migrations to upgrade to V10
+        int v10Applied = postgresRunner.apply(allMigrations);
+        assertThat(v10Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 20. Verify V10 schema: world_grid_allocations now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "world_grid_allocations", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -458,6 +484,7 @@ class ProductionMigrationIntegrationTest {
                             "backup_operations",
                             "outbox_events",
                             "consumer_inbox",
+                            "world_grid_allocations",
                             "uxmlib_schema_history");
 
             assertThat(tables).doesNotContain("inbox_events");
@@ -693,6 +720,17 @@ class ProductionMigrationIntegrationTest {
 
             Set<String> inboxCols = getColumnNames(meta, "consumer_inbox");
             assertThat(inboxCols).contains("consumer_name", "event_id", "processed_at");
+
+            Set<String> gridCols = getColumnNames(meta, "world_grid_allocations");
+            assertThat(gridCols)
+                    .contains(
+                            "sequence_index",
+                            "world_name",
+                            "center_x",
+                            "center_z",
+                            "island_id",
+                            "allocated_by_node",
+                            "allocated_at");
         }
     }
 

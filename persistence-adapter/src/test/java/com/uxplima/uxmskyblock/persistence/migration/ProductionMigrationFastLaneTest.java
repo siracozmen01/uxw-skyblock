@@ -102,6 +102,7 @@ class ProductionMigrationFastLaneTest {
                                 "backup_operations",
                                 "outbox_events",
                                 "consumer_inbox",
+                                "world_grid_allocations",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -369,6 +370,18 @@ class ProductionMigrationFastLaneTest {
                 // consumer_inbox columns (V9)
                 Set<String> inboxCols = getColumnNames(meta, "consumer_inbox");
                 assertThat(inboxCols).containsExactlyInAnyOrder("consumer_name", "event_id", "processed_at");
+
+                // world_grid_allocations columns (V10)
+                Set<String> gridCols = getColumnNames(meta, "world_grid_allocations");
+                assertThat(gridCols)
+                        .containsExactlyInAnyOrder(
+                                "sequence_index",
+                                "world_name",
+                                "center_x",
+                                "center_z",
+                                "island_id",
+                                "allocated_by_node",
+                                "allocated_at");
             }
         }
     }
@@ -1080,8 +1093,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V9 should be applied)
-            int v9Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V9 migration (only V9 should be applied)
+            int v9Applied = runner.apply(allMigrations.subList(0, 9));
             assertThat(v9Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(9);
 
@@ -1116,9 +1129,74 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 8. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 9));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(9);
+        }
+    }
+
+    @Test
+    @DisplayName("13. Step-by-step upgrade from V9 to V10 preserves data and adds world_grid_allocations")
+    void stepByStepUpgradeFromV9ToV10PreservesData() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V9
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v9Applied = runner.apply(allMigrations.subList(0, 9));
+            assertThat(v9Applied).isEqualTo(9);
+            assertThat(runner.currentVersion()).isEqualTo(9);
+
+            // 2. Verify pre-V10 schema state: world_grid_allocations does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "world_grid_allocations", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V9 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v10-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v10', 'p-v10-upg')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v10', 'prof-v10', 'p-v10-upg')
+                        """);
+                execute(conn, """
+                        INSERT INTO outbox_events (
+                            event_id, event_type, aggregate_id, payload, status
+                        ) VALUES ('evt-v10-1', 'ISLAND_CREATED', 'isl-v10', '{"tier":1}', 'PENDING')
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V10 should be applied)
+            int v10Applied = runner.apply(allMigrations);
+            assertThat(v10Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(10);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v10'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM outbox_events WHERE event_id = 'evt-v10-1'"))
+                        .isEqualTo(1);
+
+                // 6. Verify world_grid_allocations accepts rows
+                execute(conn, """
+                        INSERT INTO world_grid_allocations (
+                            sequence_index, world_name, center_x, center_z, island_id, allocated_by_node
+                        ) VALUES (0, 'world', 0, 0, 'isl-v10', 'node-1')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM world_grid_allocations WHERE sequence_index = 0"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(10);
         }
     }
 

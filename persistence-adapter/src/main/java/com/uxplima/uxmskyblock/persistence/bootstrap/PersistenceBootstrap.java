@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPor
 import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
+import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.persistence.backup.PlayerBackupCatalogAdapter;
 import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
 import com.uxplima.uxmskyblock.persistence.event.ConsumerInboxAdapter;
@@ -31,6 +32,7 @@ import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.profile.PlayerProfileSwitchAdapter;
 import com.uxplima.uxmskyblock.persistence.session.PlayerSessionAuthorityAdapter;
 import com.uxplima.uxmskyblock.persistence.upgrade.PlayerIslandUpgradeAdapter;
+import com.uxplima.uxmskyblock.persistence.world.PlayerWorldGridAllocationAdapter;
 
 /**
  * Encapsulated persistence composition root establishing database migrations and
@@ -51,6 +53,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerInventoryMutationJournalAdapter mutationJournalAdapter;
     private final PlayerProfileHandoffFinalizationAdapter handoffFinalizationAdapter;
     private final PlayerProfileSwitchAdapter profileSwitchAdapter;
+    private final PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -71,6 +74,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.mutationJournalAdapter = new PlayerInventoryMutationJournalAdapter(database);
         this.handoffFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(database);
         this.profileSwitchAdapter = new PlayerProfileSwitchAdapter(database);
+        this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -134,6 +138,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ProfileSwitchPort profileSwitchPort() {
         return profileSwitchAdapter;
+    }
+
+    public WorldGridAllocationPort worldGridAllocationPort() {
+        return worldGridAllocationAdapter;
     }
 
     @Override

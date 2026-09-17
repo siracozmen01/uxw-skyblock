@@ -7,10 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
+import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransaction;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
@@ -22,6 +24,10 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.core.domain.world.IslandCoordinates;
+import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
+import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,6 +39,7 @@ class CreateIslandUseCaseTest {
     private FakeIslandBank bank;
     private StarterPresetCatalog presetCatalog;
     private SpiralWorldGridService gridService;
+    private FakeWorldGridAllocationPort allocationPort;
     private CreateIslandUseCase useCase;
 
     @BeforeEach
@@ -42,7 +49,8 @@ class CreateIslandUseCaseTest {
         bank = new FakeIslandBank();
         presetCatalog = new StarterPresetCatalog();
         gridService = new SpiralWorldGridService();
-        useCase = new CreateIslandUseCase(storage, authority, bank, presetCatalog, gridService);
+        allocationPort = new FakeWorldGridAllocationPort();
+        useCase = new CreateIslandUseCase(storage, authority, bank, presetCatalog, gridService, allocationPort);
     }
 
     @Test
@@ -67,6 +75,31 @@ class CreateIslandUseCaseTest {
         assertThat(storage.islands).containsKey(success.island().id());
         assertThat(authority.acquired).containsKey(success.island().id());
         assertThat(bank.created).containsKey(success.island().id());
+        assertThat(allocationPort.allocations).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("successfully creates island using durable world grid allocation without sequence index")
+    void createsIslandUsingDurableWorldGridAllocationWithoutSequenceIndex() {
+        PlayerUuid playerUuid = new PlayerUuid(UUID.randomUUID());
+        ProfileId profileId = new ProfileId(UUID.randomUUID());
+
+        CreateIslandUseCase.CreateIslandResult result =
+                useCase.execute(playerUuid, profileId, "classic", ServerNodeId.of("node-1"), "world");
+
+        assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.Success.class);
+        CreateIslandUseCase.CreateIslandResult.Success success =
+                (CreateIslandUseCase.CreateIslandResult.Success) result;
+
+        assertThat(success.island().ownerPlayerUuid()).isEqualTo(playerUuid);
+        assertThat(success.island().ownerProfileId()).isEqualTo(profileId);
+        assertThat(success.location().worldName()).isEqualTo("world");
+        assertThat(success.preset().id()).isEqualTo("classic");
+
+        assertThat(storage.islands).containsKey(success.island().id());
+        assertThat(authority.acquired).containsKey(success.island().id());
+        assertThat(bank.created).containsKey(success.island().id());
+        assertThat(allocationPort.allocations).isNotEmpty();
     }
 
     @Test
@@ -205,6 +238,89 @@ class CreateIslandUseCaseTest {
         @Override
         public List<BankTransaction> getTransactionHistory(IslandId islandId, int limit) {
             return List.of();
+        }
+    }
+
+    private static class FakeWorldGridAllocationPort implements WorldGridAllocationPort {
+        private final AtomicLong seqCounter = new AtomicLong(0);
+        private final SpiralGridCoordinateAllocator allocator = new SpiralGridCoordinateAllocator();
+        final Map<Long, WorldGridAllocation> allocations = new HashMap<>();
+
+        @Override
+        public long reserveNextSequence(
+                ServerNodeId nodeId, String worldName, int centerX, int centerZ, @Nullable IslandId islandId) {
+            long seq = seqCounter.getAndIncrement();
+            allocations.put(
+                    seq,
+                    new WorldGridAllocation(
+                            seq,
+                            worldName,
+                            centerX,
+                            centerZ,
+                            Optional.ofNullable(islandId),
+                            nodeId,
+                            java.time.Instant.now()));
+            return seq;
+        }
+
+        @Override
+        public WorldGridAllocation allocateNext(ServerNodeId nodeId, String worldName, @Nullable IslandId islandId) {
+            long seq = seqCounter.getAndIncrement();
+            IslandCoordinates coords = allocator.coordinatesForIndex(seq);
+            WorldGridAllocation alloc = new WorldGridAllocation(
+                    seq,
+                    worldName,
+                    coords.x(),
+                    coords.z(),
+                    Optional.ofNullable(islandId),
+                    nodeId,
+                    java.time.Instant.now());
+            allocations.put(seq, alloc);
+            return alloc;
+        }
+
+        @Override
+        public Optional<WorldGridAllocation> findBySequenceIndex(long sequenceIndex) {
+            return Optional.ofNullable(allocations.get(sequenceIndex));
+        }
+
+        @Override
+        public Optional<WorldGridAllocation> findByIslandId(IslandId islandId) {
+            return allocations.values().stream()
+                    .filter(a -> a.islandId().equals(Optional.of(islandId)))
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<WorldGridAllocation> findByCoordinates(String worldName, int centerX, int centerZ) {
+            return allocations.values().stream()
+                    .filter(a -> a.worldName().equals(worldName) && a.centerX() == centerX && a.centerZ() == centerZ)
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<Long> findMaxSequenceIndex(String worldName) {
+            return allocations.values().stream()
+                    .filter(a -> a.worldName().equals(worldName))
+                    .map(WorldGridAllocation::sequenceIndex)
+                    .max(Long::compareTo);
+        }
+
+        @Override
+        public void bindIsland(long sequenceIndex, IslandId islandId) {
+            WorldGridAllocation existing = allocations.get(sequenceIndex);
+            if (existing != null) {
+                allocations.put(
+                        sequenceIndex,
+                        new WorldGridAllocation(
+                                existing.sequenceIndex(),
+                                existing.worldName(),
+                                existing.centerX(),
+                                existing.centerZ(),
+                                Optional.of(islandId),
+                                existing.allocatedByNode(),
+                                existing.allocatedAt()));
+            }
         }
     }
 }

@@ -39,16 +39,32 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     private final IslandBankPort islandBankPort;
     private final IslandLeaderboardPort islandLeaderboardPort;
     private final IslandAuthorityPort islandAuthorityPort;
+    private final ServerNodeId serverNodeId;
+
+    public BukkitSkyblockApiBridge(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandLeaderboardPort islandLeaderboardPort,
+            IslandAuthorityPort islandAuthorityPort,
+            ServerNodeId serverNodeId) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort");
+        this.islandLeaderboardPort = Objects.requireNonNull(islandLeaderboardPort, "islandLeaderboardPort");
+        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort");
+        this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId");
+    }
 
     public BukkitSkyblockApiBridge(
             IslandStoragePort islandStoragePort,
             IslandBankPort islandBankPort,
             IslandLeaderboardPort islandLeaderboardPort,
             IslandAuthorityPort islandAuthorityPort) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort");
-        this.islandLeaderboardPort = Objects.requireNonNull(islandLeaderboardPort, "islandLeaderboardPort");
-        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort");
+        this(
+                islandStoragePort,
+                islandBankPort,
+                islandLeaderboardPort,
+                islandAuthorityPort,
+                ServerNodeId.of("skyblock-node-default"));
     }
 
     public void register() {
@@ -124,7 +140,7 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             IslandLocation location = new IslandLocation(islandId, "world", bounds, 0.5, 100.0, 0.5, 0.0f, 0.0f);
 
             islandStoragePort.saveIsland(island, location);
-            islandAuthorityPort.acquireAuthority(islandId, ServerNodeId.of("local-node"), 86400);
+            islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
             islandBankPort.createBank(islandId);
 
             return IslandResult.success(toSnapshot(island));
@@ -149,7 +165,7 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
                     2,
                     amountMinorUnits,
                     "API deposit",
-                    "local-node",
+                    serverNodeId.value(),
                     1L,
                     bank.version(),
                     opId,
@@ -184,11 +200,11 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
                     2,
                     -amountMinorUnits,
                     "API withdrawal",
-                    "local-node",
+                    serverNodeId.value(),
                     1L,
                     bank.version(),
                     opId,
-                    "api-with-" + opId);
+                    "api-wth-" + opId);
 
             if (outcome instanceof BankTransactionOutcome.Success success) {
                 return IslandResult.success(

@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 9;
+    public static final int LATEST_VERSION = 10;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -50,6 +50,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V9. */
     public static final String V9_DESCRIPTION = "create outbox events and consumer inbox";
 
+    /** Human-readable description of migration V10. */
+    public static final String V10_DESCRIPTION = "create world grid allocations";
+
     private SkyblockMigrations() {}
 
     /**
@@ -75,7 +78,8 @@ public final class SkyblockMigrations {
                 v6Migration(dialect),
                 v7Migration(dialect),
                 v8Migration(dialect),
-                v9Migration(dialect));
+                v9Migration(dialect),
+                v10Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -340,6 +344,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(9, V9_DESCRIPTION, SQLITE_V9_DDL);
             case MYSQL -> new Migration(9, V9_DESCRIPTION, MYSQL_V9_DDL);
             case POSTGRES -> new Migration(9, V9_DESCRIPTION, POSTGRES_V9_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v10Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(10, V10_DESCRIPTION, SQLITE_V10_DDL);
+            case MYSQL -> new Migration(10, V10_DESCRIPTION, MYSQL_V10_DDL);
+            case POSTGRES -> new Migration(10, V10_DESCRIPTION, POSTGRES_V10_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1152,5 +1168,50 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX idx_consumer_inbox_processed ON consumer_inbox (processed_at);
+            """;
+
+    private static final String SQLITE_V10_DDL = """
+            CREATE TABLE IF NOT EXISTS world_grid_allocations (
+                sequence_index BIGINT NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                center_x INT NOT NULL,
+                center_z INT NOT NULL,
+                island_id VARCHAR(36) NULL,
+                allocated_by_node VARCHAR(64) NOT NULL,
+                allocated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_grid_coords ON world_grid_allocations (world_name, center_x, center_z);
+            CREATE INDEX IF NOT EXISTS idx_grid_island ON world_grid_allocations (island_id);
+            """;
+
+    private static final String MYSQL_V10_DDL = """
+            CREATE TABLE IF NOT EXISTS world_grid_allocations (
+                sequence_index BIGINT NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                center_x INT NOT NULL,
+                center_z INT NOT NULL,
+                island_id VARCHAR(36) NULL,
+                allocated_by_node VARCHAR(64) NOT NULL,
+                allocated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_grid_coords ON world_grid_allocations (world_name, center_x, center_z);
+            CREATE INDEX idx_grid_island ON world_grid_allocations (island_id);
+            """;
+
+    private static final String POSTGRES_V10_DDL = """
+            CREATE TABLE IF NOT EXISTS world_grid_allocations (
+                sequence_index BIGINT NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                center_x INT NOT NULL,
+                center_z INT NOT NULL,
+                island_id VARCHAR(36) NULL,
+                allocated_by_node VARCHAR(64) NOT NULL,
+                allocated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_grid_coords ON world_grid_allocations (world_name, center_x, center_z);
+            CREATE INDEX idx_grid_island ON world_grid_allocations (island_id);
             """;
 }

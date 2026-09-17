@@ -10,6 +10,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
@@ -25,6 +26,8 @@ import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import org.spongepowered.configurate.CommentedConfigurationNode;
+import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
 
 /**
  * Platform composition root wiring application services, outbound adapters,
@@ -49,11 +52,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final BukkitBiomeAdapter biomeAdapter;
     private final IslandCommandTree commandTree;
     private final BukkitSkyblockApiBridge apiBridge;
+    private final ServerNodeConfiguration nodeConfiguration;
 
-    public SkyblockBootstrap(JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap) {
+    public SkyblockBootstrap(
+            JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap, ServerNodeConfiguration nodeConfiguration) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
+        this.nodeConfiguration = Objects.requireNonNull(nodeConfiguration, "nodeConfiguration must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -67,7 +73,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandAuthorityPort(),
                 persistenceBootstrap.islandBankPort(),
                 presetCatalog,
-                gridService);
+                gridService,
+                persistenceBootstrap.worldGridAllocationPort());
         this.locationService = new IslandLocationService(persistenceBootstrap.islandStoragePort());
         this.bankService = new IslandBankService(
                 persistenceBootstrap.islandBankPort(),
@@ -78,8 +85,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
         this.sessionListener = new PlayerSessionListener(protectionListener);
 
-        String worldName = "world";
-        ServerNodeId serverNodeId = ServerNodeId.of("node-1");
+        String worldName = nodeConfiguration.worldName();
+        ServerNodeId serverNodeId = nodeConfiguration.nodeId();
 
         this.biomeAdapter = new BukkitBiomeAdapter(persistenceBootstrap.islandStoragePort(), scheduler, worldName);
 
@@ -87,7 +94,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandStoragePort(),
                 persistenceBootstrap.islandBankPort(),
                 persistenceBootstrap.islandLeaderboardPort(),
-                persistenceBootstrap.islandAuthorityPort());
+                persistenceBootstrap.islandAuthorityPort(),
+                serverNodeId);
 
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
@@ -104,6 +112,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 worldName);
     }
 
+    public SkyblockBootstrap(JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap) {
+        this(plugin, persistenceBootstrap, ServerNodeConfiguration.of("skyblock-node-default", "world"));
+    }
+
     public static SkyblockBootstrap createDefault(JavaPlugin plugin) {
         Objects.requireNonNull(plugin, "plugin must not be null");
         Path dataDir = plugin.getDataFolder().toPath();
@@ -112,9 +124,29 @@ public final class SkyblockBootstrap implements AutoCloseable {
         } catch (java.io.IOException e) {
             throw new IllegalStateException("Failed to create plugin data directory: " + dataDir, e);
         }
+        Path configFile = dataDir.resolve("config.conf");
+        ServerNodeConfiguration nodeConfig;
+        if (java.nio.file.Files.exists(configFile)) {
+            try {
+                CommentedConfigurationNode root = HoconConfigurationLoader.builder()
+                        .path(configFile)
+                        .build()
+                        .load();
+                nodeConfig = ServerNodeConfiguration.load(root);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load server node configuration from: " + configFile, e);
+            }
+        } else {
+            String envNode = System.getProperty("skyblock.node.id", System.getenv("SKYBLOCK_NODE_ID"));
+            if (envNode != null && !envNode.isBlank()) {
+                nodeConfig = ServerNodeConfiguration.of(envNode.trim(), "world");
+            } else {
+                nodeConfig = ServerNodeConfiguration.of("skyblock-node-default", "world");
+            }
+        }
         Path dbFile = dataDir.resolve("skyblock.db");
         PersistenceBootstrap persistence = PersistenceBootstrap.createSqlite(dbFile);
-        return new SkyblockBootstrap(plugin, persistence);
+        return new SkyblockBootstrap(plugin, persistence, nodeConfig);
     }
 
     public void enable() {
@@ -140,6 +172,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandCommandTree commandTree() {
         return commandTree;
+    }
+
+    public ServerNodeConfiguration nodeConfiguration() {
+        return nodeConfiguration;
     }
 
     public BukkitSkyblockApiBridge apiBridge() {
