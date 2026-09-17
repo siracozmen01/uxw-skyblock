@@ -19,6 +19,8 @@ import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.persistence.backup.PlayerBackupCatalogAdapter;
 import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
 import com.uxplima.uxmskyblock.persistence.event.ConsumerInboxAdapter;
@@ -142,6 +144,20 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public WorldGridAllocationPort worldGridAllocationPort() {
         return worldGridAllocationAdapter;
+    }
+
+    public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {
+        Objects.requireNonNull(playerUuid, "playerUuid");
+        Objects.requireNonNull(profileId, "profileId");
+        try (java.sql.Connection conn = database.connection();
+                java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
+            ps.setString(1, profileId.value().toString());
+            ps.setString(2, playerUuid.value().toString());
+            ps.executeUpdate();
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException("Failed to register profile", e);
+        }
     }
 
     @Override

@@ -1,6 +1,10 @@
 package com.uxplima.uxmskyblock.core.application.session;
 
+import java.util.Optional;
+
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
 
@@ -11,6 +15,25 @@ import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
  * Does not depend on SQL, JDBC, or persistence infrastructure libraries.
  */
 public interface PlayerSessionAuthorityPort {
+
+    /**
+     * Looks up the current session record for the player, if one exists.
+     *
+     * @param playerUuid target player UUID
+     * @return optional containing the session record
+     */
+    Optional<PlayerSessionRecord> findSession(PlayerUuid playerUuid);
+
+    /**
+     * Ensures an active session for the player on the local node, bootstrapping account,
+     * initial profile, default inventory, and session authority if missing, or renewing/taking over.
+     *
+     * @param playerUuid target player UUID
+     * @param defaultProfileId default profile ID to use if bootstrapping for the first time
+     * @param currentNode claiming server node ID
+     * @return outcome carrying the active session epoch on success, or rejected
+     */
+    SessionAuthorityOutcome ensureSession(PlayerUuid playerUuid, ProfileId defaultProfileId, ServerNodeId currentNode);
 
     /**
      * Renews the active session lease heartbeat for the current owner node.

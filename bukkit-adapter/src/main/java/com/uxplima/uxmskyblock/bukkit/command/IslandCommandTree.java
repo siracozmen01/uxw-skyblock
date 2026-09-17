@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -24,6 +25,7 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
@@ -61,6 +63,7 @@ public final class IslandCommandTree {
     private final StarterPresetCatalog presetCatalog;
     private final StarterSchematicEngine schematicEngine;
     private final IslandProtectionListener protectionListener;
+    private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final ServerNodeId serverNodeId;
     private final String worldName;
@@ -75,6 +78,7 @@ public final class IslandCommandTree {
             StarterPresetCatalog presetCatalog,
             StarterSchematicEngine schematicEngine,
             IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
             ServerNodeId serverNodeId,
             String worldName) {
@@ -90,6 +94,7 @@ public final class IslandCommandTree {
         this.presetCatalog = Objects.requireNonNull(presetCatalog, "presetCatalog must not be null");
         this.schematicEngine = Objects.requireNonNull(schematicEngine, "schematicEngine must not be null");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
+        this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
@@ -125,7 +130,11 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("top")
                         .executes(ctx -> executeTop(ctx, "level"))
                         .then(Cmd.argument("category", StringArgumentType.word())
-                                .executes(ctx -> executeTop(ctx, StringArgumentType.getString(ctx, "category")))));
+                                .executes(ctx -> executeTop(ctx, StringArgumentType.getString(ctx, "category")))))
+                .then(Cmd.literal("profile")
+                        .then(Cmd.literal("switch")
+                                .then(Cmd.argument("profileId", StringArgumentType.word())
+                                        .executes(this::executeProfileSwitch))));
 
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
@@ -145,6 +154,24 @@ public final class IslandCommandTree {
                 Component.text("/is bank [deposit|withdraw|balance] - Manage island bank", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is biome <type> - Change island biome", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is top [level|worth|bank] - View leaderboards", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text("/is profile switch <uuid> - Switch active profile", NamedTextColor.YELLOW));
+        return Cmd.OK;
+    }
+
+    private int executeProfileSwitch(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), Component.text("Only players can switch profiles.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        String rawProf = StringArgumentType.getString(ctx, "profileId");
+        try {
+            UUID profUuid = UUID.fromString(rawProf);
+            sessionCoordinator.switchProfile(player, new ProfileId(profUuid));
+        } catch (IllegalArgumentException e) {
+            send(player, Component.text("Invalid profile UUID format.", NamedTextColor.RED));
+        }
         return Cmd.OK;
     }
 

@@ -2,40 +2,32 @@ package com.uxplima.uxmskyblock.bukkit.listener;
 
 import java.util.Objects;
 
-import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
-import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
-import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 
 /**
- * Inbound Bukkit listener managing player session registration and active profile mappings.
+ * Inbound Bukkit listener managing player session registration and lifecycle via {@link PlayerSessionCoordinator}.
  */
 public final class PlayerSessionListener implements Listener {
 
-    private final IslandProtectionListener protectionListener;
+    private final PlayerSessionCoordinator sessionCoordinator;
 
-    public PlayerSessionListener(IslandProtectionListener protectionListener) {
-        this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener");
+    public PlayerSessionListener(PlayerSessionCoordinator sessionCoordinator) {
+        this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator");
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
-        // Default initial profile matches player UUID
-        ProfileId profileId = new ProfileId(player.getUniqueId());
-        protectionListener.setActiveProfile(uuid, profileId);
+        sessionCoordinator.handlePlayerJoin(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-        PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
-        protectionListener.removeActiveProfile(uuid);
+        sessionCoordinator.handlePlayerQuit(event.getPlayer());
     }
 }

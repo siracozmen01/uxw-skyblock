@@ -451,4 +451,32 @@ class PlayerSessionAuthoritySqliteTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unsupported SQL dialect");
     }
+
+    @Test
+    @DisplayName("ENSURE_SESSION: bootstraps new player account, profile, inventory, and session")
+    void ensureSessionBootstrapsNewPlayer() {
+        PlayerUuid newPlayer = new PlayerUuid(UUID.randomUUID());
+        ProfileId defaultProf = new ProfileId(UUID.randomUUID());
+        ServerNodeId node = new ServerNodeId("node-1");
+
+        assertThat(adapter.findSession(newPlayer)).isEmpty();
+
+        SessionAuthorityOutcome outcome = adapter.ensureSession(newPlayer, defaultProf, node);
+        assertThat(outcome.isSuccess()).isTrue();
+        assertThat(((SessionAuthorityOutcome.Success) outcome).epoch()).isEqualTo(1L);
+
+        var recordOpt = adapter.findSession(newPlayer);
+        assertThat(recordOpt).isPresent();
+        var record = recordOpt.get();
+        assertThat(record.playerUuid()).isEqualTo(newPlayer);
+        assertThat(record.activeProfileId()).isEqualTo(defaultProf);
+        assertThat(record.authoritativeNode()).isEqualTo(node);
+        assertThat(record.sessionEpoch()).isEqualTo(1L);
+        assertThat(record.state()).isEqualTo(SessionState.ACTIVE);
+
+        // Subsequent ensureSession on same node renews active session
+        SessionAuthorityOutcome repeatOutcome = adapter.ensureSession(newPlayer, defaultProf, node);
+        assertThat(repeatOutcome.isSuccess()).isTrue();
+        assertThat(((SessionAuthorityOutcome.Success) repeatOutcome).epoch()).isEqualTo(1L);
+    }
 }

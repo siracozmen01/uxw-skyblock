@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Objects;
 
 import org.bukkit.Bukkit;
@@ -15,12 +16,14 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
+import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -48,6 +51,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandBankService bankService;
     private final IslandLeaderboardService leaderboardService;
     private final IslandProtectionListener protectionListener;
+    private final SwitchProfileUseCase switchProfileUseCase;
+    private final PlayerSessionCoordinator sessionCoordinator;
     private final PlayerSessionListener sessionListener;
     private final BukkitBiomeAdapter biomeAdapter;
     private final IslandCommandTree commandTree;
@@ -83,10 +88,23 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.leaderboardService = new IslandLeaderboardService(persistenceBootstrap.islandLeaderboardPort());
 
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
-        this.sessionListener = new PlayerSessionListener(protectionListener);
 
         String worldName = nodeConfiguration.worldName();
         ServerNodeId serverNodeId = nodeConfiguration.nodeId();
+
+        this.switchProfileUseCase = new SwitchProfileUseCase(
+                persistenceBootstrap.profileSwitchPort(), persistenceBootstrap.inventoryPort());
+        this.sessionCoordinator = new PlayerSessionCoordinator(
+                serverNodeId,
+                persistenceBootstrap.sessionAuthorityPort(),
+                persistenceBootstrap.inventoryPort(),
+                persistenceBootstrap.handoffFinalizationPort(),
+                switchProfileUseCase,
+                scheduler,
+                protectionListener,
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(60));
+        this.sessionListener = new PlayerSessionListener(sessionCoordinator);
 
         this.biomeAdapter = new BukkitBiomeAdapter(persistenceBootstrap.islandStoragePort(), scheduler, worldName);
 
@@ -107,6 +125,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 presetCatalog,
                 schematicEngine,
                 protectionListener,
+                sessionCoordinator,
                 scheduler,
                 serverNodeId,
                 worldName);
@@ -178,12 +197,21 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return nodeConfiguration;
     }
 
+    public PlayerSessionCoordinator sessionCoordinator() {
+        return sessionCoordinator;
+    }
+
+    public SwitchProfileUseCase switchProfileUseCase() {
+        return switchProfileUseCase;
+    }
+
     public BukkitSkyblockApiBridge apiBridge() {
         return apiBridge;
     }
 
     @Override
     public void close() {
+        sessionCoordinator.shutdown();
         apiBridge.unregister();
         persistenceBootstrap.close();
     }
