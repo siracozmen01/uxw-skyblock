@@ -124,10 +124,10 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 5. Apply all migrations to upgrade to V3
-        int v3Applied = mariaRunner.apply(allMigrations);
+        // 5. Apply V3 migration
+        int v3Applied = mariaRunner.apply(allMigrations.subList(0, 3));
         assertThat(v3Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(3);
 
         // 6. Verify V3 schema: journals and participants now exist
         try (Connection conn = mariaDatabase.connection()) {
@@ -136,6 +136,19 @@ class ProductionMigrationIntegrationTest {
                 assertThat(rs.next()).isTrue();
             }
             try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_participants", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 7. Apply all migrations to upgrade to V4
+        int v4Applied = mariaRunner.apply(allMigrations);
+        assertThat(v4Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 8. Verify V4 schema: profile_switch_operations now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "profile_switch_operations", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -212,10 +225,10 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 5. Apply all migrations to upgrade to V3
-        int v3Applied = postgresRunner.apply(allMigrations);
+        // 5. Apply V3 migration
+        int v3Applied = postgresRunner.apply(allMigrations.subList(0, 3));
         assertThat(v3Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(3);
 
         // 6. Verify V3 schema: journals and participants now exist
         try (Connection conn = postgresDatabase.connection()) {
@@ -224,6 +237,19 @@ class ProductionMigrationIntegrationTest {
                 assertThat(rs.next()).isTrue();
             }
             try (ResultSet rs = meta.getTables(null, null, "inventory_mutation_participants", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 7. Apply all migrations to upgrade to V4
+        int v4Applied = postgresRunner.apply(allMigrations);
+        assertThat(v4Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 8. Verify V4 schema: profile_switch_operations now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "profile_switch_operations", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -281,16 +307,11 @@ class ProductionMigrationIntegrationTest {
                             "profile_inventories",
                             "inventory_mutation_journals",
                             "inventory_mutation_participants",
+                            "profile_switch_operations",
                             "uxmlib_schema_history");
 
             assertThat(tables)
-                    .doesNotContain(
-                            "islands",
-                            "island_members",
-                            "island_locations",
-                            "profile_switch_operations",
-                            "outbox_events",
-                            "inbox_events");
+                    .doesNotContain("islands", "island_members", "island_locations", "outbox_events", "inbox_events");
         }
     }
 
@@ -373,6 +394,20 @@ class ProductionMigrationIntegrationTest {
                             "after_fingerprint",
                             "durable_apply_state",
                             "mutation_delta_payload",
+                            "updated_at");
+
+            Set<String> switchCols = getColumnNames(meta, "profile_switch_operations");
+            assertThat(switchCols)
+                    .contains(
+                            "operation_id",
+                            "player_uuid",
+                            "from_profile_id",
+                            "to_profile_id",
+                            "state",
+                            "source_snapshot_blob",
+                            "target_snapshot_blob",
+                            "failure_reason",
+                            "created_at",
                             "updated_at");
         }
     }

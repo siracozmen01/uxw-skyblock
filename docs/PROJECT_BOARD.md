@@ -23,10 +23,11 @@
 * **WP2-002 Status:** COMPLETED (commit `e458bdd`)
 * **WP2-003 Status:** COMPLETED (commit `909c7f4`)
 * **WP2-004 Status:** COMPLETED (commit `5e74f76`)
-* **WP2-005 Status:** COMPLETED
+* **WP2-005 Status:** COMPLETED (commit `7fa276e`)
+* **WP2-006 Status:** COMPLETED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 93% (37 / 40 cards completed)
+* **Overall Card Completion:** 93% (38 / 41 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -48,6 +49,7 @@
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[WP2-006]** Profile Switch Write-Ahead State Machine (`:core` domain `ProfileSwitchOperation` sealed ADT, `ProfileSwitchState`, `ProfileSwitchPort`, `:persistence-adapter` canonical SQL-backed state machine with `player_sessions` row locking, CAS active switch reservation on `player_accounts`, V4 migrations for `profile_switch_operations`, fast-lane SQLite and dual-lane Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED
 * [x] **[CORE-001]** Core Domain Records & Value Objects (`:core` domain `Island`, `IslandId`, `IslandMember`, `IslandRole`, `IslandFlags`, `IslandBounds`, `IslandPermission` records, role weight hierarchy, and jqwik property tests) — COMPLETED
 * [x] **[TST-001]** Test infrastructure setup (MockBukkit harness in `:bukkit-adapter`, jqwik property testing in `:core`) — COMPLETED
 * [x] **[WP2-005]** Immediate Economic Inventory Mutation Journal (`:core` domain/application inventory mutation journal port and outcomes, `:persistence-adapter` canonical SQL-backed two-phase write-ahead journal and participant adapter, V3 migrations for `inventory_mutation_journals` and `inventory_mutation_participants`, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED

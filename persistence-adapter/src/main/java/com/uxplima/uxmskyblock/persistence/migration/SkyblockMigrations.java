@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 3;
+    public static final int LATEST_VERSION = 4;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -31,6 +31,9 @@ public final class SkyblockMigrations {
 
     /** Human-readable description of migration V3. */
     public static final String V3_DESCRIPTION = "create inventory mutation journals";
+
+    /** Human-readable description of migration V4. */
+    public static final String V4_DESCRIPTION = "create profile switch operations";
 
     private SkyblockMigrations() {}
 
@@ -48,7 +51,7 @@ public final class SkyblockMigrations {
      */
     public static List<Migration> getMigrations(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
-        return List.of(v1Migration(dialect), v2Migration(dialect), v3Migration(dialect));
+        return List.of(v1Migration(dialect), v2Migration(dialect), v3Migration(dialect), v4Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -248,6 +251,18 @@ public final class SkyblockMigrations {
         };
     }
 
+    private static Migration v4Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(4, V4_DESCRIPTION, SQLITE_V4_DDL);
+            case MYSQL -> new Migration(4, V4_DESCRIPTION, MYSQL_V4_DDL);
+            case POSTGRES -> new Migration(4, V4_DESCRIPTION, POSTGRES_V4_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
     private static final String SQLITE_V3_DDL = """
             CREATE TABLE inventory_mutation_journals (
                 operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -357,5 +372,62 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX idx_inv_participant_lookup ON inventory_mutation_participants (owner_root_type, owner_root_id, durable_apply_state);
+            """;
+
+    private static final String SQLITE_V4_DDL = """
+            CREATE TABLE profile_switch_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                player_uuid VARCHAR(36) NOT NULL,
+                from_profile_id VARCHAR(36) NOT NULL,
+                to_profile_id VARCHAR(36) NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PREPARING',
+                source_snapshot_blob BLOB NULL,
+                target_snapshot_blob BLOB NULL,
+                failure_reason VARCHAR(255) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_profile_switch_player FOREIGN KEY (player_uuid)
+                    REFERENCES player_accounts (player_uuid) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_profile_switch_player ON profile_switch_operations (player_uuid, state);
+            """;
+
+    private static final String MYSQL_V4_DDL = """
+            CREATE TABLE profile_switch_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                player_uuid VARCHAR(36) NOT NULL,
+                from_profile_id VARCHAR(36) NOT NULL,
+                to_profile_id VARCHAR(36) NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PREPARING',
+                source_snapshot_blob LONGBLOB NULL,
+                target_snapshot_blob LONGBLOB NULL,
+                failure_reason VARCHAR(255) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_profile_switch_player FOREIGN KEY (player_uuid)
+                    REFERENCES player_accounts (player_uuid) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_profile_switch_player ON profile_switch_operations (player_uuid, state);
+            """;
+
+    private static final String POSTGRES_V4_DDL = """
+            CREATE TABLE profile_switch_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                player_uuid VARCHAR(36) NOT NULL,
+                from_profile_id VARCHAR(36) NOT NULL,
+                to_profile_id VARCHAR(36) NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PREPARING',
+                source_snapshot_blob BYTEA NULL,
+                target_snapshot_blob BYTEA NULL,
+                failure_reason VARCHAR(255) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_profile_switch_player FOREIGN KEY (player_uuid)
+                    REFERENCES player_accounts (player_uuid) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_profile_switch_player ON profile_switch_operations (player_uuid, state);
             """;
 }

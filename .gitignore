@@ -17,3 +17,6 @@ out/
 
 # Testing
 .jqwik-database
+
+# Agents
+.agents/

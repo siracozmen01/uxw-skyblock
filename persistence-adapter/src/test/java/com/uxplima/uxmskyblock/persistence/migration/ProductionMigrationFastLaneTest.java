@@ -78,7 +78,7 @@ class ProductionMigrationFastLaneTest {
                     }
                 }
 
-                // Canonical tables that MUST exist in WP2-005
+                // Canonical tables that MUST exist in WP2-006
                 assertThat(tables)
                         .contains(
                                 "player_accounts",
@@ -87,17 +87,13 @@ class ProductionMigrationFastLaneTest {
                                 "profile_inventories",
                                 "inventory_mutation_journals",
                                 "inventory_mutation_participants",
+                                "profile_switch_operations",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
                 assertThat(tables)
                         .doesNotContain(
-                                "islands",
-                                "island_members",
-                                "island_locations",
-                                "profile_switch_operations",
-                                "outbox_events",
-                                "inbox_events");
+                                "islands", "island_members", "island_locations", "outbox_events", "inbox_events");
             }
         }
     }
@@ -194,6 +190,21 @@ class ProductionMigrationFastLaneTest {
                                 "after_fingerprint",
                                 "durable_apply_state",
                                 "mutation_delta_payload",
+                                "updated_at");
+
+                // profile_switch_operations columns (V4)
+                Set<String> switchCols = getColumnNames(meta, "profile_switch_operations");
+                assertThat(switchCols)
+                        .containsExactlyInAnyOrder(
+                                "operation_id",
+                                "player_uuid",
+                                "from_profile_id",
+                                "to_profile_id",
+                                "state",
+                                "source_snapshot_blob",
+                                "target_snapshot_blob",
+                                "failure_reason",
+                                "created_at",
                                 "updated_at");
             }
         }
@@ -491,8 +502,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V3 should be applied)
-            int v3Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V3 migration
+            int v3Applied = runner.apply(allMigrations.subList(0, 3));
             assertThat(v3Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(3);
 
@@ -532,9 +543,69 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 3));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(3);
+        }
+    }
+
+    @Test
+    @DisplayName("13. Upgrade from existing V3 database applies V4 cleanly and preserves data")
+    void upgradeFromV3AppliesV4Cleanly() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Apply V1 + V2 + V3 migrations
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v3Applied = runner.apply(allMigrations.subList(0, 3));
+            assertThat(v3Applied).isEqualTo(3);
+            assertThat(runner.currentVersion()).isEqualTo(3);
+
+            // 2. Verify pre-V4 schema state: profile_switch_operations does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "profile_switch_operations", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V3 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v4-upg')");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v4-src', 'p-v4-upg')");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v4-tgt', 'p-v4-upg')");
+            }
+
+            // 4. Upgrade by applying all migrations (only V4 should be applied)
+            int v4Applied = runner.apply(allMigrations);
+            assertThat(v4Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(4);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_accounts WHERE player_uuid = 'p-v4-upg'"))
+                        .isEqualTo(1);
+
+                // 6. Verify profile_switch_operations table accepts rows
+                execute(conn, """
+                        INSERT INTO profile_switch_operations (
+                            operation_id, player_uuid, from_profile_id, to_profile_id, state
+                        ) VALUES ('sw-1', 'p-v4-upg', 'prof-v4-src', 'prof-v4-tgt', 'PREPARING')
+                        """);
+                assertThat(queryCount(
+                                conn, "SELECT COUNT(*) FROM profile_switch_operations WHERE operation_id = 'sw-1'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(4);
         }
     }
 
