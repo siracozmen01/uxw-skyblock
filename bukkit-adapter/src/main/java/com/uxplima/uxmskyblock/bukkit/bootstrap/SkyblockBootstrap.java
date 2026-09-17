@@ -8,16 +8,21 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
+import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
+import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -55,6 +60,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final PlayerSessionCoordinator sessionCoordinator;
     private final PlayerSessionListener sessionListener;
     private final BukkitBiomeAdapter biomeAdapter;
+    private final SkyblockEconomyBridge economyBridge;
+    private final IslandControlMenu controlMenu;
+    private final SkyblockPlaceholderExpansion placeholderExpansion;
+    private final TransactionalOutboxDispatcher outboxDispatcher;
     private final IslandCommandTree commandTree;
     private final BukkitSkyblockApiBridge apiBridge;
     private final ServerNodeConfiguration nodeConfiguration;
@@ -115,6 +124,26 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandAuthorityPort(),
                 serverNodeId);
 
+        this.economyBridge = SkyblockEconomyBridge.createDefault(bankService, scheduler);
+
+        this.controlMenu = new IslandControlMenu(
+                persistenceBootstrap.islandStoragePort(),
+                persistenceBootstrap.islandBankPort(),
+                persistenceBootstrap.islandUpgradeStoragePort(),
+                locationService,
+                scheduler,
+                worldName);
+
+        this.placeholderExpansion = new SkyblockPlaceholderExpansion(
+                persistenceBootstrap.islandStoragePort(),
+                persistenceBootstrap.islandBankPort(),
+                persistenceBootstrap.islandUpgradeStoragePort(),
+                persistenceBootstrap.islandLeaderboardPort(),
+                scheduler);
+
+        this.outboxDispatcher = new TransactionalOutboxDispatcher(
+                persistenceBootstrap.outboxPort(), scheduler, serverNodeId.value() + "-outbox");
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -128,7 +157,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 sessionCoordinator,
                 scheduler,
                 serverNodeId,
-                worldName);
+                worldName,
+                economyBridge,
+                controlMenu);
     }
 
     public SkyblockBootstrap(JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap) {
@@ -169,6 +200,12 @@ public final class SkyblockBootstrap implements AutoCloseable {
     }
 
     public void enable() {
+        if (!Guis.isInstalled()) {
+            Guis.install(plugin);
+        }
+        outboxDispatcher.start();
+        placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
+
         PluginManager pm = Bukkit.getPluginManager();
         pm.registerEvents(protectionListener, plugin);
         pm.registerEvents(sessionListener, plugin);
@@ -209,8 +246,28 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return apiBridge;
     }
 
+    public SkyblockEconomyBridge economyBridge() {
+        return economyBridge;
+    }
+
+    public IslandControlMenu controlMenu() {
+        return controlMenu;
+    }
+
+    public SkyblockPlaceholderExpansion placeholderExpansion() {
+        return placeholderExpansion;
+    }
+
+    public TransactionalOutboxDispatcher outboxDispatcher() {
+        return outboxDispatcher;
+    }
+
     @Override
     public void close() {
+        outboxDispatcher.close();
+        if (Guis.isInstalled()) {
+            Guis.uninstall();
+        }
         sessionCoordinator.shutdown();
         apiBridge.unregister();
         persistenceBootstrap.close();

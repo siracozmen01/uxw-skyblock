@@ -23,7 +23,9 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
+import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
@@ -43,6 +45,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Paper Brigadier command tree for {@code /island} and {@code /is}.
@@ -67,6 +70,8 @@ public final class IslandCommandTree {
     private final SchedulerPort schedulerPort;
     private final ServerNodeId serverNodeId;
     private final String worldName;
+    private final SkyblockEconomyBridge economyBridge;
+    private final @Nullable IslandControlMenu controlMenu;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -82,6 +87,40 @@ public final class IslandCommandTree {
             SchedulerPort schedulerPort,
             ServerNodeId serverNodeId,
             String worldName) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                SkyblockEconomyBridge.createDefault(islandBankService, schedulerPort),
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -98,6 +137,8 @@ public final class IslandCommandTree {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
+        this.controlMenu = controlMenu;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -106,8 +147,9 @@ public final class IslandCommandTree {
 
     public void register(JavaPlugin plugin) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
-                .executes(this::executeHelp)
+                .executes(this::executeRoot)
                 .then(Cmd.literal("help").executes(this::executeHelp))
+                .then(Cmd.literal("menu").executes(this::executeMenu))
                 .then(Cmd.literal("create")
                         .executes(ctx ->
                                 executeCreate(ctx, presetCatalog.defaultPreset().id()))
@@ -143,9 +185,33 @@ public final class IslandCommandTree {
         audience.sendMessage(component);
     }
 
+    private int executeRoot(CommandContext<CommandSourceStack> ctx) {
+        if (ctx.getSource().getSender() instanceof Player player && controlMenu != null) {
+            controlMenu.open(player);
+            return Cmd.OK;
+        }
+        return executeHelp(ctx);
+    }
+
+    private int executeMenu(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(
+                    ctx.getSource().getSender(),
+                    Component.text("Only players can open the island menu.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (controlMenu != null) {
+            controlMenu.open(player);
+        } else {
+            send(player, Component.text("Island menu is not enabled on this node.", NamedTextColor.RED));
+        }
+        return Cmd.OK;
+    }
+
     private int executeHelp(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack src = ctx.getSource();
         send(src.getSender(), Component.text("--- UXPLIMA Skyblock Commands ---", NamedTextColor.GOLD));
+        send(src.getSender(), Component.text("/is menu - Open interactive island panel", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is create [preset] - Create your island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is home - Teleport to your island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
@@ -337,21 +403,18 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        long minorUnits = amount * 100;
 
-        schedulerPort.async(() -> {
-            BankTransactionOutcome outcome = islandBankService.deposit(profileId, playerUuid, minorUnits, serverNodeId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (outcome instanceof BankTransactionOutcome.Success) {
-                    send(
-                            player,
-                            Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
-                } else {
-                    send(player, Component.text("Deposit failed: " + outcome, NamedTextColor.RED));
-                }
-            });
+        economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
+            if (outcome instanceof BankTransactionOutcome.Success) {
+                send(player, Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
+            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                send(player, Component.text("Insufficient funds in your personal wallet.", NamedTextColor.RED));
+            } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
+                send(player, Component.text("Deposit rejected: " + rej.reason(), NamedTextColor.RED));
+            } else {
+                send(player, Component.text("Deposit failed: " + outcome, NamedTextColor.RED));
+            }
         });
 
         return Cmd.OK;
@@ -362,24 +425,18 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        long minorUnits = amount * 100;
 
-        schedulerPort.async(() -> {
-            BankTransactionOutcome outcome =
-                    islandBankService.withdraw(profileId, playerUuid, minorUnits, serverNodeId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (outcome instanceof BankTransactionOutcome.Success) {
-                    send(
-                            player,
-                            Component.text("Withdrew $" + amount + " from the island bank.", NamedTextColor.GREEN));
-                } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                    send(player, Component.text("Insufficient funds in the island bank.", NamedTextColor.RED));
-                } else {
-                    send(player, Component.text("Withdrawal failed: " + outcome, NamedTextColor.RED));
-                }
-            });
+        economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
+            if (outcome instanceof BankTransactionOutcome.Success) {
+                send(player, Component.text("Withdrew $" + amount + " from the island bank.", NamedTextColor.GREEN));
+            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                send(player, Component.text("Insufficient funds in the island bank.", NamedTextColor.RED));
+            } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
+                send(player, Component.text("Withdrawal rejected: " + rej.reason(), NamedTextColor.RED));
+            } else {
+                send(player, Component.text("Withdrawal failed: " + outcome, NamedTextColor.RED));
+            }
         });
 
         return Cmd.OK;
