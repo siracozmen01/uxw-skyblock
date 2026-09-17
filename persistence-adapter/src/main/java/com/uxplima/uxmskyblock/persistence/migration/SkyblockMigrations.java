@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 4;
+    public static final int LATEST_VERSION = 5;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -34,6 +34,9 @@ public final class SkyblockMigrations {
 
     /** Human-readable description of migration V4. */
     public static final String V4_DESCRIPTION = "create profile switch operations";
+
+    /** Human-readable description of migration V5. */
+    public static final String V5_DESCRIPTION = "create islands and island authority structures";
 
     private SkyblockMigrations() {}
 
@@ -51,7 +54,12 @@ public final class SkyblockMigrations {
      */
     public static List<Migration> getMigrations(Dialect dialect) {
         Objects.requireNonNull(dialect, "dialect");
-        return List.of(v1Migration(dialect), v2Migration(dialect), v3Migration(dialect), v4Migration(dialect));
+        return List.of(
+                v1Migration(dialect),
+                v2Migration(dialect),
+                v3Migration(dialect),
+                v4Migration(dialect),
+                v5Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -263,6 +271,18 @@ public final class SkyblockMigrations {
         };
     }
 
+    private static Migration v5Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(5, V5_DESCRIPTION, SQLITE_V5_DDL);
+            case MYSQL -> new Migration(5, V5_DESCRIPTION, MYSQL_V5_DDL);
+            case POSTGRES -> new Migration(5, V5_DESCRIPTION, POSTGRES_V5_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
     private static final String SQLITE_V3_DDL = """
             CREATE TABLE inventory_mutation_journals (
                 operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -429,5 +449,302 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX idx_profile_switch_player ON profile_switch_operations (player_uuid, state);
+            """;
+
+    private static final String SQLITE_V5_DDL = """
+            CREATE TABLE IF NOT EXISTS islands (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_profile_id VARCHAR(36) NOT NULL,
+                owner_account_uuid VARCHAR(36) NOT NULL,
+                custom_name VARCHAR(32) NULL,
+                lifecycle VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+                economic_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+                administrative_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+                freeze_reason VARCHAR(255) NULL,
+                level_score BIGINT NOT NULL DEFAULT 0,
+                net_worth_minor_units BIGINT NOT NULL DEFAULT 0,
+                version BIGINT NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_islands_owner_profile ON islands (owner_profile_id);
+            CREATE INDEX IF NOT EXISTS idx_islands_owner_account ON islands (owner_account_uuid);
+            CREATE INDEX IF NOT EXISTS idx_islands_lifecycle ON islands (lifecycle);
+            CREATE INDEX IF NOT EXISTS idx_islands_level ON islands (level_score DESC);
+
+            CREATE TABLE IF NOT EXISTS island_authorities (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                authoritative_node VARCHAR(64) NOT NULL,
+                authority_epoch BIGINT NOT NULL DEFAULT 1,
+                lease_expires_at TIMESTAMP NOT NULL,
+                last_heartbeat_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_authorities_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_authorities_lease ON island_authorities (lease_expires_at ASC);
+            CREATE INDEX IF NOT EXISTS idx_island_authorities_node ON island_authorities (authoritative_node);
+
+            CREATE TABLE IF NOT EXISTS island_locations (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                center_x INT NOT NULL,
+                center_z INT NOT NULL,
+                min_x INT NOT NULL,
+                min_z INT NOT NULL,
+                max_x INT NOT NULL,
+                max_z INT NOT NULL,
+                spawn_x DOUBLE NOT NULL,
+                spawn_y DOUBLE NOT NULL,
+                spawn_z DOUBLE NOT NULL,
+                spawn_yaw FLOAT NOT NULL DEFAULT 0.0,
+                spawn_pitch FLOAT NOT NULL DEFAULT 0.0,
+                CONSTRAINT fk_island_locations_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_locations_coords ON island_locations (world_name, center_x, center_z);
+
+            CREATE TABLE IF NOT EXISTS island_members (
+                island_id VARCHAR(36) NOT NULL,
+                player_uuid VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, profile_id),
+                CONSTRAINT fk_island_members_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_members_profile ON island_members (profile_id);
+
+            CREATE TABLE IF NOT EXISTS island_roles (
+                island_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                weight INT NOT NULL,
+                display_name VARCHAR(64) NOT NULL,
+                is_system BOOLEAN NOT NULL DEFAULT FALSE,
+                PRIMARY KEY (island_id, role_id),
+                CONSTRAINT fk_island_roles_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS island_role_permissions (
+                island_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                permission VARCHAR(64) NOT NULL,
+                PRIMARY KEY (island_id, role_id, permission),
+                CONSTRAINT fk_island_role_perms FOREIGN KEY (island_id, role_id)
+                    REFERENCES island_roles (island_id, role_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS island_flags (
+                island_id VARCHAR(36) NOT NULL,
+                flag_name VARCHAR(64) NOT NULL,
+                flag_value BOOLEAN NOT NULL,
+                PRIMARY KEY (island_id, flag_name),
+                CONSTRAINT fk_island_flags_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+            """;
+
+    private static final String MYSQL_V5_DDL = """
+            CREATE TABLE IF NOT EXISTS islands (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_profile_id VARCHAR(36) NOT NULL,
+                owner_account_uuid VARCHAR(36) NOT NULL,
+                custom_name VARCHAR(32) NULL,
+                lifecycle VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+                economic_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+                administrative_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+                freeze_reason VARCHAR(255) NULL,
+                level_score BIGINT NOT NULL DEFAULT 0,
+                net_worth_minor_units BIGINT NOT NULL DEFAULT 0,
+                version BIGINT NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_islands_owner_profile ON islands (owner_profile_id);
+            CREATE INDEX idx_islands_owner_account ON islands (owner_account_uuid);
+            CREATE INDEX idx_islands_lifecycle ON islands (lifecycle);
+            CREATE INDEX idx_islands_level ON islands (level_score DESC);
+
+            CREATE TABLE IF NOT EXISTS island_authorities (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                authoritative_node VARCHAR(64) NOT NULL,
+                authority_epoch BIGINT NOT NULL DEFAULT 1,
+                lease_expires_at TIMESTAMP NOT NULL,
+                last_heartbeat_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_authorities_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_island_authorities_lease ON island_authorities (lease_expires_at ASC);
+            CREATE INDEX idx_island_authorities_node ON island_authorities (authoritative_node);
+
+            CREATE TABLE IF NOT EXISTS island_locations (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                center_x INT NOT NULL,
+                center_z INT NOT NULL,
+                min_x INT NOT NULL,
+                min_z INT NOT NULL,
+                max_x INT NOT NULL,
+                max_z INT NOT NULL,
+                spawn_x DOUBLE NOT NULL,
+                spawn_y DOUBLE NOT NULL,
+                spawn_z DOUBLE NOT NULL,
+                spawn_yaw FLOAT NOT NULL DEFAULT 0.0,
+                spawn_pitch FLOAT NOT NULL DEFAULT 0.0,
+                CONSTRAINT fk_island_locations_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_island_locations_coords ON island_locations (world_name, center_x, center_z);
+
+            CREATE TABLE IF NOT EXISTS island_members (
+                island_id VARCHAR(36) NOT NULL,
+                player_uuid VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, profile_id),
+                CONSTRAINT fk_island_members_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_island_members_profile ON island_members (profile_id);
+
+            CREATE TABLE IF NOT EXISTS island_roles (
+                island_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                weight INT NOT NULL,
+                display_name VARCHAR(64) NOT NULL,
+                is_system BOOLEAN NOT NULL DEFAULT FALSE,
+                PRIMARY KEY (island_id, role_id),
+                CONSTRAINT fk_island_roles_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS island_role_permissions (
+                island_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                permission VARCHAR(64) NOT NULL,
+                PRIMARY KEY (island_id, role_id, permission),
+                CONSTRAINT fk_island_role_perms FOREIGN KEY (island_id, role_id)
+                    REFERENCES island_roles (island_id, role_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS island_flags (
+                island_id VARCHAR(36) NOT NULL,
+                flag_name VARCHAR(64) NOT NULL,
+                flag_value BOOLEAN NOT NULL,
+                PRIMARY KEY (island_id, flag_name),
+                CONSTRAINT fk_island_flags_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+            """;
+
+    private static final String POSTGRES_V5_DDL = """
+            CREATE TABLE IF NOT EXISTS islands (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_profile_id VARCHAR(36) NOT NULL,
+                owner_account_uuid VARCHAR(36) NOT NULL,
+                custom_name VARCHAR(32) NULL,
+                lifecycle VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+                economic_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+                administrative_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+                freeze_reason VARCHAR(255) NULL,
+                level_score BIGINT NOT NULL DEFAULT 0,
+                net_worth_minor_units BIGINT NOT NULL DEFAULT 0,
+                version BIGINT NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_islands_owner_profile ON islands (owner_profile_id);
+            CREATE INDEX idx_islands_owner_account ON islands (owner_account_uuid);
+            CREATE INDEX idx_islands_lifecycle ON islands (lifecycle);
+            CREATE INDEX idx_islands_level ON islands (level_score DESC);
+
+            CREATE TABLE IF NOT EXISTS island_authorities (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                authoritative_node VARCHAR(64) NOT NULL,
+                authority_epoch BIGINT NOT NULL DEFAULT 1,
+                lease_expires_at TIMESTAMP NOT NULL,
+                last_heartbeat_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_authorities_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_island_authorities_lease ON island_authorities (lease_expires_at ASC);
+            CREATE INDEX idx_island_authorities_node ON island_authorities (authoritative_node);
+
+            CREATE TABLE IF NOT EXISTS island_locations (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                center_x INT NOT NULL,
+                center_z INT NOT NULL,
+                min_x INT NOT NULL,
+                min_z INT NOT NULL,
+                max_x INT NOT NULL,
+                max_z INT NOT NULL,
+                spawn_x DOUBLE PRECISION NOT NULL,
+                spawn_y DOUBLE PRECISION NOT NULL,
+                spawn_z DOUBLE PRECISION NOT NULL,
+                spawn_yaw REAL NOT NULL DEFAULT 0.0,
+                spawn_pitch REAL NOT NULL DEFAULT 0.0,
+                CONSTRAINT fk_island_locations_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_island_locations_coords ON island_locations (world_name, center_x, center_z);
+
+            CREATE TABLE IF NOT EXISTS island_members (
+                island_id VARCHAR(36) NOT NULL,
+                player_uuid VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, profile_id),
+                CONSTRAINT fk_island_members_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_island_members_profile ON island_members (profile_id);
+
+            CREATE TABLE IF NOT EXISTS island_roles (
+                island_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                weight INT NOT NULL,
+                display_name VARCHAR(64) NOT NULL,
+                is_system BOOLEAN NOT NULL DEFAULT FALSE,
+                PRIMARY KEY (island_id, role_id),
+                CONSTRAINT fk_island_roles_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS island_role_permissions (
+                island_id VARCHAR(36) NOT NULL,
+                role_id VARCHAR(32) NOT NULL,
+                permission VARCHAR(64) NOT NULL,
+                PRIMARY KEY (island_id, role_id, permission),
+                CONSTRAINT fk_island_role_perms FOREIGN KEY (island_id, role_id)
+                    REFERENCES island_roles (island_id, role_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS island_flags (
+                island_id VARCHAR(36) NOT NULL,
+                flag_name VARCHAR(64) NOT NULL,
+                flag_value BOOLEAN NOT NULL,
+                PRIMARY KEY (island_id, flag_name),
+                CONSTRAINT fk_island_flags_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
             """;
 }

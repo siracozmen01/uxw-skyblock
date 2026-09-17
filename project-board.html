@@ -598,7 +598,7 @@
           <span>Overall Card Completion</span>
           <span id="metric-percent">93%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">38 / 41</div>
+        <div class="metric-val" id="metric-ratio">39 / 42</div>
         <div class="progress-track">
           <div class="progress-fill" id="metric-fill" style="width: 93%;"></div>
         </div>
@@ -737,9 +737,22 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">38</span>
+          <span class="column-count" id="count-done">39</span>
         </div>
         <div class="card-stack" id="stack-done">
+          <div class="item-card" draggable="true" data-id="ISL-001" data-tag="Persistence">
+            <div class="card-meta-line">
+              <span class="card-id">ISL-001</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Island Persistence, Storage Adapter &amp; Authorities</div>
+            <div class="card-snippet">:core domain IslandLocation, IslandAuthorityOutcome, IslandAuthorityRecord, application ports IslandStoragePort, IslandAuthorityPort; :persistence-adapter canonical SQL-backed PlayerIslandStorageAdapter with dual-mode transactions, bounds/flags/roles/members mapping, distributed authority leasing with DB-clock expiry and fenced takeovers; V5 migrations for islands, island_authorities, island_locations, island_members, island_roles, island_role_permissions, and island_flags; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite cross-dialect verification.</div>
+            <div class="card-foot">
+              <span class="badge-category">Persistence</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
           <div class="item-card" draggable="true" data-id="WP2-006" data-tag="Persistence">
             <div class="card-meta-line">
               <span class="card-id">WP2-006</span>

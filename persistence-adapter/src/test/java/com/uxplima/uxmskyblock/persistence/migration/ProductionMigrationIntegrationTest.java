@@ -140,15 +140,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 7. Apply all migrations to upgrade to V4
-        int v4Applied = mariaRunner.apply(allMigrations);
+        // 7. Apply V4 migration
+        int v4Applied = mariaRunner.apply(allMigrations.subList(0, 4));
         assertThat(v4Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(4);
 
         // 8. Verify V4 schema: profile_switch_operations now exists
         try (Connection conn = mariaDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "profile_switch_operations", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 9. Apply all migrations to upgrade to V5
+        int v5Applied = mariaRunner.apply(allMigrations);
+        assertThat(v5Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 10. Verify V5 schema: islands now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "islands", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -241,15 +254,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 7. Apply all migrations to upgrade to V4
-        int v4Applied = postgresRunner.apply(allMigrations);
+        // 7. Apply V4 migration
+        int v4Applied = postgresRunner.apply(allMigrations.subList(0, 4));
         assertThat(v4Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(4);
 
         // 8. Verify V4 schema: profile_switch_operations now exists
         try (Connection conn = postgresDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "profile_switch_operations", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 9. Apply all migrations to upgrade to V5
+        int v5Applied = postgresRunner.apply(allMigrations);
+        assertThat(v5Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 10. Verify V5 schema: islands now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "islands", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -308,10 +334,16 @@ class ProductionMigrationIntegrationTest {
                             "inventory_mutation_journals",
                             "inventory_mutation_participants",
                             "profile_switch_operations",
+                            "islands",
+                            "island_authorities",
+                            "island_locations",
+                            "island_members",
+                            "island_roles",
+                            "island_role_permissions",
+                            "island_flags",
                             "uxmlib_schema_history");
 
-            assertThat(tables)
-                    .doesNotContain("islands", "island_members", "island_locations", "outbox_events", "inbox_events");
+            assertThat(tables).doesNotContain("outbox_events", "inbox_events", "island_banks");
         }
     }
 
@@ -409,6 +441,62 @@ class ProductionMigrationIntegrationTest {
                             "failure_reason",
                             "created_at",
                             "updated_at");
+
+            Set<String> islandCols = getColumnNames(meta, "islands");
+            assertThat(islandCols)
+                    .contains(
+                            "id",
+                            "owner_profile_id",
+                            "owner_account_uuid",
+                            "custom_name",
+                            "lifecycle",
+                            "economic_state",
+                            "administrative_state",
+                            "freeze_reason",
+                            "level_score",
+                            "net_worth_minor_units",
+                            "version",
+                            "created_at",
+                            "updated_at");
+
+            Set<String> authCols = getColumnNames(meta, "island_authorities");
+            assertThat(authCols)
+                    .contains(
+                            "island_id",
+                            "authoritative_node",
+                            "authority_epoch",
+                            "lease_expires_at",
+                            "last_heartbeat_at",
+                            "updated_at");
+
+            Set<String> locCols = getColumnNames(meta, "island_locations");
+            assertThat(locCols)
+                    .contains(
+                            "island_id",
+                            "world_name",
+                            "center_x",
+                            "center_z",
+                            "min_x",
+                            "min_z",
+                            "max_x",
+                            "max_z",
+                            "spawn_x",
+                            "spawn_y",
+                            "spawn_z",
+                            "spawn_yaw",
+                            "spawn_pitch");
+
+            Set<String> memCols = getColumnNames(meta, "island_members");
+            assertThat(memCols).contains("island_id", "player_uuid", "profile_id", "role_id", "joined_at");
+
+            Set<String> roleCols = getColumnNames(meta, "island_roles");
+            assertThat(roleCols).contains("island_id", "role_id", "weight", "display_name", "is_system");
+
+            Set<String> permCols = getColumnNames(meta, "island_role_permissions");
+            assertThat(permCols).contains("island_id", "role_id", "permission");
+
+            Set<String> flagCols = getColumnNames(meta, "island_flags");
+            assertThat(flagCols).contains("island_id", "flag_name", "flag_value");
         }
     }
 

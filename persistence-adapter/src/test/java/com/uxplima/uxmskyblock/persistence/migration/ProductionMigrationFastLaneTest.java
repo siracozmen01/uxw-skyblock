@@ -78,7 +78,7 @@ class ProductionMigrationFastLaneTest {
                     }
                 }
 
-                // Canonical tables that MUST exist in WP2-006
+                // Canonical tables that MUST exist in V5
                 assertThat(tables)
                         .contains(
                                 "player_accounts",
@@ -88,12 +88,17 @@ class ProductionMigrationFastLaneTest {
                                 "inventory_mutation_journals",
                                 "inventory_mutation_participants",
                                 "profile_switch_operations",
+                                "islands",
+                                "island_authorities",
+                                "island_locations",
+                                "island_members",
+                                "island_roles",
+                                "island_role_permissions",
+                                "island_flags",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
-                assertThat(tables)
-                        .doesNotContain(
-                                "islands", "island_members", "island_locations", "outbox_events", "inbox_events");
+                assertThat(tables).doesNotContain("outbox_events", "inbox_events", "island_banks");
             }
         }
     }
@@ -206,6 +211,71 @@ class ProductionMigrationFastLaneTest {
                                 "failure_reason",
                                 "created_at",
                                 "updated_at");
+
+                // islands columns (V5)
+                Set<String> islandCols = getColumnNames(meta, "islands");
+                assertThat(islandCols)
+                        .containsExactlyInAnyOrder(
+                                "id",
+                                "owner_profile_id",
+                                "owner_account_uuid",
+                                "custom_name",
+                                "lifecycle",
+                                "economic_state",
+                                "administrative_state",
+                                "freeze_reason",
+                                "level_score",
+                                "net_worth_minor_units",
+                                "version",
+                                "created_at",
+                                "updated_at");
+
+                // island_authorities columns (V5)
+                Set<String> authCols = getColumnNames(meta, "island_authorities");
+                assertThat(authCols)
+                        .containsExactlyInAnyOrder(
+                                "island_id",
+                                "authoritative_node",
+                                "authority_epoch",
+                                "lease_expires_at",
+                                "last_heartbeat_at",
+                                "updated_at");
+
+                // island_locations columns (V5)
+                Set<String> locCols = getColumnNames(meta, "island_locations");
+                assertThat(locCols)
+                        .containsExactlyInAnyOrder(
+                                "island_id",
+                                "world_name",
+                                "center_x",
+                                "center_z",
+                                "min_x",
+                                "min_z",
+                                "max_x",
+                                "max_z",
+                                "spawn_x",
+                                "spawn_y",
+                                "spawn_z",
+                                "spawn_yaw",
+                                "spawn_pitch");
+
+                // island_members columns (V5)
+                Set<String> memCols = getColumnNames(meta, "island_members");
+                assertThat(memCols)
+                        .containsExactlyInAnyOrder("island_id", "player_uuid", "profile_id", "role_id", "joined_at");
+
+                // island_roles columns (V5)
+                Set<String> roleCols = getColumnNames(meta, "island_roles");
+                assertThat(roleCols)
+                        .containsExactlyInAnyOrder("island_id", "role_id", "weight", "display_name", "is_system");
+
+                // island_role_permissions columns (V5)
+                Set<String> permCols = getColumnNames(meta, "island_role_permissions");
+                assertThat(permCols).containsExactlyInAnyOrder("island_id", "role_id", "permission");
+
+                // island_flags columns (V5)
+                Set<String> flagCols = getColumnNames(meta, "island_flags");
+                assertThat(flagCols).containsExactlyInAnyOrder("island_id", "flag_name", "flag_value");
             }
         }
     }
@@ -581,8 +651,8 @@ class ProductionMigrationFastLaneTest {
                         "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v4-tgt', 'p-v4-upg')");
             }
 
-            // 4. Upgrade by applying all migrations (only V4 should be applied)
-            int v4Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V1..V4 migrations (only V4 should be applied)
+            int v4Applied = runner.apply(allMigrations.subList(0, 4));
             assertThat(v4Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(4);
 
@@ -603,9 +673,75 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 4));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(4);
+        }
+    }
+
+    @Test
+    @DisplayName("14. Upgrade from existing V4 database applies V5 cleanly and preserves data")
+    void upgradeFromV4AppliesV5Cleanly() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Apply V1 + V2 + V3 + V4 migrations
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v4Applied = runner.apply(allMigrations.subList(0, 4));
+            assertThat(v4Applied).isEqualTo(4);
+            assertThat(runner.currentVersion()).isEqualTo(4);
+
+            // 2. Verify pre-V5 schema state: islands does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "islands", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V4 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v5-upg')");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v5-src', 'p-v5-upg')");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v5-tgt', 'p-v5-upg')");
+                execute(conn, """
+                        INSERT INTO profile_switch_operations (
+                            operation_id, player_uuid, from_profile_id, to_profile_id, state
+                        ) VALUES ('sw-v5', 'p-v5-upg', 'prof-v5-src', 'prof-v5-tgt', 'PREPARING')
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V5 should be applied)
+            int v5Applied = runner.apply(allMigrations);
+            assertThat(v5Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(5);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM player_accounts WHERE player_uuid = 'p-v5-upg'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(
+                                conn, "SELECT COUNT(*) FROM profile_switch_operations WHERE operation_id = 'sw-v5'"))
+                        .isEqualTo(1);
+
+                // 6. Verify islands table accepts rows
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v5', 'prof-v5-src', 'p-v5-upg')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v5'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(5);
         }
     }
 
