@@ -39,6 +39,13 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(plugin.bootstrap().persistenceBootstrap()).isNotNull();
         assertThat(plugin.bootstrap().protectionListener()).isNotNull();
         assertThat(plugin.bootstrap().commandTree()).isNotNull();
+        assertThat(plugin.bootstrap().nodeConfiguration()).isNotNull();
+        assertThat(plugin.bootstrap().playerStateConfig()).isNotNull();
+        assertThat(plugin.bootstrap().economyBridge()).isNotNull();
+        assertThat(plugin.bootstrap().controlMenu()).isNotNull();
+        assertThat(plugin.bootstrap().placeholderExpansion()).isNotNull();
+        assertThat(plugin.bootstrap().outboxDispatcher()).isNotNull();
+        assertThat(new java.io.File(plugin.getDataFolder(), "config.conf")).exists();
     }
 
     @Test

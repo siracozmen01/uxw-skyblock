@@ -12,6 +12,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
@@ -31,9 +32,11 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
+import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
 
@@ -67,13 +70,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandCommandTree commandTree;
     private final BukkitSkyblockApiBridge apiBridge;
     private final ServerNodeConfiguration nodeConfiguration;
+    private final PlayerStateDurabilityConfig playerStateConfig;
 
     public SkyblockBootstrap(
-            JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap, ServerNodeConfiguration nodeConfiguration) {
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
         this.nodeConfiguration = Objects.requireNonNull(nodeConfiguration, "nodeConfiguration must not be null");
+        this.playerStateConfig = Objects.requireNonNull(playerStateConfig, "playerStateConfig must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -112,7 +120,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 scheduler,
                 protectionListener,
                 Duration.ofSeconds(5),
-                Duration.ofSeconds(60));
+                playerStateConfig.ambientCheckpointInterval());
         this.sessionListener = new PlayerSessionListener(sessionCoordinator);
 
         this.biomeAdapter = new BukkitBiomeAdapter(persistenceBootstrap.islandStoragePort(), scheduler, worldName);
@@ -162,10 +170,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 controlMenu);
     }
 
+    public SkyblockBootstrap(
+            JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap, ServerNodeConfiguration nodeConfiguration) {
+        this(plugin, persistenceBootstrap, nodeConfiguration, PlayerStateDurabilityConfig.defaultPolicy());
+    }
+
     public SkyblockBootstrap(JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap) {
         this(plugin, persistenceBootstrap, ServerNodeConfiguration.of("skyblock-node-default", "world"));
     }
 
+    @SuppressWarnings("EmptyCatch")
     public static SkyblockBootstrap createDefault(JavaPlugin plugin) {
         Objects.requireNonNull(plugin, "plugin must not be null");
         Path dataDir = plugin.getDataFolder().toPath();
@@ -174,29 +188,70 @@ public final class SkyblockBootstrap implements AutoCloseable {
         } catch (java.io.IOException e) {
             throw new IllegalStateException("Failed to create plugin data directory: " + dataDir, e);
         }
+
         Path configFile = dataDir.resolve("config.conf");
-        ServerNodeConfiguration nodeConfig;
+        if (!java.nio.file.Files.exists(configFile)) {
+            try (java.io.InputStream in = plugin.getResource("config.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, configFile);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        CommentedConfigurationNode root = null;
         if (java.nio.file.Files.exists(configFile)) {
             try {
-                CommentedConfigurationNode root = HoconConfigurationLoader.builder()
+                root = HoconConfigurationLoader.builder()
                         .path(configFile)
                         .build()
                         .load();
-                nodeConfig = ServerNodeConfiguration.load(root);
             } catch (Exception e) {
-                throw new IllegalStateException("Failed to load server node configuration from: " + configFile, e);
-            }
-        } else {
-            String envNode = System.getProperty("skyblock.node.id", System.getenv("SKYBLOCK_NODE_ID"));
-            if (envNode != null && !envNode.isBlank()) {
-                nodeConfig = ServerNodeConfiguration.of(envNode.trim(), "world");
-            } else {
-                nodeConfig = ServerNodeConfiguration.of("skyblock-node-default", "world");
+                throw new IllegalStateException("Failed to load configuration from: " + configFile, e);
             }
         }
+
+        ServerNodeConfiguration nodeConfig;
+        PlayerStateDurabilityConfig playerStateConfig;
+        if (root != null) {
+            nodeConfig = ServerNodeConfiguration.load(root);
+            playerStateConfig = PlayerStateConfigurationAdapter.load(root);
+        } else {
+            String envNode = System.getProperty("skyblock.node.id", System.getenv("SKYBLOCK_NODE_ID"));
+            String nodeId = (envNode != null && !envNode.isBlank()) ? envNode.trim() : "skyblock-node-default";
+            nodeConfig = ServerNodeConfiguration.of(nodeId, "world");
+            playerStateConfig = PlayerStateDurabilityConfig.defaultPolicy();
+        }
+
+        PersistenceBootstrap persistence = resolvePersistence(root, dataDir);
+        return new SkyblockBootstrap(plugin, persistence, nodeConfig, playerStateConfig);
+    }
+
+    private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
+        String envJdbc = System.getProperty("skyblock.jdbc.url", System.getenv("SKYBLOCK_JDBC_URL"));
+        String envUser = System.getProperty("skyblock.db.user", System.getenv("SKYBLOCK_DB_USER"));
+        String envPass = System.getProperty("skyblock.db.password", System.getenv("SKYBLOCK_DB_PASSWORD"));
+
+        if (envJdbc != null && !envJdbc.isBlank()) {
+            return PersistenceBootstrap.createRemote(envJdbc.trim(), envUser, envPass, 10);
+        }
+
+        if (root != null) {
+            CommentedConfigurationNode dbNode = root.node("database");
+            String dbType = dbNode.node("type").getString("sqlite");
+            if ("remote".equalsIgnoreCase(dbType)) {
+                String jdbcUrl = dbNode.node("jdbc-url").getString();
+                if (jdbcUrl != null && !jdbcUrl.isBlank()) {
+                    String user = dbNode.node("username").getString("");
+                    String pass = dbNode.node("password").getString("");
+                    int poolSize = dbNode.node("max-pool-size").getInt(10);
+                    return PersistenceBootstrap.createRemote(jdbcUrl.trim(), user, pass, poolSize);
+                }
+            }
+        }
+
         Path dbFile = dataDir.resolve("skyblock.db");
-        PersistenceBootstrap persistence = PersistenceBootstrap.createSqlite(dbFile);
-        return new SkyblockBootstrap(plugin, persistence, nodeConfig);
+        return PersistenceBootstrap.createSqlite(dbFile);
     }
 
     public void enable() {
@@ -232,6 +287,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public ServerNodeConfiguration nodeConfiguration() {
         return nodeConfiguration;
+    }
+
+    public PlayerStateDurabilityConfig playerStateConfig() {
+        return playerStateConfig;
     }
 
     public PlayerSessionCoordinator sessionCoordinator() {

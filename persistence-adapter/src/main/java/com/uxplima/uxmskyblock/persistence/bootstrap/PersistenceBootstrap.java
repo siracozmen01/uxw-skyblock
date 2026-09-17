@@ -90,6 +90,22 @@ public final class PersistenceBootstrap implements AutoCloseable {
         return new PersistenceBootstrap(db);
     }
 
+    public static PersistenceBootstrap createRemote(String jdbcUrl, String username, String password, int maxPoolSize) {
+        Objects.requireNonNull(jdbcUrl, "jdbcUrl must not be null");
+        com.uxplima.uxmlib.storage.sql.DatabaseBuilder builder =
+                Database.builder().jdbcUrl(jdbcUrl);
+        if (username != null && !username.isBlank()) {
+            builder.username(username);
+        }
+        if (password != null && !password.isBlank()) {
+            builder.password(password);
+        }
+        if (maxPoolSize > 0) {
+            builder.maxPoolSize(maxPoolSize);
+        }
+        return new PersistenceBootstrap(builder.build());
+    }
+
     public IslandStoragePort islandStoragePort() {
         return islandStorageAdapter;
     }

@@ -5,3 +5,12 @@ api-version: '1.21'
 folia-supported: true
 description: Enterprise-grade, distributed, event-driven Skyblock platform
 author: UXPLIMA
+dependencies:
+  server:
+    Vault:
+      load: BEFORE
+      required: false
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+
