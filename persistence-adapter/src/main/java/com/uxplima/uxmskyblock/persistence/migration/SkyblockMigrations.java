@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 5;
+    public static final int LATEST_VERSION = 6;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -37,6 +37,9 @@ public final class SkyblockMigrations {
 
     /** Human-readable description of migration V5. */
     public static final String V5_DESCRIPTION = "create islands and island authority structures";
+
+    /** Human-readable description of migration V6. */
+    public static final String V6_DESCRIPTION = "create island banks bank transactions and processed operations";
 
     private SkyblockMigrations() {}
 
@@ -59,7 +62,8 @@ public final class SkyblockMigrations {
                 v2Migration(dialect),
                 v3Migration(dialect),
                 v4Migration(dialect),
-                v5Migration(dialect));
+                v5Migration(dialect),
+                v6Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -276,6 +280,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(5, V5_DESCRIPTION, SQLITE_V5_DDL);
             case MYSQL -> new Migration(5, V5_DESCRIPTION, MYSQL_V5_DDL);
             case POSTGRES -> new Migration(5, V5_DESCRIPTION, POSTGRES_V5_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v6Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(6, V6_DESCRIPTION, SQLITE_V6_DDL);
+            case MYSQL -> new Migration(6, V6_DESCRIPTION, MYSQL_V6_DDL);
+            case POSTGRES -> new Migration(6, V6_DESCRIPTION, POSTGRES_V6_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -746,5 +762,149 @@ public final class SkyblockMigrations {
                 CONSTRAINT fk_island_flags_island FOREIGN KEY (island_id)
                     REFERENCES islands (id) ON DELETE CASCADE
             );
+            """;
+
+    private static final String SQLITE_V6_DDL = """
+            CREATE TABLE IF NOT EXISTS island_banks (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                primary_balance_minor_units BIGINT NOT NULL DEFAULT 0,
+                crystals_balance BIGINT NOT NULL DEFAULT 0,
+                exp_balance BIGINT NOT NULL DEFAULT 0,
+                version BIGINT NOT NULL DEFAULT 1,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_banks_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS bank_transactions (
+                transaction_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                actor_uuid VARCHAR(36) NOT NULL,
+                currency_id VARCHAR(32) NOT NULL DEFAULT 'PRIMARY',
+                currency_scale INT NOT NULL DEFAULT 2,
+                delta_amount_minor_units BIGINT NOT NULL,
+                resulting_balance_minor_units BIGINT NOT NULL,
+                reason VARCHAR(64) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_bank_transactions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_bank_transactions_island_date ON bank_transactions (island_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_bank_transactions_operation ON bank_transactions (operation_id);
+
+            CREATE TABLE IF NOT EXISTS processed_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_scope VARCHAR(32) NOT NULL,
+                actor_id VARCHAR(36) NOT NULL,
+                idempotency_key VARCHAR(64) NOT NULL,
+                operation_type VARCHAR(64) NOT NULL,
+                resource_id VARCHAR(64) NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                result_code VARCHAR(64) NULL,
+                result_payload TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                CONSTRAINT uq_processed_ops UNIQUE (operation_scope, actor_id, idempotency_key)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_processed_operations_resource ON processed_operations (resource_id);
+            """;
+
+    private static final String MYSQL_V6_DDL = """
+            CREATE TABLE IF NOT EXISTS island_banks (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                primary_balance_minor_units BIGINT NOT NULL DEFAULT 0,
+                crystals_balance BIGINT NOT NULL DEFAULT 0,
+                exp_balance BIGINT NOT NULL DEFAULT 0,
+                version BIGINT NOT NULL DEFAULT 1,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_banks_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS bank_transactions (
+                transaction_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                actor_uuid VARCHAR(36) NOT NULL,
+                currency_id VARCHAR(32) NOT NULL DEFAULT 'PRIMARY',
+                currency_scale INT NOT NULL DEFAULT 2,
+                delta_amount_minor_units BIGINT NOT NULL,
+                resulting_balance_minor_units BIGINT NOT NULL,
+                reason VARCHAR(64) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_bank_transactions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_bank_transactions_island_date ON bank_transactions (island_id, created_at DESC);
+            CREATE INDEX idx_bank_transactions_operation ON bank_transactions (operation_id);
+
+            CREATE TABLE IF NOT EXISTS processed_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_scope VARCHAR(32) NOT NULL,
+                actor_id VARCHAR(36) NOT NULL,
+                idempotency_key VARCHAR(64) NOT NULL,
+                operation_type VARCHAR(64) NOT NULL,
+                resource_id VARCHAR(64) NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                result_code VARCHAR(64) NULL,
+                result_payload JSON NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                CONSTRAINT uq_processed_ops UNIQUE (operation_scope, actor_id, idempotency_key)
+            );
+
+            CREATE INDEX idx_processed_operations_resource ON processed_operations (resource_id);
+            """;
+
+    private static final String POSTGRES_V6_DDL = """
+            CREATE TABLE IF NOT EXISTS island_banks (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                primary_balance_minor_units BIGINT NOT NULL DEFAULT 0,
+                crystals_balance BIGINT NOT NULL DEFAULT 0,
+                exp_balance BIGINT NOT NULL DEFAULT 0,
+                version BIGINT NOT NULL DEFAULT 1,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_banks_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS bank_transactions (
+                transaction_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                actor_uuid VARCHAR(36) NOT NULL,
+                currency_id VARCHAR(32) NOT NULL DEFAULT 'PRIMARY',
+                currency_scale INT NOT NULL DEFAULT 2,
+                delta_amount_minor_units BIGINT NOT NULL,
+                resulting_balance_minor_units BIGINT NOT NULL,
+                reason VARCHAR(64) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_bank_transactions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_bank_transactions_island_date ON bank_transactions (island_id, created_at DESC);
+            CREATE INDEX idx_bank_transactions_operation ON bank_transactions (operation_id);
+
+            CREATE TABLE IF NOT EXISTS processed_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                operation_scope VARCHAR(32) NOT NULL,
+                actor_id VARCHAR(36) NOT NULL,
+                idempotency_key VARCHAR(64) NOT NULL,
+                operation_type VARCHAR(64) NOT NULL,
+                resource_id VARCHAR(64) NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                result_code VARCHAR(64) NULL,
+                result_payload JSONB NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                CONSTRAINT uq_processed_ops UNIQUE (operation_scope, actor_id, idempotency_key)
+            );
+
+            CREATE INDEX idx_processed_operations_resource ON processed_operations (resource_id);
             """;
 }

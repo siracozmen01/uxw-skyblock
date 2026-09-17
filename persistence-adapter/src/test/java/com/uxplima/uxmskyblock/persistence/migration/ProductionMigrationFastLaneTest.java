@@ -78,7 +78,7 @@ class ProductionMigrationFastLaneTest {
                     }
                 }
 
-                // Canonical tables that MUST exist in V5
+                // Canonical tables that MUST exist in V6
                 assertThat(tables)
                         .contains(
                                 "player_accounts",
@@ -95,10 +95,13 @@ class ProductionMigrationFastLaneTest {
                                 "island_roles",
                                 "island_role_permissions",
                                 "island_flags",
+                                "island_banks",
+                                "bank_transactions",
+                                "processed_operations",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
-                assertThat(tables).doesNotContain("outbox_events", "inbox_events", "island_banks");
+                assertThat(tables).doesNotContain("outbox_events", "inbox_events");
             }
         }
     }
@@ -276,6 +279,48 @@ class ProductionMigrationFastLaneTest {
                 // island_flags columns (V5)
                 Set<String> flagCols = getColumnNames(meta, "island_flags");
                 assertThat(flagCols).containsExactlyInAnyOrder("island_id", "flag_name", "flag_value");
+
+                // island_banks columns (V6)
+                Set<String> bankCols = getColumnNames(meta, "island_banks");
+                assertThat(bankCols)
+                        .containsExactlyInAnyOrder(
+                                "island_id",
+                                "primary_balance_minor_units",
+                                "crystals_balance",
+                                "exp_balance",
+                                "version",
+                                "updated_at");
+
+                // bank_transactions columns (V6)
+                Set<String> txCols = getColumnNames(meta, "bank_transactions");
+                assertThat(txCols)
+                        .containsExactlyInAnyOrder(
+                                "transaction_id",
+                                "operation_id",
+                                "island_id",
+                                "actor_uuid",
+                                "currency_id",
+                                "currency_scale",
+                                "delta_amount_minor_units",
+                                "resulting_balance_minor_units",
+                                "reason",
+                                "created_at");
+
+                // processed_operations columns (V6)
+                Set<String> opCols = getColumnNames(meta, "processed_operations");
+                assertThat(opCols)
+                        .containsExactlyInAnyOrder(
+                                "operation_id",
+                                "operation_scope",
+                                "actor_id",
+                                "idempotency_key",
+                                "operation_type",
+                                "resource_id",
+                                "status",
+                                "result_code",
+                                "result_payload",
+                                "created_at",
+                                "completed_at");
             }
         }
     }
@@ -716,8 +761,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V5 should be applied)
-            int v5Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying all migrations up to V5 (only V5 should be applied)
+            int v5Applied = runner.apply(allMigrations.subList(0, 5));
             assertThat(v5Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(5);
 
@@ -739,9 +784,66 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 5));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(5);
+        }
+    }
+
+    @Test
+    @DisplayName("15. Upgrade from existing V5 database applies V6 cleanly and preserves data")
+    void upgradeFromV5AppliesV6Cleanly() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Apply V1..V5 migrations
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v5Applied = runner.apply(allMigrations.subList(0, 5));
+            assertThat(v5Applied).isEqualTo(5);
+            assertThat(runner.currentVersion()).isEqualTo(5);
+
+            // 2. Verify pre-V6 schema state: island_banks does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "island_banks", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V5 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v6-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v6', 'p-v6-upg')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v6', 'prof-v6', 'p-v6-upg')
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V6 should be applied)
+            int v6Applied = runner.apply(allMigrations);
+            assertThat(v6Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(6);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v6'"))
+                        .isEqualTo(1);
+
+                // 6. Verify island_banks and bank_transactions accept rows
+                execute(conn, """
+                        INSERT INTO island_banks (island_id, primary_balance_minor_units)
+                        VALUES ('isl-v6', 12345)
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_banks WHERE island_id = 'isl-v6'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(6);
         }
     }
 

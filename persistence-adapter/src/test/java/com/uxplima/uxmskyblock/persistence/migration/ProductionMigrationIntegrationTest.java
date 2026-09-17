@@ -153,15 +153,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 9. Apply all migrations to upgrade to V5
-        int v5Applied = mariaRunner.apply(allMigrations);
+        // 9. Apply migration V5
+        int v5Applied = mariaRunner.apply(allMigrations.subList(0, 5));
         assertThat(v5Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(5);
 
         // 10. Verify V5 schema: islands now exists
         try (Connection conn = mariaDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "islands", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 11. Apply all migrations to upgrade to V6
+        int v6Applied = mariaRunner.apply(allMigrations);
+        assertThat(v6Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 12. Verify V6 schema: island_banks now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "island_banks", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -267,15 +280,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 9. Apply all migrations to upgrade to V5
-        int v5Applied = postgresRunner.apply(allMigrations);
+        // 9. Apply migration V5
+        int v5Applied = postgresRunner.apply(allMigrations.subList(0, 5));
         assertThat(v5Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(5);
 
         // 10. Verify V5 schema: islands now exists
         try (Connection conn = postgresDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "islands", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 11. Apply all migrations to upgrade to V6
+        int v6Applied = postgresRunner.apply(allMigrations);
+        assertThat(v6Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 12. Verify V6 schema: island_banks now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "island_banks", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -341,9 +367,12 @@ class ProductionMigrationIntegrationTest {
                             "island_roles",
                             "island_role_permissions",
                             "island_flags",
+                            "island_banks",
+                            "bank_transactions",
+                            "processed_operations",
                             "uxmlib_schema_history");
 
-            assertThat(tables).doesNotContain("outbox_events", "inbox_events", "island_banks");
+            assertThat(tables).doesNotContain("outbox_events", "inbox_events");
         }
     }
 
@@ -497,6 +526,45 @@ class ProductionMigrationIntegrationTest {
 
             Set<String> flagCols = getColumnNames(meta, "island_flags");
             assertThat(flagCols).contains("island_id", "flag_name", "flag_value");
+
+            Set<String> bankCols = getColumnNames(meta, "island_banks");
+            assertThat(bankCols)
+                    .contains(
+                            "island_id",
+                            "primary_balance_minor_units",
+                            "crystals_balance",
+                            "exp_balance",
+                            "version",
+                            "updated_at");
+
+            Set<String> txCols = getColumnNames(meta, "bank_transactions");
+            assertThat(txCols)
+                    .contains(
+                            "transaction_id",
+                            "operation_id",
+                            "island_id",
+                            "actor_uuid",
+                            "currency_id",
+                            "currency_scale",
+                            "delta_amount_minor_units",
+                            "resulting_balance_minor_units",
+                            "reason",
+                            "created_at");
+
+            Set<String> opCols = getColumnNames(meta, "processed_operations");
+            assertThat(opCols)
+                    .contains(
+                            "operation_id",
+                            "operation_scope",
+                            "actor_id",
+                            "idempotency_key",
+                            "operation_type",
+                            "resource_id",
+                            "status",
+                            "result_code",
+                            "result_payload",
+                            "created_at",
+                            "completed_at");
         }
     }
 

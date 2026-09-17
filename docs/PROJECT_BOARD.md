@@ -25,10 +25,11 @@
 * **WP2-004 Status:** COMPLETED (commit `5e74f76`)
 * **WP2-005 Status:** COMPLETED (commit `7fa276e`)
 * **WP2-006 Status:** COMPLETED (commit `9cde17a`)
-* **ISL-001 Status:** COMPLETED
+* **ISL-001 Status:** COMPLETED (commit `b09ba54`)
+* **BNK-001 Status:** COMPLETED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 93% (39 / 42 cards completed)
+* **Overall Card Completion:** 93% (40 / 43 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -50,6 +51,7 @@
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[BNK-001]** Island Bank & Multi-Currency Economy (`:core` domain `IslandBank`, `BankTransaction`, `BankTransactionOutcome` sealed ADT, application port `IslandBankPort`; `:persistence-adapter` canonical SQL-backed `PlayerIslandBankAdapter` with exact integer minor units, OCC monotonic version CAS, authority row locking on `island_authorities`, scoped idempotency reservation on `processed_operations`, append-only audit trail logging in `bank_transactions`; V6 migrations for `island_banks`, `bank_transactions`, and `processed_operations`; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite cross-dialect verification) — COMPLETED
 * [x] **[ISL-001]** Island Persistence, Storage Adapter & Authorities (`:core` domain `IslandLocation`, `IslandAuthorityOutcome`, `IslandAuthorityRecord`, application ports `IslandStoragePort`, `IslandAuthorityPort`; `:persistence-adapter` canonical SQL-backed `PlayerIslandStorageAdapter` with dual-mode transactions, bounds/flags/roles/members mapping, distributed authority leasing with DB-clock expiry and fenced takeovers; V5 migrations for `islands`, `island_authorities`, `island_locations`, `island_members`, `island_roles`, `island_role_permissions`, and `island_flags`; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite cross-dialect verification) — COMPLETED
 * [x] **[WP2-006]** Profile Switch Write-Ahead State Machine (`:core` domain `ProfileSwitchOperation` sealed ADT, `ProfileSwitchState`, `ProfileSwitchPort`, `:persistence-adapter` canonical SQL-backed state machine with `player_sessions` row locking, CAS active switch reservation on `player_accounts`, V4 migrations for `profile_switch_operations`, fast-lane SQLite and dual-lane Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED
 * [x] **[CORE-001]** Core Domain Records & Value Objects (`:core` domain `Island`, `IslandId`, `IslandMember`, `IslandRole`, `IslandFlags`, `IslandBounds`, `IslandPermission` records, role weight hierarchy, and jqwik property tests) — COMPLETED

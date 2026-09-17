@@ -598,7 +598,7 @@
           <span>Overall Card Completion</span>
           <span id="metric-percent">93%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">39 / 42</div>
+        <div class="metric-val" id="metric-ratio">40 / 43</div>
         <div class="progress-track">
           <div class="progress-fill" id="metric-fill" style="width: 93%;"></div>
         </div>
@@ -737,9 +737,22 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">39</span>
+          <span class="column-count" id="count-done">40</span>
         </div>
         <div class="card-stack" id="stack-done">
+          <div class="item-card" draggable="true" data-id="BNK-001" data-tag="Economy">
+            <div class="card-meta-line">
+              <span class="card-id">BNK-001</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Island Bank &amp; Multi-Currency Economy</div>
+            <div class="card-snippet">:core domain IslandBank, BankTransaction, BankTransactionOutcome sealed ADT, application port IslandBankPort; :persistence-adapter canonical SQL-backed PlayerIslandBankAdapter with exact integer minor units, OCC monotonic version CAS, authority row locking on island_authorities, scoped idempotency reservation on processed_operations, append-only audit trail logging in bank_transactions; V6 migrations for island_banks, bank_transactions, and processed_operations; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite cross-dialect verification.</div>
+            <div class="card-foot">
+              <span class="badge-category">Economy</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
           <div class="item-card" draggable="true" data-id="ISL-001" data-tag="Persistence">
             <div class="card-meta-line">
               <span class="card-id">ISL-001</span>
