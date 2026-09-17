@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 6;
+    public static final int LATEST_VERSION = 7;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -40,6 +40,9 @@ public final class SkyblockMigrations {
 
     /** Human-readable description of migration V6. */
     public static final String V6_DESCRIPTION = "create island banks bank transactions and processed operations";
+
+    /** Human-readable description of migration V7. */
+    public static final String V7_DESCRIPTION = "create island upgrades and leaderboard indexes";
 
     private SkyblockMigrations() {}
 
@@ -63,7 +66,8 @@ public final class SkyblockMigrations {
                 v3Migration(dialect),
                 v4Migration(dialect),
                 v5Migration(dialect),
-                v6Migration(dialect));
+                v6Migration(dialect),
+                v7Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -292,6 +296,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(6, V6_DESCRIPTION, SQLITE_V6_DDL);
             case MYSQL -> new Migration(6, V6_DESCRIPTION, MYSQL_V6_DDL);
             case POSTGRES -> new Migration(6, V6_DESCRIPTION, POSTGRES_V6_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v7Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(7, V7_DESCRIPTION, SQLITE_V7_DDL);
+            case MYSQL -> new Migration(7, V7_DESCRIPTION, MYSQL_V7_DDL);
+            case POSTGRES -> new Migration(7, V7_DESCRIPTION, POSTGRES_V7_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -906,5 +922,50 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX idx_processed_operations_resource ON processed_operations (resource_id);
+            """;
+
+    private static final String SQLITE_V7_DDL = """
+            CREATE TABLE IF NOT EXISTS island_upgrades (
+                island_id VARCHAR(36) NOT NULL,
+                upgrade_key VARCHAR(64) NOT NULL,
+                tier INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, upgrade_key),
+                CONSTRAINT fk_island_upgrades_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_islands_worth ON islands (net_worth_minor_units DESC);
+            CREATE INDEX IF NOT EXISTS idx_island_banks_balance ON island_banks (primary_balance_minor_units DESC);
+            """;
+
+    private static final String MYSQL_V7_DDL = """
+            CREATE TABLE IF NOT EXISTS island_upgrades (
+                island_id VARCHAR(36) NOT NULL,
+                upgrade_key VARCHAR(64) NOT NULL,
+                tier INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, upgrade_key),
+                CONSTRAINT fk_island_upgrades_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_islands_worth ON islands (net_worth_minor_units DESC);
+            CREATE INDEX idx_island_banks_balance ON island_banks (primary_balance_minor_units DESC);
+            """;
+
+    private static final String POSTGRES_V7_DDL = """
+            CREATE TABLE IF NOT EXISTS island_upgrades (
+                island_id VARCHAR(36) NOT NULL,
+                upgrade_key VARCHAR(64) NOT NULL,
+                tier INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, upgrade_key),
+                CONSTRAINT fk_island_upgrades_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_islands_worth ON islands (net_worth_minor_units DESC);
+            CREATE INDEX idx_island_banks_balance ON island_banks (primary_balance_minor_units DESC);
             """;
 }

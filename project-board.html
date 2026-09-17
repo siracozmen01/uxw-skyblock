@@ -596,11 +596,11 @@
       <div class="metric-card">
         <div class="metric-label">
           <span>Overall Card Completion</span>
-          <span id="metric-percent">93%</span>
+          <span id="metric-percent">95%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">40 / 43</div>
+        <div class="metric-val" id="metric-ratio">41 / 43</div>
         <div class="progress-track">
-          <div class="progress-fill" id="metric-fill" style="width: 93%;"></div>
+          <div class="progress-fill" id="metric-fill" style="width: 95%;"></div>
         </div>
       </div>
 
@@ -646,7 +646,7 @@
             <span class="status-indicator"></span>
             <span class="column-title">Backlog</span>
           </div>
-          <span class="column-count" id="count-backlog">3</span>
+          <span class="column-count" id="count-backlog">2</span>
         </div>
         <div class="card-stack" id="stack-backlog">
 
@@ -670,19 +670,6 @@
             </div>
             <div class="card-heading">Starter Island Schematics</div>
             <div class="card-snippet">Configurable starter island presets (Desert, Nether, Classic) streaming via FAWE/native.</div>
-            <div class="card-foot">
-              <span class="badge-category">Core</span>
-              <span class="badge-status-dot">Queued</span>
-            </div>
-          </div>
-
-          <div class="item-card" draggable="true" data-id="LVL-003" data-tag="Core">
-            <div class="card-meta-line">
-              <span class="card-id">LVL-003</span>
-              <span class="card-label">Phase 3</span>
-            </div>
-            <div class="card-heading">Level Leaderboard & Holograms</div>
-            <div class="card-snippet">Top 10 cached island leaderboards rendered via uxmlib-integration Display holograms.</div>
             <div class="card-foot">
               <span class="badge-category">Core</span>
               <span class="badge-status-dot">Queued</span>
@@ -737,9 +724,22 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">40</span>
+          <span class="column-count" id="count-done">41</span>
         </div>
         <div class="card-stack" id="stack-done">
+          <div class="item-card" draggable="true" data-id="LVL-003" data-tag="Core">
+            <div class="card-meta-line">
+              <span class="card-id">LVL-003</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Island Level, Upgrades &amp; Leaderboards</div>
+            <div class="card-snippet">:core domain IslandMaterialIndex with amortized O(1) dynamic block worth recalculation, IslandLevelService, UpgradeId, UpgradeDefinition, IslandUpgradeService, IslandLeaderboardService; :persistence-adapter canonical SQL PlayerIslandUpgradeAdapter and PlayerIslandLeaderboardAdapter with atomic upsert; V7 migrations with island_upgrades table and worth/bank index scans; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite verification.</div>
+            <div class="card-foot">
+              <span class="badge-category">Core</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
           <div class="item-card" draggable="true" data-id="BNK-001" data-tag="Economy">
             <div class="card-meta-line">
               <span class="card-id">BNK-001</span>

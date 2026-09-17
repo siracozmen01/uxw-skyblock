@@ -98,6 +98,7 @@ class ProductionMigrationFastLaneTest {
                                 "island_banks",
                                 "bank_transactions",
                                 "processed_operations",
+                                "island_upgrades",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -321,6 +322,10 @@ class ProductionMigrationFastLaneTest {
                                 "result_payload",
                                 "created_at",
                                 "completed_at");
+
+                // island_upgrades columns (V7)
+                Set<String> upgCols = getColumnNames(meta, "island_upgrades");
+                assertThat(upgCols).containsExactlyInAnyOrder("island_id", "upgrade_key", "tier", "updated_at");
             }
         }
     }
@@ -821,8 +826,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V6 should be applied)
-            int v6Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V6 migration (only V6 should be applied)
+            int v6Applied = runner.apply(allMigrations.subList(0, 6));
             assertThat(v6Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(6);
 
@@ -841,9 +846,73 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 6));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(6);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "16. Step-by-step upgrade from V6 to V7 preserves existing bank and island data and enables upgrade engine")
+    void stepByStepUpgradeFromV6ToV7PreservesData() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V6
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v6Applied = runner.apply(allMigrations.subList(0, 6));
+            assertThat(v6Applied).isEqualTo(6);
+            assertThat(runner.currentVersion()).isEqualTo(6);
+
+            // 2. Verify pre-V7 schema state: island_upgrades does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "island_upgrades", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V6 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v7-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v7', 'p-v7-upg')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v7', 'prof-v7', 'p-v7-upg')
+                        """);
+                execute(conn, """
+                        INSERT INTO island_banks (island_id, primary_balance_minor_units)
+                        VALUES ('isl-v7', 50000)
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V7 should be applied)
+            int v7Applied = runner.apply(allMigrations);
+            assertThat(v7Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(7);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v7'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_banks WHERE island_id = 'isl-v7'"))
+                        .isEqualTo(1);
+
+                // 6. Verify island_upgrades accepts rows
+                execute(conn, """
+                        INSERT INTO island_upgrades (island_id, upgrade_key, tier)
+                        VALUES ('isl-v7', 'SIZE', 1)
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_upgrades WHERE island_id = 'isl-v7'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(7);
         }
     }
 

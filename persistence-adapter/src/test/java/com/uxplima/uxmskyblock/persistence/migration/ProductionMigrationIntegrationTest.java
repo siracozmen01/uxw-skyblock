@@ -166,15 +166,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 11. Apply all migrations to upgrade to V6
-        int v6Applied = mariaRunner.apply(allMigrations);
+        // 11. Apply V6 migration
+        int v6Applied = mariaRunner.apply(allMigrations.subList(0, 6));
         assertThat(v6Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(6);
 
         // 12. Verify V6 schema: island_banks now exists
         try (Connection conn = mariaDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "island_banks", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 13. Apply all migrations to upgrade to V7
+        int v7Applied = mariaRunner.apply(allMigrations);
+        assertThat(v7Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 14. Verify V7 schema: island_upgrades now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "island_upgrades", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -293,15 +306,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 11. Apply all migrations to upgrade to V6
-        int v6Applied = postgresRunner.apply(allMigrations);
+        // 11. Apply V6 migration
+        int v6Applied = postgresRunner.apply(allMigrations.subList(0, 6));
         assertThat(v6Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(6);
 
         // 12. Verify V6 schema: island_banks now exists
         try (Connection conn = postgresDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "island_banks", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 13. Apply all migrations to upgrade to V7
+        int v7Applied = postgresRunner.apply(allMigrations);
+        assertThat(v7Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 14. Verify V7 schema: island_upgrades now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "island_upgrades", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -370,6 +396,7 @@ class ProductionMigrationIntegrationTest {
                             "island_banks",
                             "bank_transactions",
                             "processed_operations",
+                            "island_upgrades",
                             "uxmlib_schema_history");
 
             assertThat(tables).doesNotContain("outbox_events", "inbox_events");
@@ -565,6 +592,9 @@ class ProductionMigrationIntegrationTest {
                             "result_payload",
                             "created_at",
                             "completed_at");
+
+            Set<String> upgCols = getColumnNames(meta, "island_upgrades");
+            assertThat(upgCols).contains("island_id", "upgrade_key", "tier", "updated_at");
         }
     }
 
