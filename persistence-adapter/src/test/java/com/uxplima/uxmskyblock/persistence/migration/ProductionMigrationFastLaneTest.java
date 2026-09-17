@@ -100,10 +100,12 @@ class ProductionMigrationFastLaneTest {
                                 "processed_operations",
                                 "island_upgrades",
                                 "backup_operations",
+                                "outbox_events",
+                                "consumer_inbox",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
-                assertThat(tables).doesNotContain("outbox_events", "inbox_events");
+                assertThat(tables).doesNotContain("inbox_events");
             }
         }
     }
@@ -345,6 +347,28 @@ class ProductionMigrationFastLaneTest {
                                 "created_at",
                                 "completed_at",
                                 "updated_at");
+
+                // outbox_events columns (V9)
+                Set<String> outboxCols = getColumnNames(meta, "outbox_events");
+                assertThat(outboxCols)
+                        .containsExactlyInAnyOrder(
+                                "event_id",
+                                "event_type",
+                                "aggregate_id",
+                                "payload",
+                                "status",
+                                "retry_count",
+                                "next_attempt_at",
+                                "claim_owner",
+                                "claim_token",
+                                "claim_expires_at",
+                                "last_error",
+                                "created_at",
+                                "processed_at");
+
+                // consumer_inbox columns (V9)
+                Set<String> inboxCols = getColumnNames(meta, "consumer_inbox");
+                assertThat(inboxCols).containsExactlyInAnyOrder("consumer_name", "event_id", "processed_at");
             }
         }
     }
@@ -975,8 +999,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V8 should be applied)
-            int v8Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying migrations up to V8 (only V8 should be applied)
+            int v8Applied = runner.apply(allMigrations.subList(0, 8));
             assertThat(v8Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(8);
 
@@ -1001,9 +1025,100 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 8));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(8);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "18. Step-by-step upgrade from V8 to V9 preserves existing backup data and enables transactional outbox and consumer inbox")
+    void stepByStepUpgradeFromV8ToV9PreservesData() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V8
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v8Applied = runner.apply(allMigrations.subList(0, 8));
+            assertThat(v8Applied).isEqualTo(8);
+            assertThat(runner.currentVersion()).isEqualTo(8);
+
+            // 2. Verify pre-V9 schema state: outbox_events and consumer_inbox do NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "outbox_events", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+                try (ResultSet rs = meta.getTables(null, null, "consumer_inbox", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V8 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v9-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v9', 'p-v9-upg')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v9', 'prof-v9', 'p-v9-upg')
+                        """);
+                execute(conn, """
+                        INSERT INTO island_banks (island_id, primary_balance_minor_units)
+                        VALUES ('isl-v9', 50000)
+                        """);
+                execute(conn, """
+                        INSERT INTO island_upgrades (island_id, upgrade_key, tier)
+                        VALUES ('isl-v9', 'SIZE', 2)
+                        """);
+                execute(conn, """
+                        INSERT INTO backup_operations (
+                            backup_set_id, backup_type, target_root_type_id, target_root_key,
+                            state, authority_epoch, db_version, schema_version, plugin_version
+                        ) VALUES ('bak-v9', 'ROOT_BACKUP', 'ISLAND', 'isl-v9', 'AVAILABLE', 1, 100, 8, '1.0.0')
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V9 should be applied)
+            int v9Applied = runner.apply(allMigrations);
+            assertThat(v9Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(9);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v9'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_banks WHERE island_id = 'isl-v9'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_upgrades WHERE island_id = 'isl-v9'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM backup_operations WHERE backup_set_id = 'bak-v9'"))
+                        .isEqualTo(1);
+
+                // 6. Verify outbox_events accepts rows
+                execute(conn, """
+                        INSERT INTO outbox_events (
+                            event_id, event_type, aggregate_id, payload, status
+                        ) VALUES ('evt-v9-1', 'ISLAND_CREATED', 'isl-v9', '{"tier":1}', 'PENDING')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM outbox_events WHERE event_id = 'evt-v9-1'"))
+                        .isEqualTo(1);
+
+                // 7. Verify consumer_inbox accepts rows
+                execute(conn, """
+                        INSERT INTO consumer_inbox (
+                            consumer_name, event_id
+                        ) VALUES ('feed-consumer', 'evt-v9-1')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM consumer_inbox WHERE event_id = 'evt-v9-1'"))
+                        .isEqualTo(1);
+            }
+
+            // 8. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(9);
         }
     }
 

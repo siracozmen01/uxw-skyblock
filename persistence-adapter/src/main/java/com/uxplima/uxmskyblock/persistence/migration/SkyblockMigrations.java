@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 8;
+    public static final int LATEST_VERSION = 9;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -47,6 +47,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V8. */
     public static final String V8_DESCRIPTION = "create backup operations catalog";
 
+    /** Human-readable description of migration V9. */
+    public static final String V9_DESCRIPTION = "create outbox events and consumer inbox";
+
     private SkyblockMigrations() {}
 
     /**
@@ -71,7 +74,8 @@ public final class SkyblockMigrations {
                 v5Migration(dialect),
                 v6Migration(dialect),
                 v7Migration(dialect),
-                v8Migration(dialect));
+                v8Migration(dialect),
+                v9Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -324,6 +328,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(8, V8_DESCRIPTION, SQLITE_V8_DDL);
             case MYSQL -> new Migration(8, V8_DESCRIPTION, MYSQL_V8_DDL);
             case POSTGRES -> new Migration(8, V8_DESCRIPTION, POSTGRES_V8_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v9Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(9, V9_DESCRIPTION, SQLITE_V9_DDL);
+            case MYSQL -> new Migration(9, V9_DESCRIPTION, MYSQL_V9_DDL);
+            case POSTGRES -> new Migration(9, V9_DESCRIPTION, POSTGRES_V9_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1046,5 +1062,95 @@ public final class SkyblockMigrations {
 
             CREATE INDEX idx_backup_ops_root ON backup_operations (target_root_type_id, target_root_key, state);
             CREATE INDEX idx_backup_ops_state ON backup_operations (state);
+            """;
+
+    private static final String SQLITE_V9_DDL = """
+            CREATE TABLE IF NOT EXISTS outbox_events (
+                event_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                event_type VARCHAR(64) NOT NULL,
+                aggregate_id VARCHAR(36) NOT NULL,
+                payload TEXT NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                claim_owner VARCHAR(64) NULL,
+                claim_token VARCHAR(36) NULL,
+                claim_expires_at TIMESTAMP NULL,
+                retry_count INT NOT NULL DEFAULT 0,
+                next_attempt_at TIMESTAMP NULL,
+                last_error TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                processed_at TIMESTAMP NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_outbox_events_status_created ON outbox_events (status, next_attempt_at, created_at ASC);
+            CREATE INDEX IF NOT EXISTS idx_outbox_events_claim ON outbox_events (status, claim_expires_at);
+
+            CREATE TABLE IF NOT EXISTS consumer_inbox (
+                consumer_name VARCHAR(64) NOT NULL,
+                event_id VARCHAR(36) NOT NULL,
+                processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (consumer_name, event_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_consumer_inbox_processed ON consumer_inbox (processed_at);
+            """;
+
+    private static final String MYSQL_V9_DDL = """
+            CREATE TABLE IF NOT EXISTS outbox_events (
+                event_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                event_type VARCHAR(64) NOT NULL,
+                aggregate_id VARCHAR(36) NOT NULL,
+                payload TEXT NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                claim_owner VARCHAR(64) NULL,
+                claim_token VARCHAR(36) NULL,
+                claim_expires_at TIMESTAMP NULL,
+                retry_count INT NOT NULL DEFAULT 0,
+                next_attempt_at TIMESTAMP NULL,
+                last_error TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                processed_at TIMESTAMP NULL
+            );
+
+            CREATE INDEX idx_outbox_events_status_created ON outbox_events (status, next_attempt_at, created_at ASC);
+            CREATE INDEX idx_outbox_events_claim ON outbox_events (status, claim_expires_at);
+
+            CREATE TABLE IF NOT EXISTS consumer_inbox (
+                consumer_name VARCHAR(64) NOT NULL,
+                event_id VARCHAR(36) NOT NULL,
+                processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (consumer_name, event_id)
+            );
+
+            CREATE INDEX idx_consumer_inbox_processed ON consumer_inbox (processed_at);
+            """;
+
+    private static final String POSTGRES_V9_DDL = """
+            CREATE TABLE IF NOT EXISTS outbox_events (
+                event_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                event_type VARCHAR(64) NOT NULL,
+                aggregate_id VARCHAR(36) NOT NULL,
+                payload TEXT NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                claim_owner VARCHAR(64) NULL,
+                claim_token VARCHAR(36) NULL,
+                claim_expires_at TIMESTAMP NULL,
+                retry_count INT NOT NULL DEFAULT 0,
+                next_attempt_at TIMESTAMP NULL,
+                last_error TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                processed_at TIMESTAMP NULL
+            );
+
+            CREATE INDEX idx_outbox_events_status_created ON outbox_events (status, next_attempt_at, created_at ASC);
+            CREATE INDEX idx_outbox_events_claim ON outbox_events (status, claim_expires_at);
+
+            CREATE TABLE IF NOT EXISTS consumer_inbox (
+                consumer_name VARCHAR(64) NOT NULL,
+                event_id VARCHAR(36) NOT NULL,
+                processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (consumer_name, event_id)
+            );
+
+            CREATE INDEX idx_consumer_inbox_processed ON consumer_inbox (processed_at);
             """;
 }

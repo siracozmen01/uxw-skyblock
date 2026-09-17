@@ -28,10 +28,11 @@
 * **ISL-001 Status:** COMPLETED (commit `b09ba54`)
 * **BNK-001 Status:** COMPLETED (commit `8a1fa24`)
 * **LVL-003 Status:** COMPLETED (commit `ca41311`)
-* **BAK-001 Status:** COMPLETED
+* **BAK-001 Status:** COMPLETED (commit `1fdaf2f`)
+* **EVT-001 Status:** COMPLETED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 95% (42 / 44 cards completed)
+* **Overall Card Completion:** 98% (43 / 44 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -52,6 +53,7 @@
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[EVT-001]** Distributed Outbox & Event Engine (`:core` domain `EventId`, `OutboxStatus`, `OutboxEventRecord`, `OutboxClaim`, application ports `OutboxPort`, `ConsumerInboxPort`; `:persistence-adapter` canonical SQL `TransactionalOutboxAdapter` with dual-mode transactions, SQLite `BEGIN IMMEDIATE` vs MySQL/PostgreSQL row locking with PostgreSQL `SKIP LOCKED`, batch lease claiming, stale claim completion fencing, and DLQ escalation; `ConsumerInboxAdapter` with dialect-specific idempotent deduplication via `INSERT OR IGNORE` in SQLite, `INSERT IGNORE` in MySQL/MariaDB, and `ON CONFLICT DO NOTHING` in PostgreSQL; V9 migrations with `outbox_events` and `consumer_inbox` tables and composite indexes; fast-lane SQLite and dual-lane Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED
 * [x] **[BAK-001]** Object Storage & Backup Engine (`:core` domain `StorageBucket`, `StorageObjectMetadata`, `BackupSetId`, `BackupType`, `BackupLifecycleState`, `BackupManifest`, `BackupCatalogRecord`, application ports `ObjectStoragePort`, `BackupCatalogPort`, `DatabaseBackupPort`, `BackupService`; `:persistence-adapter` local filesystem object storage adapter `LocalFilesystemStorageAdapter` with path traversal guards, atomic file writes, and SHA-256 metadata computation; canonical SQL `PlayerBackupCatalogAdapter` with dialect-specific upsert; V8 migrations with `backup_operations` catalog and root/state indexes; fast-lane SQLite and dual-lane Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED
 * [x] **[LVL-003]** Island Level, Upgrades & Leaderboards (`:core` domain `IslandMaterialIndex` with amortized O(1) dynamic block worth recalculation, `IslandLevelService`, `UpgradeId`, `UpgradeDefinition`, `IslandUpgradeService`, `IslandLeaderboardService`; `:persistence-adapter` canonical SQL `PlayerIslandUpgradeAdapter` and `PlayerIslandLeaderboardAdapter` with atomic upsert; V7 migrations with `island_upgrades` table and worth/bank index scans; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite verification) — COMPLETED
 * [x] **[BNK-001]** Island Bank & Multi-Currency Economy (`:core` domain `IslandBank`, `BankTransaction`, `BankTransactionOutcome` sealed ADT, application port `IslandBankPort`; `:persistence-adapter` canonical SQL-backed `PlayerIslandBankAdapter` with exact integer minor units, OCC monotonic version CAS, authority row locking on `island_authorities`, scoped idempotency reservation on `processed_operations`, append-only audit trail logging in `bank_transactions`; V6 migrations for `island_banks`, `bank_transactions`, and `processed_operations`; dual-lane Testcontainers MariaDB/PostgreSQL and fast-lane SQLite cross-dialect verification) — COMPLETED

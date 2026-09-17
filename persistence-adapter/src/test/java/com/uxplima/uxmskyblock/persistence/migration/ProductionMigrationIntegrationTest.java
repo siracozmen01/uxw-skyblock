@@ -192,15 +192,31 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 15. Apply all migrations to upgrade to V8
-        int v8Applied = mariaRunner.apply(allMigrations);
+        // 15. Apply V8 migration
+        int v8Applied = mariaRunner.apply(allMigrations.subList(0, 8));
         assertThat(v8Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(8);
 
         // 16. Verify V8 schema: backup_operations now exists
         try (Connection conn = mariaDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "backup_operations", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 17. Apply all migrations to upgrade to V9
+        int v9Applied = mariaRunner.apply(allMigrations);
+        assertThat(v9Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 18. Verify V9 schema: outbox_events and consumer_inbox now exist
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "outbox_events", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+            try (ResultSet rs = meta.getTables(null, null, "consumer_inbox", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -345,15 +361,31 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 15. Apply all migrations to upgrade to V8
-        int v8Applied = postgresRunner.apply(allMigrations);
+        // 15. Apply V8 migration
+        int v8Applied = postgresRunner.apply(allMigrations.subList(0, 8));
         assertThat(v8Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(8);
 
         // 16. Verify V8 schema: backup_operations now exists
         try (Connection conn = postgresDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "backup_operations", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 17. Apply all migrations to upgrade to V9
+        int v9Applied = postgresRunner.apply(allMigrations);
+        assertThat(v9Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 18. Verify V9 schema: outbox_events and consumer_inbox now exist
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "outbox_events", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+            try (ResultSet rs = meta.getTables(null, null, "consumer_inbox", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -424,9 +456,11 @@ class ProductionMigrationIntegrationTest {
                             "processed_operations",
                             "island_upgrades",
                             "backup_operations",
+                            "outbox_events",
+                            "consumer_inbox",
                             "uxmlib_schema_history");
 
-            assertThat(tables).doesNotContain("outbox_events", "inbox_events");
+            assertThat(tables).doesNotContain("inbox_events");
         }
     }
 
@@ -639,6 +673,26 @@ class ProductionMigrationIntegrationTest {
                             "created_at",
                             "completed_at",
                             "updated_at");
+
+            Set<String> outboxCols = getColumnNames(meta, "outbox_events");
+            assertThat(outboxCols)
+                    .contains(
+                            "event_id",
+                            "event_type",
+                            "aggregate_id",
+                            "payload",
+                            "status",
+                            "retry_count",
+                            "next_attempt_at",
+                            "claim_owner",
+                            "claim_token",
+                            "claim_expires_at",
+                            "last_error",
+                            "created_at",
+                            "processed_at");
+
+            Set<String> inboxCols = getColumnNames(meta, "consumer_inbox");
+            assertThat(inboxCols).contains("consumer_name", "event_id", "processed_at");
         }
     }
 
