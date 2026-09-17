@@ -40,4 +40,26 @@ public abstract class MockBukkitHarness {
     protected PlayerMock createPlayer(String name) {
         return server.addPlayer(name);
     }
+
+    protected static void eventually(Runnable assertion) {
+        long start = System.currentTimeMillis();
+        AssertionError last = null;
+        while (System.currentTimeMillis() - start < 5000) {
+            try {
+                assertion.run();
+                return;
+            } catch (AssertionError e) {
+                last = e;
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(ie);
+                }
+            }
+        }
+        if (last != null) {
+            throw last;
+        }
+    }
 }

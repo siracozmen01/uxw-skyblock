@@ -58,31 +58,47 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         player.performCommand("is create classic");
 
         // Verify island now exists in persistence
-        Optional<IslandId> optIslandId =
-                plugin.bootstrap().persistenceBootstrap().islandStoragePort().findIslandIdByProfileId(profileId);
-        assertThat(optIslandId).isPresent();
-        IslandId islandId = optIslandId.get();
+        eventually(() -> {
+            Optional<IslandId> optIslandId = plugin.bootstrap()
+                    .persistenceBootstrap()
+                    .islandStoragePort()
+                    .findIslandIdByProfileId(profileId);
+            assertThat(optIslandId).isPresent();
+        });
+        IslandId islandId = plugin.bootstrap()
+                .persistenceBootstrap()
+                .islandStoragePort()
+                .findIslandIdByProfileId(profileId)
+                .orElseThrow();
 
         // Verify bank account initialized
-        Optional<IslandBank> optBank =
-                plugin.bootstrap().persistenceBootstrap().islandBankPort().findBankByIslandId(islandId);
-        assertThat(optBank).isPresent();
-        assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(0L);
+        eventually(() -> {
+            Optional<IslandBank> optBank =
+                    plugin.bootstrap().persistenceBootstrap().islandBankPort().findBankByIslandId(islandId);
+            assertThat(optBank).isPresent();
+            assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(0L);
+        });
 
         // Execute bank deposit
         player.performCommand("is bank deposit 250");
-        optBank = plugin.bootstrap().persistenceBootstrap().islandBankPort().findBankByIslandId(islandId);
-        assertThat(optBank).isPresent();
-        assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(25000L);
+        eventually(() -> {
+            Optional<IslandBank> optBank =
+                    plugin.bootstrap().persistenceBootstrap().islandBankPort().findBankByIslandId(islandId);
+            assertThat(optBank).isPresent();
+            assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(25000L);
+        });
 
         // Execute bank balance
         player.performCommand("is bank balance");
 
         // Execute bank withdraw
         player.performCommand("is bank withdraw 100");
-        optBank = plugin.bootstrap().persistenceBootstrap().islandBankPort().findBankByIslandId(islandId);
-        assertThat(optBank).isPresent();
-        assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(15000L);
+        eventually(() -> {
+            Optional<IslandBank> optBank =
+                    plugin.bootstrap().persistenceBootstrap().islandBankPort().findBankByIslandId(islandId);
+            assertThat(optBank).isPresent();
+            assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(15000L);
+        });
 
         // Execute biome change
         player.performCommand("is biome plains");

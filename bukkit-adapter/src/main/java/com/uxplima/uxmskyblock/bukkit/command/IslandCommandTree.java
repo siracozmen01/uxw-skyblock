@@ -1,10 +1,8 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
-import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.bukkit.Bukkit;
@@ -27,70 +25,76 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
-import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
-import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
-import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
-import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
+import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
+import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
+import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
-import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.island.Island;
-import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
-import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
-import com.uxplima.uxmskyblock.core.domain.world.IslandCoordinates;
-import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 
 /**
  * Paper Brigadier command tree for {@code /island} and {@code /is}.
+ *
+ * <p>All storage, persistence, and distributed authority I/O is dispatched asynchronously off tick threads
+ * via {@link SchedulerPort#async(Runnable)}. Platform mutations, player teleports, inventory updates, and
+ * player feedback are strictly scheduled onto the player's owning Folia {@link org.bukkit.entity.Entity} region
+ * thread via {@link SchedulerPort#onEntity(PlayerUuid, Runnable)}.
  */
 public final class IslandCommandTree {
 
-    private final IslandStoragePort islandStoragePort;
-    private final IslandAuthorityPort islandAuthorityPort;
-    private final IslandBankPort islandBankPort;
+    private final CreateIslandUseCase createIslandUseCase;
+    private final IslandLocationService islandLocationService;
+    private final IslandBankService islandBankService;
     private final IslandUpgradeStoragePort islandUpgradePort;
-    private final IslandLeaderboardPort islandLeaderboardPort;
+    private final IslandLeaderboardService islandLeaderboardService;
     private final BiomeModificationPort biomeModificationPort;
     private final StarterPresetCatalog presetCatalog;
     private final StarterSchematicEngine schematicEngine;
-    private final SpiralGridCoordinateAllocator coordinateAllocator;
     private final IslandProtectionListener protectionListener;
+    private final SchedulerPort schedulerPort;
+    private final ServerNodeId serverNodeId;
     private final String worldName;
     private final AtomicLong nextIslandIndex = new AtomicLong(1);
 
     public IslandCommandTree(
-            IslandStoragePort islandStoragePort,
-            IslandAuthorityPort islandAuthorityPort,
-            IslandBankPort islandBankPort,
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
             IslandUpgradeStoragePort islandUpgradePort,
-            IslandLeaderboardPort islandLeaderboardPort,
+            IslandLeaderboardService islandLeaderboardService,
             BiomeModificationPort biomeModificationPort,
             StarterPresetCatalog presetCatalog,
             StarterSchematicEngine schematicEngine,
-            SpiralGridCoordinateAllocator coordinateAllocator,
             IslandProtectionListener protectionListener,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
             String worldName) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
-        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort");
-        this.islandUpgradePort = Objects.requireNonNull(islandUpgradePort, "islandUpgradePort");
-        this.islandLeaderboardPort = Objects.requireNonNull(islandLeaderboardPort, "islandLeaderboardPort");
-        this.biomeModificationPort = Objects.requireNonNull(biomeModificationPort, "biomeModificationPort");
-        this.presetCatalog = Objects.requireNonNull(presetCatalog, "presetCatalog");
-        this.schematicEngine = Objects.requireNonNull(schematicEngine, "schematicEngine");
-        this.coordinateAllocator = Objects.requireNonNull(coordinateAllocator, "coordinateAllocator");
-        this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener");
-        this.worldName = Objects.requireNonNull(worldName, "worldName");
+        this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
+        this.islandLocationService =
+                Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
+        this.islandBankService = Objects.requireNonNull(islandBankService, "islandBankService must not be null");
+        this.islandUpgradePort = Objects.requireNonNull(islandUpgradePort, "islandUpgradePort must not be null");
+        this.islandLeaderboardService =
+                Objects.requireNonNull(islandLeaderboardService, "islandLeaderboardService must not be null");
+        this.biomeModificationPort =
+                Objects.requireNonNull(biomeModificationPort, "biomeModificationPort must not be null");
+        this.presetCatalog = Objects.requireNonNull(presetCatalog, "presetCatalog must not be null");
+        this.schematicEngine = Objects.requireNonNull(schematicEngine, "schematicEngine must not be null");
+        this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
+        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -154,70 +158,58 @@ public final class IslandCommandTree {
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
+        long seqIndex = nextIslandIndex.getAndIncrement();
 
-        if (islandStoragePort.findIslandIdByProfileId(profileId).isPresent()) {
-            send(
-                    player,
-                    Component.text(
-                            "You already own or belong to an island! Use /is home to visit it.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
+        schedulerPort.async(() -> {
+            CreateIslandUseCase.CreateIslandResult result =
+                    createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, worldName, seqIndex);
 
-        Optional<StarterPreset> optPreset = presetCatalog.findById(presetId);
-        if (optPreset.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Unknown preset '" + presetId + "'. Available: classic, desert, nether, cave.",
-                            NamedTextColor.RED));
-            return Cmd.OK;
-        }
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
+                    protectionListener.cacheIsland(success.island());
 
-        StarterPreset preset = optPreset.get();
-        IslandId islandId = IslandId.of(UUID.randomUUID());
+                    World world = Bukkit.getWorld(worldName);
+                    if (world == null && !Bukkit.getWorlds().isEmpty()) {
+                        world = Bukkit.getWorlds().get(0);
+                    }
+                    if (world != null) {
+                        int centerX = success.location().bounds().centerX();
+                        int centerZ = success.location().bounds().centerZ();
+                        int spawnY = 100;
+                        schematicEngine.pastePreset(world, centerX, spawnY, centerZ, success.preset());
+                        player.teleport(new Location(
+                                world,
+                                success.location().spawnX(),
+                                success.location().spawnY(),
+                                success.location().spawnZ(),
+                                0.0f,
+                                0.0f));
+                    }
+                    send(
+                            player,
+                            Component.text(
+                                    "Island created successfully with preset '"
+                                            + success.preset().displayName() + "'!",
+                                    NamedTextColor.GREEN));
+                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
+                    send(
+                            player,
+                            Component.text(
+                                    "You already own or belong to an island! Use /is home to visit it.",
+                                    NamedTextColor.RED));
+                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.UnknownPreset unknown) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Unknown preset '" + unknown.presetId()
+                                            + "'. Available: classic, desert, nether, cave.",
+                                    NamedTextColor.RED));
+                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.Failure failure) {
+                    send(player, Component.text("Failed to create island: " + failure.reason(), NamedTextColor.RED));
+                }
+            });
+        });
 
-        long idx = nextIslandIndex.getAndIncrement();
-        IslandCoordinates coords = coordinateAllocator.coordinatesForIndex(idx);
-        int centerX = coords.x();
-        int centerZ = coords.z();
-        int initialRadius = 50;
-
-        IslandBounds bounds = IslandBounds.fromCenterAndRadius(centerX, centerZ, initialRadius);
-        Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
-
-        World world = Bukkit.getWorld(worldName);
-        if (world == null && !Bukkit.getWorlds().isEmpty()) {
-            world = Bukkit.getWorlds().get(0);
-        }
-
-        int spawnY = 100;
-        IslandLocation location = new IslandLocation(
-                islandId,
-                world != null ? world.getName() : worldName,
-                bounds,
-                centerX + 0.5,
-                spawnY + 1.0,
-                centerZ + 0.5,
-                0.0f,
-                0.0f);
-
-        // Save island, acquire authority & initial bank
-        islandStoragePort.saveIsland(island, location);
-        islandAuthorityPort.acquireAuthority(islandId, ServerNodeId.of("local-node"), 86400);
-        islandBankPort.createBank(islandId);
-        protectionListener.cacheIsland(island);
-
-        // Paste structure if world is available
-        if (world != null) {
-            schematicEngine.pastePreset(world, centerX, spawnY, centerZ, preset);
-            player.teleport(new Location(world, centerX + 0.5, spawnY + 1.0, centerZ + 0.5, 0.0f, 0.0f));
-        }
-
-        send(
-                player,
-                Component.text(
-                        "Island created successfully with preset '" + preset.displayName() + "'!",
-                        NamedTextColor.GREEN));
         return Cmd.OK;
     }
 
@@ -229,35 +221,35 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
 
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "You do not have an island yet! Use /is create to get started.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
 
-        Optional<IslandLocation> optLoc = islandStoragePort.findLocationByIslandId(optIslandId.get());
-        if (optLoc.isEmpty()) {
-            send(player, Component.text("Island location could not be resolved.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
+        schedulerPort.async(() -> {
+            Optional<IslandLocation> optLoc = islandLocationService.resolveHome(profileId);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (optLoc.isEmpty()) {
+                    send(
+                            player,
+                            Component.text(
+                                    "You do not have an island yet! Use /is create to get started.",
+                                    NamedTextColor.RED));
+                    return;
+                }
+                IslandLocation loc = optLoc.get();
+                World world = Bukkit.getWorld(loc.worldName());
+                if (world == null && !Bukkit.getWorlds().isEmpty()) {
+                    world = Bukkit.getWorlds().get(0);
+                }
+                if (world != null) {
+                    player.teleport(new Location(
+                            world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch()));
+                    send(player, Component.text("Welcome to your island!", NamedTextColor.GREEN));
+                } else {
+                    send(player, Component.text("Island world is currently unloaded.", NamedTextColor.RED));
+                }
+            });
+        });
 
-        IslandLocation loc = optLoc.get();
-        World world = Bukkit.getWorld(loc.worldName());
-        if (world == null && !Bukkit.getWorlds().isEmpty()) {
-            world = Bukkit.getWorlds().get(0);
-        }
-
-        if (world != null) {
-            player.teleport(
-                    new Location(world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch()));
-            send(player, Component.text("Welcome to your island!", NamedTextColor.GREEN));
-        } else {
-            send(player, Component.text("Island world is currently unloaded.", NamedTextColor.RED));
-        }
         return Cmd.OK;
     }
 
@@ -267,33 +259,27 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
 
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            send(player, Component.text("You do not have an island.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        Optional<Island> optIsland = islandStoragePort.findIslandById(optIslandId.get());
-        Optional<IslandLocation> optLoc = islandStoragePort.findLocationByIslandId(optIslandId.get());
-        if (optIsland.isEmpty() || optLoc.isEmpty()) {
-            send(player, Component.text("Island data not found.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
         Location current = player.getLocation();
-        IslandLocation newLoc = new IslandLocation(
-                optIslandId.get(),
-                current.getWorld().getName(),
-                optLoc.get().bounds(),
-                current.getX(),
-                current.getY(),
-                current.getZ(),
-                current.getYaw(),
-                current.getPitch());
+        String currentWorld = current.getWorld() != null ? current.getWorld().getName() : this.worldName;
+        double x = current.getX();
+        double y = current.getY();
+        double z = current.getZ();
+        float yaw = current.getYaw();
+        float pitch = current.getPitch();
 
-        islandStoragePort.saveIsland(optIsland.get(), newLoc);
-        send(player, Component.text("Island spawn location updated.", NamedTextColor.GREEN));
+        schedulerPort.async(() -> {
+            boolean updated = islandLocationService.updateSpawn(profileId, currentWorld, x, y, z, yaw, pitch);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (updated) {
+                    send(player, Component.text("Island spawn location updated.", NamedTextColor.GREEN));
+                } else {
+                    send(player, Component.text("You do not have an island.", NamedTextColor.RED));
+                }
+            });
+        });
+
         return Cmd.OK;
     }
 
@@ -301,24 +287,24 @@ public final class IslandCommandTree {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             return Cmd.OK;
         }
+
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            send(player, Component.text("You do not have an island.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
 
-        var bank = islandBankPort.findBankByIslandId(optIslandId.get());
-        if (bank.isEmpty()) {
-            send(player, Component.text("Bank account not found.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
+        schedulerPort.async(() -> {
+            Optional<Long> optBalance = islandBankService.getBalanceMinorUnits(profileId);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (optBalance.isEmpty()) {
+                    send(player, Component.text("You do not have an island.", NamedTextColor.RED));
+                } else {
+                    send(
+                            player,
+                            Component.text(
+                                    "Island Bank Balance: $" + (optBalance.get() / 100.0), NamedTextColor.GREEN));
+                }
+            });
+        });
 
-        send(
-                player,
-                Component.text(
-                        "Island Bank Balance: $" + (bank.get().primaryBalanceMinorUnits() / 100.0),
-                        NamedTextColor.GREEN));
         return Cmd.OK;
     }
 
@@ -327,39 +313,23 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            send(player, Component.text("You do not have an island.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIslandId.get();
-        Optional<IslandBank> optBank = islandBankPort.findBankByIslandId(islandId);
-        IslandBank bank = optBank.orElseGet(() -> islandBankPort.createBank(islandId));
-
         long minorUnits = amount * 100;
-        UUID operationId = UUID.randomUUID();
-        String idempotencyKey = "cmd-deposit-" + operationId;
 
-        BankTransactionOutcome outcome = islandBankPort.executeTransaction(
-                islandId,
-                player.getUniqueId(),
-                "PRIMARY",
-                2,
-                minorUnits,
-                "Player deposit",
-                "local-node",
-                1L,
-                bank.version(),
-                operationId,
-                idempotencyKey);
+        schedulerPort.async(() -> {
+            BankTransactionOutcome outcome = islandBankService.deposit(profileId, playerUuid, minorUnits, serverNodeId);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (outcome instanceof BankTransactionOutcome.Success) {
+                    send(
+                            player,
+                            Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
+                } else {
+                    send(player, Component.text("Deposit failed: " + outcome, NamedTextColor.RED));
+                }
+            });
+        });
 
-        if (outcome instanceof BankTransactionOutcome.Success) {
-            send(player, Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
-        } else {
-            send(player, Component.text("Deposit failed: " + outcome, NamedTextColor.RED));
-        }
         return Cmd.OK;
     }
 
@@ -368,45 +338,26 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            send(player, Component.text("You do not have an island.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIslandId.get();
-        Optional<IslandBank> optBank = islandBankPort.findBankByIslandId(islandId);
-        if (optBank.isEmpty()) {
-            send(player, Component.text("Bank account not found.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        IslandBank bank = optBank.get();
         long minorUnits = amount * 100;
-        UUID operationId = UUID.randomUUID();
-        String idempotencyKey = "cmd-withdraw-" + operationId;
 
-        BankTransactionOutcome outcome = islandBankPort.executeTransaction(
-                islandId,
-                player.getUniqueId(),
-                "PRIMARY",
-                2,
-                -minorUnits,
-                "Player withdrawal",
-                "local-node",
-                1L,
-                bank.version(),
-                operationId,
-                idempotencyKey);
+        schedulerPort.async(() -> {
+            BankTransactionOutcome outcome =
+                    islandBankService.withdraw(profileId, playerUuid, minorUnits, serverNodeId);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (outcome instanceof BankTransactionOutcome.Success) {
+                    send(
+                            player,
+                            Component.text("Withdrew $" + amount + " from the island bank.", NamedTextColor.GREEN));
+                } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                    send(player, Component.text("Insufficient funds in the island bank.", NamedTextColor.RED));
+                } else {
+                    send(player, Component.text("Withdrawal failed: " + outcome, NamedTextColor.RED));
+                }
+            });
+        });
 
-        if (outcome instanceof BankTransactionOutcome.Success) {
-            send(player, Component.text("Withdrew $" + amount + " from the island bank.", NamedTextColor.GREEN));
-        } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-            send(player, Component.text("Insufficient funds in the island bank.", NamedTextColor.RED));
-        } else {
-            send(player, Component.text("Withdrawal failed: " + outcome, NamedTextColor.RED));
-        }
         return Cmd.OK;
     }
 
@@ -421,27 +372,35 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
 
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = new ProfileId(player.getUniqueId());
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            send(player, Component.text("You do not have an island.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
         IslandBiome targetBiome = optBiome.get();
-        var unused = biomeModificationPort
-                .applyBiome(optIslandId.get(), targetBiome)
-                .thenAccept(success -> {
-                    if (success) {
-                        send(
-                                player,
-                                Component.text(
-                                        "Island biome changed to " + targetBiome.displayName() + "!",
-                                        NamedTextColor.GREEN));
-                    } else {
-                        send(player, Component.text("Failed to update island biome.", NamedTextColor.RED));
-                    }
-                });
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
+            if (optIslandId.isEmpty()) {
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> send(player, Component.text("You do not have an island.", NamedTextColor.RED)));
+                return;
+            }
+
+            var unused = biomeModificationPort
+                    .applyBiome(optIslandId.get(), targetBiome)
+                    .thenAccept(success -> {
+                        schedulerPort.onEntity(playerUuid, () -> {
+                            if (success) {
+                                send(
+                                        player,
+                                        Component.text(
+                                                "Island biome changed to " + targetBiome.displayName() + "!",
+                                                NamedTextColor.GREEN));
+                            } else {
+                                send(player, Component.text("Failed to update island biome.", NamedTextColor.RED));
+                            }
+                        });
+                    });
+        });
 
         return Cmd.OK;
     }
@@ -455,22 +414,27 @@ public final class IslandCommandTree {
                     default -> LeaderboardCategory.LEVEL;
                 };
 
-        var entries = islandLeaderboardPort.fetchTopIslands(cat, 10);
-        send(src.getSender(), Component.text("--- Top Islands (" + cat.name() + ") ---", NamedTextColor.GOLD));
-        if (entries.isEmpty()) {
-            send(src.getSender(), Component.text("No islands ranked yet.", NamedTextColor.GRAY));
-        } else {
-            for (LeaderboardEntry entry : entries) {
-                String name = entry.islandName() != null
-                        ? entry.islandName()
-                        : entry.islandId().toString().substring(0, 8);
-                send(
-                        src.getSender(),
-                        Component.text(
-                                "#" + entry.rank() + " " + name + " - " + entry.formattedScore(),
-                                NamedTextColor.YELLOW));
-            }
-        }
+        schedulerPort.async(() -> {
+            var entries = islandLeaderboardService.getTop(cat, 10);
+            schedulerPort.onGlobal(() -> {
+                send(src.getSender(), Component.text("--- Top Islands (" + cat.name() + ") ---", NamedTextColor.GOLD));
+                if (entries.isEmpty()) {
+                    send(src.getSender(), Component.text("No islands ranked yet.", NamedTextColor.GRAY));
+                } else {
+                    for (LeaderboardEntry entry : entries) {
+                        String name = entry.islandName() != null
+                                ? entry.islandName()
+                                : entry.islandId().toString().substring(0, 8);
+                        send(
+                                src.getSender(),
+                                Component.text(
+                                        "#" + entry.rank() + " " + name + " - " + entry.formattedScore(),
+                                        NamedTextColor.YELLOW));
+                    }
+                }
+            });
+        });
+
         return Cmd.OK;
     }
 }

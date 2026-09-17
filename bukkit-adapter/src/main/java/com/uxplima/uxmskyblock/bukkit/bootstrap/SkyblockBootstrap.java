@@ -12,9 +12,17 @@ import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
+import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
+import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
+import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
+import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 
@@ -26,10 +34,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     private final JavaPlugin plugin;
     private final PersistenceBootstrap persistenceBootstrap;
+    private final SchedulerPort scheduler;
     private final IslandAccessService accessService;
     private final StarterPresetCatalog presetCatalog;
     private final StarterSchematicEngine schematicEngine;
     private final SpiralGridCoordinateAllocator coordinateAllocator;
+    private final SpiralWorldGridService gridService;
+    private final CreateIslandUseCase createIslandUseCase;
+    private final IslandLocationService locationService;
+    private final IslandBankService bankService;
+    private final IslandLeaderboardService leaderboardService;
     private final IslandProtectionListener protectionListener;
     private final PlayerSessionListener sessionListener;
     private final BukkitBiomeAdapter biomeAdapter;
@@ -37,19 +51,37 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final BukkitSkyblockApiBridge apiBridge;
 
     public SkyblockBootstrap(JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap) {
-        this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.persistenceBootstrap = Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap");
+        this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
+        this.persistenceBootstrap =
+                Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
 
+        this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
         this.presetCatalog = new StarterPresetCatalog();
         this.schematicEngine = new StarterSchematicEngine();
         this.coordinateAllocator = new SpiralGridCoordinateAllocator();
+        this.gridService = new SpiralWorldGridService(coordinateAllocator);
+
+        this.createIslandUseCase = new CreateIslandUseCase(
+                persistenceBootstrap.islandStoragePort(),
+                persistenceBootstrap.islandAuthorityPort(),
+                persistenceBootstrap.islandBankPort(),
+                presetCatalog,
+                gridService);
+        this.locationService = new IslandLocationService(persistenceBootstrap.islandStoragePort());
+        this.bankService = new IslandBankService(
+                persistenceBootstrap.islandBankPort(),
+                persistenceBootstrap.islandStoragePort(),
+                persistenceBootstrap.islandAuthorityPort());
+        this.leaderboardService = new IslandLeaderboardService(persistenceBootstrap.islandLeaderboardPort());
 
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
         this.sessionListener = new PlayerSessionListener(protectionListener);
 
         String worldName = "world";
-        this.biomeAdapter = new BukkitBiomeAdapter(persistenceBootstrap.islandStoragePort(), worldName);
+        ServerNodeId serverNodeId = ServerNodeId.of("node-1");
+
+        this.biomeAdapter = new BukkitBiomeAdapter(persistenceBootstrap.islandStoragePort(), scheduler, worldName);
 
         this.apiBridge = new BukkitSkyblockApiBridge(
                 persistenceBootstrap.islandStoragePort(),
@@ -58,21 +90,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandAuthorityPort());
 
         this.commandTree = new IslandCommandTree(
-                persistenceBootstrap.islandStoragePort(),
-                persistenceBootstrap.islandAuthorityPort(),
-                persistenceBootstrap.islandBankPort(),
+                createIslandUseCase,
+                locationService,
+                bankService,
                 persistenceBootstrap.islandUpgradeStoragePort(),
-                persistenceBootstrap.islandLeaderboardPort(),
+                leaderboardService,
                 biomeAdapter,
                 presetCatalog,
                 schematicEngine,
-                coordinateAllocator,
                 protectionListener,
+                scheduler,
+                serverNodeId,
                 worldName);
     }
 
     public static SkyblockBootstrap createDefault(JavaPlugin plugin) {
-        Objects.requireNonNull(plugin, "plugin");
+        Objects.requireNonNull(plugin, "plugin must not be null");
         Path dataDir = plugin.getDataFolder().toPath();
         try {
             java.nio.file.Files.createDirectories(dataDir);
@@ -95,6 +128,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public PersistenceBootstrap persistenceBootstrap() {
         return persistenceBootstrap;
+    }
+
+    public SchedulerPort scheduler() {
+        return scheduler;
     }
 
     public IslandProtectionListener protectionListener() {

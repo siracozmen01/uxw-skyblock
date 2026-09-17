@@ -71,6 +71,26 @@ class BukkitArchitectureTest {
                 .allowEmptyShould(true);
     }
 
+    // RULE C: Command handlers must not depend directly on low-level IslandStoragePort, IslandAuthorityPort, or
+    // IslandBankPort
+    static ArchRule commandHandlersMustNotDirectlyUseLowLevelStoragePorts() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.bukkit.command..")
+                .should()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("com.uxplima.uxmskyblock.core.application.island.IslandStoragePort")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("com.uxplima.uxmskyblock.core.application.bank.IslandBankPort")
+                .because(
+                        "command handlers must orchestrate actions through application use cases and services rather than directly querying storage ports")
+                .allowEmptyShould(true);
+    }
+
     // Folia / Legacy Scheduler Fence
     static ArchRule bukkitAdapterMustNotDependOnLegacySchedulers() {
         return noClasses()
@@ -125,6 +145,15 @@ class BukkitArchitectureTest {
         JavaClasses production = importProductionClasses();
         assertThatCode(() -> nonBootstrapBukkitAdapterMustNotDependOnPersistenceImplementations()
                         .check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Command handlers must not directly depend on storage ports (must use application use cases)")
+    void commandHandlersDoNotDirectlyDependOnStoragePorts() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() ->
+                        commandHandlersMustNotDirectlyUseLowLevelStoragePorts().check(production))
                 .doesNotThrowAnyException();
     }
 
