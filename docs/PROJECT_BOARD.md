@@ -26,7 +26,7 @@
 * **WP2-005 Status:** COMPLETED
 * **Target Release:** v0.1.0-SNAPSHOT
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 88% (35 / 40 cards completed)
+* **Overall Card Completion:** 93% (37 / 40 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
 
 ---
@@ -39,8 +39,7 @@
 * [ ] **[LVL-003]** Island level leaderboard caching & top-10 hologram integration
 
 ### 📌 To Do (Upcoming Tasks)
-* [ ] **[TST-001]** Test infrastructure setup (MockBukkit harness, jqwik)
-* [ ] **[CORE-001]** Core Domain: `Island`, `IslandId`, `IslandRole`, `IslandFlags` records
+* *No active items currently in to do.*
 
 ### 🔄 In Progress
 * *No active items currently in progress.*
@@ -49,6 +48,8 @@
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[CORE-001]** Core Domain Records & Value Objects (`:core` domain `Island`, `IslandId`, `IslandMember`, `IslandRole`, `IslandFlags`, `IslandBounds`, `IslandPermission` records, role weight hierarchy, and jqwik property tests) — COMPLETED
+* [x] **[TST-001]** Test infrastructure setup (MockBukkit harness in `:bukkit-adapter`, jqwik property testing in `:core`) — COMPLETED
 * [x] **[WP2-005]** Immediate Economic Inventory Mutation Journal (`:core` domain/application inventory mutation journal port and outcomes, `:persistence-adapter` canonical SQL-backed two-phase write-ahead journal and participant adapter, V3 migrations for `inventory_mutation_journals` and `inventory_mutation_participants`, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED
 * [x] **[WP2-004]** Handoff Finalization & Durable Inventory Version (`:core` domain/application finalization port, `:persistence-adapter` canonical SQL-backed handoff finalization flush under DRAINING session, atomic synchronization of `profile_inventories.profile_inventory_version` and `player_sessions.last_durable_inventory_version`, crash-window recoverability, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED
 * [x] **[WP2-003]** Authoritative Mutation & OCC Foundation (`:core` domain/application inventory checkpoint port and outcome records, `:persistence-adapter` canonical SQL-backed profile inventory mutation with OCC versioning on `profile_inventories`, session-guarded transactions, DB clock leasing, SQLite writer serialization via `BEGIN IMMEDIATE`, Testcontainers MariaDB/PostgreSQL `SELECT ... FOR UPDATE` row-lock serialization proof) — COMPLETED
