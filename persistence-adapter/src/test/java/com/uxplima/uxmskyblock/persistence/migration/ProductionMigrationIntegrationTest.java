@@ -179,15 +179,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 13. Apply all migrations to upgrade to V7
-        int v7Applied = mariaRunner.apply(allMigrations);
+        // 13. Apply migrations up to V7
+        int v7Applied = mariaRunner.apply(allMigrations.subList(0, 7));
         assertThat(v7Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(7);
 
         // 14. Verify V7 schema: island_upgrades now exists
         try (Connection conn = mariaDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "island_upgrades", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 15. Apply all migrations to upgrade to V8
+        int v8Applied = mariaRunner.apply(allMigrations);
+        assertThat(v8Applied).isEqualTo(1);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 16. Verify V8 schema: backup_operations now exists
+        try (Connection conn = mariaDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "backup_operations", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -319,15 +332,28 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 13. Apply all migrations to upgrade to V7
-        int v7Applied = postgresRunner.apply(allMigrations);
+        // 13. Apply migrations up to V7
+        int v7Applied = postgresRunner.apply(allMigrations.subList(0, 7));
         assertThat(v7Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(7);
 
         // 14. Verify V7 schema: island_upgrades now exists
         try (Connection conn = postgresDatabase.connection()) {
             DatabaseMetaData meta = conn.getMetaData();
             try (ResultSet rs = meta.getTables(null, null, "island_upgrades", new String[] {"TABLE"})) {
+                assertThat(rs.next()).isTrue();
+            }
+        }
+
+        // 15. Apply all migrations to upgrade to V8
+        int v8Applied = postgresRunner.apply(allMigrations);
+        assertThat(v8Applied).isEqualTo(1);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+
+        // 16. Verify V8 schema: backup_operations now exists
+        try (Connection conn = postgresDatabase.connection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, null, "backup_operations", new String[] {"TABLE"})) {
                 assertThat(rs.next()).isTrue();
             }
         }
@@ -397,6 +423,7 @@ class ProductionMigrationIntegrationTest {
                             "bank_transactions",
                             "processed_operations",
                             "island_upgrades",
+                            "backup_operations",
                             "uxmlib_schema_history");
 
             assertThat(tables).doesNotContain("outbox_events", "inbox_events");
@@ -595,6 +622,23 @@ class ProductionMigrationIntegrationTest {
 
             Set<String> upgCols = getColumnNames(meta, "island_upgrades");
             assertThat(upgCols).contains("island_id", "upgrade_key", "tier", "updated_at");
+
+            Set<String> bakCols = getColumnNames(meta, "backup_operations");
+            assertThat(bakCols)
+                    .contains(
+                            "backup_set_id",
+                            "backup_type",
+                            "target_root_type_id",
+                            "target_root_key",
+                            "state",
+                            "authority_epoch",
+                            "db_version",
+                            "schema_version",
+                            "plugin_version",
+                            "failure_reason",
+                            "created_at",
+                            "completed_at",
+                            "updated_at");
         }
     }
 

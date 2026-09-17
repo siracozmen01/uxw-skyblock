@@ -99,6 +99,7 @@ class ProductionMigrationFastLaneTest {
                                 "bank_transactions",
                                 "processed_operations",
                                 "island_upgrades",
+                                "backup_operations",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -326,6 +327,24 @@ class ProductionMigrationFastLaneTest {
                 // island_upgrades columns (V7)
                 Set<String> upgCols = getColumnNames(meta, "island_upgrades");
                 assertThat(upgCols).containsExactlyInAnyOrder("island_id", "upgrade_key", "tier", "updated_at");
+
+                // backup_operations columns (V8)
+                Set<String> bakCols = getColumnNames(meta, "backup_operations");
+                assertThat(bakCols)
+                        .containsExactlyInAnyOrder(
+                                "backup_set_id",
+                                "backup_type",
+                                "target_root_type_id",
+                                "target_root_key",
+                                "state",
+                                "authority_epoch",
+                                "db_version",
+                                "schema_version",
+                                "plugin_version",
+                                "failure_reason",
+                                "created_at",
+                                "completed_at",
+                                "updated_at");
             }
         }
     }
@@ -888,8 +907,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V7 should be applied)
-            int v7Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying migrations up to V7 (only V7 should be applied)
+            int v7Applied = runner.apply(allMigrations.subList(0, 7));
             assertThat(v7Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(7);
 
@@ -910,9 +929,81 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 7));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(7);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "17. Step-by-step upgrade from V7 to V8 preserves existing upgrade and island data and enables backup operations catalog")
+    void stepByStepUpgradeFromV7ToV8PreservesData() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V7
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v7Applied = runner.apply(allMigrations.subList(0, 7));
+            assertThat(v7Applied).isEqualTo(7);
+            assertThat(runner.currentVersion()).isEqualTo(7);
+
+            // 2. Verify pre-V8 schema state: backup_operations does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "backup_operations", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V7 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v8-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v8', 'p-v8-upg')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v8', 'prof-v8', 'p-v8-upg')
+                        """);
+                execute(conn, """
+                        INSERT INTO island_banks (island_id, primary_balance_minor_units)
+                        VALUES ('isl-v8', 50000)
+                        """);
+                execute(conn, """
+                        INSERT INTO island_upgrades (island_id, upgrade_key, tier)
+                        VALUES ('isl-v8', 'SIZE', 2)
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V8 should be applied)
+            int v8Applied = runner.apply(allMigrations);
+            assertThat(v8Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(8);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v8'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_banks WHERE island_id = 'isl-v8'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_upgrades WHERE island_id = 'isl-v8'"))
+                        .isEqualTo(1);
+
+                // 6. Verify backup_operations accepts rows
+                execute(conn, """
+                        INSERT INTO backup_operations (
+                            backup_set_id, backup_type, target_root_type_id, target_root_key,
+                            state, authority_epoch, db_version, schema_version, plugin_version
+                        ) VALUES ('bak-v8', 'ROOT_BACKUP', 'ISLAND', 'isl-v8', 'AVAILABLE', 1, 100, 8, '1.0.0')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM backup_operations WHERE backup_set_id = 'bak-v8'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(8);
         }
     }
 

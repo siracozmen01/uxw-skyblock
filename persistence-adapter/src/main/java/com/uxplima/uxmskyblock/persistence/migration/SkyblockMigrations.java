@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 7;
+    public static final int LATEST_VERSION = 8;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -43,6 +43,9 @@ public final class SkyblockMigrations {
 
     /** Human-readable description of migration V7. */
     public static final String V7_DESCRIPTION = "create island upgrades and leaderboard indexes";
+
+    /** Human-readable description of migration V8. */
+    public static final String V8_DESCRIPTION = "create backup operations catalog";
 
     private SkyblockMigrations() {}
 
@@ -67,7 +70,8 @@ public final class SkyblockMigrations {
                 v4Migration(dialect),
                 v5Migration(dialect),
                 v6Migration(dialect),
-                v7Migration(dialect));
+                v7Migration(dialect),
+                v8Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -308,6 +312,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(7, V7_DESCRIPTION, SQLITE_V7_DDL);
             case MYSQL -> new Migration(7, V7_DESCRIPTION, MYSQL_V7_DDL);
             case POSTGRES -> new Migration(7, V7_DESCRIPTION, POSTGRES_V7_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v8Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(8, V8_DESCRIPTION, SQLITE_V8_DDL);
+            case MYSQL -> new Migration(8, V8_DESCRIPTION, MYSQL_V8_DDL);
+            case POSTGRES -> new Migration(8, V8_DESCRIPTION, POSTGRES_V8_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -967,5 +983,68 @@ public final class SkyblockMigrations {
 
             CREATE INDEX idx_islands_worth ON islands (net_worth_minor_units DESC);
             CREATE INDEX idx_island_banks_balance ON island_banks (primary_balance_minor_units DESC);
+            """;
+
+    private static final String SQLITE_V8_DDL = """
+            CREATE TABLE IF NOT EXISTS backup_operations (
+                backup_set_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                backup_type VARCHAR(32) NOT NULL,
+                target_root_type_id VARCHAR(64) NULL,
+                target_root_key VARCHAR(64) NULL,
+                state VARCHAR(32) NOT NULL,
+                authority_epoch BIGINT NOT NULL,
+                db_version BIGINT NOT NULL,
+                schema_version INT NOT NULL,
+                plugin_version VARCHAR(32) NOT NULL,
+                failure_reason VARCHAR(255) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_backup_ops_root ON backup_operations (target_root_type_id, target_root_key, state);
+            CREATE INDEX IF NOT EXISTS idx_backup_ops_state ON backup_operations (state);
+            """;
+
+    private static final String MYSQL_V8_DDL = """
+            CREATE TABLE IF NOT EXISTS backup_operations (
+                backup_set_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                backup_type VARCHAR(32) NOT NULL,
+                target_root_type_id VARCHAR(64) NULL,
+                target_root_key VARCHAR(64) NULL,
+                state VARCHAR(32) NOT NULL,
+                authority_epoch BIGINT NOT NULL,
+                db_version BIGINT NOT NULL,
+                schema_version INT NOT NULL,
+                plugin_version VARCHAR(32) NOT NULL,
+                failure_reason VARCHAR(255) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_backup_ops_root ON backup_operations (target_root_type_id, target_root_key, state);
+            CREATE INDEX idx_backup_ops_state ON backup_operations (state);
+            """;
+
+    private static final String POSTGRES_V8_DDL = """
+            CREATE TABLE IF NOT EXISTS backup_operations (
+                backup_set_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                backup_type VARCHAR(32) NOT NULL,
+                target_root_type_id VARCHAR(64) NULL,
+                target_root_key VARCHAR(64) NULL,
+                state VARCHAR(32) NOT NULL,
+                authority_epoch BIGINT NOT NULL,
+                db_version BIGINT NOT NULL,
+                schema_version INT NOT NULL,
+                plugin_version VARCHAR(32) NOT NULL,
+                failure_reason VARCHAR(255) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_backup_ops_root ON backup_operations (target_root_type_id, target_root_key, state);
+            CREATE INDEX idx_backup_ops_state ON backup_operations (state);
             """;
 }

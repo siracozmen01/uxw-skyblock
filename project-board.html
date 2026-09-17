@@ -598,7 +598,7 @@
           <span>Overall Card Completion</span>
           <span id="metric-percent">95%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">41 / 43</div>
+        <div class="metric-val" id="metric-ratio">42 / 44</div>
         <div class="progress-track">
           <div class="progress-fill" id="metric-fill" style="width: 95%;"></div>
         </div>
@@ -724,9 +724,22 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">41</span>
+          <span class="column-count" id="count-done">42</span>
         </div>
         <div class="card-stack" id="stack-done">
+          <div class="item-card" draggable="true" data-id="BAK-001" data-tag="Persistence">
+            <div class="card-meta-line">
+              <span class="card-id">BAK-001</span>
+              <span class="card-label">Completed</span>
+            </div>
+            <div class="card-heading">Object Storage &amp; Backup Engine</div>
+            <div class="card-snippet">:core domain StorageBucket, StorageObjectMetadata, BackupSetId, BackupType, BackupLifecycleState, BackupManifest, BackupCatalogRecord, application ports ObjectStoragePort, BackupCatalogPort, DatabaseBackupPort, BackupService; :persistence-adapter local filesystem object storage adapter LocalFilesystemStorageAdapter with path traversal guards, atomic file writes, and SHA-256 metadata computation; canonical SQL PlayerBackupCatalogAdapter with dialect-specific upsert; V8 migrations with backup_operations catalog and root/state indexes; fast-lane SQLite and dual-lane Testcontainers MariaDB/PostgreSQL cross-dialect verification.</div>
+            <div class="card-foot">
+              <span class="badge-category">Persistence</span>
+              <span class="badge-status-dot">Done</span>
+            </div>
+          </div>
+
           <div class="item-card" draggable="true" data-id="LVL-003" data-tag="Core">
             <div class="card-meta-line">
               <span class="card-id">LVL-003</span>
