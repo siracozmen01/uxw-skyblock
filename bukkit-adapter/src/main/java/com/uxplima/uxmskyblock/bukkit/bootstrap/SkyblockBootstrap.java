@@ -25,6 +25,7 @@ import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ShopConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
@@ -45,6 +46,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.ShopFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.TemporaryAccessFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.VaultFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.WarpFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
@@ -69,6 +71,7 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
+import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
@@ -133,6 +136,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final WarpConfiguration warpConfig;
     private final SafeTeleportEngine safeTeleportEngine;
     private final IslandWarpService warpService;
+    private final VaultConfiguration vaultConfig;
+    private final IslandVaultService vaultService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -149,7 +154,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             ShopConfiguration shopConfig,
             TemporaryAccessConfiguration temporaryAccessConfig,
             RewardInboxConfiguration rewardConfig,
-            WarpConfiguration warpConfig) {
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -165,6 +171,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 Objects.requireNonNull(temporaryAccessConfig, "temporaryAccessConfig must not be null");
         this.rewardConfig = Objects.requireNonNull(rewardConfig, "rewardConfig must not be null");
         this.warpConfig = Objects.requireNonNull(warpConfig, "warpConfig must not be null");
+        this.vaultConfig = Objects.requireNonNull(vaultConfig, "vaultConfig must not be null");
 
         this.dynamicPricingEngine = new DynamicPricingEngine(shopConfig.dampingFactor());
         this.temporaryAccessService = new TemporaryAccessService(persistenceBootstrap.temporaryAccessStoragePort());
@@ -235,6 +242,13 @@ public final class SkyblockBootstrap implements AutoCloseable {
                             .map(visitorIslandId -> allianceService.canPrivilegedVisit(visitorIslandId, targetIslandId))
                             .orElse(false);
                 });
+
+        this.vaultService = new IslandVaultService(
+                persistenceBootstrap.islandVaultStoragePort(),
+                null,
+                vaultConfig.basePages(),
+                vaultConfig.maxPages(),
+                vaultConfig.leaseDuration());
 
         this.protectionListener = new IslandProtectionListener(
                 persistenceBootstrap.islandStoragePort(), accessService, allianceService, temporaryAccessService);
@@ -433,7 +447,39 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 new TemporaryAccessFeatureModule(temporaryAccessService, scheduler, temporaryAccessConfig));
         this.moduleRegistry.register(new RewardInboxFeatureModule(rewardInboxService, scheduler, rewardConfig));
         this.moduleRegistry.register(new WarpFeatureModule(warpService, safeTeleportEngine, warpConfig));
+        this.moduleRegistry.register(new VaultFeatureModule(vaultService, vaultConfig));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                VaultConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -912,6 +958,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             warpConfig = WarpConfiguration.defaultConfiguration();
         }
 
+        Path vaultFile = dataDir.resolve("vault.conf");
+        if (!java.nio.file.Files.exists(vaultFile)) {
+            try (java.io.InputStream in = plugin.getResource("vault.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, vaultFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if vault.conf cannot be extracted
+            }
+        }
+
+        VaultConfiguration vaultConfig;
+        if (java.nio.file.Files.exists(vaultFile)) {
+            try {
+                CommentedConfigurationNode vaultRoot = HoconConfigurationLoader.builder()
+                        .path(vaultFile)
+                        .build()
+                        .load();
+                vaultConfig = VaultConfiguration.load(vaultRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load vault configuration from: " + vaultFile, e);
+            }
+        } else {
+            vaultConfig = VaultConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -925,7 +997,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 shopConfig,
                 temporaryAccessConfig,
                 rewardConfig,
-                warpConfig);
+                warpConfig,
+                vaultConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1104,6 +1177,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public WarpConfiguration warpConfiguration() {
         return warpConfig;
+    }
+
+    public IslandVaultService vaultService() {
+        return vaultService;
+    }
+
+    public VaultConfiguration vaultConfiguration() {
+        return vaultConfig;
     }
 
     @Override

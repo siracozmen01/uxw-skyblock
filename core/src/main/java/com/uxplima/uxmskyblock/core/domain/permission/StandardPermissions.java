@@ -42,6 +42,11 @@ public final class StandardPermissions {
     public static final PermissionKey BANK_WITHDRAW = PermissionKey.uxm("bank.withdraw");
     public static final PermissionKey SHOP_ACCESS = PermissionKey.uxm("shop.access");
 
+    // Vault & Storage
+    public static final PermissionKey VAULT_VIEW = PermissionKey.uxm("vault.view");
+    public static final PermissionKey VAULT_DEPOSIT = PermissionKey.uxm("vault.deposit");
+    public static final PermissionKey VAULT_WITHDRAW = PermissionKey.uxm("vault.withdraw");
+
     // Management
     public static final PermissionKey MEMBER_INVITE = PermissionKey.uxm("member.invite");
     public static final PermissionKey MEMBER_KICK = PermissionKey.uxm("member.kick");
@@ -76,6 +81,9 @@ public final class StandardPermissions {
         map.put(IslandPermission.BANK_DEPOSIT, BANK_DEPOSIT);
         map.put(IslandPermission.BANK_WITHDRAW, BANK_WITHDRAW);
         map.put(IslandPermission.SHOP_ACCESS, SHOP_ACCESS);
+        map.put(IslandPermission.VAULT_VIEW, VAULT_VIEW);
+        map.put(IslandPermission.VAULT_DEPOSIT, VAULT_DEPOSIT);
+        map.put(IslandPermission.VAULT_WITHDRAW, VAULT_WITHDRAW);
         map.put(IslandPermission.MEMBER_INVITE, MEMBER_INVITE);
         map.put(IslandPermission.MEMBER_KICK, MEMBER_KICK);
         map.put(IslandPermission.MEMBER_PROMOTE, MEMBER_PROMOTE);

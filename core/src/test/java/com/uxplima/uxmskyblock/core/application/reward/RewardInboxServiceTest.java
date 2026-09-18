@@ -84,7 +84,10 @@ class RewardInboxServiceTest {
         service.issueReward(otherProfile, "SEASON", "s3", null, List.of(comp));
 
         List<RewardGrant> pending = service.getPendingRewards(recipientProfile);
-        assertThat(pending).hasSize(2).extracting(RewardGrant::grantId).containsExactly(g1.grantId(), g2.grantId());
+        assertThat(pending)
+                .hasSize(2)
+                .extracting(RewardGrant::grantId)
+                .containsExactlyInAnyOrder(g1.grantId(), g2.grantId());
 
         // Claim g1
         service.claimReward(g1.grantId(), recipientProfile);

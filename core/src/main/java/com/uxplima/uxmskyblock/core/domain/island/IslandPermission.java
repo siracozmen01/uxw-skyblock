@@ -36,6 +36,11 @@ public enum IslandPermission {
     BANK_WITHDRAW,
     SHOP_ACCESS,
 
+    // Vault & Storage
+    VAULT_VIEW,
+    VAULT_DEPOSIT,
+    VAULT_WITHDRAW,
+
     // Administrative
     MEMBER_INVITE,
     MEMBER_KICK,

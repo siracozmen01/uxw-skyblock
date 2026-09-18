@@ -119,6 +119,10 @@ class ProductionMigrationFastLaneTest {
                                 "reward_grant_components",
                                 "island_warps",
                                 "island_bans",
+                                "island_vault_pages",
+                                "vault_edit_sessions",
+                                "vault_escrow_transfers",
+                                "vault_audit_logs",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -579,6 +583,73 @@ class ProductionMigrationFastLaneTest {
                 assertThat(banCols)
                         .containsExactlyInAnyOrder(
                                 "island_id", "banned_player_uuid", "banned_by_profile_id", "reason", "created_at");
+
+                // island_vault_pages columns (V19)
+                Set<String> vaultPageCols = getColumnNames(meta, "island_vault_pages");
+                assertThat(vaultPageCols)
+                        .containsExactlyInAnyOrder(
+                                "island_id",
+                                "page",
+                                "page_version",
+                                "lease_epoch",
+                                "active_session_id",
+                                "contents_nbt",
+                                "last_modified_by",
+                                "updated_at");
+
+                // vault_edit_sessions columns (V19)
+                Set<String> vaultSessionCols = getColumnNames(meta, "vault_edit_sessions");
+                assertThat(vaultSessionCols)
+                        .containsExactlyInAnyOrder(
+                                "session_id",
+                                "island_id",
+                                "page",
+                                "player_uuid",
+                                "lease_epoch",
+                                "base_page_version",
+                                "state",
+                                "escrow_journal",
+                                "opened_at",
+                                "expires_at",
+                                "closed_at");
+
+                // vault_escrow_transfers columns (V19)
+                Set<String> escrowCols = getColumnNames(meta, "vault_escrow_transfers");
+                assertThat(escrowCols)
+                        .containsExactlyInAnyOrder(
+                                "transfer_id",
+                                "session_id",
+                                "source_type",
+                                "dest_type",
+                                "source_slot",
+                                "dest_slot",
+                                "source_before_fp",
+                                "source_after_fp",
+                                "dest_before_fp",
+                                "dest_after_fp",
+                                "source_expected_version",
+                                "dest_expected_version",
+                                "source_container_version",
+                                "dest_container_version",
+                                "item_nbt",
+                                "quantity",
+                                "state",
+                                "created_at",
+                                "updated_at");
+
+                // vault_audit_logs columns (V19)
+                Set<String> auditCols = getColumnNames(meta, "vault_audit_logs");
+                assertThat(auditCols)
+                        .containsExactlyInAnyOrder(
+                                "log_id",
+                                "island_id",
+                                "page",
+                                "actor_profile_id",
+                                "action_type",
+                                "slot",
+                                "item_summary",
+                                "quantity",
+                                "created_at");
             }
         }
     }
@@ -1812,7 +1883,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(17);
 
             // 2. Upgrade by applying V18
-            int v18Applied = runner.apply(allMigrations);
+            int v18Applied = runner.apply(allMigrations.subList(0, 18));
             assertThat(v18Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(18);
 
@@ -1914,9 +1985,180 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 18));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(18);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "22. Step-by-step upgrade from V18 to V19 creates island vault pages, edit sessions, escrow transfers, and audit logs tables")
+    void stepByStepUpgradeFromV18ToV19CreatesVaultTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V18
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v18Applied = runner.apply(allMigrations.subList(0, 18));
+            assertThat(v18Applied).isEqualTo(18);
+            assertThat(runner.currentVersion()).isEqualTo(18);
+
+            // 2. Upgrade by applying V19
+            int v19Applied = runner.apply(allMigrations);
+            assertThat(v19Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(19);
+
+            // 3. Verify V19 tables and foreign key cascade work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(conn, """
+                        INSERT INTO islands (
+                            id, owner_profile_id, owner_account_uuid, custom_name, lifecycle,
+                            economic_state, administrative_state, level_score, net_worth_minor_units, version
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            '11111111-1111-1111-1111-111111111111',
+                            '00000000-0000-0000-0000-000000000001',
+                            'Alpha Island',
+                            'ACTIVE',
+                            'NORMAL',
+                            'NORMAL',
+                            100,
+                            50000,
+                            1
+                        );
+                        """);
+
+                // Insert vault page
+                execute(conn, """
+                        INSERT INTO island_vault_pages (
+                            island_id, page, page_version, lease_epoch, active_session_id, contents_nbt, last_modified_by
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            1,
+                            1,
+                            1,
+                            NULL,
+                            X'010203',
+                            '11111111-1111-1111-1111-111111111111'
+                        );
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_vault_pages WHERE island_id = '99999999-9999-9999-9999-999999999999' AND page = 1"))
+                        .isEqualTo(1);
+
+                // Insert edit session
+                execute(conn, """
+                        INSERT INTO vault_edit_sessions (
+                            session_id, island_id, page, player_uuid, lease_epoch, base_page_version, state, expires_at
+                        ) VALUES (
+                            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            '99999999-9999-9999-9999-999999999999',
+                            1,
+                            '00000000-0000-0000-0000-000000000001',
+                            1,
+                            1,
+                            'ACTIVE',
+                            DATETIME('now', '+60 seconds')
+                        );
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM vault_edit_sessions WHERE session_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'"))
+                        .isEqualTo(1);
+
+                // Insert escrow transfer
+                execute(conn, """
+                        INSERT INTO vault_escrow_transfers (
+                            transfer_id, session_id, source_type, dest_type, source_slot, dest_slot,
+                            source_before_fp, source_after_fp, dest_before_fp, dest_after_fp,
+                            source_expected_version, dest_expected_version, source_container_version, dest_container_version,
+                            item_nbt, quantity, state
+                        ) VALUES (
+                            'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            'VAULT',
+                            'PLAYER',
+                            0,
+                            0,
+                            'fp-before',
+                            'fp-after',
+                            'dest-before',
+                            'dest-after',
+                            1,
+                            1,
+                            1,
+                            1,
+                            X'040506',
+                            1,
+                            'INTENT'
+                        );
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM vault_escrow_transfers WHERE transfer_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"))
+                        .isEqualTo(1);
+
+                // Insert audit log
+                execute(conn, """
+                        INSERT INTO vault_audit_logs (
+                            log_id, island_id, page, actor_profile_id, action_type, slot, item_summary, quantity
+                        ) VALUES (
+                            'cccccccc-cccc-cccc-cccc-cccccccccccc',
+                            '99999999-9999-9999-9999-999999999999',
+                            1,
+                            '11111111-1111-1111-1111-111111111111',
+                            'WITHDRAW',
+                            0,
+                            'DIAMOND_SWORD x1',
+                            1
+                        );
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM vault_audit_logs WHERE log_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'"))
+                        .isEqualTo(1);
+
+                // Delete island and verify cascade deletes vault pages, sessions, escrow transfers, and audit logs
+                execute(conn, "DELETE FROM islands WHERE id = '99999999-9999-9999-9999-999999999999'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_vault_pages WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(0);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM vault_edit_sessions WHERE session_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'"))
+                        .isEqualTo(0);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM vault_escrow_transfers WHERE transfer_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"))
+                        .isEqualTo(0);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM vault_audit_logs WHERE log_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(19);
         }
     }
 

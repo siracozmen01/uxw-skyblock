@@ -14,6 +14,7 @@ public record UpgradeId(String key) {
     public static final UpgradeId CROP_GROWTH = UpgradeId.of("CROP_GROWTH");
     public static final UpgradeId SPAWNER_SPEED = UpgradeId.of("SPAWNER_SPEED");
     public static final UpgradeId ORE_GENERATOR = UpgradeId.of("ORE_GENERATOR");
+    public static final UpgradeId VAULT_PAGES = UpgradeId.of("VAULT_PAGES");
 
     public UpgradeId {
         Objects.requireNonNull(key, "key");
