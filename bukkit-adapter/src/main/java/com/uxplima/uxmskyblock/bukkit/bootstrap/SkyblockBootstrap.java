@@ -130,7 +130,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandBankPort(),
                 persistenceBootstrap.islandLeaderboardPort(),
                 persistenceBootstrap.islandAuthorityPort(),
-                serverNodeId);
+                serverNodeId,
+                createIslandUseCase,
+                sessionCoordinator,
+                worldName);
 
         this.economyBridge = SkyblockEconomyBridge.createDefault(bankService, scheduler);
 
@@ -140,14 +143,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandUpgradeStoragePort(),
                 locationService,
                 scheduler,
-                worldName);
+                worldName,
+                sessionCoordinator);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistenceBootstrap.islandStoragePort(),
                 persistenceBootstrap.islandBankPort(),
                 persistenceBootstrap.islandUpgradeStoragePort(),
                 persistenceBootstrap.islandLeaderboardPort(),
-                scheduler);
+                scheduler,
+                sessionCoordinator);
 
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistenceBootstrap.outboxPort(), scheduler, serverNodeId.value() + "-outbox");

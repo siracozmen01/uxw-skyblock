@@ -15,7 +15,9 @@ import com.uxplima.uxmskyblock.api.UxmSkyblockActions;
 import com.uxplima.uxmskyblock.api.UxmSkyblockApi;
 import com.uxplima.uxmskyblock.api.UxmSkyblockApiProvider;
 import com.uxplima.uxmskyblock.api.UxmSkyblockQuery;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
@@ -29,6 +31,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Concrete implementation bridging public API calls from (:api) to internal domain ports.
@@ -40,6 +43,28 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     private final IslandLeaderboardPort islandLeaderboardPort;
     private final IslandAuthorityPort islandAuthorityPort;
     private final ServerNodeId serverNodeId;
+    private final @Nullable CreateIslandUseCase createIslandUseCase;
+    private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private final String defaultWorldName;
+
+    public BukkitSkyblockApiBridge(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandLeaderboardPort islandLeaderboardPort,
+            IslandAuthorityPort islandAuthorityPort,
+            ServerNodeId serverNodeId,
+            @Nullable CreateIslandUseCase createIslandUseCase,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            String defaultWorldName) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort");
+        this.islandLeaderboardPort = Objects.requireNonNull(islandLeaderboardPort, "islandLeaderboardPort");
+        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort");
+        this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId");
+        this.createIslandUseCase = createIslandUseCase;
+        this.sessionCoordinator = sessionCoordinator;
+        this.defaultWorldName = Objects.requireNonNull(defaultWorldName, "defaultWorldName");
+    }
 
     public BukkitSkyblockApiBridge(
             IslandStoragePort islandStoragePort,
@@ -47,11 +72,15 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             IslandLeaderboardPort islandLeaderboardPort,
             IslandAuthorityPort islandAuthorityPort,
             ServerNodeId serverNodeId) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort");
-        this.islandLeaderboardPort = Objects.requireNonNull(islandLeaderboardPort, "islandLeaderboardPort");
-        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort");
-        this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId");
+        this(
+                islandStoragePort,
+                islandBankPort,
+                islandLeaderboardPort,
+                islandAuthorityPort,
+                serverNodeId,
+                null,
+                null,
+                "skyblock_world");
     }
 
     public BukkitSkyblockApiBridge(
@@ -95,10 +124,15 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     @Override
     public CompletableFuture<Optional<IslandSnapshot>> getPlayerIsland(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
-        return CompletableFuture.supplyAsync(() -> islandStoragePort
-                .findIslandIdByProfileId(new ProfileId(playerId))
-                .flatMap(islandStoragePort::findIslandById)
-                .map(this::toSnapshot));
+        return CompletableFuture.supplyAsync(() -> {
+            ProfileId profileId = (sessionCoordinator != null)
+                    ? sessionCoordinator.activeProfile(playerId).orElseGet(() -> new ProfileId(playerId))
+                    : new ProfileId(playerId);
+            return islandStoragePort
+                    .findIslandIdByProfileId(profileId)
+                    .flatMap(islandStoragePort::findIslandById)
+                    .map(this::toSnapshot);
+        });
     }
 
     @Override
@@ -127,8 +161,24 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
         Objects.requireNonNull(ownerId, "ownerId");
         Objects.requireNonNull(presetId, "presetId");
         return CompletableFuture.supplyAsync(() -> {
-            ProfileId profileId = new ProfileId(ownerId);
+            ProfileId profileId = (sessionCoordinator != null)
+                    ? sessionCoordinator.activeProfile(ownerId).orElseGet(() -> new ProfileId(ownerId))
+                    : new ProfileId(ownerId);
             PlayerUuid playerUuid = new PlayerUuid(ownerId);
+
+            if (createIslandUseCase != null) {
+                CreateIslandUseCase.CreateIslandResult result =
+                        createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, defaultWorldName);
+                if (result instanceof CreateIslandUseCase.CreateIslandResult.Success succ) {
+                    return IslandResult.success(toSnapshot(succ.island()));
+                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
+                    return IslandResult.failure("Player already belongs to an island");
+                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.UnknownPreset unk) {
+                    return IslandResult.failure("Unknown preset '" + unk.presetId() + "'");
+                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.Failure fail) {
+                    return IslandResult.failure("Failed to create island: " + fail.reason());
+                }
+            }
 
             if (islandStoragePort.findIslandIdByProfileId(profileId).isPresent()) {
                 return IslandResult.failure("Player already belongs to an island");
@@ -137,7 +187,8 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             IslandId islandId = IslandId.of(UUID.randomUUID());
             IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 50);
             Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
-            IslandLocation location = new IslandLocation(islandId, "world", bounds, 0.5, 100.0, 0.5, 0.0f, 0.0f);
+            IslandLocation location =
+                    new IslandLocation(islandId, defaultWorldName, bounds, 0.5, 100.0, 0.5, 0.0f, 0.0f);
 
             islandStoragePort.saveIsland(island, location);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);

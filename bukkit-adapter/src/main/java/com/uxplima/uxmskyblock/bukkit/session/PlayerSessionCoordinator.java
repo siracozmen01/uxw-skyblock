@@ -33,6 +33,7 @@ import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
+import com.uxplima.uxmskyblock.core.domain.session.SessionState;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -48,15 +49,26 @@ public final class PlayerSessionCoordinator {
         private volatile ProfileId activeProfileId;
         private final AtomicLong sessionEpoch;
         private final AtomicLong lastDurableVersion;
+        private final AtomicReference<SessionState> state = new AtomicReference<>(SessionState.ACTIVE);
         private final AtomicReference<@Nullable AutoCloseable> heartbeatTask = new AtomicReference<>(null);
         private final AtomicReference<@Nullable AutoCloseable> checkpointTask = new AtomicReference<>(null);
 
         public ActiveSession(
                 PlayerUuid playerUuid, ProfileId activeProfileId, long sessionEpoch, long lastDurableVersion) {
+            this(playerUuid, activeProfileId, sessionEpoch, lastDurableVersion, SessionState.ACTIVE);
+        }
+
+        public ActiveSession(
+                PlayerUuid playerUuid,
+                ProfileId activeProfileId,
+                long sessionEpoch,
+                long lastDurableVersion,
+                SessionState initialState) {
             this.playerUuid = Objects.requireNonNull(playerUuid, "playerUuid");
             this.activeProfileId = Objects.requireNonNull(activeProfileId, "activeProfileId");
             this.sessionEpoch = new AtomicLong(sessionEpoch);
             this.lastDurableVersion = new AtomicLong(lastDurableVersion);
+            this.state.set(Objects.requireNonNull(initialState, "initialState"));
         }
 
         public PlayerUuid playerUuid() {
@@ -81,6 +93,19 @@ public final class PlayerSessionCoordinator {
 
         public void setLastDurableVersion(long version) {
             this.lastDurableVersion.set(version);
+        }
+
+        public boolean isFenced() {
+            return state.get() == SessionState.LOCAL_FENCED;
+        }
+
+        public SessionState state() {
+            return state.get();
+        }
+
+        public void fence() {
+            state.set(SessionState.LOCAL_FENCED);
+            closeTasks();
         }
 
         @SuppressWarnings("EmptyCatch")
@@ -140,6 +165,45 @@ public final class PlayerSessionCoordinator {
     }
 
     /**
+     * Resolves the canonical active profile for a connected player, if one is currently active and not fenced.
+     */
+    public Optional<ProfileId> activeProfile(PlayerUuid playerUuid) {
+        ActiveSession session = activeSessions.get(playerUuid.value());
+        if (session != null && !session.isFenced()) {
+            return Optional.of(session.activeProfileId());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Resolves the canonical active profile for a connected player by Bukkit UUID.
+     */
+    public Optional<ProfileId> activeProfile(UUID rawUuid) {
+        return activeProfile(new PlayerUuid(rawUuid));
+    }
+
+    /**
+     * Executes runtime self-fencing when lease renewal fails or is rejected:
+     * transitions session to LOCAL_FENCED, cancels timers, and disconnects player fail-closed.
+     */
+    public void selfFencePlayer(PlayerUuid playerUuid, String reason) {
+        ActiveSession session = activeSessions.remove(playerUuid.value());
+        if (session != null) {
+            session.fence();
+            protectionListener.removeActiveProfile(playerUuid);
+        }
+        LOGGER.log(Level.SEVERE, "Runtime self-fencing player {0}: {1}", new Object[] {playerUuid, reason});
+        schedulerPort.onEntity(playerUuid, () -> {
+            Player player = Bukkit.getPlayer(playerUuid.value());
+            if (player != null && player.isOnline()) {
+                player.kick(Component.text(
+                        "Session lease lost or expired. Disconnected to protect player data from split-brain state desync.",
+                        NamedTextColor.RED));
+            }
+        });
+    }
+
+    /**
      * Handles player join: ensures session authority, applies saved inventory, starts heartbeats & checkpoints.
      */
     public void handlePlayerJoin(Player player) {
@@ -164,7 +228,16 @@ public final class PlayerSessionCoordinator {
                     return;
                 }
 
-                long epoch = ((SessionAuthorityOutcome.Success) outcome).epoch();
+                SessionAuthorityOutcome.Success success = (SessionAuthorityOutcome.Success) outcome;
+                long epoch = success.epoch();
+
+                // If node took over an expired lease or crash occurred, reconcile in-flight profile switch operations
+                switchProfileUseCase.recoverInFlightSwitch(playerUuid, nodeId, epoch);
+
+                if (success.isRecovering()) {
+                    sessionAuthorityPort.markRecoveredActive(playerUuid, nodeId, epoch);
+                }
+
                 Optional<PlayerSessionRecord> sessionOpt = sessionAuthorityPort.findSession(playerUuid);
                 ProfileId activeProfile =
                         sessionOpt.map(PlayerSessionRecord::activeProfileId).orElse(defaultProfileId);
@@ -173,12 +246,13 @@ public final class PlayerSessionCoordinator {
                 long initialVersion =
                         invOpt.map(ProfileInventoryRecord::version).orElse(1L);
 
-                ActiveSession session = new ActiveSession(playerUuid, activeProfile, epoch, initialVersion);
+                ActiveSession session =
+                        new ActiveSession(playerUuid, activeProfile, epoch, initialVersion, SessionState.ACTIVE);
                 activeSessions.put(rawUuid, session);
 
                 // Apply inventory and bind protection profile on entity thread
                 schedulerPort.onEntity(playerUuid, () -> {
-                    if (!player.isOnline()) {
+                    if (!player.isOnline() || session.isFenced()) {
                         return;
                     }
                     if (invOpt.isPresent()) {
@@ -187,13 +261,16 @@ public final class PlayerSessionCoordinator {
                     protectionListener.setActiveProfile(playerUuid, activeProfile);
                 });
 
-                // Start async heartbeat task
+                // Start async heartbeat task with fail-closed self-fencing
                 AutoCloseable hbTask = schedulerPort.repeatAsync(
                         () -> {
+                            if (session.isFenced()) {
+                                return;
+                            }
                             SessionAuthorityOutcome renewOutcome =
                                     sessionAuthorityPort.renew(playerUuid, nodeId, session.sessionEpoch());
                             if (!renewOutcome.isSuccess()) {
-                                LOGGER.log(Level.WARNING, "Failed to renew heartbeat lease for {0}", playerUuid);
+                                selfFencePlayer(playerUuid, "Lease renewal failed or rejected: " + renewOutcome);
                             }
                         },
                         heartbeatInterval,
@@ -221,13 +298,13 @@ public final class PlayerSessionCoordinator {
      */
     public void checkpointPlayer(PlayerUuid playerUuid) {
         ActiveSession session = activeSessions.get(playerUuid.value());
-        if (session == null) {
+        if (session == null || session.isFenced()) {
             return;
         }
 
         schedulerPort.onEntity(playerUuid, () -> {
             Player player = Bukkit.getPlayer(playerUuid.value());
-            if (player == null || !player.isOnline()) {
+            if (player == null || !player.isOnline() || session.isFenced()) {
                 return;
             }
 
@@ -235,6 +312,9 @@ public final class PlayerSessionCoordinator {
                     player, session.activeProfileId(), session.lastDurableVersion());
 
             schedulerPort.async(() -> {
+                if (session.isFenced()) {
+                    return;
+                }
                 ProfileInventoryMutationOutcome outcome = inventoryCheckpointPort.checkpointInventory(
                         playerUuid,
                         session.activeProfileId(),
@@ -243,10 +323,12 @@ public final class PlayerSessionCoordinator {
                         session.lastDurableVersion(),
                         snapshot.inventoryNbt());
 
-                if (outcome instanceof ProfileInventoryMutationOutcome.Success success) {
-                    session.setLastDurableVersion(success.newVersion());
+                if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
+                    session.setLastDurableVersion(succ.newVersion());
                 } else {
-                    LOGGER.log(Level.WARNING, "Ambient checkpoint rejected for {0}", playerUuid);
+                    LOGGER.log(
+                            Level.WARNING, "Ambient checkpoint rejected for {0}: {1}", new Object[] {playerUuid, outcome
+                            });
                 }
             });
         });
@@ -259,7 +341,7 @@ public final class PlayerSessionCoordinator {
         Objects.requireNonNull(player, "player");
         UUID rawUuid = player.getUniqueId();
         ActiveSession session = activeSessions.remove(rawUuid);
-        if (session == null) {
+        if (session == null || session.isFenced()) {
             return;
         }
 
@@ -283,11 +365,14 @@ public final class PlayerSessionCoordinator {
                         session.lastDurableVersion(),
                         snapshot.inventoryNbt());
 
-                if (outcome instanceof ProfileInventoryMutationOutcome.Success success) {
-                    session.setLastDurableVersion(success.newVersion());
+                if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
+                    session.setLastDurableVersion(succ.newVersion());
                 } else {
                     LOGGER.log(Level.SEVERE, "Handoff finalization flush failed for {0}", session.playerUuid());
                 }
+
+                // Release lease to OFFLINE state (SES-003)
+                sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error finalizing handoff flush on quit for " + session.playerUuid(), e);
             }
@@ -303,7 +388,7 @@ public final class PlayerSessionCoordinator {
 
         UUID rawUuid = player.getUniqueId();
         ActiveSession session = activeSessions.get(rawUuid);
-        if (session == null) {
+        if (session == null || session.isFenced()) {
             player.sendMessage(Component.text("No active session found.", NamedTextColor.RED));
             return;
         }
@@ -318,7 +403,7 @@ public final class PlayerSessionCoordinator {
 
         // 1. Snapshot source inventory on entity thread
         schedulerPort.onEntity(playerUuid, () -> {
-            if (!player.isOnline()) {
+            if (!player.isOnline() || session.isFenced()) {
                 return;
             }
 
@@ -327,6 +412,9 @@ public final class PlayerSessionCoordinator {
 
             // 2. Prepare switch asynchronously
             schedulerPort.async(() -> {
+                if (session.isFenced()) {
+                    return;
+                }
                 UUID opId = UUID.randomUUID();
                 Result<SwitchProfileUseCase.PreparedSwitch, String> prepRes = switchProfileUseCase.prepareSwitch(
                         opId,
@@ -350,13 +438,16 @@ public final class PlayerSessionCoordinator {
 
                 SwitchProfileUseCase.PreparedSwitch prepared = prepRes.orElseThrow();
 
-                // 3. Apply target inventory on entity thread
+                // 3. Apply target state on entity thread (restores full inventory, enderchest, stats, potion effects,
+                // gamemode, flight)
                 schedulerPort.onEntity(playerUuid, () -> {
-                    if (!player.isOnline()) {
+                    if (!player.isOnline() || session.isFenced()) {
                         return;
                     }
 
-                    if (prepared.targetInventoryNbt().length > 0) {
+                    if (prepared.targetRecord() != null) {
+                        BukkitInventorySerializer.applyToPlayer(player, prepared.targetRecord());
+                    } else if (prepared.targetInventoryNbt().length > 0) {
                         var items = BukkitInventorySerializer.deserializeItemStacks(prepared.targetInventoryNbt());
                         player.getInventory().setContents(items);
                     } else {
@@ -368,10 +459,16 @@ public final class PlayerSessionCoordinator {
 
                     // 4. Complete switch asynchronously
                     schedulerPort.async(() -> {
+                        if (session.isFenced()) {
+                            return;
+                        }
                         Result<Unit, String> compRes = switchProfileUseCase.completeSwitch(prepared);
                         if (compRes.isOk()) {
                             session.setActiveProfileId(targetProfileId);
-                            session.setLastDurableVersion(1L);
+                            long newVersion = prepared.targetRecord() != null
+                                    ? prepared.targetRecord().version()
+                                    : 1L;
+                            session.setLastDurableVersion(newVersion);
                             schedulerPort.onEntity(playerUuid, () -> {
                                 if (player.isOnline()) {
                                     player.sendMessage(Component.text(
@@ -393,6 +490,9 @@ public final class PlayerSessionCoordinator {
      */
     public void shutdown() {
         for (ActiveSession session : activeSessions.values()) {
+            if (session.isFenced()) {
+                continue;
+            }
             session.closeTasks();
             try {
                 Player player = Bukkit.getPlayer(session.playerUuid().value());
@@ -409,6 +509,7 @@ public final class PlayerSessionCoordinator {
                         session.sessionEpoch(),
                         session.lastDurableVersion(),
                         invBytes);
+                sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error draining session during shutdown for " + session.playerUuid(), e);
             }

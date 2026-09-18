@@ -181,6 +181,69 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         });
     }
 
+    @Test
+    @DisplayName("activeProfile resolves canonical session profile and updates on switch")
+    void activeProfileResolvesCanonical() {
+        PlayerMock player = createPlayer("ActiveProfilePlayer");
+        coordinator.handlePlayerJoin(player);
+
+        eventuallyTick(() ->
+                assertThat(coordinator.getActiveSession(player.getUniqueId())).isNotNull());
+
+        ProfileId initial = coordinator.activeProfile(player.getUniqueId()).orElseThrow();
+        assertThat(initial).isEqualTo(new ProfileId(player.getUniqueId()));
+
+        ProfileId profileB = new ProfileId(UUID.randomUUID());
+        persistenceBootstrap.registerProfile(new PlayerUuid(player.getUniqueId()), profileB);
+        persistenceBootstrap
+                .inventoryPort()
+                .initializeInventory(ProfileInventoryRecord.createDefault(profileB, new byte[0], new byte[0]));
+
+        coordinator.switchProfile(player, profileB);
+
+        eventuallyTick(() -> {
+            ProfileId active = coordinator.activeProfile(player.getUniqueId()).orElseThrow();
+            assertThat(active).isEqualTo(profileB);
+        });
+    }
+
+    @Test
+    @DisplayName("selfFencePlayer marks session fenced, removes it, and kicks player")
+    void selfFencePlayerFencesAndKicks() {
+        PlayerMock player = createPlayer("FencedPlayer");
+        coordinator.handlePlayerJoin(player);
+
+        eventuallyTick(() ->
+                assertThat(coordinator.getActiveSession(player.getUniqueId())).isNotNull());
+
+        coordinator.selfFencePlayer(new PlayerUuid(player.getUniqueId()), "Lease expired test");
+
+        assertThat(coordinator.getActiveSession(player.getUniqueId())).isNull();
+        assertThat(coordinator.activeProfile(player.getUniqueId())).isEmpty();
+
+        eventuallyTick(() -> assertThat(player.isOnline()).isFalse());
+    }
+
+    @Test
+    @DisplayName("handlePlayerQuit releases session to OFFLINE state in persistence")
+    void playerQuitReleasesToOffline() {
+        PlayerMock player = createPlayer("OfflinePlayer");
+        coordinator.handlePlayerJoin(player);
+
+        eventuallyTick(() ->
+                assertThat(coordinator.getActiveSession(player.getUniqueId())).isNotNull());
+
+        coordinator.handlePlayerQuit(player);
+
+        eventuallyTick(() -> {
+            var sessionOpt =
+                    persistenceBootstrap.sessionAuthorityPort().findSession(new PlayerUuid(player.getUniqueId()));
+            assertThat(sessionOpt).isPresent();
+            assertThat(sessionOpt.get().state())
+                    .isEqualTo(com.uxplima.uxmskyblock.core.domain.session.SessionState.OFFLINE);
+        });
+    }
+
     private void eventuallyTick(Runnable assertion) {
         long start = System.currentTimeMillis();
         AssertionError last = null;

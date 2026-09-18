@@ -241,6 +241,12 @@ public final class IslandCommandTree {
         return Cmd.OK;
     }
 
+    private ProfileId activeProfile(Player player) {
+        return sessionCoordinator
+                .activeProfile(player.getUniqueId())
+                .orElseGet(() -> new ProfileId(player.getUniqueId()));
+    }
+
     private int executeCreate(CommandContext<CommandSourceStack> ctx, String presetId) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             send(ctx.getSource().getSender(), Component.text("Only players can create an island.", NamedTextColor.RED));
@@ -248,7 +254,7 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
 
         schedulerPort.async(() -> {
             CreateIslandUseCase.CreateIslandResult result =
@@ -258,29 +264,57 @@ public final class IslandCommandTree {
                 if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
                     protectionListener.cacheIsland(success.island());
 
-                    World world = Bukkit.getWorld(worldName);
-                    if (world == null && !Bukkit.getWorlds().isEmpty()) {
-                        world = Bukkit.getWorlds().get(0);
+                    World resolvedWorld = Bukkit.getWorld(worldName);
+                    if (resolvedWorld == null && !Bukkit.getWorlds().isEmpty()) {
+                        resolvedWorld = Bukkit.getWorlds().get(0);
                     }
-                    if (world != null) {
+                    if (resolvedWorld != null) {
+                        final World fallbackWorld = resolvedWorld;
                         int centerX = success.location().bounds().centerX();
                         int centerZ = success.location().bounds().centerZ();
                         int spawnY = 100;
-                        schematicEngine.pastePreset(world, centerX, spawnY, centerZ, success.preset());
-                        player.teleport(new Location(
-                                world,
-                                success.location().spawnX(),
-                                success.location().spawnY(),
-                                success.location().spawnZ(),
-                                0.0f,
-                                0.0f));
+                        int chunkX = centerX >> 4;
+                        int chunkZ = centerZ >> 4;
+                        String targetWorld = fallbackWorld.getName();
+
+                        schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
+                            World w = Bukkit.getWorld(targetWorld);
+                            if (w != null) {
+                                schematicEngine.pastePreset(w, centerX, spawnY, centerZ, success.preset());
+                            }
+                            schedulerPort.onEntity(playerUuid, () -> {
+                                if (!player.isOnline()) {
+                                    return;
+                                }
+                                Location destination = new Location(
+                                        w != null ? w : fallbackWorld,
+                                        success.location().spawnX(),
+                                        success.location().spawnY(),
+                                        success.location().spawnZ(),
+                                        0.0f,
+                                        0.0f);
+                                var unused = player.teleportAsync(destination).thenAccept(teleported -> {
+                                    if (Boolean.TRUE.equals(teleported)) {
+                                        player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                                        player.setFallDistance(0.0f);
+                                    }
+                                });
+                                send(
+                                        player,
+                                        Component.text(
+                                                "Island created successfully with preset '"
+                                                        + success.preset().displayName() + "'!",
+                                                NamedTextColor.GREEN));
+                            });
+                        });
+                    } else {
+                        send(
+                                player,
+                                Component.text(
+                                        "Island created successfully with preset '"
+                                                + success.preset().displayName() + "'!",
+                                        NamedTextColor.GREEN));
                     }
-                    send(
-                            player,
-                            Component.text(
-                                    "Island created successfully with preset '"
-                                            + success.preset().displayName() + "'!",
-                                    NamedTextColor.GREEN));
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
                     send(
                             player,
@@ -312,7 +346,7 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
 
         schedulerPort.async(() -> {
             Optional<IslandLocation> optLoc = islandLocationService.resolveHome(profileId);
@@ -331,8 +365,14 @@ public final class IslandCommandTree {
                     world = Bukkit.getWorlds().get(0);
                 }
                 if (world != null) {
-                    player.teleport(new Location(
-                            world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch()));
+                    Location destination = new Location(
+                            world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
+                    var unused = player.teleportAsync(destination).thenAccept(teleported -> {
+                        if (Boolean.TRUE.equals(teleported)) {
+                            player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                            player.setFallDistance(0.0f);
+                        }
+                    });
                     send(player, Component.text("Welcome to your island!", NamedTextColor.GREEN));
                 } else {
                     send(player, Component.text("Island world is currently unloaded.", NamedTextColor.RED));
@@ -350,7 +390,7 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
         Location current = player.getLocation();
         String currentWorld = current.getWorld() != null ? current.getWorld().getName() : this.worldName;
         double x = current.getX();
@@ -379,7 +419,7 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
 
         schedulerPort.async(() -> {
             Optional<Long> optBalance = islandBankService.getBalanceMinorUnits(profileId);
@@ -403,7 +443,7 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
 
         economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
@@ -425,7 +465,7 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
 
         economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
@@ -454,7 +494,7 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
         IslandBiome targetBiome = optBiome.get();
 
         schedulerPort.async(() -> {

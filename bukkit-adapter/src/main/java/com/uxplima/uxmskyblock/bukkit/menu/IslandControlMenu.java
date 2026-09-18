@@ -21,6 +21,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -34,6 +35,7 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Interactive Chest GUI providing one-stop island management, bank stats, upgrades,
@@ -47,6 +49,24 @@ public final class IslandControlMenu {
     private final IslandLocationService locationService;
     private final SchedulerPort schedulerPort;
     private final String worldName;
+    private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+
+    public IslandControlMenu(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandUpgradeStoragePort upgradeStoragePort,
+            IslandLocationService locationService,
+            SchedulerPort schedulerPort,
+            String worldName,
+            @Nullable PlayerSessionCoordinator sessionCoordinator) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
+        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
+        this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.sessionCoordinator = sessionCoordinator;
+    }
 
     public IslandControlMenu(
             IslandStoragePort islandStoragePort,
@@ -55,18 +75,17 @@ public final class IslandControlMenu {
             IslandLocationService locationService,
             SchedulerPort schedulerPort,
             String worldName) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
-        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
-        this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
-        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
-        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this(islandStoragePort, islandBankPort, upgradeStoragePort, locationService, schedulerPort, worldName, null);
     }
 
     public void open(Player player) {
         Objects.requireNonNull(player, "player must not be null");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = new ProfileId(player.getUniqueId());
+        ProfileId profileId = (sessionCoordinator != null)
+                ? sessionCoordinator
+                        .activeProfile(player.getUniqueId())
+                        .orElseGet(() -> new ProfileId(player.getUniqueId()))
+                : new ProfileId(player.getUniqueId());
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);

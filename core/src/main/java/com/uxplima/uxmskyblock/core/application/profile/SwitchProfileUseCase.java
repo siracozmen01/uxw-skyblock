@@ -8,9 +8,11 @@ import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckp
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
+import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchOperation;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Application use-case orchestrating the crash-consistent 2-phase player profile switch protocol.
@@ -24,7 +26,18 @@ public final class SwitchProfileUseCase {
             ProfileId toProfileId,
             ServerNodeId currentNode,
             long expectedEpoch,
-            byte[] targetInventoryNbt) {
+            byte[] targetInventoryNbt,
+            @Nullable ProfileInventoryRecord targetRecord) {
+
+        public PreparedSwitch(
+                UUID operationId,
+                PlayerUuid playerId,
+                ProfileId toProfileId,
+                ServerNodeId currentNode,
+                long expectedEpoch,
+                byte[] targetInventoryNbt) {
+            this(operationId, playerId, toProfileId, currentNode, expectedEpoch, targetInventoryNbt, null);
+        }
 
         public PreparedSwitch {
             Objects.requireNonNull(operationId, "operationId must not be null");
@@ -107,7 +120,8 @@ public final class SwitchProfileUseCase {
             return Result.err(intentRes.errorOrThrow());
         }
 
-        return Result.ok(new PreparedSwitch(operationId, playerId, toProfileId, currentNode, expectedEpoch, targetNbt));
+        return Result.ok(new PreparedSwitch(
+                operationId, playerId, toProfileId, currentNode, expectedEpoch, targetNbt, optTarget.orElse(null)));
     }
 
     /**
@@ -144,5 +158,48 @@ public final class SwitchProfileUseCase {
         }
 
         return Result.ok(Unit.INSTANCE);
+    }
+
+    /**
+     * Executes crash recovery on any in-flight profile switch operation found for the player on connect.
+     *
+     * <p>States PREPARING, SOURCE_SNAPSHOTTED, and TARGET_LOADED are rolled back safely to the source profile.
+     * States TARGET_APPLY_INTENT and PLAYER_APPLIED are rolled forward to the destination profile.
+     *
+     * @param playerId target player UUID
+     * @param currentNode claiming server node ID
+     * @param expectedEpoch current session epoch
+     * @return result carrying the reconciled active profile ID, or empty optional if no in-flight switch was present
+     */
+    public Result<Optional<ProfileId>, String> recoverInFlightSwitch(
+            PlayerUuid playerId, ServerNodeId currentNode, long expectedEpoch) {
+        Objects.requireNonNull(playerId, "playerId must not be null");
+        Objects.requireNonNull(currentNode, "currentNode must not be null");
+
+        Optional<ProfileSwitchOperation> optOp = profileSwitchPort.findActiveOperation(playerId);
+        if (optOp.isEmpty()) {
+            return Result.ok(Optional.empty());
+        }
+
+        ProfileSwitchOperation op = optOp.get();
+        if (op instanceof ProfileSwitchOperation.Preparing
+                || op instanceof ProfileSwitchOperation.SourceSnapshotted
+                || op instanceof ProfileSwitchOperation.TargetLoaded) {
+            Result<Unit, String> abortRes = profileSwitchPort.abortSwitch(
+                    op.operationId(), playerId, "Startup crash recovery: rolling back incomplete switch");
+            if (abortRes.isErr()) {
+                return Result.err("Failed to abort incomplete switch during recovery: " + abortRes.errorOrThrow());
+            }
+            return Result.ok(Optional.of(op.fromProfileId()));
+        } else if (op instanceof ProfileSwitchOperation.TargetApplyIntent
+                || op instanceof ProfileSwitchOperation.PlayerApplied) {
+            Result<?, String> commitRes = profileSwitchPort.commitSwitch(
+                    op.operationId(), playerId, op.toProfileId(), currentNode, expectedEpoch);
+            if (commitRes.isErr()) {
+                return Result.err("Failed to commit roll-forward switch during recovery: " + commitRes.errorOrThrow());
+            }
+            return Result.ok(Optional.of(op.toProfileId()));
+        }
+        return Result.ok(Optional.empty());
     }
 }
