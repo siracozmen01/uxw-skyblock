@@ -12,11 +12,13 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
+import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
@@ -26,6 +28,7 @@ import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
@@ -35,6 +38,7 @@ import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
@@ -92,6 +96,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandSeasonService seasonService;
     private final SocialConfiguration socialConfig;
     private final IslandSocialService socialService;
+    private final DiscordConfiguration discordConfig;
+    private final IslandDiscordWebhookService discordService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -102,7 +108,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             PlayerStateDurabilityConfig playerStateConfig,
             ModuleSettingsConfiguration moduleSettings,
             SeasonConfiguration seasonConfig,
-            SocialConfiguration socialConfig) {
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -111,6 +118,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleSettings = Objects.requireNonNull(moduleSettings, "moduleSettings must not be null");
         this.seasonConfig = Objects.requireNonNull(seasonConfig, "seasonConfig must not be null");
         this.socialConfig = Objects.requireNonNull(socialConfig, "socialConfig must not be null");
+        this.discordConfig = Objects.requireNonNull(discordConfig, "discordConfig must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -147,6 +155,13 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 socialConfig.priorMean(),
                 socialConfig.maxPinned(),
                 socialConfig.maxMessageLength());
+        this.discordService = new IslandDiscordWebhookService(
+                new JavaHttpClientDiscordAdapter(),
+                discordConfig.webhookUrls(),
+                discordConfig.enabled(),
+                discordConfig.botUsername(),
+                discordConfig.avatarUrl(),
+                discordConfig.rateLimitPerSecond());
 
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
 
@@ -230,7 +245,27 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new PresetsModule(presetCatalog, schematicEngine));
         this.moduleRegistry.register(new SeasonFeatureModule(seasonService, scheduler, seasonConfig));
         this.moduleRegistry.register(new SocialFeatureModule(socialService));
+        this.moduleRegistry.register(new DiscordFeatureModule(discordService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                DiscordConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -247,7 +282,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 playerStateConfig,
                 moduleSettings,
                 seasonConfig,
-                SocialConfiguration.defaultConfiguration());
+                SocialConfiguration.defaultConfiguration(),
+                DiscordConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -407,8 +443,41 @@ public final class SkyblockBootstrap implements AutoCloseable {
             socialConfig = SocialConfiguration.defaultConfiguration();
         }
 
+        Path discordFile = dataDir.resolve("discord.conf");
+        if (!java.nio.file.Files.exists(discordFile)) {
+            try (java.io.InputStream in = plugin.getResource("discord.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, discordFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if discord.conf cannot be extracted
+            }
+        }
+
+        DiscordConfiguration discordConfig;
+        if (java.nio.file.Files.exists(discordFile)) {
+            try {
+                CommentedConfigurationNode discordRoot = HoconConfigurationLoader.builder()
+                        .path(discordFile)
+                        .build()
+                        .load();
+                discordConfig = DiscordConfiguration.load(discordRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load discord configuration from: " + discordFile, e);
+            }
+        } else {
+            discordConfig = DiscordConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
-                plugin, persistence, nodeConfig, playerStateConfig, moduleSettings, seasonConfig, socialConfig);
+                plugin,
+                persistence,
+                nodeConfig,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -537,9 +606,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return socialConfig;
     }
 
+    public IslandDiscordWebhookService discordService() {
+        return discordService;
+    }
+
+    public DiscordConfiguration discordConfiguration() {
+        return discordConfig;
+    }
+
     @Override
     public void close() {
         moduleRegistry.disableModules();
+        discordService.close();
         outboxDispatcher.close();
         if (Guis.isInstalled()) {
             Guis.uninstall();
