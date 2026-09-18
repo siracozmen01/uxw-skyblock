@@ -25,6 +25,7 @@ import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ShopConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
@@ -44,6 +45,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.ShopFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.TemporaryAccessFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.WarpFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
@@ -67,6 +69,8 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
+import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
+import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
@@ -126,6 +130,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final TemporaryAccessService temporaryAccessService;
     private final RewardInboxConfiguration rewardConfig;
     private final RewardInboxService rewardInboxService;
+    private final WarpConfiguration warpConfig;
+    private final SafeTeleportEngine safeTeleportEngine;
+    private final IslandWarpService warpService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -141,7 +148,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             AllianceConfiguration allianceConfig,
             ShopConfiguration shopConfig,
             TemporaryAccessConfiguration temporaryAccessConfig,
-            RewardInboxConfiguration rewardConfig) {
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -156,6 +164,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.temporaryAccessConfig =
                 Objects.requireNonNull(temporaryAccessConfig, "temporaryAccessConfig must not be null");
         this.rewardConfig = Objects.requireNonNull(rewardConfig, "rewardConfig must not be null");
+        this.warpConfig = Objects.requireNonNull(warpConfig, "warpConfig must not be null");
 
         this.dynamicPricingEngine = new DynamicPricingEngine(shopConfig.dampingFactor());
         this.temporaryAccessService = new TemporaryAccessService(persistenceBootstrap.temporaryAccessStoragePort());
@@ -209,6 +218,23 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 allianceConfig.friendlyFireShielding(),
                 allianceConfig.privilegedVisitAccess(),
                 allianceConfig.allianceChatEnabled());
+
+        this.safeTeleportEngine = new SafeTeleportEngine(warpConfig.searchRadius());
+        this.warpService = new IslandWarpService(
+                persistenceBootstrap.islandWarpStoragePort(),
+                safeTeleportEngine,
+                null,
+                warpConfig.baseWarpLimit(),
+                (targetIslandId, visitorProfileId) -> {
+                    if (!allianceConfig.privilegedVisitAccess()) {
+                        return false;
+                    }
+                    return persistenceBootstrap
+                            .islandStoragePort()
+                            .findIslandIdByProfileId(visitorProfileId)
+                            .map(visitorIslandId -> allianceService.canPrivilegedVisit(visitorIslandId, targetIslandId))
+                            .orElse(false);
+                });
 
         this.protectionListener = new IslandProtectionListener(
                 persistenceBootstrap.islandStoragePort(), accessService, allianceService, temporaryAccessService);
@@ -406,7 +432,37 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(
                 new TemporaryAccessFeatureModule(temporaryAccessService, scheduler, temporaryAccessConfig));
         this.moduleRegistry.register(new RewardInboxFeatureModule(rewardInboxService, scheduler, rewardConfig));
+        this.moduleRegistry.register(new WarpFeatureModule(warpService, safeTeleportEngine, warpConfig));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                WarpConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -830,6 +886,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             rewardConfig = RewardInboxConfiguration.defaultConfiguration();
         }
 
+        Path warpsFile = dataDir.resolve("warps.conf");
+        if (!java.nio.file.Files.exists(warpsFile)) {
+            try (java.io.InputStream in = plugin.getResource("warps.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, warpsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if warps.conf cannot be extracted
+            }
+        }
+
+        WarpConfiguration warpConfig;
+        if (java.nio.file.Files.exists(warpsFile)) {
+            try {
+                CommentedConfigurationNode warpRoot = HoconConfigurationLoader.builder()
+                        .path(warpsFile)
+                        .build()
+                        .load();
+                warpConfig = WarpConfiguration.load(warpRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load warps configuration from: " + warpsFile, e);
+            }
+        } else {
+            warpConfig = WarpConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -842,7 +924,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 allianceConfig,
                 shopConfig,
                 temporaryAccessConfig,
-                rewardConfig);
+                rewardConfig,
+                warpConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1009,6 +1092,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public RewardInboxConfiguration rewardInboxConfiguration() {
         return rewardConfig;
+    }
+
+    public IslandWarpService warpService() {
+        return warpService;
+    }
+
+    public SafeTeleportEngine safeTeleportEngine() {
+        return safeTeleportEngine;
+    }
+
+    public WarpConfiguration warpConfiguration() {
+        return warpConfig;
     }
 
     @Override

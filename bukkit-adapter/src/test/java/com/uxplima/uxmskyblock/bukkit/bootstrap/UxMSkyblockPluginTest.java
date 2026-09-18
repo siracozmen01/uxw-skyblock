@@ -50,15 +50,20 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(new java.io.File(plugin.getDataFolder(), "seasons.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "social.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "discord.conf")).exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "warps.conf")).exists();
         assertThat(plugin.bootstrap().moduleRegistry().enabledModules()).isNotEmpty();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("core")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("bank")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("seasons")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("social")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("discord")).isPresent();
+        assertThat(plugin.bootstrap().moduleRegistry().findModule("warps")).isPresent();
         assertThat(plugin.bootstrap().seasonService()).isNotNull();
         assertThat(plugin.bootstrap().socialService()).isNotNull();
         assertThat(plugin.bootstrap().discordService()).isNotNull();
+        assertThat(plugin.bootstrap().warpService()).isNotNull();
+        assertThat(plugin.bootstrap().safeTeleportEngine()).isNotNull();
+        assertThat(plugin.bootstrap().warpConfiguration()).isNotNull();
     }
 
     @Test

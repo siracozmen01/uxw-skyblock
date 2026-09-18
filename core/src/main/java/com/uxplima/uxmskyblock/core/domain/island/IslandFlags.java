@@ -28,6 +28,7 @@ public record IslandFlags(Map<String, Boolean> values) {
     public static final String VISITOR_ITEM_PICKUP = "VISITOR_ITEM_PICKUP";
     public static final String VISITOR_ITEM_DROP = "VISITOR_ITEM_DROP";
     public static final String VISITOR_PVP = "VISITOR_PVP";
+    public static final String LOCKED = "LOCKED";
 
     public static IslandFlags defaults() {
         Map<String, Boolean> defaults = new HashMap<>();
@@ -44,6 +45,7 @@ public record IslandFlags(Map<String, Boolean> values) {
         defaults.put(VISITOR_ITEM_PICKUP, false);
         defaults.put(VISITOR_ITEM_DROP, false);
         defaults.put(VISITOR_PVP, false);
+        defaults.put(LOCKED, false);
         return new IslandFlags(defaults);
     }
 

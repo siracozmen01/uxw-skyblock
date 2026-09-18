@@ -24,6 +24,7 @@ import com.uxplima.uxmskyblock.core.application.season.IslandSeasonStoragePort;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialStoragePort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
+import com.uxplima.uxmskyblock.core.application.warp.IslandWarpStoragePort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -46,6 +47,7 @@ import com.uxplima.uxmskyblock.persistence.season.PlayerIslandSeasonAdapter;
 import com.uxplima.uxmskyblock.persistence.session.PlayerSessionAuthorityAdapter;
 import com.uxplima.uxmskyblock.persistence.social.PlayerIslandSocialAdapter;
 import com.uxplima.uxmskyblock.persistence.upgrade.PlayerIslandUpgradeAdapter;
+import com.uxplima.uxmskyblock.persistence.warp.SqlIslandWarpStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.world.PlayerWorldGridAllocationAdapter;
 
 /**
@@ -74,6 +76,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerIslandAllianceAdapter islandAllianceAdapter;
     private final SqlTemporaryAccessAdapter temporaryAccessAdapter;
     private final SqlRewardStorageAdapter rewardStorageAdapter;
+    private final SqlIslandWarpStorageAdapter islandWarpStorageAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -101,6 +104,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.islandAllianceAdapter = new PlayerIslandAllianceAdapter(database);
         this.temporaryAccessAdapter = new SqlTemporaryAccessAdapter(database);
         this.rewardStorageAdapter = new SqlRewardStorageAdapter(database);
+        this.islandWarpStorageAdapter = new SqlIslandWarpStorageAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -208,6 +212,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public RewardStoragePort rewardStoragePort() {
         return rewardStorageAdapter;
+    }
+
+    public IslandWarpStoragePort islandWarpStoragePort() {
+        return islandWarpStorageAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

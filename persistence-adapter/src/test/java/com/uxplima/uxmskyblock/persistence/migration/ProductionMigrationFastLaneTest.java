@@ -117,6 +117,8 @@ class ProductionMigrationFastLaneTest {
                                 "temporary_access_grant_permissions",
                                 "reward_grants",
                                 "reward_grant_components",
+                                "island_warps",
+                                "island_bans",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -552,6 +554,31 @@ class ProductionMigrationFastLaneTest {
                                 "state",
                                 "journal_operation_id",
                                 "updated_at");
+
+                // island_warps columns (V18)
+                Set<String> warpCols = getColumnNames(meta, "island_warps");
+                assertThat(warpCols)
+                        .containsExactlyInAnyOrder(
+                                "warp_id",
+                                "island_id",
+                                "warp_name",
+                                "world_name",
+                                "x",
+                                "y",
+                                "z",
+                                "yaw",
+                                "pitch",
+                                "icon_material",
+                                "category",
+                                "is_locked",
+                                "created_at",
+                                "updated_at");
+
+                // island_bans columns (V18)
+                Set<String> banCols = getColumnNames(meta, "island_bans");
+                assertThat(banCols)
+                        .containsExactlyInAnyOrder(
+                                "island_id", "banned_player_uuid", "banned_by_profile_id", "reason", "created_at");
             }
         }
     }
@@ -1703,7 +1730,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(16);
 
             // 2. Upgrade by applying V17
-            int v17Applied = runner.apply(allMigrations);
+            int v17Applied = runner.apply(allMigrations.subList(0, 17));
             assertThat(v17Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(17);
 
@@ -1766,9 +1793,130 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 17));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(17);
+        }
+    }
+
+    @Test
+    @DisplayName("21. Step-by-step upgrade from V17 to V18 creates island warps and island bans tables")
+    void stepByStepUpgradeFromV17ToV18CreatesWarpAndBanTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V17
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v17Applied = runner.apply(allMigrations.subList(0, 17));
+            assertThat(v17Applied).isEqualTo(17);
+            assertThat(runner.currentVersion()).isEqualTo(17);
+
+            // 2. Upgrade by applying V18
+            int v18Applied = runner.apply(allMigrations);
+            assertThat(v18Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(18);
+
+            // 3. Verify V18 tables and foreign key cascade work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(conn, """
+                        INSERT INTO islands (
+                            id, owner_profile_id, owner_account_uuid, custom_name, lifecycle,
+                            economic_state, administrative_state, level_score, net_worth_minor_units, version
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            '11111111-1111-1111-1111-111111111111',
+                            '00000000-0000-0000-0000-000000000001',
+                            'Alpha Island',
+                            'ACTIVE',
+                            'NORMAL',
+                            'NORMAL',
+                            100,
+                            50000,
+                            1
+                        );
+                        """);
+
+                // Insert warp
+                execute(conn, """
+                        INSERT INTO island_warps (
+                            warp_id, island_id, warp_name, world_name, x, y, z, yaw, pitch, icon_material, category, is_locked
+                        ) VALUES (
+                            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            '99999999-9999-9999-9999-999999999999',
+                            'market',
+                            'skyblock_world',
+                            100.5, 65.0, -200.5,
+                            90.0, 0.0,
+                            'CHEST',
+                            'SHOPS',
+                            0
+                        );
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_warps WHERE warp_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'"))
+                        .isEqualTo(1);
+
+                // Unique constraint on (island_id, warp_name) rejects duplicate
+                assertThatThrownBy(() -> execute(conn, """
+                        INSERT INTO island_warps (
+                            warp_id, island_id, warp_name, world_name, x, y, z, yaw, pitch, icon_material, category, is_locked
+                        ) VALUES (
+                            'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            '99999999-9999-9999-9999-999999999999',
+                            'market',
+                            'skyblock_world',
+                            105.5, 65.0, -200.5,
+                            0.0, 0.0,
+                            'CHEST',
+                            'SHOPS',
+                            0
+                        );
+                        """)).isInstanceOf(SQLException.class);
+
+                // Insert island ban
+                execute(conn, """
+                        INSERT INTO island_bans (
+                            island_id, banned_player_uuid, banned_by_profile_id, reason
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            '77777777-7777-7777-7777-777777777777',
+                            '11111111-1111-1111-1111-111111111111',
+                            'Griefing attempts'
+                        );
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_bans WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(1);
+
+                // Delete island and verify cascade deletes both warps and bans
+                execute(conn, "DELETE FROM islands WHERE id = '99999999-9999-9999-9999-999999999999'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_warps WHERE warp_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'"))
+                        .isEqualTo(0);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_bans WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(18);
         }
     }
 
