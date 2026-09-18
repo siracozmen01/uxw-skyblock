@@ -113,6 +113,8 @@ class ProductionMigrationFastLaneTest {
                                 "social_bookmarks",
                                 "island_alliances",
                                 "island_alliance_invites",
+                                "temporary_access_grants",
+                                "temporary_access_grant_permissions",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -478,6 +480,46 @@ class ProductionMigrationFastLaneTest {
                 Set<String> bookmarkCols = getColumnNames(meta, "social_bookmarks");
                 assertThat(bookmarkCols)
                         .containsExactlyInAnyOrder("profile_id", "subject_type_id", "subject_key", "created_at");
+
+                // island_alliances columns (V15)
+                Set<String> allianceCols = getColumnNames(meta, "island_alliances");
+                assertThat(allianceCols)
+                        .containsExactlyInAnyOrder("alliance_id", "island_a_id", "island_b_id", "created_at");
+
+                // island_alliance_invites columns (V15)
+                Set<String> inviteCols = getColumnNames(meta, "island_alliance_invites");
+                assertThat(inviteCols)
+                        .containsExactlyInAnyOrder(
+                                "invite_id",
+                                "sender_island_id",
+                                "target_island_id",
+                                "sender_profile_id",
+                                "created_at",
+                                "expires_at");
+
+                // temporary_access_grants columns (V16)
+                Set<String> grantCols = getColumnNames(meta, "temporary_access_grants");
+                assertThat(grantCols)
+                        .containsExactlyInAnyOrder(
+                                "grant_id",
+                                "instance_id",
+                                "target_root_type_id",
+                                "target_root_key",
+                                "grantee_profile_id",
+                                "granted_by_profile_id",
+                                "termination_policy",
+                                "anchor_player_uuid",
+                                "anchor_session_epoch",
+                                "anchor_node_id",
+                                "anchor_process_generation_id",
+                                "state",
+                                "created_at",
+                                "expires_at",
+                                "updated_at");
+
+                // temporary_access_grant_permissions columns (V16)
+                Set<String> tempPermCols = getColumnNames(meta, "temporary_access_grant_permissions");
+                assertThat(tempPermCols).containsExactlyInAnyOrder("grant_id", "permission_key");
             }
         }
     }
@@ -1512,7 +1554,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(14);
 
             // 2. Upgrade by applying V15
-            int v15Applied = runner.apply(allMigrations);
+            int v15Applied = runner.apply(allMigrations.subList(0, 15));
             assertThat(v15Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(15);
 
@@ -1541,9 +1583,78 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 15));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(15);
+        }
+    }
+
+    @Test
+    @DisplayName("19. Step-by-step upgrade from V15 to V16 creates temporary access grants and permissions tables")
+    void stepByStepUpgradeFromV15ToV16CreatesTemporaryAccessTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V15
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v15Applied = runner.apply(allMigrations.subList(0, 15));
+            assertThat(v15Applied).isEqualTo(15);
+            assertThat(runner.currentVersion()).isEqualTo(15);
+
+            // 2. Upgrade by applying V16
+            int v16Applied = runner.apply(allMigrations);
+            assertThat(v16Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(16);
+
+            // 3. Verify V16 tables and foreign key cascade work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, """
+                        INSERT INTO temporary_access_grants (
+                            grant_id, instance_id, target_root_type_id, target_root_key,
+                            grantee_profile_id, granted_by_profile_id, termination_policy, state
+                        ) VALUES (
+                            '11111111-1111-1111-1111-111111111111',
+                            '22222222-2222-2222-2222-222222222222',
+                            'uxm:island',
+                            '22222222-2222-2222-2222-222222222222',
+                            '33333333-3333-3333-3333-333333333333',
+                            '44444444-4444-4444-4444-444444444444',
+                            'UNTIL_REVOKED',
+                            'ACTIVE'
+                        )
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM temporary_access_grants WHERE grant_id = '11111111-1111-1111-1111-111111111111'"))
+                        .isEqualTo(1);
+
+                execute(conn, """
+                        INSERT INTO temporary_access_grant_permissions (grant_id, permission_key)
+                        VALUES ('11111111-1111-1111-1111-111111111111', 'uxm:block.break')
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM temporary_access_grant_permissions WHERE grant_id = '11111111-1111-1111-1111-111111111111'"))
+                        .isEqualTo(1);
+
+                // Delete grant and verify cascade deletes permission
+                execute(
+                        conn,
+                        "DELETE FROM temporary_access_grants WHERE grant_id = '11111111-1111-1111-1111-111111111111'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM temporary_access_grant_permissions WHERE grant_id = '11111111-1111-1111-1111-111111111111'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(16);
         }
     }
 

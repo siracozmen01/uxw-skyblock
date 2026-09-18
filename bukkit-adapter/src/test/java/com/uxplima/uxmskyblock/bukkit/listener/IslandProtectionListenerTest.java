@@ -400,4 +400,98 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
         customListener.onEntityDamage(event);
         assertThat(event.isCancelled()).isTrue();
     }
+
+    @Test
+    @DisplayName("visitor with temporary access grant can break blocks on the target island")
+    void visitorWithTemporaryAccessCanBreakBlocks() {
+        java.util.concurrent.atomic.AtomicReference<com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant>
+                storedGrant = new java.util.concurrent.atomic.AtomicReference<>();
+
+        com.uxplima.uxmskyblock.core.application.access.TemporaryAccessStoragePort storage =
+                new com.uxplima.uxmskyblock.core.application.access.TemporaryAccessStoragePort() {
+                    @Override
+                    public void save(com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant grant) {
+                        storedGrant.set(grant);
+                    }
+
+                    @Override
+                    public Optional<com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant> findById(
+                            com.uxplima.uxmskyblock.core.domain.access.GrantId grantId) {
+                        return Optional.ofNullable(storedGrant.get());
+                    }
+
+                    @Override
+                    public List<com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant> findActiveByGrantee(
+                            ProfileId granteeProfileId) {
+                        com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant g = storedGrant.get();
+                        if (g != null
+                                && g.granteeProfileId().equals(granteeProfileId)
+                                && g.state() == com.uxplima.uxmskyblock.core.domain.access.GrantState.ACTIVE) {
+                            return List.of(g);
+                        }
+                        return List.of();
+                    }
+
+                    @Override
+                    public List<com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant> findActiveByRoot(
+                            String targetRootTypeId, String targetRootKey) {
+                        com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant g = storedGrant.get();
+                        if (g != null
+                                && g.targetRootTypeId().equals(targetRootTypeId)
+                                && g.targetRootKey().equals(targetRootKey)
+                                && g.state() == com.uxplima.uxmskyblock.core.domain.access.GrantState.ACTIVE) {
+                            return List.of(g);
+                        }
+                        return List.of();
+                    }
+
+                    @Override
+                    public void updateState(
+                            com.uxplima.uxmskyblock.core.domain.access.GrantId grantId,
+                            com.uxplima.uxmskyblock.core.domain.access.GrantState newState,
+                            Instant updatedAt) {}
+
+                    @Override
+                    public void purgeExpired(Instant now) {}
+                };
+
+        com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService tempAccessService =
+                new com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService(storage);
+
+        IslandProtectionListener customListener = new IslandProtectionListener(
+                listener.islandStoragePort(), new IslandAccessService(), null, tempAccessService);
+
+        customListener.cacheIsland(island);
+        customListener.setActiveProfile(ownerUuid, ownerProfileId);
+        customListener.setActiveProfile(visitorUuid, visitorProfileId);
+
+        // Before grant: visitor is blocked
+        Block block = world.getBlockAt(50, 64, 50);
+        block.setType(Material.STONE);
+        BlockBreakEvent eventBefore = new BlockBreakEvent(block, visitorPlayer);
+        customListener.onBlockBreak(eventBefore);
+        assertThat(eventBefore.isCancelled()).isTrue();
+
+        // Issue grant with uxm:block.break
+        tempAccessService.issueGrant(
+                "skyblock-01",
+                "ISLAND",
+                island.id().value().toString(),
+                visitorProfileId,
+                visitorUuid,
+                com.uxplima.uxmskyblock.core.domain.profile.ProfileType.CLASSIC,
+                ownerProfileId,
+                com.uxplima.uxmskyblock.core.domain.access.TerminationPolicy.UNTIL_REVOKED,
+                null,
+                null,
+                null,
+                null,
+                java.util.Set.of(com.uxplima.uxmskyblock.core.domain.permission.PermissionKey.of("uxm:block.break")),
+                null);
+
+        // After grant: visitor can break block
+        BlockBreakEvent eventAfter = new BlockBreakEvent(block, visitorPlayer);
+        customListener.onBlockBreak(eventAfter);
+        assertThat(eventAfter.isCancelled()).isFalse();
+    }
 }

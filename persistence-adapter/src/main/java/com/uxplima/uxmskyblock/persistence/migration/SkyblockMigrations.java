@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 15;
+    public static final int LATEST_VERSION = 16;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -68,6 +68,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V15. */
     public static final String V15_DESCRIPTION = "create island alliances and invites";
 
+    /** Human-readable description of migration V16. */
+    public static final String V16_DESCRIPTION = "create temporary access grants and permissions";
+
     private SkyblockMigrations() {}
 
     /**
@@ -99,7 +102,8 @@ public final class SkyblockMigrations {
                 v12Migration(dialect),
                 v13Migration(dialect),
                 v14Migration(dialect),
-                v15Migration(dialect));
+                v15Migration(dialect),
+                v16Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -436,6 +440,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(15, V15_DESCRIPTION, SQLITE_V15_DDL);
             case MYSQL -> new Migration(15, V15_DESCRIPTION, MYSQL_V15_DDL);
             case POSTGRES -> new Migration(15, V15_DESCRIPTION, POSTGRES_V15_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v16Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(16, V16_DESCRIPTION, SQLITE_V16_DDL);
+            case MYSQL -> new Migration(16, V16_DESCRIPTION, MYSQL_V16_DDL);
+            case POSTGRES -> new Migration(16, V16_DESCRIPTION, POSTGRES_V16_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1740,5 +1756,101 @@ public final class SkyblockMigrations {
 
             CREATE INDEX idx_alliance_invites_target ON island_alliance_invites (target_island_id);
             CREATE INDEX idx_alliance_invites_sender ON island_alliance_invites (sender_island_id);
+            """;
+
+    private static final String SQLITE_V16_DDL = """
+            CREATE TABLE IF NOT EXISTS temporary_access_grants (
+                grant_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                instance_id VARCHAR(36) NOT NULL,
+                target_root_type_id VARCHAR(64) NOT NULL,
+                target_root_key VARCHAR(128) NOT NULL,
+                grantee_profile_id VARCHAR(36) NOT NULL,
+                granted_by_profile_id VARCHAR(36) NOT NULL,
+                termination_policy VARCHAR(32) NOT NULL,
+                anchor_player_uuid VARCHAR(36) NULL,
+                anchor_session_epoch BIGINT NULL,
+                anchor_node_id VARCHAR(64) NULL,
+                anchor_process_generation_id VARCHAR(64) NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_temp_grants_grantee ON temporary_access_grants (grantee_profile_id, state);
+            CREATE INDEX IF NOT EXISTS idx_temp_grants_instance ON temporary_access_grants (instance_id, state);
+            CREATE INDEX IF NOT EXISTS idx_temp_grants_target ON temporary_access_grants (target_root_type_id, target_root_key, state);
+
+            CREATE TABLE IF NOT EXISTS temporary_access_grant_permissions (
+                grant_id VARCHAR(36) NOT NULL,
+                permission_key VARCHAR(128) NOT NULL,
+                PRIMARY KEY (grant_id, permission_key),
+                CONSTRAINT fk_temp_grant_perms FOREIGN KEY (grant_id)
+                    REFERENCES temporary_access_grants (grant_id) ON DELETE CASCADE
+            );
+            """;
+
+    private static final String MYSQL_V16_DDL = """
+            CREATE TABLE IF NOT EXISTS temporary_access_grants (
+                grant_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                instance_id VARCHAR(36) NOT NULL,
+                target_root_type_id VARCHAR(64) NOT NULL,
+                target_root_key VARCHAR(128) NOT NULL,
+                grantee_profile_id VARCHAR(36) NOT NULL,
+                granted_by_profile_id VARCHAR(36) NOT NULL,
+                termination_policy VARCHAR(32) NOT NULL,
+                anchor_player_uuid VARCHAR(36) NULL,
+                anchor_session_epoch BIGINT NULL,
+                anchor_node_id VARCHAR(64) NULL,
+                anchor_process_generation_id VARCHAR(64) NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_temp_grants_grantee ON temporary_access_grants (grantee_profile_id, state);
+            CREATE INDEX idx_temp_grants_instance ON temporary_access_grants (instance_id, state);
+            CREATE INDEX idx_temp_grants_target ON temporary_access_grants (target_root_type_id, target_root_key, state);
+
+            CREATE TABLE IF NOT EXISTS temporary_access_grant_permissions (
+                grant_id VARCHAR(36) NOT NULL,
+                permission_key VARCHAR(128) NOT NULL,
+                PRIMARY KEY (grant_id, permission_key),
+                CONSTRAINT fk_temp_grant_perms FOREIGN KEY (grant_id)
+                    REFERENCES temporary_access_grants (grant_id) ON DELETE CASCADE
+            );
+            """;
+
+    private static final String POSTGRES_V16_DDL = """
+            CREATE TABLE IF NOT EXISTS temporary_access_grants (
+                grant_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                instance_id VARCHAR(36) NOT NULL,
+                target_root_type_id VARCHAR(64) NOT NULL,
+                target_root_key VARCHAR(128) NOT NULL,
+                grantee_profile_id VARCHAR(36) NOT NULL,
+                granted_by_profile_id VARCHAR(36) NOT NULL,
+                termination_policy VARCHAR(32) NOT NULL,
+                anchor_player_uuid VARCHAR(36) NULL,
+                anchor_session_epoch BIGINT NULL,
+                anchor_node_id VARCHAR(64) NULL,
+                anchor_process_generation_id VARCHAR(64) NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_temp_grants_grantee ON temporary_access_grants (grantee_profile_id, state);
+            CREATE INDEX idx_temp_grants_instance ON temporary_access_grants (instance_id, state);
+            CREATE INDEX idx_temp_grants_target ON temporary_access_grants (target_root_type_id, target_root_key, state);
+
+            CREATE TABLE IF NOT EXISTS temporary_access_grant_permissions (
+                grant_id VARCHAR(36) NOT NULL,
+                permission_key VARCHAR(128) NOT NULL,
+                PRIMARY KEY (grant_id, permission_key),
+                CONSTRAINT fk_temp_grant_perms FOREIGN KEY (grant_id)
+                    REFERENCES temporary_access_grants (grant_id) ON DELETE CASCADE
+            );
             """;
 }
