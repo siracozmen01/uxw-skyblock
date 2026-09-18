@@ -12,6 +12,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
@@ -19,6 +20,12 @@ import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholde
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
@@ -29,6 +36,7 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -72,17 +80,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final BukkitSkyblockApiBridge apiBridge;
     private final ServerNodeConfiguration nodeConfiguration;
     private final PlayerStateDurabilityConfig playerStateConfig;
+    private final ModuleSettingsConfiguration moduleSettings;
+    private final ModuleRegistry moduleRegistry;
+    private final BukkitModuleContext moduleContext;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
             PersistenceBootstrap persistenceBootstrap,
             ServerNodeConfiguration nodeConfiguration,
-            PlayerStateDurabilityConfig playerStateConfig) {
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
         this.nodeConfiguration = Objects.requireNonNull(nodeConfiguration, "nodeConfiguration must not be null");
         this.playerStateConfig = Objects.requireNonNull(playerStateConfig, "playerStateConfig must not be null");
+        this.moduleSettings = Objects.requireNonNull(moduleSettings, "moduleSettings must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -179,6 +192,23 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 worldName,
                 economyBridge,
                 controlMenu);
+
+        this.moduleRegistry = new ModuleRegistry();
+        this.moduleContext = new BukkitModuleContext("1.0.0");
+        this.moduleRegistry.register(new CoreModule(createIslandUseCase));
+        this.moduleRegistry.register(new BankModule(bankService));
+        this.moduleRegistry.register(new UpgradesModule());
+        this.moduleRegistry.register(new BiomesModule(biomeAdapter));
+        this.moduleRegistry.register(new PresetsModule(presetCatalog, schematicEngine));
+        this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig) {
+        this(plugin, persistenceBootstrap, nodeConfiguration, playerStateConfig, ModuleSettingsConfiguration.empty());
     }
 
     public SkyblockBootstrap(
@@ -235,7 +265,34 @@ public final class SkyblockBootstrap implements AutoCloseable {
         }
 
         PersistenceBootstrap persistence = resolvePersistence(root, dataDir);
-        return new SkyblockBootstrap(plugin, persistence, nodeConfig, playerStateConfig);
+
+        Path modulesFile = dataDir.resolve("modules.conf");
+        if (!java.nio.file.Files.exists(modulesFile)) {
+            try (java.io.InputStream in = plugin.getResource("modules.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, modulesFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if modules.conf cannot be extracted
+            }
+        }
+
+        ModuleSettingsConfiguration moduleSettings;
+        if (java.nio.file.Files.exists(modulesFile)) {
+            try {
+                CommentedConfigurationNode modulesRoot = HoconConfigurationLoader.builder()
+                        .path(modulesFile)
+                        .build()
+                        .load();
+                moduleSettings = ModuleSettingsConfiguration.load(modulesRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load modules configuration from: " + modulesFile, e);
+            }
+        } else {
+            moduleSettings = ModuleSettingsConfiguration.empty();
+        }
+
+        return new SkyblockBootstrap(plugin, persistence, nodeConfig, playerStateConfig, moduleSettings);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -269,6 +326,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         if (!Guis.isInstalled()) {
             Guis.install(plugin);
         }
+        moduleRegistry.enableModules(moduleContext);
         protectionListener.loadPersistedIslands(nodeConfiguration.worldName());
         outboxDispatcher.start();
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
@@ -307,6 +365,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return playerStateConfig;
     }
 
+    public ModuleSettingsConfiguration moduleSettings() {
+        return moduleSettings;
+    }
+
+    public ModuleRegistry moduleRegistry() {
+        return moduleRegistry;
+    }
+
+    public BukkitModuleContext moduleContext() {
+        return moduleContext;
+    }
+
     public PlayerSessionCoordinator sessionCoordinator() {
         return sessionCoordinator;
     }
@@ -337,6 +407,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     @Override
     public void close() {
+        moduleRegistry.disableModules();
         outboxDispatcher.close();
         if (Guis.isInstalled()) {
             Guis.uninstall();
