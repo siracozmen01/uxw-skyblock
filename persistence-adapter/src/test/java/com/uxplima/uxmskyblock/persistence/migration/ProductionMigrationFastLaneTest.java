@@ -111,6 +111,8 @@ class ProductionMigrationFastLaneTest {
                                 "guestbook_reviews",
                                 "subject_visits",
                                 "social_bookmarks",
+                                "island_alliances",
+                                "island_alliance_invites",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -1475,7 +1477,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(13);
 
             // 2. Upgrade by applying V14
-            int v14Applied = runner.apply(allMigrations);
+            int v14Applied = runner.apply(allMigrations.subList(0, 14));
             assertThat(v14Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(14);
 
@@ -1491,9 +1493,57 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 14));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(14);
+        }
+    }
+
+    @Test
+    @DisplayName("18. Step-by-step upgrade from V14 to V15 creates island alliances and invites tables")
+    void stepByStepUpgradeFromV14ToV15CreatesAllianceTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V14
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v14Applied = runner.apply(allMigrations.subList(0, 14));
+            assertThat(v14Applied).isEqualTo(14);
+            assertThat(runner.currentVersion()).isEqualTo(14);
+
+            // 2. Upgrade by applying V15
+            int v15Applied = runner.apply(allMigrations);
+            assertThat(v15Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(15);
+
+            // 3. Verify V15 tables work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, """
+                        INSERT INTO island_alliances (alliance_id, island_a_id, island_b_id)
+                        VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-333333333333')
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_alliances WHERE alliance_id = '11111111-1111-1111-1111-111111111111'"))
+                        .isEqualTo(1);
+
+                execute(conn, """
+                        INSERT INTO island_alliance_invites (invite_id, sender_island_id, target_island_id, sender_profile_id, expires_at)
+                        VALUES ('44444444-4444-4444-4444-444444444444', '22222222-2222-2222-2222-222222222222', '55555555-5555-5555-5555-555555555555', '66666666-6666-6666-6666-666666666666', CURRENT_TIMESTAMP)
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_alliance_invites WHERE invite_id = '44444444-4444-4444-4444-444444444444'"))
+                        .isEqualTo(1);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(15);
         }
     }
 

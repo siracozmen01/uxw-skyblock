@@ -12,6 +12,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
@@ -25,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
@@ -37,6 +39,7 @@ import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
@@ -98,6 +101,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandSocialService socialService;
     private final DiscordConfiguration discordConfig;
     private final IslandDiscordWebhookService discordService;
+    private final AllianceConfiguration allianceConfig;
+    private final IslandAllianceService allianceService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -109,7 +114,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             ModuleSettingsConfiguration moduleSettings,
             SeasonConfiguration seasonConfig,
             SocialConfiguration socialConfig,
-            DiscordConfiguration discordConfig) {
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -119,6 +125,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.seasonConfig = Objects.requireNonNull(seasonConfig, "seasonConfig must not be null");
         this.socialConfig = Objects.requireNonNull(socialConfig, "socialConfig must not be null");
         this.discordConfig = Objects.requireNonNull(discordConfig, "discordConfig must not be null");
+        this.allianceConfig = Objects.requireNonNull(allianceConfig, "allianceConfig must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -162,8 +169,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 discordConfig.botUsername(),
                 discordConfig.avatarUrl(),
                 discordConfig.rateLimitPerSecond());
+        this.allianceService = new IslandAllianceService(
+                persistenceBootstrap.islandAllianceStoragePort(),
+                allianceConfig.maxAllies(),
+                allianceConfig.inviteTimeout(),
+                allianceConfig.friendlyFireShielding(),
+                allianceConfig.privilegedVisitAccess(),
+                allianceConfig.allianceChatEnabled());
 
-        this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
+        this.protectionListener =
+                new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService, allianceService);
 
         String worldName = nodeConfiguration.worldName();
         ServerNodeId serverNodeId = nodeConfiguration.nodeId();
@@ -246,7 +261,29 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new SeasonFeatureModule(seasonService, scheduler, seasonConfig));
         this.moduleRegistry.register(new SocialFeatureModule(socialService));
         this.moduleRegistry.register(new DiscordFeatureModule(discordService));
+        this.moduleRegistry.register(new AllianceFeatureModule(allianceService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                AllianceConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -469,6 +506,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             discordConfig = DiscordConfiguration.defaultConfiguration();
         }
 
+        Path allianceFile = dataDir.resolve("alliances.conf");
+        if (!java.nio.file.Files.exists(allianceFile)) {
+            try (java.io.InputStream in = plugin.getResource("alliances.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, allianceFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if alliances.conf cannot be extracted
+            }
+        }
+
+        AllianceConfiguration allianceConfig;
+        if (java.nio.file.Files.exists(allianceFile)) {
+            try {
+                CommentedConfigurationNode allianceRoot = HoconConfigurationLoader.builder()
+                        .path(allianceFile)
+                        .build()
+                        .load();
+                allianceConfig = AllianceConfiguration.load(allianceRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load alliance configuration from: " + allianceFile, e);
+            }
+        } else {
+            allianceConfig = AllianceConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -477,7 +540,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 moduleSettings,
                 seasonConfig,
                 socialConfig,
-                discordConfig);
+                discordConfig,
+                allianceConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -612,6 +676,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public DiscordConfiguration discordConfiguration() {
         return discordConfig;
+    }
+
+    public IslandAllianceService allianceService() {
+        return allianceService;
+    }
+
+    public AllianceConfiguration allianceConfiguration() {
+        return allianceConfig;
     }
 
     @Override

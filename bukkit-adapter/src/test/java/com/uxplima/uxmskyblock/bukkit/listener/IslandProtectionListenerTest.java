@@ -300,4 +300,107 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
         Optional<Island> cached = customListener.findIslandAt(loc);
         assertThat(cached).contains(remoteIsland);
     }
+
+    @Test
+    @DisplayName("pvp damage is cancelled when friendly fire shielding protects allied islands")
+    void pvpCancelledWhenFriendlyFireShielded() {
+        IslandId island1 = island.id();
+        IslandId island2 = IslandId.of(UUID.fromString("99999999-9999-9999-9999-999999999999"));
+
+        IslandStoragePort customStorage = new IslandStoragePort() {
+            @Override
+            public void saveIsland(Island island, IslandLocation location) {}
+
+            @Override
+            public Optional<Island> findIslandById(IslandId id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<IslandLocation> findLocationByIslandId(IslandId id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
+                if (profileId.equals(ownerProfileId)) {
+                    return Optional.of(island1);
+                }
+                if (profileId.equals(visitorProfileId)) {
+                    return Optional.of(island2);
+                }
+                return Optional.empty();
+            }
+
+            @Override
+            public void deleteIsland(IslandId id) {}
+        };
+
+        com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceStoragePort allianceStorage =
+                new com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceStoragePort() {
+                    @Override
+                    public void saveAlliance(com.uxplima.uxmskyblock.core.domain.alliance.IslandAlliance alliance) {}
+
+                    @Override
+                    public void removeAlliance(IslandId islandA, IslandId islandB) {}
+
+                    @Override
+                    public boolean areAllied(IslandId islandA, IslandId islandB) {
+                        return (islandA.equals(island1) && islandB.equals(island2))
+                                || (islandA.equals(island2) && islandB.equals(island1));
+                    }
+
+                    @Override
+                    public List<com.uxplima.uxmskyblock.core.domain.alliance.IslandAlliance> findAlliances(
+                            IslandId islandId) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public int countAlliances(IslandId islandId) {
+                        return 1;
+                    }
+
+                    @Override
+                    public void saveInvite(com.uxplima.uxmskyblock.core.domain.alliance.IslandAllianceInvite invite) {}
+
+                    @Override
+                    public Optional<com.uxplima.uxmskyblock.core.domain.alliance.IslandAllianceInvite> findInvite(
+                            IslandId sender, IslandId target) {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public List<com.uxplima.uxmskyblock.core.domain.alliance.IslandAllianceInvite> findPendingInvites(
+                            IslandId target, Instant now) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public void deleteInvite(IslandId sender, IslandId target) {}
+
+                    @Override
+                    public void purgeExpiredInvites(Instant now) {}
+                };
+
+        com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService allianceService =
+                new com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService(
+                        allianceStorage, 2, java.time.Duration.ofMinutes(5), true, true, true);
+
+        IslandProtectionListener customListener =
+                new IslandProtectionListener(customStorage, new IslandAccessService(), allianceService);
+        Island pvpIsland = island.withFlags(island.flags().withFlag(IslandFlags.PVP, true));
+        customListener.cacheIsland(pvpIsland);
+        customListener.setActiveProfile(ownerUuid, ownerProfileId);
+        customListener.setActiveProfile(visitorUuid, visitorProfileId);
+
+        EntityDamageByEntityEvent event = new EntityDamageByEntityEvent(
+                visitorPlayer,
+                ownerPlayer,
+                EntityDamageByEntityEvent.DamageCause.ENTITY_ATTACK,
+                5.0);
+
+        customListener.onEntityDamage(event);
+        assertThat(event.isCancelled()).isTrue();
+    }
 }

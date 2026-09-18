@@ -5,6 +5,7 @@ import java.util.Objects;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
+import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceStoragePort;
 import com.uxplima.uxmskyblock.core.application.backup.BackupCatalogPort;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
@@ -24,6 +25,7 @@ import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.persistence.alliance.PlayerIslandAllianceAdapter;
 import com.uxplima.uxmskyblock.persistence.backup.PlayerBackupCatalogAdapter;
 import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
 import com.uxplima.uxmskyblock.persistence.economy.PlayerEconomySagaAdapter;
@@ -65,6 +67,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerEconomySagaAdapter economySagaAdapter;
     private final PlayerIslandSeasonAdapter islandSeasonAdapter;
     private final PlayerIslandSocialAdapter islandSocialAdapter;
+    private final PlayerIslandAllianceAdapter islandAllianceAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -89,6 +92,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.economySagaAdapter = new PlayerEconomySagaAdapter(database);
         this.islandSeasonAdapter = new PlayerIslandSeasonAdapter(database);
         this.islandSocialAdapter = new PlayerIslandSocialAdapter(database);
+        this.islandAllianceAdapter = new PlayerIslandAllianceAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -184,6 +188,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public IslandSocialStoragePort islandSocialStoragePort() {
         return islandSocialAdapter;
+    }
+
+    public IslandAllianceStoragePort islandAllianceStoragePort() {
+        return islandAllianceAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

@@ -15,6 +15,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 
+import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -22,6 +23,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Inbound Bukkit listener enforcing island protection boundaries, permissions, and environmental flags.
@@ -30,12 +32,21 @@ public final class IslandProtectionListener implements Listener {
 
     private final IslandStoragePort islandStoragePort;
     private final IslandAccessService accessService;
+    private final @Nullable IslandAllianceService allianceService;
     private final Map<PlayerUuid, ProfileId> activeProfiles = new ConcurrentHashMap<>();
     private final Map<IslandId, Island> cachedIslands = new ConcurrentHashMap<>();
 
-    public IslandProtectionListener(IslandStoragePort islandStoragePort, IslandAccessService accessService) {
+    public IslandProtectionListener(
+            IslandStoragePort islandStoragePort,
+            IslandAccessService accessService,
+            @Nullable IslandAllianceService allianceService) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
         this.accessService = Objects.requireNonNull(accessService, "accessService");
+        this.allianceService = allianceService;
+    }
+
+    public IslandProtectionListener(IslandStoragePort islandStoragePort, IslandAccessService accessService) {
+        this(islandStoragePort, accessService, null);
     }
 
     public IslandStoragePort islandStoragePort() {
@@ -139,13 +150,27 @@ public final class IslandProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent event) {
-        if (event.getEntity() instanceof Player && event.getDamager() instanceof Player damager) {
+        if (event.getEntity() instanceof Player victim && event.getDamager() instanceof Player damager) {
             if (damager.hasPermission("uxmskyblock.admin.bypass")) {
                 return;
             }
             findIslandAt(event.getEntity().getLocation()).ifPresent(island -> {
                 if (!island.flags().isEnabled(IslandFlags.PVP)) {
                     event.setCancelled(true);
+                    return;
+                }
+                if (allianceService != null && allianceService.isFriendlyFireShieldingEnabled()) {
+                    ProfileId damagerProfile = activeProfiles.get(new PlayerUuid(damager.getUniqueId()));
+                    ProfileId victimProfile = activeProfiles.get(new PlayerUuid(victim.getUniqueId()));
+                    if (damagerProfile != null && victimProfile != null) {
+                        Optional<IslandId> damagerIsland = islandStoragePort.findIslandIdByProfileId(damagerProfile);
+                        Optional<IslandId> victimIsland = islandStoragePort.findIslandIdByProfileId(victimProfile);
+                        if (damagerIsland.isPresent()
+                                && victimIsland.isPresent()
+                                && allianceService.areAllied(damagerIsland.get(), victimIsland.get())) {
+                            event.setCancelled(true);
+                        }
+                    }
                 }
             });
         }

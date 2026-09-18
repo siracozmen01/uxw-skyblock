@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 14;
+    public static final int LATEST_VERSION = 15;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -65,6 +65,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V14. */
     public static final String V14_DESCRIPTION = "create social ratings guestbook subject visits and bookmarks";
 
+    /** Human-readable description of migration V15. */
+    public static final String V15_DESCRIPTION = "create island alliances and invites";
+
     private SkyblockMigrations() {}
 
     /**
@@ -95,7 +98,8 @@ public final class SkyblockMigrations {
                 v11Migration(dialect),
                 v12Migration(dialect),
                 v13Migration(dialect),
-                v14Migration(dialect));
+                v14Migration(dialect),
+                v15Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -420,6 +424,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(14, V14_DESCRIPTION, SQLITE_V14_DDL);
             case MYSQL -> new Migration(14, V14_DESCRIPTION, MYSQL_V14_DDL);
             case POSTGRES -> new Migration(14, V14_DESCRIPTION, POSTGRES_V14_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v15Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(15, V15_DESCRIPTION, SQLITE_V15_DDL);
+            case MYSQL -> new Migration(15, V15_DESCRIPTION, MYSQL_V15_DDL);
+            case POSTGRES -> new Migration(15, V15_DESCRIPTION, POSTGRES_V15_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1646,5 +1662,83 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX idx_social_bookmarks_subject ON social_bookmarks (subject_type_id, subject_key);
+            """;
+
+    private static final String SQLITE_V15_DDL = """
+            CREATE TABLE IF NOT EXISTS island_alliances (
+                alliance_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_a_id VARCHAR(36) NOT NULL,
+                island_b_id VARCHAR(36) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_island_alliances_pair UNIQUE (island_a_id, island_b_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_alliances_a ON island_alliances (island_a_id);
+            CREATE INDEX IF NOT EXISTS idx_island_alliances_b ON island_alliances (island_b_id);
+
+            CREATE TABLE IF NOT EXISTS island_alliance_invites (
+                invite_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                sender_island_id VARCHAR(36) NOT NULL,
+                target_island_id VARCHAR(36) NOT NULL,
+                sender_profile_id VARCHAR(36) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                CONSTRAINT uq_alliance_invites_pair UNIQUE (sender_island_id, target_island_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_alliance_invites_target ON island_alliance_invites (target_island_id);
+            CREATE INDEX IF NOT EXISTS idx_alliance_invites_sender ON island_alliance_invites (sender_island_id);
+            """;
+
+    private static final String MYSQL_V15_DDL = """
+            CREATE TABLE IF NOT EXISTS island_alliances (
+                alliance_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_a_id VARCHAR(36) NOT NULL,
+                island_b_id VARCHAR(36) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_island_alliances_pair UNIQUE (island_a_id, island_b_id)
+            );
+
+            CREATE INDEX idx_island_alliances_a ON island_alliances (island_a_id);
+            CREATE INDEX idx_island_alliances_b ON island_alliances (island_b_id);
+
+            CREATE TABLE IF NOT EXISTS island_alliance_invites (
+                invite_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                sender_island_id VARCHAR(36) NOT NULL,
+                target_island_id VARCHAR(36) NOT NULL,
+                sender_profile_id VARCHAR(36) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                CONSTRAINT uq_alliance_invites_pair UNIQUE (sender_island_id, target_island_id)
+            );
+
+            CREATE INDEX idx_alliance_invites_target ON island_alliance_invites (target_island_id);
+            CREATE INDEX idx_alliance_invites_sender ON island_alliance_invites (sender_island_id);
+            """;
+
+    private static final String POSTGRES_V15_DDL = """
+            CREATE TABLE IF NOT EXISTS island_alliances (
+                alliance_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_a_id VARCHAR(36) NOT NULL,
+                island_b_id VARCHAR(36) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_island_alliances_pair UNIQUE (island_a_id, island_b_id)
+            );
+
+            CREATE INDEX idx_island_alliances_a ON island_alliances (island_a_id);
+            CREATE INDEX idx_island_alliances_b ON island_alliances (island_b_id);
+
+            CREATE TABLE IF NOT EXISTS island_alliance_invites (
+                invite_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                sender_island_id VARCHAR(36) NOT NULL,
+                target_island_id VARCHAR(36) NOT NULL,
+                sender_profile_id VARCHAR(36) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                CONSTRAINT uq_alliance_invites_pair UNIQUE (sender_island_id, target_island_id)
+            );
+
+            CREATE INDEX idx_alliance_invites_target ON island_alliance_invites (target_island_id);
+            CREATE INDEX idx_alliance_invites_sender ON island_alliance_invites (sender_island_id);
             """;
 }
