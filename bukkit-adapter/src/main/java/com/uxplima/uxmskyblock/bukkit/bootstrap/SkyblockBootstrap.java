@@ -96,12 +96,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandBankPort(),
                 presetCatalog,
                 gridService,
-                persistenceBootstrap.worldGridAllocationPort());
+                persistenceBootstrap.worldGridAllocationPort(),
+                persistenceBootstrap.outboxPort());
         this.locationService = new IslandLocationService(persistenceBootstrap.islandStoragePort());
         this.bankService = new IslandBankService(
                 persistenceBootstrap.islandBankPort(),
                 persistenceBootstrap.islandStoragePort(),
-                persistenceBootstrap.islandAuthorityPort());
+                persistenceBootstrap.islandAuthorityPort(),
+                persistenceBootstrap.outboxPort());
         this.leaderboardService = new IslandLeaderboardService(persistenceBootstrap.islandLeaderboardPort());
 
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
@@ -110,7 +112,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
         ServerNodeId serverNodeId = nodeConfiguration.nodeId();
 
         this.switchProfileUseCase = new SwitchProfileUseCase(
-                persistenceBootstrap.profileSwitchPort(), persistenceBootstrap.inventoryPort());
+                persistenceBootstrap.profileSwitchPort(),
+                persistenceBootstrap.inventoryPort(),
+                persistenceBootstrap.outboxPort());
         this.sessionCoordinator = new PlayerSessionCoordinator(
                 serverNodeId,
                 persistenceBootstrap.sessionAuthorityPort(),

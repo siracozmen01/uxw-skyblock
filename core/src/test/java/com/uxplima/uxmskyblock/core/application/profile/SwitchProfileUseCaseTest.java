@@ -2,12 +2,20 @@ package com.uxplima.uxmskyblock.core.application.profile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
+import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.OutboxClaim;
+import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
@@ -83,6 +91,22 @@ class SwitchProfileUseCaseTest {
         assertThat(result.isOk()).isTrue();
         assertThat(switchPort.playerApplied).contains(opId);
         assertThat(switchPort.committed).contains(opId);
+    }
+
+    @Test
+    @DisplayName("completeSwitch stages PROFILE_SWITCHED outbox event when outboxPort is configured")
+    void completeSwitchStagesOutboxEvent() {
+        FakeOutboxPort outbox = new FakeOutboxPort();
+        SwitchProfileUseCase outboxUseCase = new SwitchProfileUseCase(switchPort, checkpointPort, outbox);
+
+        UUID opId = UUID.randomUUID();
+        SwitchProfileUseCase.PreparedSwitch prepared = new SwitchProfileUseCase.PreparedSwitch(
+                opId, playerUuid, profileA, profileB, nodeId, 1L, new byte[] {1});
+
+        Result<Unit, String> result = outboxUseCase.completeSwitch(prepared);
+
+        assertThat(result.isOk()).isTrue();
+        assertThat(outbox.stagedTypes).containsExactly("PROFILE_SWITCHED");
     }
 
     @Test
@@ -204,6 +228,44 @@ class SwitchProfileUseCaseTest {
         @Override
         public void initializeInventory(ProfileInventoryRecord record) {
             records.put(record.profileId(), record);
+        }
+    }
+
+    private static class FakeOutboxPort implements OutboxPort {
+        final List<String> stagedTypes = new ArrayList<>();
+
+        @Override
+        public void stageEvent(EventId eventId, String eventType, String aggregateId, String payload) {
+            stagedTypes.add(eventType);
+        }
+
+        @Override
+        public OutboxClaim claimPendingBatch(String workerId, Duration leaseDuration, int batchSize) {
+            return new OutboxClaim(workerId, "t", Instant.now(), List.of());
+        }
+
+        @Override
+        public boolean completeClaim(EventId eventId, String workerId, String claimToken) {
+            return true;
+        }
+
+        @Override
+        public void recordFailure(
+                EventId eventId,
+                String workerId,
+                String claimToken,
+                String errorMessage,
+                Duration retryBackoff,
+                int maxRetries) {}
+
+        @Override
+        public Optional<OutboxEventRecord> findById(EventId eventId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public int getPendingCount() {
+            return stagedTypes.size();
         }
     }
 }

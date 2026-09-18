@@ -4,7 +4,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
+import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
@@ -23,6 +25,7 @@ public final class SwitchProfileUseCase {
     public record PreparedSwitch(
             UUID operationId,
             PlayerUuid playerId,
+            ProfileId fromProfileId,
             ProfileId toProfileId,
             ServerNodeId currentNode,
             long expectedEpoch,
@@ -36,12 +39,32 @@ public final class SwitchProfileUseCase {
                 ServerNodeId currentNode,
                 long expectedEpoch,
                 byte[] targetInventoryNbt) {
-            this(operationId, playerId, toProfileId, currentNode, expectedEpoch, targetInventoryNbt, null);
+            this(operationId, playerId, toProfileId, toProfileId, currentNode, expectedEpoch, targetInventoryNbt, null);
+        }
+
+        public PreparedSwitch(
+                UUID operationId,
+                PlayerUuid playerId,
+                ProfileId fromProfileId,
+                ProfileId toProfileId,
+                ServerNodeId currentNode,
+                long expectedEpoch,
+                byte[] targetInventoryNbt) {
+            this(
+                    operationId,
+                    playerId,
+                    fromProfileId,
+                    toProfileId,
+                    currentNode,
+                    expectedEpoch,
+                    targetInventoryNbt,
+                    null);
         }
 
         public PreparedSwitch {
             Objects.requireNonNull(operationId, "operationId must not be null");
             Objects.requireNonNull(playerId, "playerId must not be null");
+            Objects.requireNonNull(fromProfileId, "fromProfileId must not be null");
             Objects.requireNonNull(toProfileId, "toProfileId must not be null");
             Objects.requireNonNull(currentNode, "currentNode must not be null");
             Objects.requireNonNull(targetInventoryNbt, "targetInventoryNbt must not be null");
@@ -50,12 +73,21 @@ public final class SwitchProfileUseCase {
 
     private final ProfileSwitchPort profileSwitchPort;
     private final ProfileInventoryCheckpointPort inventoryCheckpointPort;
+    private final @Nullable OutboxPort outboxPort;
 
     public SwitchProfileUseCase(
-            ProfileSwitchPort profileSwitchPort, ProfileInventoryCheckpointPort inventoryCheckpointPort) {
+            ProfileSwitchPort profileSwitchPort,
+            ProfileInventoryCheckpointPort inventoryCheckpointPort,
+            @Nullable OutboxPort outboxPort) {
         this.profileSwitchPort = Objects.requireNonNull(profileSwitchPort, "profileSwitchPort must not be null");
         this.inventoryCheckpointPort =
                 Objects.requireNonNull(inventoryCheckpointPort, "inventoryCheckpointPort must not be null");
+        this.outboxPort = outboxPort;
+    }
+
+    public SwitchProfileUseCase(
+            ProfileSwitchPort profileSwitchPort, ProfileInventoryCheckpointPort inventoryCheckpointPort) {
+        this(profileSwitchPort, inventoryCheckpointPort, null);
     }
 
     /**
@@ -121,7 +153,14 @@ public final class SwitchProfileUseCase {
         }
 
         return Result.ok(new PreparedSwitch(
-                operationId, playerId, toProfileId, currentNode, expectedEpoch, targetNbt, optTarget.orElse(null)));
+                operationId,
+                playerId,
+                fromProfileId,
+                toProfileId,
+                currentNode,
+                expectedEpoch,
+                targetNbt,
+                optTarget.orElse(null)));
     }
 
     /**
@@ -155,6 +194,20 @@ public final class SwitchProfileUseCase {
                     prepared.playerId(),
                     "Failed to commit switch: " + commitRes.errorOrThrow());
             return Result.err(commitRes.errorOrThrow());
+        }
+
+        if (outboxPort != null) {
+            String payload = String.format(
+                    "{\"playerId\":\"%s\",\"fromProfileId\":\"%s\",\"toProfileId\":\"%s\",\"operationId\":\"%s\"}",
+                    prepared.playerId().value(),
+                    prepared.fromProfileId().value(),
+                    prepared.toProfileId().value(),
+                    prepared.operationId());
+            outboxPort.stageEvent(
+                    EventId.random(),
+                    "PROFILE_SWITCHED",
+                    prepared.playerId().value().toString(),
+                    payload);
         }
 
         return Result.ok(Unit.INSTANCE);
@@ -197,6 +250,16 @@ public final class SwitchProfileUseCase {
                     op.operationId(), playerId, op.toProfileId(), currentNode, expectedEpoch);
             if (commitRes.isErr()) {
                 return Result.err("Failed to commit roll-forward switch during recovery: " + commitRes.errorOrThrow());
+            }
+            if (outboxPort != null) {
+                String payload = String.format(
+                        "{\"playerId\":\"%s\",\"fromProfileId\":\"%s\",\"toProfileId\":\"%s\",\"operationId\":\"%s\"}",
+                        playerId.value(),
+                        op.fromProfileId().value(),
+                        op.toProfileId().value(),
+                        op.operationId());
+                outboxPort.stageEvent(
+                        EventId.random(), "PROFILE_SWITCHED", playerId.value().toString(), payload);
             }
             return Result.ok(Optional.of(op.toProfileId()));
         }

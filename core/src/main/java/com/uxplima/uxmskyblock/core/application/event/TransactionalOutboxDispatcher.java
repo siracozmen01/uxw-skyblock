@@ -77,14 +77,14 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
     }
 
     public int dispatchBatch() {
-        if (!running.get()) {
+        if (!running.get() || consumers.isEmpty()) {
             return 0;
         }
 
         try {
             OutboxClaim claim = outboxPort.claimPendingBatch(workerId, leaseDuration, batchSize);
             List<OutboxEventRecord> events = claim.claimedEvents();
-            if (events.isEmpty()) {
+            if (events.isEmpty() || consumers.isEmpty()) {
                 return 0;
             }
 

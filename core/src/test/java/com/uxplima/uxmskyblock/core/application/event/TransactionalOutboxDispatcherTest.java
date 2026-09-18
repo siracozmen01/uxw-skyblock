@@ -91,6 +91,20 @@ class TransactionalOutboxDispatcherTest {
     }
 
     @Test
+    @DisplayName("dispatchBatch returns 0 and does not complete events when consumers are empty")
+    void returnsZeroWhenNoConsumersRegistered() {
+        EventId e1 = EventId.random();
+        outboxPort.stageEvent(e1, "ISLAND_CREATED", "isl-1", "{}");
+
+        dispatcher.start();
+        int processed = dispatcher.dispatchBatch();
+
+        assertThat(processed).isEqualTo(0);
+        assertThat(outboxPort.completedEvents).isEmpty();
+        assertThat(outboxPort.failedEvents).isEmpty();
+    }
+
+    @Test
     @DisplayName("start and close manages scheduled repeating task cleanly")
     void startAndCloseLifecycle() {
         assertThat(dispatcher.isRunning()).isFalse();

@@ -4,16 +4,19 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
+import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Application service managing island bank balances and authority-fenced transactions.
@@ -23,14 +26,24 @@ public final class IslandBankService {
     private final IslandBankPort islandBankPort;
     private final IslandStoragePort islandStoragePort;
     private final IslandAuthorityPort islandAuthorityPort;
+    private final @Nullable OutboxPort outboxPort;
+
+    public IslandBankService(
+            IslandBankPort islandBankPort,
+            IslandStoragePort islandStoragePort,
+            IslandAuthorityPort islandAuthorityPort,
+            @Nullable OutboxPort outboxPort) {
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
+        this.outboxPort = outboxPort;
+    }
 
     public IslandBankService(
             IslandBankPort islandBankPort,
             IslandStoragePort islandStoragePort,
             IslandAuthorityPort islandAuthorityPort) {
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
+        this(islandBankPort, islandStoragePort, islandAuthorityPort, null);
     }
 
     public Optional<Long> getBalanceMinorUnits(ProfileId profileId) {
@@ -87,7 +100,7 @@ public final class IslandBankService {
         UUID operationId = UUID.randomUUID();
         String idempotencyKey = "tx-" + operationId;
 
-        return islandBankPort.executeTransaction(
+        BankTransactionOutcome outcome = islandBankPort.executeTransaction(
                 islandId,
                 playerUuid.value(),
                 "PRIMARY",
@@ -99,5 +112,18 @@ public final class IslandBankService {
                 bank.version(),
                 operationId,
                 idempotencyKey);
+
+        if (outcome instanceof BankTransactionOutcome.Success && outboxPort != null) {
+            String payload = String.format(
+                    "{\"islandId\":\"%s\",\"playerUuid\":\"%s\",\"deltaMinorUnits\":%d,\"reason\":\"%s\"}",
+                    islandId.value(), playerUuid.value(), deltaMinorUnits, reason);
+            outboxPort.stageEvent(
+                    EventId.random(),
+                    "ISLAND_BANK_TRANSACTION",
+                    islandId.value().toString(),
+                    payload);
+        }
+
+        return outcome;
     }
 }

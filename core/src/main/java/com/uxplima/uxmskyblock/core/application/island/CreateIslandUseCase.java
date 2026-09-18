@@ -6,9 +6,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridPort;
+import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -19,6 +21,7 @@ import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.IslandCoordinates;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Application use-case orchestrating island creation, territory allocation,
@@ -42,6 +45,25 @@ public final class CreateIslandUseCase {
     private final StarterPresetCatalog presetCatalog;
     private final WorldGridPort worldGridPort;
     private final WorldGridAllocationPort worldGridAllocationPort;
+    private final @Nullable OutboxPort outboxPort;
+
+    public CreateIslandUseCase(
+            IslandStoragePort islandStoragePort,
+            IslandAuthorityPort islandAuthorityPort,
+            IslandBankPort islandBankPort,
+            StarterPresetCatalog presetCatalog,
+            WorldGridPort worldGridPort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            @Nullable OutboxPort outboxPort) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
+        this.presetCatalog = Objects.requireNonNull(presetCatalog, "presetCatalog must not be null");
+        this.worldGridPort = Objects.requireNonNull(worldGridPort, "worldGridPort must not be null");
+        this.worldGridAllocationPort =
+                Objects.requireNonNull(worldGridAllocationPort, "worldGridAllocationPort must not be null");
+        this.outboxPort = outboxPort;
+    }
 
     public CreateIslandUseCase(
             IslandStoragePort islandStoragePort,
@@ -50,13 +72,14 @@ public final class CreateIslandUseCase {
             StarterPresetCatalog presetCatalog,
             WorldGridPort worldGridPort,
             WorldGridAllocationPort worldGridAllocationPort) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
-        this.presetCatalog = Objects.requireNonNull(presetCatalog, "presetCatalog must not be null");
-        this.worldGridPort = Objects.requireNonNull(worldGridPort, "worldGridPort must not be null");
-        this.worldGridAllocationPort =
-                Objects.requireNonNull(worldGridAllocationPort, "worldGridAllocationPort must not be null");
+        this(
+                islandStoragePort,
+                islandAuthorityPort,
+                islandBankPort,
+                presetCatalog,
+                worldGridPort,
+                worldGridAllocationPort,
+                null);
     }
 
     public CreateIslandResult execute(
@@ -94,6 +117,7 @@ public final class CreateIslandUseCase {
             islandStoragePort.saveIsland(island, location);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
             islandBankPort.createBank(islandId);
+            stageIslandCreatedEvent(islandId, playerUuid, profileId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
@@ -140,9 +164,21 @@ public final class CreateIslandUseCase {
             islandStoragePort.saveIsland(island, location);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
             islandBankPort.createBank(islandId);
+            stageIslandCreatedEvent(islandId, playerUuid, profileId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
+        }
+    }
+
+    private void stageIslandCreatedEvent(
+            IslandId islandId, PlayerUuid playerUuid, ProfileId profileId, StarterPreset preset) {
+        if (outboxPort != null) {
+            String payload = String.format(
+                    "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
+                    islandId.value(), playerUuid.value(), profileId.value(), preset.id());
+            outboxPort.stageEvent(
+                    EventId.random(), "ISLAND_CREATED", islandId.value().toString(), payload);
         }
     }
 }
