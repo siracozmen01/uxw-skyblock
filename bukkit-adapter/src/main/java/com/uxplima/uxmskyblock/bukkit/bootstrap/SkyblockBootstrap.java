@@ -20,6 +20,7 @@ import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration;
@@ -30,6 +31,7 @@ import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
+import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
@@ -44,6 +46,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ChatFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RewardInboxFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
@@ -64,6 +67,7 @@ import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
+import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -148,6 +152,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final ChatConfiguration chatConfig;
     private final IslandChatService chatService;
     private final IslandChatListener chatListener;
+    private final InactivityConfiguration inactivityConfig;
+    private final IslandInactivityService inactivityService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -166,7 +172,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             RewardInboxConfiguration rewardConfig,
             WarpConfiguration warpConfig,
             VaultConfiguration vaultConfig,
-            ChatConfiguration chatConfig) {
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -184,6 +191,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.warpConfig = Objects.requireNonNull(warpConfig, "warpConfig must not be null");
         this.vaultConfig = Objects.requireNonNull(vaultConfig, "vaultConfig must not be null");
         this.chatConfig = Objects.requireNonNull(chatConfig, "chatConfig must not be null");
+        this.inactivityConfig = Objects.requireNonNull(inactivityConfig, "inactivityConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -196,6 +204,15 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 chatMemberProvider,
                 chatConfig.rateLimitMessagesPerSecond());
         this.chatListener = new IslandChatListener(chatService);
+
+        BukkitPlayerActivityProvider activityProvider = new BukkitPlayerActivityProvider();
+        this.inactivityService = new IslandInactivityService(
+                persistenceBootstrap.islandStoragePort(),
+                activityProvider,
+                inactivityConfig.toPolicy(),
+                null,
+                null,
+                persistenceBootstrap.outboxPort());
 
         this.dynamicPricingEngine = new DynamicPricingEngine(shopConfig.dampingFactor());
         this.temporaryAccessService = new TemporaryAccessService(persistenceBootstrap.temporaryAccessStoragePort());
@@ -367,7 +384,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 worldName,
                 economyBridge,
                 controlMenu,
-                chatService);
+                chatService,
+                inactivityService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -474,7 +492,44 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new WarpFeatureModule(warpService, safeTeleportEngine, warpConfig));
         this.moduleRegistry.register(new VaultFeatureModule(vaultService, vaultConfig));
         this.moduleRegistry.register(new ChatFeatureModule(chatService, chatConfig));
+        this.moduleRegistry.register(new InactivityFeatureModule(
+                inactivityService, scheduler, inactivityConfig, nodeConfiguration.worldName()));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                InactivityConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -1069,6 +1124,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             chatConfig = ChatConfiguration.defaultConfiguration();
         }
 
+        Path inactivityFile = dataDir.resolve("inactivity.conf");
+        if (!java.nio.file.Files.exists(inactivityFile)) {
+            try (java.io.InputStream in = plugin.getResource("inactivity.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, inactivityFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if inactivity.conf cannot be extracted
+            }
+        }
+
+        InactivityConfiguration inactivityConfig;
+        if (java.nio.file.Files.exists(inactivityFile)) {
+            try {
+                CommentedConfigurationNode inactivityRoot = HoconConfigurationLoader.builder()
+                        .path(inactivityFile)
+                        .build()
+                        .load();
+                inactivityConfig = InactivityConfiguration.load(inactivityRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load inactivity configuration from: " + inactivityFile, e);
+            }
+        } else {
+            inactivityConfig = InactivityConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1084,7 +1165,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 rewardConfig,
                 warpConfig,
                 vaultConfig,
-                chatConfig);
+                chatConfig,
+                inactivityConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1284,6 +1366,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandChatListener chatListener() {
         return chatListener;
+    }
+
+    public IslandInactivityService inactivityService() {
+        return inactivityService;
+    }
+
+    public InactivityConfiguration inactivityConfiguration() {
+        return inactivityConfig;
     }
 
     @Override

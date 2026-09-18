@@ -2,7 +2,9 @@ package com.uxplima.uxmskyblock.core.domain.island;
 
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -120,6 +122,20 @@ public record IslandRole(String id, int weight, String displayName, Set<IslandPe
             false);
 
     public static final IslandRole VISITOR = new IslandRole("VISITOR", 0, "Visitor", Collections.emptySet(), true);
+
+    public static Optional<IslandRole> byId(String id) {
+        if (id == null || id.isBlank()) {
+            return Optional.empty();
+        }
+        return switch (id.trim().toUpperCase(Locale.ROOT)) {
+            case "OWNER" -> Optional.of(OWNER);
+            case "CO_OWNER", "COOWNER", "CO-OWNER" -> Optional.of(CO_OWNER);
+            case "MODERATOR", "MOD" -> Optional.of(MODERATOR);
+            case "MEMBER" -> Optional.of(MEMBER);
+            case "VISITOR" -> Optional.of(VISITOR);
+            default -> Optional.empty();
+        };
+    }
 
     public boolean hasPermission(IslandPermission permission) {
         return permissions.contains(permission);

@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -32,6 +33,7 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
+import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
@@ -47,6 +49,7 @@ import com.uxplima.uxmskyblock.core.domain.chat.NoIslandForChatException;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inactivity.IslandInactivityScanReport;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
@@ -79,6 +82,7 @@ public final class IslandCommandTree {
     private final SkyblockEconomyBridge economyBridge;
     private final @Nullable IslandControlMenu controlMenu;
     private final @Nullable IslandChatService chatService;
+    private final @Nullable IslandInactivityService inactivityService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -109,6 +113,7 @@ public final class IslandCommandTree {
                 serverNodeId,
                 worldName,
                 SkyblockEconomyBridge.createDefault(islandBankService, schedulerPort),
+                null,
                 null,
                 null);
     }
@@ -145,6 +150,7 @@ public final class IslandCommandTree {
                 worldName,
                 economyBridge,
                 controlMenu,
+                null,
                 null);
     }
 
@@ -165,6 +171,44 @@ public final class IslandCommandTree {
             SkyblockEconomyBridge economyBridge,
             @Nullable IslandControlMenu controlMenu,
             @Nullable IslandChatService chatService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -184,6 +228,7 @@ public final class IslandCommandTree {
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
         this.controlMenu = controlMenu;
         this.chatService = chatService;
+        this.inactivityService = inactivityService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -230,7 +275,12 @@ public final class IslandCommandTree {
                         .executes(this::executeChatToggle)
                         .then(Cmd.argument("message", StringArgumentType.greedyString())
                                 .executes(this::executeChatMessage)))
-                .then(Cmd.literal("spy").executes(this::executeSpyToggle));
+                .then(Cmd.literal("spy").executes(this::executeSpyToggle))
+                .then(Cmd.literal("admin")
+                        .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                                || src.getSender().isOp())
+                        .then(Cmd.literal("inactivity")
+                                .then(Cmd.literal("scan").executes(this::executeAdminInactivityScan))));
 
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
@@ -283,6 +333,41 @@ public final class IslandCommandTree {
                 Component.text(
                         "/is chat <message> (or /is c <msg>) - Send message to island team", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is spy - Toggle island chat staff spy", NamedTextColor.YELLOW));
+        if (src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                || src.getSender().isOp()) {
+            send(
+                    src.getSender(),
+                    Component.text("/is admin inactivity scan - Trigger manual inactivity scan", NamedTextColor.RED));
+        }
+        return Cmd.OK;
+    }
+
+    private int executeAdminInactivityScan(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        if (inactivityService == null) {
+            send(src.getSender(), Component.text("Inactivity service is not enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        send(src.getSender(), Component.text("Starting asynchronous island inactivity scan...", NamedTextColor.YELLOW));
+        schedulerPort.async(() -> {
+            try {
+                IslandInactivityScanReport report = inactivityService.scanWorld(worldName, Instant.now());
+                send(
+                        src.getSender(),
+                        Component.text(
+                                String.format(
+                                        "Inactivity scan complete: %d evaluated, %d successions, %d archived, %d deleted, %d skipped.",
+                                        report.totalEvaluated(),
+                                        report.successionsExecuted(),
+                                        report.islandsArchived(),
+                                        report.islandsDeleted(),
+                                        report.islandsSkipped()),
+                                NamedTextColor.GREEN));
+            } catch (Exception e) {
+                send(src.getSender(), Component.text("Inactivity scan failed: " + e.getMessage(), NamedTextColor.RED));
+            }
+        });
         return Cmd.OK;
     }
 

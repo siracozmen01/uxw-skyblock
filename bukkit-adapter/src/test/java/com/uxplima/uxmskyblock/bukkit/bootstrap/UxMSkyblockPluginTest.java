@@ -53,6 +53,7 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(new java.io.File(plugin.getDataFolder(), "warps.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "vault.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "chat.conf")).exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "inactivity.conf")).exists();
         assertThat(plugin.bootstrap().moduleRegistry().enabledModules()).isNotEmpty();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("core")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("bank")).isPresent();
@@ -62,6 +63,7 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(plugin.bootstrap().moduleRegistry().findModule("warps")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("vault")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("chat")).isPresent();
+        assertThat(plugin.bootstrap().moduleRegistry().findModule("inactivity")).isPresent();
         assertThat(plugin.bootstrap().seasonService()).isNotNull();
         assertThat(plugin.bootstrap().socialService()).isNotNull();
         assertThat(plugin.bootstrap().discordService()).isNotNull();
@@ -73,6 +75,8 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(plugin.bootstrap().chatService()).isNotNull();
         assertThat(plugin.bootstrap().chatConfiguration()).isNotNull();
         assertThat(plugin.bootstrap().chatListener()).isNotNull();
+        assertThat(plugin.bootstrap().inactivityService()).isNotNull();
+        assertThat(plugin.bootstrap().inactivityConfiguration()).isNotNull();
     }
 
     @Test
@@ -152,6 +156,7 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         player.performCommand("is c Hello island team!");
         player.setOp(true);
         player.performCommand("is spy");
+        player.performCommand("is admin inactivity scan");
 
         // Verify public API bridge registered and functional
         assertThat(com.uxplima.uxmskyblock.api.UxmSkyblockApiProvider.isRegistered())

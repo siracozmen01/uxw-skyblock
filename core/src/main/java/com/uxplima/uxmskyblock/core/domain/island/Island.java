@@ -10,6 +10,7 @@ import java.util.Optional;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inactivity.FormerOwnerAction;
 
 /**
  * Pure domain Aggregate Root for an Island.
@@ -110,14 +111,30 @@ public record Island(
     }
 
     public Island transferOwnership(PlayerUuid newOwnerPlayerUuid, ProfileId newOwnerProfileId) {
+        return transferOwnership(newOwnerPlayerUuid, newOwnerProfileId, FormerOwnerAction.DEMOTE_TO_CO_OWNER);
+    }
+
+    public Island transferOwnership(
+            PlayerUuid newOwnerPlayerUuid, ProfileId newOwnerProfileId, FormerOwnerAction formerOwnerAction) {
         Objects.requireNonNull(newOwnerPlayerUuid, "newOwnerPlayerUuid must not be null");
         Objects.requireNonNull(newOwnerProfileId, "newOwnerProfileId must not be null");
+        Objects.requireNonNull(formerOwnerAction, "formerOwnerAction must not be null");
 
         Map<ProfileId, IslandMember> copy = new HashMap<>(members);
-        // Demote previous owner to CO_OWNER
+        // Apply former owner disposition
         IslandMember oldOwner = copy.get(ownerProfileId);
         if (oldOwner != null) {
-            copy.put(ownerProfileId, oldOwner.withRole(IslandRole.CO_OWNER));
+            switch (formerOwnerAction) {
+                case DEMOTE_TO_CO_OWNER ->
+                    copy.put(
+                            ownerProfileId,
+                            oldOwner.withRole(roles.getOrDefault(IslandRole.CO_OWNER.id(), IslandRole.CO_OWNER)));
+                case DEMOTE_TO_MEMBER ->
+                    copy.put(
+                            ownerProfileId,
+                            oldOwner.withRole(roles.getOrDefault(IslandRole.MEMBER.id(), IslandRole.MEMBER)));
+                case KICK_FROM_ISLAND -> copy.remove(ownerProfileId);
+            }
         }
         // Promote new owner
         IslandMember newOwner = copy.get(newOwnerProfileId);
