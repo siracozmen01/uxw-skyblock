@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholde
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -272,6 +273,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
 
         PluginManager pm = Bukkit.getPluginManager();
+        CatalogPermissions.registerAll(pm);
         pm.registerEvents(protectionListener, plugin);
         pm.registerEvents(sessionListener, plugin);
 

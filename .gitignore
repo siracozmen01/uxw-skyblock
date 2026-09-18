@@ -20,3 +20,6 @@ out/
 
 # Agents
 .agents/
+
+# Archives
+*.zip
