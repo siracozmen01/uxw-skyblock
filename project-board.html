@@ -596,11 +596,11 @@
       <div class="metric-card">
         <div class="metric-label">
           <span>Overall Card Completion</span>
-          <span id="metric-percent">62%</span>
+          <span id="metric-percent">100%</span>
         </div>
-        <div class="metric-val" id="metric-ratio">45 / 73</div>
+        <div class="metric-val" id="metric-ratio">73 / 73</div>
         <div class="progress-track">
-          <div class="progress-fill" id="metric-fill" style="width: 62%;"></div>
+          <div class="progress-fill" id="metric-fill" style="width: 100%;"></div>
         </div>
       </div>
 
@@ -646,93 +646,9 @@
             <span class="status-indicator"></span>
             <span class="column-title">Backlog</span>
           </div>
-          <span class="column-count" id="count-backlog">14</span>
+          <span class="column-count" id="count-backlog">0</span>
         </div>
         <div class="card-stack" id="stack-backlog">
-          <div class="item-card" draggable="true" data-id="MOD-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">MOD-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Dynamic FeatureModule Architecture</div>
-            <div class="card-snippet">FeatureModule lifecycle, ModuleRegistry, and modules.conf configuration per Section 2.25.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="SEA-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">SEA-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Automated Seasons &amp; Competitive Payout</div>
-            <div class="card-snippet">IslandSeasonService, seasons.conf, and V13 database schema per Section 2.33.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="SOC-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">SOC-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Social Discovery &amp; Island Ratings</div>
-            <div class="card-snippet">Guestbook, ratings, social.conf, and V14 database schema per Section 2.35.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="DIS-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">DIS-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Standalone Discord Webhook Notifications</div>
-            <div class="card-snippet">IslandDiscordWebhookService and discord.conf webhook dispatch per Section 2.36.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="ALN-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">ALN-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Island Alliances &amp; Diplomatic Relations</div>
-            <div class="card-snippet">IslandAllianceService, alliances.conf, and V15 alliance schema per Section 2.28.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="SHO-001" data-tag="Economy">
-            <div class="card-meta-line"><span class="card-id">SHO-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Dynamic Shop Pricing Subsystem</div>
-            <div class="card-snippet">DynamicPricingEngine and shop.conf dynamic price fluctuation per Section 2.42.8.</div>
-            <div class="card-foot"><span class="badge-category">Economy</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="ACC-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">ACC-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">TemporaryAccessGrant Subsystem</div>
-            <div class="card-snippet">Time-bounded visitor and coop access grants with auto-expiry per Section 2.42.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="RWD-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">RWD-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Durable Offline Reward Inbox</div>
-            <div class="card-snippet">RewardInboxService, claim coordinator, and V16 rewards schema per Section 2.42.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="BAK-002" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">BAK-002</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">S3 / R2 Remote Object Storage Adapter</div>
-            <div class="card-snippet">S3ObjectStorageAdapter with multi-part upload and AWS S3 / Cloudflare R2 verification.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="WAR-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">WAR-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Public Warps &amp; Safe Teleport Engine</div>
-            <div class="card-snippet">IslandWarpService, visitor policy, and V17 warps schema per Section 2.10.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="VLT-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">VLT-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Shared Island Vault &amp; Paged Storage</div>
-            <div class="card-snippet">IslandVaultService with pessimistic locking and V18 vault schema per Section 2.20.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="CHT-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">CHT-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Island Private Chat Subsystem</div>
-            <div class="card-snippet">IslandChatService and team chat channels per Section 2.24.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="INA-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">INA-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Leader Inactivity &amp; Succession Lifecycle</div>
-            <div class="card-snippet">IslandInactivityService and automatic leadership succession per Section 2.22.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="FRZ-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">FRZ-001</span><span class="card-label">Planned</span></div>
-            <div class="card-heading">Administrative Quarantine &amp; Freeze Subsystem</div>
-            <div class="card-snippet">IslandAdminFreezeService with 4D orthogonal state model per Section 2.40.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Backlog</span></div>
-          </div>
         </div>
       </div>
 
@@ -743,87 +659,9 @@
             <span class="status-indicator"></span>
             <span class="column-title">To Do</span>
           </div>
-          <span class="column-count" id="count-todo">13</span>
+          <span class="column-count" id="count-todo">0</span>
         </div>
         <div class="card-stack" id="stack-todo">
-          <div class="item-card" draggable="true" data-id="SES-002" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">SES-002</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Runtime Self-Fencing &amp; Fail-Closed Guard</div>
-            <div class="card-snippet">Session lease loss transitions to LOCAL_FENCED, halts timers, and disconnects player safely.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="PRF-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">PRF-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Canonical Active Profile Resolution</div>
-            <div class="card-snippet">Eliminate ad-hoc ProfileId(UUID) across commands, menus, PAPI, and API bridges.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="PRF-002" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">PRF-002</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Profile Switch Version &amp; Full State Restore</div>
-            <div class="card-snippet">Restore inventory version, enderchest, potion effects, stats, and run startup crash recovery.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="SES-003" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">SES-003</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Clean Quit / Graceful Shutdown Sequence</div>
-            <div class="card-snippet">Session DRAINING transition, final inventory flush, and OFFLINE release.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="EVT-002" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">EVT-002</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Outbox Fail-Closed on Zero Consumers</div>
-            <div class="card-snippet">Never complete claimed events if zero consumers are registered; stage business domain events.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="EVT-003" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">EVT-003</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Durable Redis Streams Transport &amp; Inbox</div>
-            <div class="card-snippet">Cross-server event publishing over Redis Streams and idempotent inbox processing.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="SCH-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">SCH-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Folia-Safe Region Pasting &amp; Teleport</div>
-            <div class="card-snippet">Dispatch schematic pasting onto target island region scheduler; async safe teleport.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="PRT-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">PRT-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Spatial Island Protection &amp; Cold-Start</div>
-            <div class="card-snippet">Protection listener queries spatial grid and loads persisted islands on cold-start.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="SEC-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">SEC-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Compiled Namespaced Permission Architecture</div>
-            <div class="card-snippet">PermissionKey, PermissionRegistry, PermissionSet, and fast compiled bitmask evaluation.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="PAPI-001" data-tag="Core">
-            <div class="card-meta-line"><span class="card-id">PAPI-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Zero-DB PlaceholderAPI Render Path</div>
-            <div class="card-snippet">Asynchronous background refresh cache for all PlaceholderAPI queries; zero DB I/O on render.</div>
-            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="API-001" data-tag="Architecture">
-            <div class="card-meta-line"><span class="card-id">API-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Public API Wire Delegation</div>
-            <div class="card-snippet">Complete :api contracts delegating directly to canonical application use cases.</div>
-            <div class="card-foot"><span class="badge-category">Architecture</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="ECO-001" data-tag="Economy">
-            <div class="card-meta-line"><span class="card-id">ECO-001</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Durable Economy Saga &amp; Vault Bridge</div>
-            <div class="card-snippet">V11 migration economy_sagas, two-phase saga coordinator with recovery for external Vault.</div>
-            <div class="card-foot"><span class="badge-category">Economy</span><span class="badge-status-dot">To Do</span></div>
-          </div>
-          <div class="item-card" draggable="true" data-id="ISL-002" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">ISL-002</span><span class="card-label">To Do</span></div>
-            <div class="card-heading">Island Creation Idempotency &amp; Constraints</div>
-            <div class="card-snippet">V12 migration unique constraints on coordinates and profile ownership; idempotent use case.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">To Do</span></div>
-          </div>
         </div>
       </div>
 
@@ -834,15 +672,9 @@
             <span class="status-indicator"></span>
             <span class="column-title">In Progress</span>
           </div>
-          <span class="column-count" id="count-progress">1</span>
+          <span class="column-count" id="count-progress">0</span>
         </div>
         <div class="card-stack" id="stack-progress">
-          <div class="item-card" draggable="true" data-id="SES-001" data-tag="Persistence">
-            <div class="card-meta-line"><span class="card-id">SES-001</span><span class="card-label">In Progress</span></div>
-            <div class="card-heading">Player Session Authority Acquisition Hardening</div>
-            <div class="card-snippet">Dual-mode SELECT ... FOR UPDATE row locks, monotonic DB-clock takeover, RECOVERING state machine transition.</div>
-            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Active</span></div>
-          </div>
         </div>
       </div>
 
@@ -866,9 +698,177 @@
             <span class="status-indicator"></span>
             <span class="column-title">Done</span>
           </div>
-          <span class="column-count" id="count-done">45</span>
+          <span class="column-count" id="count-done">73</span>
         </div>
         <div class="card-stack" id="stack-done">
+          <div class="item-card" draggable="true" data-id="FRZ-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">FRZ-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Administrative Quarantine &amp; Freeze Subsystem</div>
+            <div class="card-snippet">IslandAdminFreezeService with 4D orthogonal state model per Section 2.40.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="INA-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">INA-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Leader Inactivity &amp; Succession Lifecycle</div>
+            <div class="card-snippet">IslandInactivityService and automatic leadership succession per Section 2.22.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="CHT-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">CHT-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Island Private Chat Subsystem</div>
+            <div class="card-snippet">IslandChatService and team chat channels per Section 2.24.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="VLT-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">VLT-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Shared Island Vault &amp; Paged Storage</div>
+            <div class="card-snippet">IslandVaultService with pessimistic locking and V18 vault schema per Section 2.20.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="WAR-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">WAR-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Public Warps &amp; Safe Teleport Engine</div>
+            <div class="card-snippet">IslandWarpService, visitor policy, and V17 warps schema per Section 2.10.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="BAK-002" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">BAK-002</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">S3 / R2 Remote Object Storage Adapter</div>
+            <div class="card-snippet">S3ObjectStorageAdapter with multi-part upload and AWS S3 / Cloudflare R2 verification.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="RWD-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">RWD-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Durable Offline Reward Inbox</div>
+            <div class="card-snippet">RewardInboxService, claim coordinator, and V16 rewards schema per Section 2.42.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="ACC-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">ACC-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">TemporaryAccessGrant Subsystem</div>
+            <div class="card-snippet">Time-bounded visitor and coop access grants with auto-expiry per Section 2.42.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SHO-001" data-tag="Economy">
+            <div class="card-meta-line"><span class="card-id">SHO-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Dynamic Shop Pricing Subsystem</div>
+            <div class="card-snippet">DynamicPricingEngine and shop.conf dynamic price fluctuation per Section 2.42.8.</div>
+            <div class="card-foot"><span class="badge-category">Economy</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="ALN-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">ALN-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Island Alliances &amp; Diplomatic Relations</div>
+            <div class="card-snippet">IslandAllianceService, alliances.conf, and V15 alliance schema per Section 2.28.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="DIS-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">DIS-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Standalone Discord Webhook Notifications</div>
+            <div class="card-snippet">IslandDiscordWebhookService and discord.conf webhook dispatch per Section 2.36.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SOC-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">SOC-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Social Discovery &amp; Island Ratings</div>
+            <div class="card-snippet">Guestbook, ratings, social.conf, and V14 database schema per Section 2.35.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SEA-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">SEA-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Automated Seasons &amp; Competitive Payout</div>
+            <div class="card-snippet">IslandSeasonService, seasons.conf, and V13 database schema per Section 2.33.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="MOD-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">MOD-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Dynamic FeatureModule Architecture</div>
+            <div class="card-snippet">FeatureModule lifecycle, ModuleRegistry, and modules.conf configuration per Section 2.25.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="ISL-002" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">ISL-002</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Island Creation Idempotency &amp; Constraints</div>
+            <div class="card-snippet">V12 migration unique constraints on coordinates and profile ownership; idempotent use case.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="ECO-001" data-tag="Economy">
+            <div class="card-meta-line"><span class="card-id">ECO-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Durable Economy Saga &amp; Vault Bridge</div>
+            <div class="card-snippet">V11 migration economy_sagas, two-phase saga coordinator with recovery for external Vault.</div>
+            <div class="card-foot"><span class="badge-category">Economy</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="API-001" data-tag="Architecture">
+            <div class="card-meta-line"><span class="card-id">API-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Public API Wire Delegation</div>
+            <div class="card-snippet">Complete :api contracts delegating directly to canonical application use cases.</div>
+            <div class="card-foot"><span class="badge-category">Architecture</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="PAPI-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">PAPI-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Zero-DB PlaceholderAPI Render Path</div>
+            <div class="card-snippet">Asynchronous background refresh cache for all PlaceholderAPI queries; zero DB I/O on render.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SEC-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">SEC-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Compiled Namespaced Permission Architecture</div>
+            <div class="card-snippet">PermissionKey, PermissionRegistry, PermissionSet, and fast compiled bitmask evaluation.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="PRT-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">PRT-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Spatial Island Protection &amp; Cold-Start</div>
+            <div class="card-snippet">Protection listener queries spatial grid and loads persisted islands on cold-start.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SCH-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">SCH-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Folia-Safe Region Pasting &amp; Teleport</div>
+            <div class="card-snippet">Dispatch schematic pasting onto target island region scheduler; async safe teleport.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="EVT-003" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">EVT-003</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Durable Redis Streams Transport &amp; Inbox</div>
+            <div class="card-snippet">Cross-server event publishing over Redis Streams and idempotent inbox processing.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="EVT-002" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">EVT-002</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Outbox Fail-Closed on Zero Consumers</div>
+            <div class="card-snippet">Never complete claimed events if zero consumers are registered; stage business domain events.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SES-003" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">SES-003</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Clean Quit / Graceful Shutdown Sequence</div>
+            <div class="card-snippet">Session DRAINING transition, final inventory flush, and OFFLINE release.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="PRF-002" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">PRF-002</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Profile Switch Version &amp; Full State Restore</div>
+            <div class="card-snippet">Restore inventory version, enderchest, potion effects, stats, and run startup crash recovery.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="PRF-001" data-tag="Core">
+            <div class="card-meta-line"><span class="card-id">PRF-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Canonical Active Profile Resolution</div>
+            <div class="card-snippet">Eliminate ad-hoc ProfileId(UUID) across commands, menus, PAPI, and API bridges.</div>
+            <div class="card-foot"><span class="badge-category">Core</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SES-002" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">SES-002</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Runtime Self-Fencing &amp; Fail-Closed Guard</div>
+            <div class="card-snippet">Session lease loss transitions to LOCAL_FENCED, halts timers, and disconnects player safely.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
+          <div class="item-card" draggable="true" data-id="SES-001" data-tag="Persistence">
+            <div class="card-meta-line"><span class="card-id">SES-001</span><span class="card-label">Completed</span></div>
+            <div class="card-heading">Player Session Authority Acquisition Hardening</div>
+            <div class="card-snippet">Dual-mode SELECT ... FOR UPDATE row locks, monotonic DB-clock takeover, RECOVERING state machine transition.</div>
+            <div class="card-foot"><span class="badge-category">Persistence</span><span class="badge-status-dot">Done</span></div>
+          </div>
           <div class="item-card" draggable="true" data-id="ISL-010" data-tag="Core">
             <div class="card-meta-line">
               <span class="card-id">ISL-010</span>

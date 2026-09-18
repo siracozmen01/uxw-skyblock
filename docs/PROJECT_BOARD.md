@@ -7,62 +7,67 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 3 — V1 Complete Production Execution (P0 Correctness & P1 Advanced Subsystems)
+* **Phase:** Phase 4 COMPLETE — V1 Production Release Ready
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES (Phase 1 COMPLETE — 7 / 7 completed)
 * **Phase 2 Started:** YES (Phase 2 COMPLETE — 38 / 38 completed)
-* **Phase 3 Started:** YES (Active P0 Correctness & P1 Advanced Subsystems)
-* **Current Active Task:** SES-001 (Player Session Authority Acquisition Hardening)
+* **Phase 3 Started:** YES (Phase 3 COMPLETE — 14 / 14 P0 Correctness completed)
+* **Phase 4 Started:** YES (Phase 4 COMPLETE — 14 / 14 P1 Advanced Subsystems completed)
+* **Current Active Task:** All Canonical V1 Scope Completed
 * **Target Release:** v0.1.0-SNAPSHOT (Production V1 Complete)
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 61.6% (45 / 73 cards completed)
+* **Overall Card Completion:** 100.0% (73 / 73 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed
 * **Phase 2 Tasks Completed:** 38 / 38 completed
-* **Phase 3 Tasks Active:** 28 cards total (14 P0 Critical Correctness + 14 P1 Advanced Subsystems)
+* **Phase 3 Tasks Completed:** 14 / 14 completed
+* **Phase 4 Tasks Completed:** 14 / 14 completed
 
 ---
 
 ## Kanban Columns
 
-### 📋 Backlog (Future Milestones & P1 Advanced Subsystems)
-* [ ] **[MOD-001]** Dynamic FeatureModule Architecture (`FeatureModule`, `ModuleRegistry`, `modules.conf` per Section 2.25)
-* [ ] **[SEA-001]** Automated Seasons & Competitive Payout Subsystem (`IslandSeasonService`, `seasons.conf`, V13 migration per Section 2.33)
-* [ ] **[SOC-001]** Social Discovery, Ratings & Guestbook Subsystem (`IslandSocialService`, `social.conf`, V14 migration per Section 2.35)
-* [ ] **[DIS-001]** Standalone Discord Webhook Notification Subsystem (`IslandDiscordWebhookService`, `discord.conf` per Section 2.36)
-* [ ] **[ALN-001]** Island Alliances & Diplomatic Relations Subsystem (`IslandAllianceService`, `alliances.conf`, V15 migration per Section 2.28)
-* [ ] **[SHO-001]** Dynamic Shop Pricing Subsystem (`DynamicPricingEngine`, `shop.conf` per Section 2.42.8)
-* [ ] **[ACC-001]** TemporaryAccessGrant Subsystem (Expiring visitor/coop grants per Section 2.42)
-* [ ] **[RWD-001]** Durable Offline Reward Inbox (`RewardInboxService`, V16 migration per Section 2.42)
-* [ ] **[BAK-002]** General Object Storage: S3/R2 Remote Storage Adapter (`S3ObjectStorageAdapter` per Section 2.29)
-* [ ] **[WAR-001]** Public Warps & Safe Teleport Engine (`IslandWarpService`, V17 migration per Section 2.10)
-* [ ] **[VLT-001]** Shared Island Vault & Paged Inventory Subsystem (`IslandVaultService`, V18 migration per Section 2.20)
-* [ ] **[CHT-001]** Island Private Chat Subsystem (`IslandChatService` per Section 2.24)
-* [ ] **[INA-001]** Leader Inactivity & Succession Lifecycle (`IslandInactivityService` per Section 2.22)
-* [ ] **[FRZ-001]** 4-Dimensional Administrative Quarantine & Freeze Subsystem (`IslandAdminFreezeService` per Section 2.40)
+### 📋 Backlog (Future Milestones & Post-V1 Enhancements)
+* *All 73 canonical sprint items completed.*
 
-### 📌 To Do (Upcoming P0 Correctness Sprints)
-* [ ] **[SES-002]** Runtime Self-Fencing & Fail-Closed Guard (Session lease loss fails closed, disconnects player, cancels timers)
-* [ ] **[PRF-001]** Canonical Active Profile Context Resolution (Eliminate ad-hoc `ProfileId(player.getUniqueId())` across commands, menus, PAPI, API)
-* [ ] **[PRF-002]** Profile Switch Version & Full State Restore + Startup Recovery (Inventory version, enderchest, effects, stats, crash recovery)
-* [ ] **[SES-003]** Clean Quit / Offline / Graceful Shutdown Sequence (DRAINING -> final flush -> OFFLINE release)
-* [ ] **[EVT-002]** Outbox Fail-Closed on Zero Consumers & Atomic Event Staging in Mutations (Never complete claims when zero consumers present)
-* [ ] **[EVT-003]** Durable Event Transport & Redis Streams Adapter (Redis Streams transport for cross-server event fanout and inbox deduplication)
-* [ ] **[SCH-001]** Folia-Safe Schematic Pasting on Region Scheduler & Safe Teleport (Dispatch chunk pasting to Folia region thread for target island coordinates)
-* [ ] **[PRT-001]** Spatial Island Protection Indexing & Startup Persistence (Protection listener loads persisted islands on cold-start)
-* [ ] **[SEC-001]** Compiled Namespaced Permission Architecture (`PermissionKey` -> `PermissionRegistry` -> `PermissionId` -> `PermissionSet` bitmasks)
-* [ ] **[PAPI-001]** Zero-DB PlaceholderAPI Render Path (Async background refresh cache for rankings/leaderboards)
-* [ ] **[API-001]** Public API Implementation Delegating to Canonical Domain Use Cases (Wire `:api` contracts to real application domain services)
-* [ ] **[ECO-001]** Durable Economy Saga & External Vault Bridge (V11 migration `economy_sagas` table, two-phase saga coordinator)
-* [ ] **[ISL-002]** Island Creation Idempotency & Database Unique Constraints (V12 migration unique constraints on coords and profile ownership)
+### 📌 To Do
+* *All 73 canonical sprint items completed.*
 
 ### 🔄 In Progress
-* [/] **[SES-001]** Player Session Authority Acquisition Hardening (Dual-mode `SELECT ... FOR UPDATE` row locks, monotonic DB-clock takeover, `RECOVERING` state machine transition)
+* *All 73 canonical sprint items completed.*
 
 ### 🔍 In Review
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[FRZ-001]** 4-Dimensional Administrative Quarantine & Freeze Subsystem (`IslandAdminFreezeService`, 4-dimensional orthogonal state model `IslandLifecycle`, `ResidencyState`, `EconomicState`, `AdministrativeState`, visitor eviction to spawn on entity thread, staff inspection tools `/is admin freeze|unfreeze|inspect`, `FreezeFeatureModule`) — COMPLETED (commit `eb30cbb`)
+* [x] **[INA-001]** Leader Inactivity & Succession Lifecycle (`IslandInactivityService`, configurable scan interval, 3-tier candidate hierarchy, fallback abandonment pruning, and `InactivityFeatureModule`) — COMPLETED (commit `9264d32`)
+* [x] **[CHT-001]** Island Private Chat Subsystem (`IslandChatService`, dual dispatch modes, staff spy oversight `/is chat spy`, token-bucket rate limiter, and `ChatFeatureModule`) — COMPLETED (commit `a7280fd`)
+* [x] **[VLT-001]** Shared Island Vault & Paged Storage Subsystem (`IslandVaultService`, pessimistic page locking, escrow journaling, V19 schema migration, and `VaultFeatureModule`) — COMPLETED (commit `769ef33`)
+* [x] **[WAR-001]** Public Warps & Safe Teleport Engine (`IslandWarpService`, safe teleport anti-trap engine, visitor access security, V18 schema migration, and `WarpFeatureModule`) — COMPLETED (commit `77d9276`)
+* [x] **[BAK-002]** General Object Storage: S3/R2 Remote Storage Adapter (`S3ObjectStorageAdapter` with bounded streaming, multipart uploads, AWS S3 / Cloudflare R2 capability negotiation) — COMPLETED (commit `91abb53`)
+* [x] **[RWD-001]** Durable Offline Reward Inbox (`RewardInboxService`, multi-protocol delivery orchestration, V17 schema migration) — COMPLETED (commit `e958048`)
+* [x] **[ACC-001]** TemporaryAccessGrant Subsystem (`TemporaryAccessService`, distributed termination anchors, V16 schema migration, `TemporaryAccessFeatureModule`) — COMPLETED (commit `7f7eb85`)
+* [x] **[SHO-001]** Dynamic Shop Pricing Subsystem (`DynamicPricingEngine`, supply-demand curve algorithms, anti-speculation damping, `ShopFeatureModule`) — COMPLETED (commit `fd22b6d`)
+* [x] **[ALN-001]** Island Alliances & Diplomatic Relations Subsystem (`IslandAllianceService`, bilateral handshakes, friendly fire shielding, V15 schema migration, `AllianceFeatureModule`) — COMPLETED (commit `fc64fc0`)
+* [x] **[DIS-001]** Standalone Discord Webhook Notification Subsystem (`IslandDiscordWebhookService`, token-bucket rate limiting, rich embeds, `DiscordFeatureModule`) — COMPLETED (commit `edee52a`)
+* [x] **[SOC-001]** Social Discovery, Ratings & Guestbook Subsystem (`IslandSocialService`, star ratings, interactive guestbook, V14 schema migration, `SocialFeatureModule`) — COMPLETED (commit `cc70882`)
+* [x] **[SEA-001]** Automated Seasons & Competitive Payout Subsystem (`IslandSeasonService`, immutable snapshots, automated payouts, V13 schema migration, `SeasonFeatureModule`) — COMPLETED (commit `fe2ed7f`)
+* [x] **[MOD-001]** Dynamic FeatureModule Architecture (`FeatureModule`, `ModuleRegistry`, DAG dependency resolution, `modules.conf`) — COMPLETED (commit `3fd4946`)
+* [x] **[ISL-002]** Island Creation Idempotency & Database Unique Constraints (V12 schema migration, coordinate and profile uniqueness constraints, idempotent creation pipeline) — COMPLETED (commit `0ead9ec`)
+* [x] **[ECO-001]** Durable Economy Saga & External Vault Bridge (V11 schema migration `economy_sagas`, two-phase commit saga coordinator, external Vault bridge) — COMPLETED (commit `8b2882d`)
+* [x] **[API-001]** Public API Implementation Delegating to Canonical Domain Use Cases (Public API facade implementation wired to real domain services) — COMPLETED (commit `487efda`)
+* [x] **[PAPI-001]** Zero-DB PlaceholderAPI Render Path (Async background refresh cache for all placeholder queries, zero DB I/O on render) — COMPLETED (commit `487efda`)
+* [x] **[SEC-001]** Compiled Namespaced Permission Architecture (`PermissionKey`, `PermissionRegistry`, `PermissionSet`, fast bitmask evaluation) — COMPLETED (commit `6339f7d`)
+* [x] **[PRT-001]** Spatial Island Protection Indexing & Startup Persistence (Cold-start persistence loading, spatial boundary index caching) — COMPLETED (commit `4fe56a2`)
+* [x] **[SCH-001]** Folia-Safe Schematic Pasting on Region Scheduler & Safe Teleport (Folia region scheduler dispatch for starter island structures) — COMPLETED (commit `487efda`)
+* [x] **[EVT-003]** Durable Event Transport & Redis Streams Adapter (Redis Streams transport for cross-server event fanout and inbox deduplication) — COMPLETED (commit `e9312c2`)
+* [x] **[EVT-002]** Outbox Fail-Closed on Zero Consumers & Atomic Event Staging (Transactional outbox atomic staging in mutations, fail-closed on 0 consumers) — COMPLETED (commit `ad572d8`)
+* [x] **[SES-003]** Clean Quit / Offline / Graceful Shutdown Sequence (DRAINING -> final inventory flush -> OFFLINE release) — COMPLETED (commit `487efda`)
+* [x] **[PRF-002]** Profile Switch Version & Full State Restore + Startup Recovery (Durable inventory versioning, effects, stats, crash recovery) — COMPLETED (commit `487efda`)
+* [x] **[PRF-001]** Canonical Active Profile Context Resolution (Active profile tracking eliminating raw UUID assumptions) — COMPLETED (commit `487efda`)
+* [x] **[SES-002]** Runtime Self-Fencing & Fail-Closed Guard (Lease expiration self-fencing, player kick, task cancellation) — COMPLETED (commit `487efda`)
+* [x] **[SES-001]** Player Session Authority Acquisition Hardening (Dual-mode `SELECT ... FOR UPDATE` row locks, monotonic DB-clock takeover, `RECOVERING` state machine transition) — COMPLETED (commit `21a84ea`)
 * [x] **[ISL-010]** Island Biome System & Modification (`:core` domain `IslandBiome` with displayName/resourceKey/requiredLevel, application port `BiomeModificationPort`, `:bukkit-adapter` asynchronous `BukkitBiomeAdapter` updating chunk biomes, `IslandCommandTree` `/is biome <type>` subcommand, MockBukkit test verification) — COMPLETED
 * [x] **[ISL-011]** Custom Island Schematics & Starter Presets (`:core` domain `StarterPreset`, application `StarterPresetCatalog` with Classic, Desert, Nether, Cave presets, `:bukkit-adapter` `StarterSchematicEngine` generating starter island structures, `IslandCommandTree` `/is create [preset]` subcommand, MockBukkit test verification) — COMPLETED
 * [x] **[EVT-001]** Distributed Outbox & Event Engine (`:core` domain `EventId`, `OutboxStatus`, `OutboxEventRecord`, `OutboxClaim`, application ports `OutboxPort`, `ConsumerInboxPort`; `:persistence-adapter` canonical SQL `TransactionalOutboxAdapter` with dual-mode transactions, SQLite `BEGIN IMMEDIATE` vs MySQL/PostgreSQL row locking with PostgreSQL `SKIP LOCKED`, batch lease claiming, stale claim completion fencing, and DLQ escalation; `ConsumerInboxAdapter` with dialect-specific idempotent deduplication via `INSERT OR IGNORE` in SQLite, `INSERT IGNORE` in MySQL/MariaDB, and `ON CONFLICT DO NOTHING` in PostgreSQL; V9 migrations with `outbox_events` and `consumer_inbox` tables and composite indexes; fast-lane SQLite and dual-lane Testcontainers MariaDB/PostgreSQL cross-dialect verification) — COMPLETED
@@ -113,7 +118,7 @@
 
 ## Extended Roadmap & Reference Items (Outside Canonical Kanban Board)
 
-The following items represent broader project roadmap tasks, tools, and backlog references that are tracked outside the canonical 35-card sprint Kanban board:
+The following items represent broader project roadmap tasks, tools, and backlog references that are tracked outside the canonical 73-card sprint Kanban board:
 
 * `UPG-002`: Island upgrades system (crop growth, generator rates, spawner speed)
 * `PROT-004`: WorldGuard & Lands soft-dependency adapter bridge
