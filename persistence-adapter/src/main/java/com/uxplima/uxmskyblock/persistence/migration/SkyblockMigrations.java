@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 16;
+    public static final int LATEST_VERSION = 17;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -71,6 +71,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V16. */
     public static final String V16_DESCRIPTION = "create temporary access grants and permissions";
 
+    /** Human-readable description of migration V17. */
+    public static final String V17_DESCRIPTION = "create reward grants and components";
+
     private SkyblockMigrations() {}
 
     /**
@@ -103,7 +106,8 @@ public final class SkyblockMigrations {
                 v13Migration(dialect),
                 v14Migration(dialect),
                 v15Migration(dialect),
-                v16Migration(dialect));
+                v16Migration(dialect),
+                v17Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -452,6 +456,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(16, V16_DESCRIPTION, SQLITE_V16_DDL);
             case MYSQL -> new Migration(16, V16_DESCRIPTION, MYSQL_V16_DDL);
             case POSTGRES -> new Migration(16, V16_DESCRIPTION, POSTGRES_V16_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v17Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(17, V17_DESCRIPTION, SQLITE_V17_DDL);
+            case MYSQL -> new Migration(17, V17_DESCRIPTION, MYSQL_V17_DDL);
+            case POSTGRES -> new Migration(17, V17_DESCRIPTION, POSTGRES_V17_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1852,5 +1868,120 @@ public final class SkyblockMigrations {
                 CONSTRAINT fk_temp_grant_perms FOREIGN KEY (grant_id)
                     REFERENCES temporary_access_grants (grant_id) ON DELETE CASCADE
             );
+            """;
+
+    private static final String SQLITE_V17_DDL = """
+            CREATE TABLE IF NOT EXISTS reward_grants (
+                grant_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                recipient_profile_id VARCHAR(36) NOT NULL,
+                source_type VARCHAR(64) NOT NULL,
+                source_id VARCHAR(64) NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                claimed_at TIMESTAMP NULL,
+                expires_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_reward_grant_recipient FOREIGN KEY (recipient_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_reward_grants_recipient ON reward_grants (recipient_profile_id, state);
+
+            CREATE TABLE IF NOT EXISTS reward_grant_components (
+                component_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                grant_id VARCHAR(36) NOT NULL,
+                component_index INT NOT NULL,
+                component_operation_id VARCHAR(36) NOT NULL,
+                component_type VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                journal_operation_id VARCHAR(36) NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_reward_comp_grant FOREIGN KEY (grant_id)
+                    REFERENCES reward_grants (grant_id) ON DELETE CASCADE,
+                CONSTRAINT uq_reward_grant_comp_idx UNIQUE (grant_id, component_index),
+                CONSTRAINT uq_reward_grant_comp_op UNIQUE (component_operation_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_reward_comp_grant ON reward_grant_components (grant_id, state);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_reward_comp_op ON reward_grant_components (component_operation_id);
+            """;
+
+    private static final String MYSQL_V17_DDL = """
+            CREATE TABLE IF NOT EXISTS reward_grants (
+                grant_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                recipient_profile_id VARCHAR(36) NOT NULL,
+                source_type VARCHAR(64) NOT NULL,
+                source_id VARCHAR(64) NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                claimed_at TIMESTAMP NULL,
+                expires_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_reward_grant_recipient FOREIGN KEY (recipient_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_reward_grants_recipient ON reward_grants (recipient_profile_id, state);
+
+            CREATE TABLE IF NOT EXISTS reward_grant_components (
+                component_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                grant_id VARCHAR(36) NOT NULL,
+                component_index INT NOT NULL,
+                component_operation_id VARCHAR(36) NOT NULL,
+                component_type VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                journal_operation_id VARCHAR(36) NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_reward_comp_grant FOREIGN KEY (grant_id)
+                    REFERENCES reward_grants (grant_id) ON DELETE CASCADE,
+                CONSTRAINT uq_reward_grant_comp_idx UNIQUE (grant_id, component_index),
+                CONSTRAINT uq_reward_grant_comp_op UNIQUE (component_operation_id)
+            );
+
+            CREATE INDEX idx_reward_comp_grant ON reward_grant_components (grant_id, state);
+            """;
+
+    private static final String POSTGRES_V17_DDL = """
+            CREATE TABLE IF NOT EXISTS reward_grants (
+                grant_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                recipient_profile_id VARCHAR(36) NOT NULL,
+                source_type VARCHAR(64) NOT NULL,
+                source_id VARCHAR(64) NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                claimed_at TIMESTAMP NULL,
+                expires_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_reward_grant_recipient FOREIGN KEY (recipient_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_reward_grants_recipient ON reward_grants (recipient_profile_id, state);
+
+            CREATE TABLE IF NOT EXISTS reward_grant_components (
+                component_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                grant_id VARCHAR(36) NOT NULL,
+                component_index INT NOT NULL,
+                component_operation_id VARCHAR(36) NOT NULL,
+                component_type VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                journal_operation_id VARCHAR(36) NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_reward_comp_grant FOREIGN KEY (grant_id)
+                    REFERENCES reward_grants (grant_id) ON DELETE CASCADE,
+                CONSTRAINT uq_reward_grant_comp_idx UNIQUE (grant_id, component_index),
+                CONSTRAINT uq_reward_grant_comp_op UNIQUE (component_operation_id)
+            );
+
+            CREATE INDEX idx_reward_comp_grant ON reward_grant_components (grant_id, state);
             """;
 }

@@ -115,6 +115,8 @@ class ProductionMigrationFastLaneTest {
                                 "island_alliance_invites",
                                 "temporary_access_grants",
                                 "temporary_access_grant_permissions",
+                                "reward_grants",
+                                "reward_grant_components",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -520,6 +522,36 @@ class ProductionMigrationFastLaneTest {
                 // temporary_access_grant_permissions columns (V16)
                 Set<String> tempPermCols = getColumnNames(meta, "temporary_access_grant_permissions");
                 assertThat(tempPermCols).containsExactlyInAnyOrder("grant_id", "permission_key");
+
+                // reward_grants columns (V17)
+                Set<String> rewardGrantCols = getColumnNames(meta, "reward_grants");
+                assertThat(rewardGrantCols)
+                        .containsExactlyInAnyOrder(
+                                "grant_id",
+                                "recipient_profile_id",
+                                "source_type",
+                                "source_id",
+                                "state",
+                                "claimed_at",
+                                "expires_at",
+                                "created_at",
+                                "updated_at");
+
+                // reward_grant_components columns (V17)
+                Set<String> rewardCompCols = getColumnNames(meta, "reward_grant_components");
+                assertThat(rewardCompCols)
+                        .containsExactlyInAnyOrder(
+                                "component_id",
+                                "grant_id",
+                                "component_index",
+                                "component_operation_id",
+                                "component_type",
+                                "payload_type_id",
+                                "payload_schema_version",
+                                "payload_data",
+                                "state",
+                                "journal_operation_id",
+                                "updated_at");
             }
         }
     }
@@ -1602,7 +1634,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(15);
 
             // 2. Upgrade by applying V16
-            int v16Applied = runner.apply(allMigrations);
+            int v16Applied = runner.apply(allMigrations.subList(0, 16));
             assertThat(v16Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(16);
 
@@ -1652,9 +1684,91 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 16));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(16);
+        }
+    }
+
+    @Test
+    @DisplayName("20. Step-by-step upgrade from V16 to V17 creates reward grants and components tables")
+    void stepByStepUpgradeFromV16ToV17CreatesRewardTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V16
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v16Applied = runner.apply(allMigrations.subList(0, 16));
+            assertThat(v16Applied).isEqualTo(16);
+            assertThat(runner.currentVersion()).isEqualTo(16);
+
+            // 2. Upgrade by applying V17
+            int v17Applied = runner.apply(allMigrations);
+            assertThat(v17Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(17);
+
+            // 3. Verify V17 tables and foreign key cascade work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+
+                execute(conn, """
+                        INSERT INTO reward_grants (
+                            grant_id, recipient_profile_id, source_type, source_id, state
+                        ) VALUES (
+                            '22222222-2222-2222-2222-222222222222',
+                            '11111111-1111-1111-1111-111111111111',
+                            'SEASON_PAYOUT',
+                            'season-1-rank-1',
+                            'PENDING'
+                        )
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM reward_grants WHERE grant_id = '22222222-2222-2222-2222-222222222222'"))
+                        .isEqualTo(1);
+
+                execute(conn, """
+                        INSERT INTO reward_grant_components (
+                            component_id, grant_id, component_index, component_operation_id,
+                            component_type, payload_type_id, payload_schema_version, payload_data, state
+                        ) VALUES (
+                            '33333333-3333-3333-3333-333333333333',
+                            '22222222-2222-2222-2222-222222222222',
+                            0,
+                            '44444444-4444-4444-4444-444444444444',
+                            'ITEM',
+                            'uxm:item_bundle',
+                            1,
+                            '{}',
+                            'PENDING'
+                        )
+                        """);
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM reward_grant_components WHERE component_id = '33333333-3333-3333-3333-333333333333'"))
+                        .isEqualTo(1);
+
+                // Delete grant and verify cascade deletes component
+                execute(conn, "DELETE FROM reward_grants WHERE grant_id = '22222222-2222-2222-2222-222222222222'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM reward_grant_components WHERE component_id = '33333333-3333-3333-3333-333333333333'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(17);
         }
     }
 

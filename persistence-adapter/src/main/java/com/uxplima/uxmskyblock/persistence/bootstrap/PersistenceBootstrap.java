@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
 import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
+import com.uxplima.uxmskyblock.core.application.reward.RewardStoragePort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonStoragePort;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialStoragePort;
@@ -40,6 +41,7 @@ import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.leaderboard.PlayerIslandLeaderboardAdapter;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.profile.PlayerProfileSwitchAdapter;
+import com.uxplima.uxmskyblock.persistence.reward.SqlRewardStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.season.PlayerIslandSeasonAdapter;
 import com.uxplima.uxmskyblock.persistence.session.PlayerSessionAuthorityAdapter;
 import com.uxplima.uxmskyblock.persistence.social.PlayerIslandSocialAdapter;
@@ -71,6 +73,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerIslandSocialAdapter islandSocialAdapter;
     private final PlayerIslandAllianceAdapter islandAllianceAdapter;
     private final SqlTemporaryAccessAdapter temporaryAccessAdapter;
+    private final SqlRewardStorageAdapter rewardStorageAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -97,6 +100,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.islandSocialAdapter = new PlayerIslandSocialAdapter(database);
         this.islandAllianceAdapter = new PlayerIslandAllianceAdapter(database);
         this.temporaryAccessAdapter = new SqlTemporaryAccessAdapter(database);
+        this.rewardStorageAdapter = new SqlRewardStorageAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -200,6 +204,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public TemporaryAccessStoragePort temporaryAccessStoragePort() {
         return temporaryAccessAdapter;
+    }
+
+    public RewardStoragePort rewardStoragePort() {
+        return rewardStorageAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.bootstrap;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -18,6 +19,7 @@ import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
+import com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ShopConfiguration;
@@ -36,6 +38,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.RewardInboxFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ShopFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
@@ -57,6 +60,9 @@ import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardSer
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
+import com.uxplima.uxmskyblock.core.application.reward.RewardClaimCoordinator;
+import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
+import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
@@ -64,6 +70,7 @@ import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
+import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
@@ -117,6 +124,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final DynamicPricingEngine dynamicPricingEngine;
     private final TemporaryAccessConfiguration temporaryAccessConfig;
     private final TemporaryAccessService temporaryAccessService;
+    private final RewardInboxConfiguration rewardConfig;
+    private final RewardInboxService rewardInboxService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -131,7 +140,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             DiscordConfiguration discordConfig,
             AllianceConfiguration allianceConfig,
             ShopConfiguration shopConfig,
-            TemporaryAccessConfiguration temporaryAccessConfig) {
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -145,6 +155,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.shopConfig = Objects.requireNonNull(shopConfig, "shopConfig must not be null");
         this.temporaryAccessConfig =
                 Objects.requireNonNull(temporaryAccessConfig, "temporaryAccessConfig must not be null");
+        this.rewardConfig = Objects.requireNonNull(rewardConfig, "rewardConfig must not be null");
 
         this.dynamicPricingEngine = new DynamicPricingEngine(shopConfig.dampingFactor());
         this.temporaryAccessService = new TemporaryAccessService(persistenceBootstrap.temporaryAccessStoragePort());
@@ -293,6 +304,93 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 economyBridge,
                 controlMenu);
 
+        RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
+            @Override
+            public RewardComponentType supportedType() {
+                return RewardComponentType.ITEM;
+            }
+
+            @Override
+            public DeliveryResult deliver(
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
+                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
+                return DeliveryResult.success(component.componentOperationId().value());
+            }
+        };
+
+        RewardDeliveryHandler currencyDeliveryHandler = new RewardDeliveryHandler() {
+            @Override
+            public RewardComponentType supportedType() {
+                return RewardComponentType.SQL_CURRENCY;
+            }
+
+            @Override
+            public DeliveryResult deliver(
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
+                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
+                return DeliveryResult.success(component.componentOperationId().value());
+            }
+        };
+
+        RewardDeliveryHandler vaultDeliveryHandler = new RewardDeliveryHandler() {
+            @Override
+            public RewardComponentType supportedType() {
+                return RewardComponentType.EXTERNAL_VAULT;
+            }
+
+            @Override
+            public DeliveryResult deliver(
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
+                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
+                return DeliveryResult.success(component.componentOperationId().value());
+            }
+        };
+
+        RewardDeliveryHandler cosmeticDeliveryHandler = new RewardDeliveryHandler() {
+            @Override
+            public RewardComponentType supportedType() {
+                return RewardComponentType.COSMETIC;
+            }
+
+            @Override
+            public DeliveryResult deliver(
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
+                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
+                return DeliveryResult.success(component.componentOperationId().value());
+            }
+        };
+
+        RewardDeliveryHandler permDeliveryHandler = new RewardDeliveryHandler() {
+            @Override
+            public RewardComponentType supportedType() {
+                return RewardComponentType.PERMISSION;
+            }
+
+            @Override
+            public DeliveryResult deliver(
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
+                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
+                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
+                return DeliveryResult.success(component.componentOperationId().value());
+            }
+        };
+
+        RewardClaimCoordinator rewardClaimCoordinator = new RewardClaimCoordinator(
+                persistenceBootstrap.rewardStoragePort(),
+                List.of(
+                        itemDeliveryHandler,
+                        currencyDeliveryHandler,
+                        vaultDeliveryHandler,
+                        cosmeticDeliveryHandler,
+                        permDeliveryHandler));
+
+        this.rewardInboxService =
+                new RewardInboxService(persistenceBootstrap.rewardStoragePort(), rewardClaimCoordinator);
+
         this.moduleRegistry = new ModuleRegistry();
         this.moduleContext = new BukkitModuleContext("1.0.0");
         this.moduleRegistry.register(new CoreModule(createIslandUseCase));
@@ -307,7 +405,35 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new ShopFeatureModule(dynamicPricingEngine));
         this.moduleRegistry.register(
                 new TemporaryAccessFeatureModule(temporaryAccessService, scheduler, temporaryAccessConfig));
+        this.moduleRegistry.register(new RewardInboxFeatureModule(rewardInboxService, scheduler, rewardConfig));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                RewardInboxConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -678,6 +804,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             temporaryAccessConfig = TemporaryAccessConfiguration.defaultConfiguration();
         }
 
+        Path rewardsFile = dataDir.resolve("rewards.conf");
+        if (!java.nio.file.Files.exists(rewardsFile)) {
+            try (java.io.InputStream in = plugin.getResource("rewards.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, rewardsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if rewards.conf cannot be extracted
+            }
+        }
+
+        RewardInboxConfiguration rewardConfig;
+        if (java.nio.file.Files.exists(rewardsFile)) {
+            try {
+                CommentedConfigurationNode rewardRoot = HoconConfigurationLoader.builder()
+                        .path(rewardsFile)
+                        .build()
+                        .load();
+                rewardConfig = RewardInboxConfiguration.load(rewardRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load rewards configuration from: " + rewardsFile, e);
+            }
+        } else {
+            rewardConfig = RewardInboxConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -689,7 +841,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 discordConfig,
                 allianceConfig,
                 shopConfig,
-                temporaryAccessConfig);
+                temporaryAccessConfig,
+                rewardConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -848,6 +1001,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public TemporaryAccessConfiguration temporaryAccessConfiguration() {
         return temporaryAccessConfig;
+    }
+
+    public RewardInboxService rewardInboxService() {
+        return rewardInboxService;
+    }
+
+    public RewardInboxConfiguration rewardInboxConfiguration() {
+        return rewardConfig;
     }
 
     @Override
