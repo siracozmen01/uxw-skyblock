@@ -395,10 +395,7 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
         customListener.setActiveProfile(visitorUuid, visitorProfileId);
 
         EntityDamageByEntityEvent event = new EntityDamageByEntityEvent(
-                visitorPlayer,
-                ownerPlayer,
-                EntityDamageByEntityEvent.DamageCause.ENTITY_ATTACK,
-                5.0);
+                visitorPlayer, ownerPlayer, EntityDamageByEntityEvent.DamageCause.ENTITY_ATTACK, 5.0);
 
         customListener.onEntityDamage(event);
         assertThat(event.isCancelled()).isTrue();

@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.ShopConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
@@ -33,6 +34,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.ShopFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
@@ -52,6 +54,7 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
+import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
@@ -103,6 +106,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandDiscordWebhookService discordService;
     private final AllianceConfiguration allianceConfig;
     private final IslandAllianceService allianceService;
+    private final ShopConfiguration shopConfig;
+    private final DynamicPricingEngine dynamicPricingEngine;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -115,7 +120,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             SeasonConfiguration seasonConfig,
             SocialConfiguration socialConfig,
             DiscordConfiguration discordConfig,
-            AllianceConfiguration allianceConfig) {
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -126,6 +132,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.socialConfig = Objects.requireNonNull(socialConfig, "socialConfig must not be null");
         this.discordConfig = Objects.requireNonNull(discordConfig, "discordConfig must not be null");
         this.allianceConfig = Objects.requireNonNull(allianceConfig, "allianceConfig must not be null");
+        this.shopConfig = Objects.requireNonNull(shopConfig, "shopConfig must not be null");
+
+        this.dynamicPricingEngine = new DynamicPricingEngine(shopConfig.dampingFactor());
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -262,7 +271,31 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new SocialFeatureModule(socialService));
         this.moduleRegistry.register(new DiscordFeatureModule(discordService));
         this.moduleRegistry.register(new AllianceFeatureModule(allianceService));
+        this.moduleRegistry.register(new ShopFeatureModule(dynamicPricingEngine));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                ShopConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -532,6 +565,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             allianceConfig = AllianceConfiguration.defaultConfiguration();
         }
 
+        Path shopFile = dataDir.resolve("shop.conf");
+        if (!java.nio.file.Files.exists(shopFile)) {
+            try (java.io.InputStream in = plugin.getResource("shop.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, shopFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if shop.conf cannot be extracted
+            }
+        }
+
+        ShopConfiguration shopConfig;
+        if (java.nio.file.Files.exists(shopFile)) {
+            try {
+                CommentedConfigurationNode shopRoot = HoconConfigurationLoader.builder()
+                        .path(shopFile)
+                        .build()
+                        .load();
+                shopConfig = ShopConfiguration.load(shopRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load shop configuration from: " + shopFile, e);
+            }
+        } else {
+            shopConfig = ShopConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -541,7 +600,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 seasonConfig,
                 socialConfig,
                 discordConfig,
-                allianceConfig);
+                allianceConfig,
+                shopConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -684,6 +744,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public AllianceConfiguration allianceConfiguration() {
         return allianceConfig;
+    }
+
+    public DynamicPricingEngine dynamicPricingEngine() {
+        return dynamicPricingEngine;
+    }
+
+    public ShopConfiguration shopConfiguration() {
+        return shopConfig;
     }
 
     @Override
