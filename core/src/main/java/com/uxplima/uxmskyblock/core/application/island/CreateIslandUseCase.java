@@ -120,6 +120,10 @@ public final class CreateIslandUseCase {
             stageIslandCreatedEvent(islandId, playerUuid, profileId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
+            Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (existing.isPresent()) {
+                return new CreateIslandResult.AlreadyHasIsland(existing.get());
+            }
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
         }
     }
@@ -167,6 +171,10 @@ public final class CreateIslandUseCase {
             stageIslandCreatedEvent(islandId, playerUuid, profileId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
+            Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (existing.isPresent()) {
+                return new CreateIslandResult.AlreadyHasIsland(existing.get());
+            }
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
         }
     }

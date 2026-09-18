@@ -129,6 +129,31 @@ class CreateIslandUseCaseTest {
         assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.UnknownPreset.class);
     }
 
+    @Test
+    @DisplayName("concurrent creation race condition falling back to existing island returns AlreadyHasIsland")
+    void concurrentCreationFallbackReturnsAlreadyHasIsland() {
+        PlayerUuid playerUuid = new PlayerUuid(UUID.randomUUID());
+        ProfileId profileId = new ProfileId(UUID.randomUUID());
+        IslandId existingIslandId = IslandId.of(UUID.randomUUID());
+
+        storage = new FakeIslandStorage() {
+            @Override
+            public void saveIsland(Island island, IslandLocation location) {
+                profileToIsland.put(profileId, existingIslandId);
+                throw new RuntimeException("UNIQUE constraint failed: islands.owner_profile_id");
+            }
+        };
+        useCase = new CreateIslandUseCase(storage, authority, bank, presetCatalog, gridService, allocationPort);
+
+        CreateIslandUseCase.CreateIslandResult result =
+                useCase.execute(playerUuid, profileId, "classic", ServerNodeId.of("node-1"), "world");
+
+        assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland.class);
+        CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland already =
+                (CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) result;
+        assertThat(already.existingIslandId()).isEqualTo(existingIslandId);
+    }
+
     private static class FakeIslandStorage implements IslandStoragePort {
         final Map<IslandId, Island> islands = new HashMap<>();
         final Map<ProfileId, IslandId> profileToIsland = new HashMap<>();

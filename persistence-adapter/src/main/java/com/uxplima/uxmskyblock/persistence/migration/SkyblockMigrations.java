@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 11;
+    public static final int LATEST_VERSION = 12;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -56,6 +56,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V11. */
     public static final String V11_DESCRIPTION = "create economy sagas";
 
+    /** Human-readable description of migration V12. */
+    public static final String V12_DESCRIPTION = "create island creation unique constraints";
+
     private SkyblockMigrations() {}
 
     /**
@@ -83,7 +86,8 @@ public final class SkyblockMigrations {
                 v8Migration(dialect),
                 v9Migration(dialect),
                 v10Migration(dialect),
-                v11Migration(dialect));
+                v11Migration(dialect),
+                v12Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -372,6 +376,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(11, V11_DESCRIPTION, SQLITE_V11_DDL);
             case MYSQL -> new Migration(11, V11_DESCRIPTION, MYSQL_V11_DDL);
             case POSTGRES -> new Migration(11, V11_DESCRIPTION, POSTGRES_V11_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v12Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(12, V12_DESCRIPTION, SQLITE_V12_DDL);
+            case MYSQL -> new Migration(12, V12_DESCRIPTION, MYSQL_V12_DDL);
+            case POSTGRES -> new Migration(12, V12_DESCRIPTION, POSTGRES_V12_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1289,5 +1305,23 @@ public final class SkyblockMigrations {
             CREATE INDEX idx_economy_sagas_state ON economy_sagas (state, expires_at);
             CREATE INDEX idx_economy_sagas_player ON economy_sagas (player_uuid, profile_id);
             CREATE INDEX idx_economy_sagas_island ON economy_sagas (island_id);
+            """;
+
+    private static final String SQLITE_V12_DDL = """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_island_locations_coords ON island_locations (world_name, center_x, center_z);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_islands_owner_profile ON islands (owner_profile_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_grid_allocations_coords ON world_grid_allocations (world_name, center_x, center_z);
+            """;
+
+    private static final String MYSQL_V12_DDL = """
+            CREATE UNIQUE INDEX uq_island_locations_coords ON island_locations (world_name, center_x, center_z);
+            CREATE UNIQUE INDEX uq_islands_owner_profile ON islands (owner_profile_id);
+            CREATE UNIQUE INDEX uq_grid_allocations_coords ON world_grid_allocations (world_name, center_x, center_z);
+            """;
+
+    private static final String POSTGRES_V12_DDL = """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_island_locations_coords ON island_locations (world_name, center_x, center_z);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_islands_owner_profile ON islands (owner_profile_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_grid_allocations_coords ON world_grid_allocations (world_name, center_x, center_z);
             """;
 }

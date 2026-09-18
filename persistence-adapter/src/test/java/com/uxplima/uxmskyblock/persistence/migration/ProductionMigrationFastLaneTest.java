@@ -1253,8 +1253,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V11 should be applied)
-            int v11Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V11 migration (only V11 should be applied)
+            int v11Applied = runner.apply(allMigrations.subList(0, 11));
             assertThat(v11Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(11);
 
@@ -1277,9 +1277,75 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 11));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(11);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "15. Step-by-step upgrade from V11 to V12 enforces unique constraints on island coords and owner profile")
+    void stepByStepUpgradeFromV11ToV12EnforcesUniqueConstraints() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V11
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v11Applied = runner.apply(allMigrations.subList(0, 11));
+            assertThat(v11Applied).isEqualTo(11);
+            assertThat(runner.currentVersion()).isEqualTo(11);
+
+            // 2. Seed V11 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v12-1')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v12-1', 'p-v12-1')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v12-1', 'prof-v12-1', 'p-v12-1')
+                        """);
+                execute(conn, """
+                        INSERT INTO island_locations (
+                            island_id, world_name, center_x, center_z, min_x, min_z, max_x, max_z,
+                            spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch
+                        ) VALUES ('isl-v12-1', 'world', 0, 0, -50, -50, 50, 50, 0.5, 100.0, 0.5, 0.0, 0.0)
+                        """);
+            }
+
+            // 3. Upgrade by applying V12
+            int v12Applied = runner.apply(allMigrations);
+            assertThat(v12Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(12);
+
+            // 4. Verify unique constraint: duplicate owner_profile_id is rejected
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                assertThatThrownBy(() -> execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v12-dup-owner', 'prof-v12-1', 'p-v12-1')
+                        """)).isInstanceOf(SQLException.class);
+
+                // 5. Verify unique constraint: duplicate island coordinates are rejected
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v12-2')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v12-2', 'p-v12-2')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v12-2', 'prof-v12-2', 'p-v12-2')
+                        """);
+
+                assertThatThrownBy(() -> execute(conn, """
+                        INSERT INTO island_locations (
+                            island_id, world_name, center_x, center_z, min_x, min_z, max_x, max_z,
+                            spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch
+                        ) VALUES ('isl-v12-2', 'world', 0, 0, -50, -50, 50, 50, 0.5, 100.0, 0.5, 0.0, 0.0)
+                        """)).isInstanceOf(SQLException.class);
+            }
+
+            // 6. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(12);
         }
     }
 
