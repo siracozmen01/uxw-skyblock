@@ -104,6 +104,9 @@ class ProductionMigrationFastLaneTest {
                                 "consumer_inbox",
                                 "world_grid_allocations",
                                 "economy_sagas",
+                                "island_seasons",
+                                "season_snapshots",
+                                "season_payouts",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -399,6 +402,36 @@ class ProductionMigrationFastLaneTest {
                                 "expires_at",
                                 "created_at",
                                 "updated_at");
+
+                // island_seasons columns (V13)
+                Set<String> seasonCols = getColumnNames(meta, "island_seasons");
+                assertThat(seasonCols)
+                        .containsExactlyInAnyOrder(
+                                "season_id", "name", "starts_at", "ends_at", "state", "created_at", "updated_at");
+
+                // season_snapshots columns (V13)
+                Set<String> snapshotCols = getColumnNames(meta, "season_snapshots");
+                assertThat(snapshotCols)
+                        .containsExactlyInAnyOrder(
+                                "season_id",
+                                "metric",
+                                "rank",
+                                "island_id",
+                                "owner_player_uuid",
+                                "score",
+                                "snapshot_timestamp");
+
+                // season_payouts columns (V13)
+                Set<String> payoutCols = getColumnNames(meta, "season_payouts");
+                assertThat(payoutCols)
+                        .containsExactlyInAnyOrder(
+                                "payout_id",
+                                "season_id",
+                                "recipient_uuid",
+                                "reward_action",
+                                "state",
+                                "created_at",
+                                "dispatched_at");
             }
         }
     }
@@ -1314,7 +1347,7 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 3. Upgrade by applying V12
-            int v12Applied = runner.apply(allMigrations);
+            int v12Applied = runner.apply(allMigrations.subList(0, 12));
             assertThat(v12Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(12);
 
@@ -1343,9 +1376,44 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 6. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 12));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(12);
+        }
+    }
+
+    @Test
+    @DisplayName("16. Step-by-step upgrade from V12 to V13 creates season, snapshot, and payout tables")
+    void stepByStepUpgradeFromV12ToV13CreatesSeasonTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V12
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v12Applied = runner.apply(allMigrations.subList(0, 12));
+            assertThat(v12Applied).isEqualTo(12);
+            assertThat(runner.currentVersion()).isEqualTo(12);
+
+            // 2. Upgrade by applying V13
+            int v13Applied = runner.apply(allMigrations);
+            assertThat(v13Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(13);
+
+            // 3. Verify V13 tables work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, """
+                        INSERT INTO island_seasons (season_id, name, starts_at, ends_at, state)
+                        VALUES (1, 'Season 1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'ACTIVE')
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_seasons WHERE season_id = 1"))
+                        .isEqualTo(1);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(13);
         }
     }
 

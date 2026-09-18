@@ -14,6 +14,7 @@ import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
+import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
@@ -25,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
@@ -40,6 +42,7 @@ import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -81,6 +84,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final ServerNodeConfiguration nodeConfiguration;
     private final PlayerStateDurabilityConfig playerStateConfig;
     private final ModuleSettingsConfiguration moduleSettings;
+    private final SeasonConfiguration seasonConfig;
+    private final IslandSeasonService seasonService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -89,13 +94,15 @@ public final class SkyblockBootstrap implements AutoCloseable {
             PersistenceBootstrap persistenceBootstrap,
             ServerNodeConfiguration nodeConfiguration,
             PlayerStateDurabilityConfig playerStateConfig,
-            ModuleSettingsConfiguration moduleSettings) {
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
         this.nodeConfiguration = Objects.requireNonNull(nodeConfiguration, "nodeConfiguration must not be null");
         this.playerStateConfig = Objects.requireNonNull(playerStateConfig, "playerStateConfig must not be null");
         this.moduleSettings = Objects.requireNonNull(moduleSettings, "moduleSettings must not be null");
+        this.seasonConfig = Objects.requireNonNull(seasonConfig, "seasonConfig must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -119,6 +126,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandAuthorityPort(),
                 persistenceBootstrap.outboxPort());
         this.leaderboardService = new IslandLeaderboardService(persistenceBootstrap.islandLeaderboardPort());
+        this.seasonService = new IslandSeasonService(
+                persistenceBootstrap.islandSeasonStoragePort(),
+                persistenceBootstrap.islandLeaderboardPort(),
+                persistenceBootstrap.islandStoragePort());
 
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
 
@@ -200,7 +211,23 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new UpgradesModule());
         this.moduleRegistry.register(new BiomesModule(biomeAdapter));
         this.moduleRegistry.register(new PresetsModule(presetCatalog, schematicEngine));
+        this.moduleRegistry.register(new SeasonFeatureModule(seasonService, scheduler, seasonConfig));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                SeasonConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -292,7 +319,33 @@ public final class SkyblockBootstrap implements AutoCloseable {
             moduleSettings = ModuleSettingsConfiguration.empty();
         }
 
-        return new SkyblockBootstrap(plugin, persistence, nodeConfig, playerStateConfig, moduleSettings);
+        Path seasonsFile = dataDir.resolve("seasons.conf");
+        if (!java.nio.file.Files.exists(seasonsFile)) {
+            try (java.io.InputStream in = plugin.getResource("seasons.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, seasonsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if seasons.conf cannot be extracted
+            }
+        }
+
+        SeasonConfiguration seasonConfig;
+        if (java.nio.file.Files.exists(seasonsFile)) {
+            try {
+                CommentedConfigurationNode seasonsRoot = HoconConfigurationLoader.builder()
+                        .path(seasonsFile)
+                        .build()
+                        .load();
+                seasonConfig = SeasonConfiguration.load(seasonsRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load seasons configuration from: " + seasonsFile, e);
+            }
+        } else {
+            seasonConfig = SeasonConfiguration.defaultConfiguration();
+        }
+
+        return new SkyblockBootstrap(plugin, persistence, nodeConfig, playerStateConfig, moduleSettings, seasonConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -403,6 +456,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public TransactionalOutboxDispatcher outboxDispatcher() {
         return outboxDispatcher;
+    }
+
+    public IslandSeasonService seasonService() {
+        return seasonService;
+    }
+
+    public SeasonConfiguration seasonConfiguration() {
+        return seasonConfig;
     }
 
     @Override

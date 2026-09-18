@@ -1,0 +1,255 @@
+package com.uxplima.uxmskyblock.core.application.season;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
+import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonId;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonMetric;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonPayoutRecord;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonPayoutState;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonRecord;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonSnapshotEntry;
+import com.uxplima.uxmskyblock.core.domain.season.SeasonState;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+class IslandSeasonServiceTest {
+
+    private InMemorySeasonStorage storage;
+    private InMemoryLeaderboardPort leaderboard;
+    private InMemoryIslandStorage islandStorage;
+    private IslandSeasonService seasonService;
+
+    @BeforeEach
+    void setUp() {
+        storage = new InMemorySeasonStorage();
+        leaderboard = new InMemoryLeaderboardPort();
+        islandStorage = new InMemoryIslandStorage();
+        seasonService = new IslandSeasonService(storage, leaderboard, islandStorage);
+    }
+
+    @Test
+    @DisplayName("starts a new active season successfully")
+    void startsNewActiveSeason() {
+        Instant now = Instant.now();
+        Instant end = now.plus(45, ChronoUnit.DAYS);
+        SeasonId seasonId = SeasonId.of(1);
+
+        seasonService.startSeason(seasonId, "Season 1", now, end);
+
+        Optional<SeasonRecord> active = seasonService.activeSeason();
+        assertThat(active).isPresent();
+        assertThat(active.get().id()).isEqualTo(seasonId);
+        assertThat(active.get().name()).isEqualTo("Season 1");
+        assertThat(active.get().state()).isEqualTo(SeasonState.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("freezes, snapshots leaderboards, queues payouts, and completes season when expires")
+    void expiresAndCompletesSeasonWithPayouts() {
+        Instant start = Instant.now().minus(45, ChronoUnit.DAYS);
+        Instant end = Instant.now().minus(1, ChronoUnit.MINUTES);
+        SeasonId seasonId = SeasonId.of(1);
+
+        storage.saveSeason(new SeasonRecord(seasonId, "Season 1", start, end, SeasonState.ACTIVE));
+
+        IslandId isl1 = new IslandId(UUID.randomUUID());
+        PlayerUuid leader1 = new PlayerUuid(UUID.randomUUID());
+        Island island = Island.create(
+                isl1,
+                IslandBounds.fromCenterAndRadius(0, 0, 100),
+                leader1,
+                new ProfileId(leader1.value()),
+                Instant.now());
+        islandStorage.saveIsland(island, null);
+
+        leaderboard.setLevelEntries(List.of(new LeaderboardEntry(1, isl1, "Alex's Island", 5000L, "5,000")));
+
+        Map<Integer, List<String>> tierRewards =
+                Map.of(1, List.of("voucher give %leader% STORE_100USD", "crate give %leader% seasonal 10"));
+
+        Instant checkTime = Instant.now();
+        seasonService.checkAndAdvanceSeason(checkTime, tierRewards);
+
+        // Season state should transition to COMPLETED
+        SeasonRecord completed = storage.findSeason(seasonId).orElseThrow();
+        assertThat(completed.state()).isEqualTo(SeasonState.COMPLETED);
+
+        // Snapshots must be persisted
+        List<SeasonSnapshotEntry> snapshots = storage.findSnapshots(seasonId, SeasonMetric.LEVEL, 10);
+        assertThat(snapshots).hasSize(1);
+        assertThat(snapshots.get(0).rank()).isEqualTo(1);
+        assertThat(snapshots.get(0).islandId()).isEqualTo(isl1);
+        assertThat(snapshots.get(0).ownerUuid()).isEqualTo(leader1);
+        assertThat(snapshots.get(0).score()).isEqualTo(5000L);
+
+        // Pending payouts must be queued
+        List<SeasonPayoutRecord> pending = storage.findPendingPayouts(leader1);
+        assertThat(pending).hasSize(2);
+        assertThat(pending.get(0).state()).isEqualTo(SeasonPayoutState.PENDING);
+        assertThat(pending.get(0).rewardAction()).contains("%leader%");
+    }
+
+    @Test
+    @DisplayName("claims pending payouts and transitions them to DISPATCHED state")
+    void claimsPendingPayouts() {
+        SeasonId seasonId = SeasonId.of(1);
+        PlayerUuid leader = new PlayerUuid(UUID.randomUUID());
+        storage.queuePayout(new SeasonPayoutRecord(
+                "payout-1", seasonId, leader, "eco give Alex 1000", SeasonPayoutState.PENDING, Instant.now(), null));
+
+        List<String> actions = seasonService.claimPendingPayouts(leader);
+        assertThat(actions).containsExactly("eco give Alex 1000");
+
+        List<SeasonPayoutRecord> pendingAfter = storage.findPendingPayouts(leader);
+        assertThat(pendingAfter).isEmpty();
+    }
+
+    private static class InMemorySeasonStorage implements IslandSeasonStoragePort {
+        private final Map<SeasonId, SeasonRecord> seasons = new HashMap<>();
+        private final List<SeasonSnapshotEntry> snapshots = new ArrayList<>();
+        private final Map<String, SeasonPayoutRecord> payouts = new HashMap<>();
+
+        @Override
+        public void saveSeason(SeasonRecord season) {
+            seasons.put(season.id(), season);
+        }
+
+        @Override
+        public Optional<SeasonRecord> findActiveSeason() {
+            return seasons.values().stream()
+                    .filter(s -> s.state() == SeasonState.ACTIVE || s.state() == SeasonState.FROZEN)
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<SeasonRecord> findSeason(SeasonId id) {
+            return Optional.ofNullable(seasons.get(id));
+        }
+
+        @Override
+        public List<SeasonRecord> listSeasons() {
+            return List.copyOf(seasons.values());
+        }
+
+        @Override
+        public void saveSnapshots(List<SeasonSnapshotEntry> entries) {
+            snapshots.addAll(entries);
+        }
+
+        @Override
+        public List<SeasonSnapshotEntry> findSnapshots(SeasonId id, SeasonMetric metric, int limit) {
+            return snapshots.stream()
+                    .filter(s -> s.seasonId().equals(id) && s.metric() == metric)
+                    .sorted((a, b) -> Integer.compare(a.rank(), b.rank()))
+                    .limit(limit)
+                    .toList();
+        }
+
+        @Override
+        public void queuePayout(SeasonPayoutRecord payout) {
+            payouts.put(payout.payoutId(), payout);
+        }
+
+        @Override
+        public List<SeasonPayoutRecord> findPendingPayouts(PlayerUuid recipient) {
+            return payouts.values().stream()
+                    .filter(p -> p.recipient().equals(recipient) && p.state() == SeasonPayoutState.PENDING)
+                    .toList();
+        }
+
+        @Override
+        public void markPayoutDispatched(String payoutId, Instant dispatchedAt) {
+            SeasonPayoutRecord existing = payouts.get(payoutId);
+            if (existing != null) {
+                payouts.put(
+                        payoutId,
+                        new SeasonPayoutRecord(
+                                existing.payoutId(),
+                                existing.seasonId(),
+                                existing.recipient(),
+                                existing.rewardAction(),
+                                SeasonPayoutState.DISPATCHED,
+                                existing.createdAt(),
+                                dispatchedAt));
+            }
+        }
+    }
+
+    private static class InMemoryLeaderboardPort implements IslandLeaderboardPort {
+        private List<LeaderboardEntry> levelEntries = List.of();
+        private List<LeaderboardEntry> bankEntries = List.of();
+        private List<LeaderboardEntry> worthEntries = List.of();
+
+        void setLevelEntries(List<LeaderboardEntry> entries) {
+            this.levelEntries = entries;
+        }
+
+        @Override
+        public List<LeaderboardEntry> fetchTopIslands(LeaderboardCategory category, int limit) {
+            return switch (category) {
+                case LEVEL -> levelEntries;
+                case BANK -> bankEntries;
+                case WORTH -> worthEntries;
+            };
+        }
+
+        @Override
+        public void updateIslandScore(IslandId islandId, long levelScore, long netWorthMinorUnits) {}
+    }
+
+    private static class InMemoryIslandStorage implements IslandStoragePort {
+        private final Map<IslandId, Island> islands = new HashMap<>();
+
+        @Override
+        public void saveIsland(Island island, com.uxplima.uxmskyblock.core.domain.island.IslandLocation location) {
+            islands.put(island.id(), island);
+        }
+
+        @Override
+        public Optional<Island> findIslandById(IslandId id) {
+            return Optional.ofNullable(islands.get(id));
+        }
+
+        @Override
+        public Optional<com.uxplima.uxmskyblock.core.domain.island.IslandLocation> findLocationByIslandId(IslandId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
+            return islands.values().stream()
+                    .filter(i -> i.members().containsKey(profileId))
+                    .map(Island::id)
+                    .findFirst();
+        }
+
+        @Override
+        public void deleteIsland(IslandId id) {
+            islands.remove(id);
+        }
+
+        @Override
+        public Optional<Island> findIslandByLocation(String worldName, int blockX, int blockZ) {
+            return Optional.empty();
+        }
+    }
+}

@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 12;
+    public static final int LATEST_VERSION = 13;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -59,6 +59,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V12. */
     public static final String V12_DESCRIPTION = "create island creation unique constraints";
 
+    /** Human-readable description of migration V13. */
+    public static final String V13_DESCRIPTION = "create island seasons snapshots and payouts";
+
     private SkyblockMigrations() {}
 
     /**
@@ -87,7 +90,8 @@ public final class SkyblockMigrations {
                 v9Migration(dialect),
                 v10Migration(dialect),
                 v11Migration(dialect),
-                v12Migration(dialect));
+                v12Migration(dialect),
+                v13Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -388,6 +392,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(12, V12_DESCRIPTION, SQLITE_V12_DDL);
             case MYSQL -> new Migration(12, V12_DESCRIPTION, MYSQL_V12_DDL);
             case POSTGRES -> new Migration(12, V12_DESCRIPTION, POSTGRES_V12_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v13Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(13, V13_DESCRIPTION, SQLITE_V13_DDL);
+            case MYSQL -> new Migration(13, V13_DESCRIPTION, MYSQL_V13_DDL);
+            case POSTGRES -> new Migration(13, V13_DESCRIPTION, POSTGRES_V13_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1323,5 +1339,143 @@ public final class SkyblockMigrations {
             CREATE UNIQUE INDEX IF NOT EXISTS uq_island_locations_coords ON island_locations (world_name, center_x, center_z);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_islands_owner_profile ON islands (owner_profile_id);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_grid_allocations_coords ON world_grid_allocations (world_name, center_x, center_z);
+            """;
+
+    private static final String SQLITE_V13_DDL = """
+            CREATE TABLE IF NOT EXISTS island_seasons (
+                season_id INT NOT NULL PRIMARY KEY,
+                name VARCHAR(64) NOT NULL,
+                starts_at TIMESTAMP NOT NULL,
+                ends_at TIMESTAMP NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_seasons_state ON island_seasons (state, starts_at, ends_at);
+
+            CREATE TABLE IF NOT EXISTS season_snapshots (
+                season_id INT NOT NULL,
+                metric VARCHAR(32) NOT NULL,
+                rank INT NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                owner_player_uuid VARCHAR(36) NOT NULL,
+                score BIGINT NOT NULL,
+                snapshot_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (season_id, metric, rank),
+                CONSTRAINT fk_season_snapshots_season FOREIGN KEY (season_id)
+                    REFERENCES island_seasons (season_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_season_snapshots_metric ON season_snapshots (season_id, metric, rank);
+            CREATE INDEX IF NOT EXISTS idx_season_snapshots_island ON season_snapshots (island_id);
+            CREATE INDEX IF NOT EXISTS idx_season_snapshots_owner ON season_snapshots (owner_player_uuid);
+
+            CREATE TABLE IF NOT EXISTS season_payouts (
+                payout_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                season_id INT NOT NULL,
+                recipient_uuid VARCHAR(36) NOT NULL,
+                reward_action VARCHAR(255) NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                dispatched_at TIMESTAMP NULL,
+                CONSTRAINT fk_season_payouts_season FOREIGN KEY (season_id)
+                    REFERENCES island_seasons (season_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_season_payouts_recipient ON season_payouts (recipient_uuid, state);
+            CREATE INDEX IF NOT EXISTS idx_season_payouts_season ON season_payouts (season_id);
+            """;
+
+    private static final String MYSQL_V13_DDL = """
+            CREATE TABLE IF NOT EXISTS island_seasons (
+                season_id INT NOT NULL PRIMARY KEY,
+                name VARCHAR(64) NOT NULL,
+                starts_at TIMESTAMP NOT NULL,
+                ends_at TIMESTAMP NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_island_seasons_state ON island_seasons (state, starts_at, ends_at);
+
+            CREATE TABLE IF NOT EXISTS season_snapshots (
+                season_id INT NOT NULL,
+                metric VARCHAR(32) NOT NULL,
+                rank INT NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                owner_player_uuid VARCHAR(36) NOT NULL,
+                score BIGINT NOT NULL,
+                snapshot_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (season_id, metric, rank),
+                CONSTRAINT fk_season_snapshots_season FOREIGN KEY (season_id)
+                    REFERENCES island_seasons (season_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_season_snapshots_metric ON season_snapshots (season_id, metric, rank);
+            CREATE INDEX idx_season_snapshots_island ON season_snapshots (island_id);
+            CREATE INDEX idx_season_snapshots_owner ON season_snapshots (owner_player_uuid);
+
+            CREATE TABLE IF NOT EXISTS season_payouts (
+                payout_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                season_id INT NOT NULL,
+                recipient_uuid VARCHAR(36) NOT NULL,
+                reward_action VARCHAR(255) NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                dispatched_at TIMESTAMP NULL,
+                CONSTRAINT fk_season_payouts_season FOREIGN KEY (season_id)
+                    REFERENCES island_seasons (season_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_season_payouts_recipient ON season_payouts (recipient_uuid, state);
+            CREATE INDEX idx_season_payouts_season ON season_payouts (season_id);
+            """;
+
+    private static final String POSTGRES_V13_DDL = """
+            CREATE TABLE IF NOT EXISTS island_seasons (
+                season_id INT NOT NULL PRIMARY KEY,
+                name VARCHAR(64) NOT NULL,
+                starts_at TIMESTAMP NOT NULL,
+                ends_at TIMESTAMP NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_island_seasons_state ON island_seasons (state, starts_at, ends_at);
+
+            CREATE TABLE IF NOT EXISTS season_snapshots (
+                season_id INT NOT NULL,
+                metric VARCHAR(32) NOT NULL,
+                rank INT NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                owner_player_uuid VARCHAR(36) NOT NULL,
+                score BIGINT NOT NULL,
+                snapshot_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (season_id, metric, rank),
+                CONSTRAINT fk_season_snapshots_season FOREIGN KEY (season_id)
+                    REFERENCES island_seasons (season_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_season_snapshots_metric ON season_snapshots (season_id, metric, rank);
+            CREATE INDEX idx_season_snapshots_island ON season_snapshots (island_id);
+            CREATE INDEX idx_season_snapshots_owner ON season_snapshots (owner_player_uuid);
+
+            CREATE TABLE IF NOT EXISTS season_payouts (
+                payout_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                season_id INT NOT NULL,
+                recipient_uuid VARCHAR(36) NOT NULL,
+                reward_action VARCHAR(255) NOT NULL,
+                state VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                dispatched_at TIMESTAMP NULL,
+                CONSTRAINT fk_season_payouts_season FOREIGN KEY (season_id)
+                    REFERENCES island_seasons (season_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX idx_season_payouts_recipient ON season_payouts (recipient_uuid, state);
+            CREATE INDEX idx_season_payouts_season ON season_payouts (season_id);
             """;
 }
