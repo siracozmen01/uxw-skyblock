@@ -50,4 +50,26 @@ public interface IslandStoragePort {
      * @param id the island id to delete
      */
     void deleteIsland(IslandId id);
+
+    /**
+     * Finds an island whose bounding box contains the specified world coordinates.
+     *
+     * @param worldName world identifier
+     * @param x block X coordinate
+     * @param z block Z coordinate
+     * @return optional containing the island aggregate if found
+     */
+    default Optional<Island> findIslandByLocation(String worldName, int x, int z) {
+        return Optional.empty();
+    }
+
+    /**
+     * Loads all active islands located in the specified world.
+     *
+     * @param worldName world identifier
+     * @return list of active islands located in the world
+     */
+    default java.util.List<Island> findAllByWorld(String worldName) {
+        return java.util.Collections.emptyList();
+    }
 }

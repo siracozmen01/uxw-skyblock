@@ -7,9 +7,12 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -395,60 +398,63 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
     @Override
     public Optional<Island> findIslandById(IslandId id) {
         Objects.requireNonNull(id, "id");
-        String islandIdStr = id.value().toString();
-
         try (Connection conn = database.connection()) {
-            PlayerUuid ownerUuid;
-            ProfileId ownerProfileId;
-            Instant createdAt;
-
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT owner_profile_id, owner_account_uuid, created_at FROM islands WHERE id = ?")) {
-                stmt.setString(1, islandIdStr);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (!rs.next()) {
-                        return Optional.empty();
-                    }
-                    ownerProfileId = ProfileId.of(UUID.fromString(rs.getString("owner_profile_id")));
-                    ownerUuid = PlayerUuid.of(UUID.fromString(rs.getString("owner_account_uuid")));
-                    createdAt = rs.getTimestamp("created_at").toInstant();
-                }
-            }
-
-            // Load bounds from island_locations
-            IslandBounds bounds;
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT center_x, center_z, min_x, min_z, max_x, max_z FROM island_locations WHERE island_id = ?")) {
-                stmt.setString(1, islandIdStr);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) {
-                        int minX = rs.getInt("min_x");
-                        int minZ = rs.getInt("min_z");
-                        int maxX = rs.getInt("max_x");
-                        int maxZ = rs.getInt("max_z");
-                        int centerX = rs.getInt("center_x");
-                        int centerZ = rs.getInt("center_z");
-                        int radius = (maxX - minX) / 2;
-                        bounds = new IslandBounds(minX, minZ, maxX, maxZ, centerX, centerZ, radius);
-                    } else {
-                        bounds = IslandBounds.fromCenterAndRadius(0, 0, 100);
-                    }
-                }
-            }
-
-            // Load roles & permissions
-            Map<String, IslandRole> roles = loadRoles(conn, islandIdStr);
-
-            // Load members
-            Map<ProfileId, IslandMember> members = loadMembers(conn, islandIdStr, roles);
-
-            // Load flags
-            IslandFlags flags = loadFlags(conn, islandIdStr);
-
-            return Optional.of(new Island(id, bounds, ownerUuid, ownerProfileId, members, roles, flags, createdAt));
+            return findIslandById(conn, id);
         } catch (SQLException e) {
             throw new IslandPersistenceException("Failed to query island by id: " + id, e);
         }
+    }
+
+    private Optional<Island> findIslandById(Connection conn, IslandId id) throws SQLException {
+        String islandIdStr = id.value().toString();
+        PlayerUuid ownerUuid;
+        ProfileId ownerProfileId;
+        Instant createdAt;
+
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT owner_profile_id, owner_account_uuid, created_at FROM islands WHERE id = ?")) {
+            stmt.setString(1, islandIdStr);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                ownerProfileId = ProfileId.of(UUID.fromString(rs.getString("owner_profile_id")));
+                ownerUuid = PlayerUuid.of(UUID.fromString(rs.getString("owner_account_uuid")));
+                createdAt = rs.getTimestamp("created_at").toInstant();
+            }
+        }
+
+        // Load bounds from island_locations
+        IslandBounds bounds;
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT center_x, center_z, min_x, min_z, max_x, max_z FROM island_locations WHERE island_id = ?")) {
+            stmt.setString(1, islandIdStr);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    int minX = rs.getInt("min_x");
+                    int minZ = rs.getInt("min_z");
+                    int maxX = rs.getInt("max_x");
+                    int maxZ = rs.getInt("max_z");
+                    int centerX = rs.getInt("center_x");
+                    int centerZ = rs.getInt("center_z");
+                    int radius = (maxX - minX) / 2;
+                    bounds = new IslandBounds(minX, minZ, maxX, maxZ, centerX, centerZ, radius);
+                } else {
+                    bounds = IslandBounds.fromCenterAndRadius(0, 0, 100);
+                }
+            }
+        }
+
+        // Load roles & permissions
+        Map<String, IslandRole> roles = loadRoles(conn, islandIdStr);
+
+        // Load members
+        Map<ProfileId, IslandMember> members = loadMembers(conn, islandIdStr, roles);
+
+        // Load flags
+        IslandFlags flags = loadFlags(conn, islandIdStr);
+
+        return Optional.of(new Island(id, bounds, ownerUuid, ownerProfileId, members, roles, flags, createdAt));
     }
 
     private Map<String, IslandRole> loadRoles(Connection conn, String islandIdStr) throws SQLException {
@@ -605,6 +611,61 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
             }
         } catch (SQLException e) {
             throw new IslandPersistenceException("Failed to acquire connection to delete island: " + id, e);
+        }
+    }
+
+    @Override
+    public Optional<Island> findIslandByLocation(String worldName, int x, int z) {
+        Objects.requireNonNull(worldName, "worldName");
+        String sql = """
+                SELECT island_id FROM island_locations
+                WHERE world_name = ? AND min_x <= ? AND max_x >= ? AND min_z <= ? AND max_z >= ?
+                """;
+        try (Connection conn = database.connection()) {
+            IslandId foundId = null;
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, worldName);
+                stmt.setInt(2, x);
+                stmt.setInt(3, x);
+                stmt.setInt(4, z);
+                stmt.setInt(5, z);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        foundId = IslandId.of(UUID.fromString(rs.getString("island_id")));
+                    }
+                }
+            }
+            if (foundId != null) {
+                return findIslandById(conn, foundId);
+            }
+            return Optional.empty();
+        } catch (SQLException e) {
+            throw new IslandPersistenceException("Failed to find island at " + worldName + ":" + x + "," + z, e);
+        }
+    }
+
+    @Override
+    public List<Island> findAllByWorld(String worldName) {
+        Objects.requireNonNull(worldName, "worldName");
+        String sql = "SELECT island_id FROM island_locations WHERE world_name = ?";
+        try (Connection conn = database.connection()) {
+            List<IslandId> ids = new ArrayList<>();
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, worldName);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        ids.add(IslandId.of(UUID.fromString(rs.getString("island_id"))));
+                    }
+                }
+            }
+
+            List<Island> islands = new ArrayList<>(ids.size());
+            for (IslandId id : ids) {
+                findIslandById(conn, id).ifPresent(islands::add);
+            }
+            return Collections.unmodifiableList(islands);
+        } catch (SQLException e) {
+            throw new IslandPersistenceException("Failed to list islands for world " + worldName, e);
         }
     }
 

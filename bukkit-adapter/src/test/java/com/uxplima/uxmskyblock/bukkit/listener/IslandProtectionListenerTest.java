@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.listener;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -203,5 +204,100 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
         listener.onEntityDamage(event);
 
         assertThat(event.isCancelled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("loadPersistedIslands populates in-memory cache from storage")
+    void loadPersistedIslandsPopulatesCache() {
+        IslandId remoteId = IslandId.of(UUID.randomUUID());
+        Island remoteIsland = Island.create(
+                remoteId, IslandBounds.fromCenterAndRadius(300, 300, 50), ownerUuid, ownerProfileId, Instant.now());
+
+        IslandStoragePort customStorage = new IslandStoragePort() {
+            @Override
+            public void saveIsland(Island island, IslandLocation location) {}
+
+            @Override
+            public Optional<Island> findIslandById(IslandId id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<IslandLocation> findLocationByIslandId(IslandId id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public void deleteIsland(IslandId id) {}
+
+            @Override
+            public List<Island> findAllByWorld(String worldName) {
+                return List.of(remoteIsland);
+            }
+        };
+
+        IslandProtectionListener customListener =
+                new IslandProtectionListener(customStorage, new IslandAccessService());
+        assertThat(customListener.findIslandAt(new Location(world, 300, 64, 300)))
+                .isEmpty();
+
+        customListener.loadPersistedIslands(world.getName());
+        assertThat(customListener.findIslandAt(new Location(world, 300, 64, 300)))
+                .contains(remoteIsland);
+    }
+
+    @Test
+    @DisplayName("findIslandAt queries storage and caches on cache miss")
+    void findIslandAtQueriesStorageOnCacheMiss() {
+        IslandId remoteId = IslandId.of(UUID.randomUUID());
+        Island remoteIsland = Island.create(
+                remoteId, IslandBounds.fromCenterAndRadius(400, 400, 50), ownerUuid, ownerProfileId, Instant.now());
+
+        IslandStoragePort customStorage = new IslandStoragePort() {
+            @Override
+            public void saveIsland(Island island, IslandLocation location) {}
+
+            @Override
+            public Optional<Island> findIslandById(IslandId id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<IslandLocation> findLocationByIslandId(IslandId id) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public void deleteIsland(IslandId id) {}
+
+            @Override
+            public Optional<Island> findIslandByLocation(String worldName, int x, int z) {
+                if (remoteIsland.bounds().contains(x, z)) {
+                    return Optional.of(remoteIsland);
+                }
+                return Optional.empty();
+            }
+        };
+
+        IslandProtectionListener customListener =
+                new IslandProtectionListener(customStorage, new IslandAccessService());
+        Location loc = new Location(world, 410, 64, 410);
+
+        Optional<Island> found = customListener.findIslandAt(loc);
+        assertThat(found).contains(remoteIsland);
+
+        // Second lookup should be cached
+        Optional<Island> cached = customListener.findIslandAt(loc);
+        assertThat(cached).contains(remoteIsland);
     }
 }

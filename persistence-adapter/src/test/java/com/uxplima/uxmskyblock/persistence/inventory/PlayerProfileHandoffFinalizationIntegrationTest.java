@@ -425,7 +425,8 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
         // 4. Node B detects crash and executes failure takeover
         SessionAuthorityOutcome takeover = sessionAdapter.failureTakeover(player, 1L, NODE_B);
         assertThat(takeover.isSuccess()).isTrue();
-        assertThat(takeover).isEqualTo(SessionAuthorityOutcome.success(2L, true)); // Epoch increments 1 -> 2, recovering=true
+        assertThat(takeover)
+                .isEqualTo(SessionAuthorityOutcome.success(2L, true)); // Epoch increments 1 -> 2, recovering=true
 
         // 5. Node B loads durable inventory state matching last_durable_inventory_version
         OptionalLong sessionMarker = finalizationAdapter.loadLastDurableInventoryVersion(player);

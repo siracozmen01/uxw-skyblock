@@ -267,6 +267,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         if (!Guis.isInstalled()) {
             Guis.install(plugin);
         }
+        protectionListener.loadPersistedIslands(nodeConfiguration.worldName());
         outboxDispatcher.start();
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
 

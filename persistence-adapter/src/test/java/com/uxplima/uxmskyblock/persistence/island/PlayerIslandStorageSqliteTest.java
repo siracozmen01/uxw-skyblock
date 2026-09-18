@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -214,5 +215,50 @@ class PlayerIslandStorageSqliteTest {
         assertThat(authority).isPresent();
         assertThat(authority.get().authoritativeNode()).isEqualTo(nodeBeta);
         assertThat(authority.get().authorityEpoch()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("findIslandByLocation returns island when point is inside bounds and empty otherwise")
+    void spatialLookupByLocation() {
+        Island island =
+                Island.create(islandId, IslandBounds.fromCenterAndRadius(100, 200, 50), ownerUuid, ownerProfileId, now);
+        IslandLocation location = IslandLocation.fromCenterAndRadius(islandId, "skyblock_world", 100, 200, 50);
+        adapter.saveIsland(island, location);
+
+        // Point inside bounds
+        assertThat(adapter.findIslandByLocation("skyblock_world", 120, 210)).isPresent();
+        assertThat(adapter.findIslandByLocation("skyblock_world", 120, 210)
+                        .get()
+                        .id())
+                .isEqualTo(islandId);
+
+        // Point outside bounds
+        assertThat(adapter.findIslandByLocation("skyblock_world", 500, 500)).isEmpty();
+
+        // Point in different world
+        assertThat(adapter.findIslandByLocation("other_world", 120, 210)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("findAllByWorld returns all islands saved in that world")
+    void findAllByWorld() {
+        Island island1 =
+                Island.create(islandId, IslandBounds.fromCenterAndRadius(0, 0, 50), ownerUuid, ownerProfileId, now);
+        IslandLocation loc1 = IslandLocation.fromCenterAndRadius(islandId, "world_a", 0, 0, 50);
+        adapter.saveIsland(island1, loc1);
+
+        IslandId id2 = IslandId.of(UUID.randomUUID());
+        PlayerUuid owner2 = PlayerUuid.of(UUID.randomUUID());
+        ProfileId profile2 = ProfileId.of(UUID.randomUUID());
+        Island island2 = Island.create(id2, IslandBounds.fromCenterAndRadius(200, 200, 50), owner2, profile2, now);
+        IslandLocation loc2 = IslandLocation.fromCenterAndRadius(id2, "world_a", 200, 200, 50);
+        adapter.saveIsland(island2, loc2);
+
+        List<Island> worldAIslands = adapter.findAllByWorld("world_a");
+        assertThat(worldAIslands).hasSize(2);
+        assertThat(worldAIslands.stream().map(Island::id)).containsExactlyInAnyOrder(islandId, id2);
+
+        List<Island> worldBIslands = adapter.findAllByWorld("world_b");
+        assertThat(worldBIslands).isEmpty();
     }
 }

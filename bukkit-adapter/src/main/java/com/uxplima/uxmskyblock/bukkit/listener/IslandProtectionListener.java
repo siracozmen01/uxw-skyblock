@@ -58,7 +58,23 @@ public final class IslandProtectionListener implements Listener {
         cachedIslands.remove(islandId);
     }
 
+    /**
+     * Loads all persisted islands located in the target world on startup to initialize
+     * the in-memory spatial protection cache.
+     *
+     * @param worldName target world identifier
+     */
+    public void loadPersistedIslands(String worldName) {
+        Objects.requireNonNull(worldName, "worldName");
+        for (Island island : islandStoragePort.findAllByWorld(worldName)) {
+            cacheIsland(island);
+        }
+    }
+
     public Optional<Island> findIslandAt(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return Optional.empty();
+        }
         int x = location.getBlockX();
         int z = location.getBlockZ();
         for (Island island : cachedIslands.values()) {
@@ -66,7 +82,11 @@ public final class IslandProtectionListener implements Listener {
                 return Optional.of(island);
             }
         }
-        return Optional.empty();
+        // Cache miss fallback: query persisted spatial boundary in database
+        Optional<Island> persisted =
+                islandStoragePort.findIslandByLocation(location.getWorld().getName(), x, z);
+        persisted.ifPresent(this::cacheIsland);
+        return persisted;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
