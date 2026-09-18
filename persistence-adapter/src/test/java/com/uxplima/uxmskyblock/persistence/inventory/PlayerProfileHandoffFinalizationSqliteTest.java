@@ -496,7 +496,7 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         // Step 4: Node B detects crash via expired lease and executes failure takeover
         SessionAuthorityOutcome takeoverOutcome = sessionAdapter.failureTakeover(player, 1L, NODE_B);
         assertThat(takeoverOutcome.isSuccess()).isTrue();
-        assertThat(takeoverOutcome).isEqualTo(SessionAuthorityOutcome.success(2L)); // Epoch increments 1 -> 2
+        assertThat(takeoverOutcome).isEqualTo(SessionAuthorityOutcome.success(2L, true)); // Epoch increments 1 -> 2, recovering=true
 
         // Step 5: Node B loads durable inventory state matching last_durable_inventory_version
         OptionalLong sessionMarker = finalizationAdapter.loadLastDurableInventoryVersion(player);
