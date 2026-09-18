@@ -125,9 +125,14 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     public CompletableFuture<Optional<IslandSnapshot>> getPlayerIsland(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
         return CompletableFuture.supplyAsync(() -> {
-            ProfileId profileId = (sessionCoordinator != null)
-                    ? sessionCoordinator.activeProfile(playerId).orElseGet(() -> new ProfileId(playerId))
-                    : new ProfileId(playerId);
+            if (sessionCoordinator == null) {
+                return Optional.empty();
+            }
+            Optional<ProfileId> optProfile = sessionCoordinator.activeProfile(playerId);
+            if (optProfile.isEmpty()) {
+                return Optional.empty();
+            }
+            ProfileId profileId = optProfile.get();
             return islandStoragePort
                     .findIslandIdByProfileId(profileId)
                     .flatMap(islandStoragePort::findIslandById)
@@ -161,9 +166,14 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
         Objects.requireNonNull(ownerId, "ownerId");
         Objects.requireNonNull(presetId, "presetId");
         return CompletableFuture.supplyAsync(() -> {
-            ProfileId profileId = (sessionCoordinator != null)
-                    ? sessionCoordinator.activeProfile(ownerId).orElseGet(() -> new ProfileId(ownerId))
-                    : new ProfileId(ownerId);
+            if (sessionCoordinator == null) {
+                return IslandResult.failure("Session coordinator is unavailable");
+            }
+            Optional<ProfileId> optProfile = sessionCoordinator.activeProfile(ownerId);
+            if (optProfile.isEmpty()) {
+                return IslandResult.failure("Active profile not found or session not loaded for player: " + ownerId);
+            }
+            ProfileId profileId = optProfile.get();
             PlayerUuid playerUuid = new PlayerUuid(ownerId);
 
             if (createIslandUseCase != null) {

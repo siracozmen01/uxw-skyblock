@@ -12,6 +12,7 @@ import java.util.Optional;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inactivity.AbandonmentAction;
@@ -157,14 +158,23 @@ public final class IslandInactivityService {
                 }
                 Island updated = island.withFlags(
                         island.flags().withFlag("ARCHIVED", true).withFlag(IslandFlags.LOCKED, true));
-                islandStoragePort.saveIsland(updated, location);
-
-                stageOutboxEvent(
-                        "ISLAND_ARCHIVED",
-                        island.id(),
-                        String.format(
-                                "{\"islandId\":\"%s\",\"reason\":\"Total team inactivity exceeded %s\"}",
-                                island.id().value(), policy.allMembersInactivityDuration()));
+                StagedOutboxEvent outboxEvent = (outboxPort != null)
+                        ? new StagedOutboxEvent(
+                                EventId.random(),
+                                "ISLAND_ARCHIVED",
+                                island.id().value().toString(),
+                                String.format(
+                                        "{\"islandId\":\"%s\",\"reason\":\"Total team inactivity exceeded %s\"}",
+                                        island.id().value(), policy.allMembersInactivityDuration()))
+                        : null;
+                islandStoragePort.saveIsland(updated, location, outboxEvent);
+                if (outboxPort != null && outboxEvent != null) {
+                    outboxPort.stageEvent(
+                            outboxEvent.id(),
+                            outboxEvent.eventType(),
+                            outboxEvent.aggregateId(),
+                            outboxEvent.payload());
+                }
 
                 return new IslandSuccessionRecord(
                         island.id(),
@@ -177,14 +187,23 @@ public final class IslandInactivityService {
                 if (recyclePort != null) {
                     recyclePort.recycleIsland(island.id());
                 }
-                islandStoragePort.deleteIsland(island.id());
-
-                stageOutboxEvent(
-                        "ISLAND_RECYCLED",
-                        island.id(),
-                        String.format(
-                                "{\"islandId\":\"%s\",\"reason\":\"Total team inactivity exceeded %s\"}",
-                                island.id().value(), policy.allMembersInactivityDuration()));
+                StagedOutboxEvent outboxEvent = (outboxPort != null)
+                        ? new StagedOutboxEvent(
+                                EventId.random(),
+                                "ISLAND_RECYCLED",
+                                island.id().value().toString(),
+                                String.format(
+                                        "{\"islandId\":\"%s\",\"reason\":\"Total team inactivity exceeded %s\"}",
+                                        island.id().value(), policy.allMembersInactivityDuration()))
+                        : null;
+                islandStoragePort.deleteIsland(island.id(), outboxEvent);
+                if (outboxPort != null && outboxEvent != null) {
+                    outboxPort.stageEvent(
+                            outboxEvent.id(),
+                            outboxEvent.eventType(),
+                            outboxEvent.aggregateId(),
+                            outboxEvent.payload());
+                }
 
                 return new IslandSuccessionRecord(
                         island.id(),
@@ -258,17 +277,23 @@ public final class IslandInactivityService {
         // 4. Transfer ownership
         Island updatedIsland =
                 island.transferOwnership(successor.playerUuid(), successor.profileId(), policy.formerOwnerAction());
-        islandStoragePort.saveIsland(updatedIsland, location);
-
-        stageOutboxEvent(
-                "ISLAND_LEADER_SUCCESSION",
-                island.id(),
-                String.format(
-                        "{\"islandId\":\"%s\",\"formerOwnerProfileId\":\"%s\",\"newOwnerProfileId\":\"%s\",\"action\":\"%s\"}",
-                        island.id().value(),
-                        formerOwnerId.value(),
-                        successor.profileId().value(),
-                        policy.formerOwnerAction()));
+        StagedOutboxEvent outboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_LEADER_SUCCESSION",
+                        island.id().value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"formerOwnerProfileId\":\"%s\",\"newOwnerProfileId\":\"%s\",\"action\":\"%s\"}",
+                                island.id().value(),
+                                formerOwnerId.value(),
+                                successor.profileId().value(),
+                                policy.formerOwnerAction()))
+                : null;
+        islandStoragePort.saveIsland(updatedIsland, location, outboxEvent);
+        if (outboxPort != null && outboxEvent != null) {
+            outboxPort.stageEvent(
+                    outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
+        }
 
         return new IslandSuccessionRecord(
                 island.id(),
@@ -284,11 +309,5 @@ public final class IslandInactivityService {
     private static boolean isInactivePast(Instant lastActive, Duration threshold, Instant now) {
         Duration elapsed = Duration.between(lastActive, now);
         return !elapsed.isNegative() && elapsed.compareTo(threshold) >= 0;
-    }
-
-    private void stageOutboxEvent(String eventType, IslandId islandId, String payload) {
-        if (outboxPort != null) {
-            outboxPort.stageEvent(EventId.random(), eventType, islandId.value().toString(), payload);
-        }
     }
 }

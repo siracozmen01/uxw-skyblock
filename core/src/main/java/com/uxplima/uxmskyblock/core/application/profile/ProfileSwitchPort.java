@@ -3,12 +3,14 @@ package com.uxplima.uxmskyblock.core.application.profile;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchOperation;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Hexagonal Outbound Port governing the crash-consistent write-ahead state machine
@@ -49,13 +51,23 @@ public interface ProfileSwitchPort {
      */
     Result<ProfileSwitchOperation.PlayerApplied, String> recordPlayerApplied(UUID operationId);
 
-    /**
-     * Atomically commits profile switch serialized on player_sessions authority row lock.
-     * Updates active_profile_id on both player_sessions and player_accounts, clears active_switch_operation_id,
-     * and transitions operation state to COMMITTED.
-     */
     Result<ProfileSwitchOperation.Committed, String> commitSwitch(
             UUID operationId, PlayerUuid playerId, ProfileId toProfileId, ServerNodeId currentNode, long expectedEpoch);
+
+    /**
+     * Atomically commits profile switch serialized on player_sessions authority row lock and stages an outbox event.
+     * Updates active_profile_id on both player_sessions and player_accounts, clears active_switch_operation_id,
+     * stages optional outbox event, and transitions operation state to COMMITTED.
+     */
+    default Result<ProfileSwitchOperation.Committed, String> commitSwitch(
+            UUID operationId,
+            PlayerUuid playerId,
+            ProfileId toProfileId,
+            ServerNodeId currentNode,
+            long expectedEpoch,
+            @Nullable StagedOutboxEvent outboxEvent) {
+        return commitSwitch(operationId, playerId, toProfileId, currentNode, expectedEpoch);
+    }
 
     /**
      * Aborts switch operation, performs rollback, clears active_switch_operation_id,

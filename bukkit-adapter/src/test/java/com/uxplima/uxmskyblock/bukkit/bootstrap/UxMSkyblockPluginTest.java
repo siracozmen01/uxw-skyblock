@@ -85,6 +85,12 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         PlayerMock player = createPlayer("Alex");
         ProfileId profileId = new ProfileId(player.getUniqueId());
 
+        // Wait until session is active and acquired
+        eventually(() -> {
+            assertThat(plugin.bootstrap().sessionCoordinator().activeProfile(player.getUniqueId()))
+                    .isPresent();
+        });
+
         // Verify player initially has no island
         assertThat(plugin.bootstrap().persistenceBootstrap().islandStoragePort().findIslandIdByProfileId(profileId))
                 .isEmpty();

@@ -49,15 +49,7 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
         IslandBounds bounds = location.bounds();
         String worldName = location.worldName();
 
-        World targetWorld = Bukkit.getWorld(worldName);
-        if (targetWorld == null && !Bukkit.getWorlds().isEmpty()) {
-            targetWorld = Bukkit.getWorlds().get(0);
-        }
-
         World spawnWorld = Bukkit.getWorld("world");
-        if (spawnWorld == null && !Bukkit.getWorlds().isEmpty()) {
-            spawnWorld = Bukkit.getWorlds().get(0);
-        }
         Location spawnLocation = spawnWorld != null ? spawnWorld.getSpawnLocation() : null;
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {
@@ -65,39 +57,32 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
                 continue;
             }
 
-            Location playerLoc = player.getLocation();
-            if (playerLoc.getWorld() == null || !playerLoc.getWorld().getName().equals(worldName)) {
-                continue;
-            }
+            final Location finalSpawn = spawnLocation;
+            schedulerPort.onEntity(player.getUniqueId(), () -> {
+                if (!player.isOnline()) {
+                    return;
+                }
 
-            if (bounds.contains(playerLoc.getBlockX(), playerLoc.getBlockZ())) {
-                final Location finalSpawn = spawnLocation;
-                schedulerPort.onEntity(player.getUniqueId(), () -> {
-                    if (!player.isOnline()) {
-                        return;
+                Location cur = player.getLocation();
+                if (cur.getWorld() != null
+                        && cur.getWorld().getName().equals(worldName)
+                        && bounds.contains(cur.getBlockX(), cur.getBlockZ())) {
+                    if (finalSpawn != null) {
+                        var unused = player.teleportAsync(finalSpawn).thenAccept(teleported -> {
+                            if (Boolean.TRUE.equals(teleported)) {
+                                player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                                player.setFallDistance(0.0f);
+                            }
+                        });
                     }
-
-                    Location cur = player.getLocation();
-                    if (cur.getWorld() != null
-                            && cur.getWorld().getName().equals(worldName)
-                            && bounds.contains(cur.getBlockX(), cur.getBlockZ())) {
-                        if (finalSpawn != null) {
-                            var unused = player.teleportAsync(finalSpawn).thenAccept(teleported -> {
-                                if (Boolean.TRUE.equals(teleported)) {
-                                    player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                                    player.setFallDistance(0.0f);
-                                }
-                            });
-                        }
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<red><bold>QUARANTINE:</bold> This island has been placed under administrative freeze. "
-                                                + "Reason: <yellow>"
-                                                + (reason != null ? reason : "Administrative quarantine")
-                                                + "</yellow></red>"));
-                    }
-                });
-            }
+                    player.sendMessage(MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<red><bold>QUARANTINE:</bold> This island has been placed under administrative freeze. "
+                                            + "Reason: <yellow>"
+                                            + (reason != null ? reason : "Administrative quarantine")
+                                            + "</yellow></red>"));
+                }
+            });
         }
     }
 

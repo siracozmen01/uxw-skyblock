@@ -7,6 +7,7 @@ import java.util.UUID;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
@@ -182,12 +183,26 @@ public final class SwitchProfileUseCase {
             return Result.err(appliedRes.errorOrThrow());
         }
 
+        StagedOutboxEvent outboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "PROFILE_SWITCHED",
+                        prepared.playerId().value().toString(),
+                        String.format(
+                                "{\"playerId\":\"%s\",\"fromProfileId\":\"%s\",\"toProfileId\":\"%s\",\"operationId\":\"%s\"}",
+                                prepared.playerId().value(),
+                                prepared.fromProfileId().value(),
+                                prepared.toProfileId().value(),
+                                prepared.operationId()))
+                : null;
+
         Result<?, String> commitRes = profileSwitchPort.commitSwitch(
                 prepared.operationId(),
                 prepared.playerId(),
                 prepared.toProfileId(),
                 prepared.currentNode(),
-                prepared.expectedEpoch());
+                prepared.expectedEpoch(),
+                outboxEvent);
         if (commitRes.isErr()) {
             profileSwitchPort.abortSwitch(
                     prepared.operationId(),
@@ -196,18 +211,9 @@ public final class SwitchProfileUseCase {
             return Result.err(commitRes.errorOrThrow());
         }
 
-        if (outboxPort != null) {
-            String payload = String.format(
-                    "{\"playerId\":\"%s\",\"fromProfileId\":\"%s\",\"toProfileId\":\"%s\",\"operationId\":\"%s\"}",
-                    prepared.playerId().value(),
-                    prepared.fromProfileId().value(),
-                    prepared.toProfileId().value(),
-                    prepared.operationId());
+        if (outboxPort != null && outboxEvent != null) {
             outboxPort.stageEvent(
-                    EventId.random(),
-                    "PROFILE_SWITCHED",
-                    prepared.playerId().value().toString(),
-                    payload);
+                    outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
         }
 
         return Result.ok(Unit.INSTANCE);
@@ -217,12 +223,7 @@ public final class SwitchProfileUseCase {
      * Executes crash recovery on any in-flight profile switch operation found for the player on connect.
      *
      * <p>States PREPARING, SOURCE_SNAPSHOTTED, and TARGET_LOADED are rolled back safely to the source profile.
-     * States TARGET_APPLY_INTENT and PLAYER_APPLIED are rolled forward to the destination profile.
-     *
-     * @param playerId target player UUID
-     * @param currentNode claiming server node ID
-     * @param expectedEpoch current session epoch
-     * @return result carrying the reconciled active profile ID, or empty optional if no in-flight switch was present
+     * States TARGET_APPLY_INTENT and PLAYER_APPLIED are rolled forward to target profile.
      */
     public Result<Optional<ProfileId>, String> recoverInFlightSwitch(
             PlayerUuid playerId, ServerNodeId currentNode, long expectedEpoch) {
@@ -234,7 +235,21 @@ public final class SwitchProfileUseCase {
             return Result.ok(Optional.empty());
         }
 
-        ProfileSwitchOperation op = optOp.get();
+        return recoverInFlightSwitch(playerId, optOp.get(), currentNode, expectedEpoch);
+    }
+
+    /**
+     * Executes crash recovery on any in-flight profile switch operation found for the player on connect.
+     *
+     * <p>States PREPARING, SOURCE_SNAPSHOTTED, and TARGET_LOADED are rolled back safely to the source profile.
+     * States TARGET_APPLY_INTENT and PLAYER_APPLIED are rolled forward to target profile.
+     */
+    public Result<Optional<ProfileId>, String> recoverInFlightSwitch(
+            PlayerUuid playerId, ProfileSwitchOperation op, ServerNodeId currentNode, long expectedEpoch) {
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(op, "op");
+        Objects.requireNonNull(currentNode, "currentNode");
+
         if (op instanceof ProfileSwitchOperation.Preparing
                 || op instanceof ProfileSwitchOperation.SourceSnapshotted
                 || op instanceof ProfileSwitchOperation.TargetLoaded) {
@@ -246,20 +261,26 @@ public final class SwitchProfileUseCase {
             return Result.ok(Optional.of(op.fromProfileId()));
         } else if (op instanceof ProfileSwitchOperation.TargetApplyIntent
                 || op instanceof ProfileSwitchOperation.PlayerApplied) {
+            StagedOutboxEvent outboxEvent = (outboxPort != null)
+                    ? new StagedOutboxEvent(
+                            EventId.random(),
+                            "PROFILE_SWITCHED",
+                            playerId.value().toString(),
+                            String.format(
+                                    "{\"playerId\":\"%s\",\"fromProfileId\":\"%s\",\"toProfileId\":\"%s\",\"operationId\":\"%s\"}",
+                                    playerId.value(),
+                                    op.fromProfileId().value(),
+                                    op.toProfileId().value(),
+                                    op.operationId()))
+                    : null;
             Result<?, String> commitRes = profileSwitchPort.commitSwitch(
-                    op.operationId(), playerId, op.toProfileId(), currentNode, expectedEpoch);
+                    op.operationId(), playerId, op.toProfileId(), currentNode, expectedEpoch, outboxEvent);
             if (commitRes.isErr()) {
                 return Result.err("Failed to commit roll-forward switch during recovery: " + commitRes.errorOrThrow());
             }
-            if (outboxPort != null) {
-                String payload = String.format(
-                        "{\"playerId\":\"%s\",\"fromProfileId\":\"%s\",\"toProfileId\":\"%s\",\"operationId\":\"%s\"}",
-                        playerId.value(),
-                        op.fromProfileId().value(),
-                        op.toProfileId().value(),
-                        op.operationId());
+            if (outboxPort != null && outboxEvent != null) {
                 outboxPort.stageEvent(
-                        EventId.random(), "PROFILE_SWITCHED", playerId.value().toString(), payload);
+                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
             }
             return Result.ok(Optional.of(op.toProfileId()));
         }

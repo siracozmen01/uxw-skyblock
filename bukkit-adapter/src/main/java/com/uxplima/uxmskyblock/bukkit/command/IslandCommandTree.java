@@ -353,8 +353,20 @@ public final class IslandCommandTree {
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
 
-    private static void send(Audience audience, Component component) {
-        audience.sendMessage(component);
+    private void sendFeedback(Audience audience, Component component) {
+        if (audience instanceof Player player) {
+            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                if (player.isOnline()) {
+                    player.sendMessage(component);
+                }
+            });
+        } else {
+            audience.sendMessage(component);
+        }
+    }
+
+    private void send(Audience audience, Component component) {
+        sendFeedback(audience, component);
     }
 
     private int executeRoot(CommandContext<CommandSourceStack> ctx) {
@@ -460,10 +472,12 @@ public final class IslandCommandTree {
         } catch (IllegalArgumentException notUuid) {
             Player online = Bukkit.getPlayerExact(target);
             if (online != null) {
-                ProfileId profileId = activeProfile(online);
-                Optional<IslandId> id = islandLocationService.findIslandId(profileId);
-                if (id.isPresent()) {
-                    return id;
+                Optional<ProfileId> optProfile = activeProfile(online);
+                if (optProfile.isPresent()) {
+                    Optional<IslandId> id = islandLocationService.findIslandId(optProfile.get());
+                    if (id.isPresent()) {
+                        return id;
+                    }
                 }
             }
             @SuppressWarnings("deprecation")
@@ -639,10 +653,11 @@ public final class IslandCommandTree {
         return Cmd.OK;
     }
 
-    private ProfileId activeProfile(Player player) {
-        return sessionCoordinator
-                .activeProfile(player.getUniqueId())
-                .orElseGet(() -> new ProfileId(player.getUniqueId()));
+    private Optional<ProfileId> activeProfile(Player player) {
+        if (sessionCoordinator == null) {
+            return Optional.of(new ProfileId(player.getUniqueId()));
+        }
+        return sessionCoordinator.activeProfile(player.getUniqueId());
     }
 
     private int executeCreate(CommandContext<CommandSourceStack> ctx, String presetId) {
@@ -652,7 +667,15 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
 
         schedulerPort.async(() -> {
             CreateIslandUseCase.CreateIslandResult result =
@@ -663,17 +686,13 @@ public final class IslandCommandTree {
                     protectionListener.cacheIsland(success.island());
 
                     World resolvedWorld = Bukkit.getWorld(worldName);
-                    if (resolvedWorld == null && !Bukkit.getWorlds().isEmpty()) {
-                        resolvedWorld = Bukkit.getWorlds().get(0);
-                    }
                     if (resolvedWorld != null) {
-                        final World fallbackWorld = resolvedWorld;
                         int centerX = success.location().bounds().centerX();
                         int centerZ = success.location().bounds().centerZ();
                         int spawnY = 100;
                         int chunkX = centerX >> 4;
                         int chunkZ = centerZ >> 4;
-                        String targetWorld = fallbackWorld.getName();
+                        String targetWorld = resolvedWorld.getName();
 
                         schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
                             World w = Bukkit.getWorld(targetWorld);
@@ -685,7 +704,7 @@ public final class IslandCommandTree {
                                     return;
                                 }
                                 Location destination = new Location(
-                                        w != null ? w : fallbackWorld,
+                                        w != null ? w : resolvedWorld,
                                         success.location().spawnX(),
                                         success.location().spawnY(),
                                         success.location().spawnZ(),
@@ -709,9 +728,8 @@ public final class IslandCommandTree {
                         send(
                                 player,
                                 Component.text(
-                                        "Island created successfully with preset '"
-                                                + success.preset().displayName() + "'!",
-                                        NamedTextColor.GREEN));
+                                        "Island created, but world '" + worldName + "' is not loaded on this node.",
+                                        NamedTextColor.YELLOW));
                     }
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
                     send(
@@ -744,7 +762,15 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
 
         schedulerPort.async(() -> {
             Optional<IslandLocation> optLoc = islandLocationService.resolveHome(profileId);
@@ -759,9 +785,6 @@ public final class IslandCommandTree {
                 }
                 IslandLocation loc = optLoc.get();
                 World world = Bukkit.getWorld(loc.worldName());
-                if (world == null && !Bukkit.getWorlds().isEmpty()) {
-                    world = Bukkit.getWorlds().get(0);
-                }
                 if (world != null) {
                     Location destination = new Location(
                             world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
@@ -788,7 +811,15 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
         Location current = player.getLocation();
         String currentWorld = current.getWorld() != null ? current.getWorld().getName() : this.worldName;
         double x = current.getX();
@@ -817,7 +848,15 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
 
         schedulerPort.async(() -> {
             Optional<Long> optBalance = islandBankService.getBalanceMinorUnits(profileId);
@@ -841,7 +880,15 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
 
         economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
@@ -863,7 +910,15 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         long amount = LongArgumentType.getLong(ctx, "amount");
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
 
         economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
@@ -892,7 +947,15 @@ public final class IslandCommandTree {
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
         IslandBiome targetBiome = optBiome.get();
 
         schedulerPort.async(() -> {
@@ -967,7 +1030,15 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
         schedulerPort.async(() -> {
             try {
                 IslandChatChannel newChannel = chatService.toggleChannel(profileId);
@@ -1009,7 +1080,15 @@ public final class IslandCommandTree {
         }
         String message = StringArgumentType.getString(ctx, "message");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
         schedulerPort.async(() -> {
             try {
                 chatService.sendChat(profileId, player.getName(), message);
@@ -1056,7 +1135,15 @@ public final class IslandCommandTree {
             send(player, Component.text("You do not have permission to spy on island chat.", NamedTextColor.RED));
             return Cmd.OK;
         }
-        ProfileId profileId = activeProfile(player);
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
         boolean enabled = chatService.toggleSpy(profileId);
         if (enabled) {
             send(player, Component.text("Island chat spy enabled.", NamedTextColor.GREEN));

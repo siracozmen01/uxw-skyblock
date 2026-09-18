@@ -11,6 +11,7 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridPort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -113,11 +114,18 @@ public final class CreateIslandUseCase {
         IslandLocation location = new IslandLocation(
                 islandId, worldName, bounds, center.x() + 0.5, spawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
 
+        String payload = String.format(
+                "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
+                islandId.value(), playerUuid.value(), profileId.value(), preset.id());
+        StagedOutboxEvent outboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(), "ISLAND_CREATED", islandId.value().toString(), payload)
+                : null;
+
         try {
-            islandStoragePort.saveIsland(island, location);
+            islandStoragePort.saveIsland(island, location, outboxEvent);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
             islandBankPort.createBank(islandId);
-            stageIslandCreatedEvent(islandId, playerUuid, profileId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
@@ -163,12 +171,19 @@ public final class CreateIslandUseCase {
         IslandLocation location = new IslandLocation(
                 islandId, worldName, bounds, center.x() + 0.5, spawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
 
+        String payload = String.format(
+                "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
+                islandId.value(), playerUuid.value(), profileId.value(), preset.id());
+        StagedOutboxEvent outboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(), "ISLAND_CREATED", islandId.value().toString(), payload)
+                : null;
+
         try {
             worldGridAllocationPort.reserveNextSequence(serverNodeId, worldName, center.x(), center.z(), islandId);
-            islandStoragePort.saveIsland(island, location);
+            islandStoragePort.saveIsland(island, location, outboxEvent);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
             islandBankPort.createBank(islandId);
-            stageIslandCreatedEvent(islandId, playerUuid, profileId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
@@ -176,17 +191,6 @@ public final class CreateIslandUseCase {
                 return new CreateIslandResult.AlreadyHasIsland(existing.get());
             }
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
-        }
-    }
-
-    private void stageIslandCreatedEvent(
-            IslandId islandId, PlayerUuid playerUuid, ProfileId profileId, StarterPreset preset) {
-        if (outboxPort != null) {
-            String payload = String.format(
-                    "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
-                    islandId.value(), playerUuid.value(), profileId.value(), preset.id());
-            outboxPort.stageEvent(
-                    EventId.random(), "ISLAND_CREATED", islandId.value().toString(), payload);
         }
     }
 }

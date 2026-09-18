@@ -81,11 +81,23 @@ public final class IslandControlMenu {
     public void open(Player player) {
         Objects.requireNonNull(player, "player must not be null");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator
-                        .activeProfile(player.getUniqueId())
-                        .orElseGet(() -> new ProfileId(player.getUniqueId()))
-                : new ProfileId(player.getUniqueId());
+        ProfileId profileId;
+        if (sessionCoordinator != null) {
+            Optional<ProfileId> activeOpt = sessionCoordinator.activeProfile(player.getUniqueId());
+            if (activeOpt.isEmpty()) {
+                schedulerPort.onEntity(playerUuid, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(Component.text(
+                                "Your profile session is not active or still loading. Please wait.",
+                                NamedTextColor.RED));
+                    }
+                });
+                return;
+            }
+            profileId = activeOpt.get();
+        } else {
+            profileId = new ProfileId(player.getUniqueId());
+        }
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);

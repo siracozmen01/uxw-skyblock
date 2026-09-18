@@ -6,10 +6,10 @@ import java.util.Optional;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.freeze.IslandEconomicStateChangedEvent;
 import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
-import com.uxplima.uxmskyblock.core.domain.freeze.IslandFrozenEvent;
-import com.uxplima.uxmskyblock.core.domain.freeze.IslandUnfrozenEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.AdministrativeState;
 import com.uxplima.uxmskyblock.core.domain.island.EconomicState;
@@ -54,7 +54,23 @@ public final class IslandAdminFreezeService {
         }
 
         Island frozenIsland = island.freeze(reason);
-        freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.FROZEN, reason);
+        StagedOutboxEvent freezeOutboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_FROZEN",
+                        islandId.value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"reason\":\"%s\",\"actor\":\"%s\",\"timestamp\":\"%s\"}",
+                                islandId.value(), reason, actor, Instant.now()))
+                : null;
+        freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.FROZEN, reason, freezeOutboxEvent);
+        if (outboxPort != null && freezeOutboxEvent != null) {
+            outboxPort.stageEvent(
+                    freezeOutboxEvent.id(),
+                    freezeOutboxEvent.eventType(),
+                    freezeOutboxEvent.aggregateId(),
+                    freezeOutboxEvent.payload());
+        }
 
         IslandLocation location =
                 islandStoragePort.findLocationByIslandId(islandId).orElse(null);
@@ -64,17 +80,6 @@ public final class IslandAdminFreezeService {
 
         if (visitorEvictionPort != null) {
             visitorEvictionPort.evictNonStaffVisitors(islandId, reason);
-        }
-
-        if (outboxPort != null) {
-            IslandFrozenEvent event = IslandFrozenEvent.create(islandId, reason, actor, Instant.now());
-            outboxPort.stageEvent(
-                    event.eventId(),
-                    "ISLAND_FROZEN",
-                    islandId.value().toString(),
-                    String.format(
-                            "{\"islandId\":\"%s\",\"reason\":\"%s\",\"actor\":\"%s\",\"timestamp\":\"%s\"}",
-                            islandId.value(), reason, actor, event.timestamp()));
         }
 
         return true;
@@ -93,23 +98,28 @@ public final class IslandAdminFreezeService {
         }
 
         Island unfrozenIsland = island.unfreeze();
-        freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.NORMAL, null);
+        StagedOutboxEvent unfreezeOutboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_UNFROZEN",
+                        islandId.value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"actor\":\"%s\",\"timestamp\":\"%s\"}",
+                                islandId.value(), actor, Instant.now()))
+                : null;
+        freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.NORMAL, null, unfreezeOutboxEvent);
+        if (outboxPort != null && unfreezeOutboxEvent != null) {
+            outboxPort.stageEvent(
+                    unfreezeOutboxEvent.id(),
+                    unfreezeOutboxEvent.eventType(),
+                    unfreezeOutboxEvent.aggregateId(),
+                    unfreezeOutboxEvent.payload());
+        }
 
         IslandLocation location =
                 islandStoragePort.findLocationByIslandId(islandId).orElse(null);
         if (location != null) {
             islandStoragePort.saveIsland(unfrozenIsland, location);
-        }
-
-        if (outboxPort != null) {
-            IslandUnfrozenEvent event = IslandUnfrozenEvent.create(islandId, actor, Instant.now());
-            outboxPort.stageEvent(
-                    event.eventId(),
-                    "ISLAND_UNFROZEN",
-                    islandId.value().toString(),
-                    String.format(
-                            "{\"islandId\":\"%s\",\"actor\":\"%s\",\"timestamp\":\"%s\"}",
-                            islandId.value(), actor, event.timestamp()));
         }
 
         return true;

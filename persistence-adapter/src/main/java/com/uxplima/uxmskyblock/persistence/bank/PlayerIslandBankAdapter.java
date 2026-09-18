@@ -21,7 +21,9 @@ import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransaction;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Production SQL persistence adapter for Island Bank operations.
@@ -181,6 +183,35 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
             long expectedVersion,
             UUID operationId,
             String idempotencyKey) {
+        return executeTransaction(
+                islandId,
+                actorUuid,
+                currencyId,
+                currencyScale,
+                deltaAmountMinorUnits,
+                reason,
+                currentNode,
+                expectedEpoch,
+                expectedVersion,
+                operationId,
+                idempotencyKey,
+                null);
+    }
+
+    @Override
+    public BankTransactionOutcome executeTransaction(
+            IslandId islandId,
+            UUID actorUuid,
+            String currencyId,
+            int currencyScale,
+            long deltaAmountMinorUnits,
+            String reason,
+            String currentNode,
+            long expectedEpoch,
+            long expectedVersion,
+            UUID operationId,
+            String idempotencyKey,
+            @Nullable StagedOutboxEvent outboxEvent) {
 
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(actorUuid, "actorUuid");
@@ -377,6 +408,11 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
 
                 // Step 7: Finalize processed_operations to APPLIED
                 updateProcessedOp(connection, operationId, "APPLIED", "SUCCESS");
+
+                // Step 7.5: Stage outbox event atomically in same transaction
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(connection, outboxEvent);
+                }
 
                 // Step 8: Commit transaction
                 commitTransaction(connection);

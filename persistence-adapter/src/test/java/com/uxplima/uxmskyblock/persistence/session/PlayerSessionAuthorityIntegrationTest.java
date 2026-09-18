@@ -222,7 +222,9 @@ class PlayerSessionAuthorityIntegrationTest {
         SessionAuthorityOutcome recoveredOutcome = adapter.markRecoveredActive(player, recoveryNode, 3L);
         assertThat(recoveredOutcome).isEqualTo(SessionAuthorityOutcome.success(3L, false));
 
-        // 14. releaseToOffline: ACTIVE -> OFFLINE
+        // 14. drain then releaseToOffline: ACTIVE -> DRAINING -> OFFLINE
+        SessionAuthorityOutcome offlineDrainOutcome = adapter.drain(player, recoveryNode, 3L);
+        assertThat(offlineDrainOutcome).isEqualTo(SessionAuthorityOutcome.success(3L, false));
         SessionAuthorityOutcome offlineOutcome = adapter.releaseToOffline(player, recoveryNode, 3L);
         assertThat(offlineOutcome).isEqualTo(SessionAuthorityOutcome.success(3L, false));
         assertThat(adapter.findSession(player).orElseThrow().state()).isEqualTo(SessionState.OFFLINE);

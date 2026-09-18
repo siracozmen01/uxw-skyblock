@@ -355,7 +355,15 @@ public final class PlayerSessionCoordinator {
         schedulerPort.async(() -> {
             try {
                 // Drain session first
-                sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
+                SessionAuthorityOutcome drainOutcome =
+                        sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
+                if (!(drainOutcome instanceof SessionAuthorityOutcome.Success)) {
+                    LOGGER.log(Level.SEVERE, "Failed to drain session on quit for {0}: {1}", new Object[] {
+                        session.playerUuid(), drainOutcome
+                    });
+                    return;
+                }
+
                 // Authoritatively flush final snapshot
                 ProfileInventoryMutationOutcome outcome = handoffFinalizationPort.finalizeHandoffFlush(
                         session.playerUuid(),
@@ -367,12 +375,13 @@ public final class PlayerSessionCoordinator {
 
                 if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
                     session.setLastDurableVersion(succ.newVersion());
+                    // Release lease to OFFLINE state (SES-003)
+                    sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
                 } else {
-                    LOGGER.log(Level.SEVERE, "Handoff finalization flush failed for {0}", session.playerUuid());
+                    LOGGER.log(Level.SEVERE, "Handoff finalization flush failed on quit for {0}: {1}", new Object[] {
+                        session.playerUuid(), outcome
+                    });
                 }
-
-                // Release lease to OFFLINE state (SES-003)
-                sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error finalizing handoff flush on quit for " + session.playerUuid(), e);
             }

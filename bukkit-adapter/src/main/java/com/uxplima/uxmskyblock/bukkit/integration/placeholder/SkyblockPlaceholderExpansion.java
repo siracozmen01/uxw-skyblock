@@ -131,8 +131,13 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     public CachedPlayerIsland refreshPlayerDataSync(UUID playerUuid) {
         Objects.requireNonNull(playerUuid, "playerUuid");
         ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator.activeProfile(playerUuid).orElseGet(() -> new ProfileId(playerUuid))
+                ? sessionCoordinator.activeProfile(playerUuid).orElse(null)
                 : new ProfileId(playerUuid);
+        if (profileId == null) {
+            CachedPlayerIsland empty = CachedPlayerIsland.empty();
+            playerCache.put(playerUuid, empty);
+            return empty;
+        }
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
 
         if (optIslandId.isEmpty()) {

@@ -87,12 +87,34 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
         Objects.requireNonNull(aggregateId, "aggregateId");
         Objects.requireNonNull(payload, "payload");
 
-        String sql = """
+        String sql =
+                switch (dialect) {
+                    case SQLITE -> """
+                INSERT OR IGNORE INTO outbox_events (
+                    event_id, event_type, aggregate_id, payload,
+                    status, retry_count, created_at
+                ) VALUES (?, ?, ?, ?, 'PENDING', 0, CURRENT_TIMESTAMP)
+                """;
+                    case MYSQL -> """
+                INSERT IGNORE INTO outbox_events (
+                    event_id, event_type, aggregate_id, payload,
+                    status, retry_count, created_at
+                ) VALUES (?, ?, ?, ?, 'PENDING', 0, CURRENT_TIMESTAMP)
+                """;
+                    case POSTGRES -> """
+                INSERT INTO outbox_events (
+                    event_id, event_type, aggregate_id, payload,
+                    status, retry_count, created_at
+                ) VALUES (?, ?, ?, ?, 'PENDING', 0, CURRENT_TIMESTAMP)
+                ON CONFLICT (event_id) DO NOTHING
+                """;
+                    default -> """
                 INSERT INTO outbox_events (
                     event_id, event_type, aggregate_id, payload,
                     status, retry_count, created_at
                 ) VALUES (?, ?, ?, ?, 'PENDING', 0, CURRENT_TIMESTAMP)
                 """;
+                };
 
         try (Connection connection = database.connection();
                 PreparedStatement ps = connection.prepareStatement(sql)) {

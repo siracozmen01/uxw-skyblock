@@ -2,10 +2,12 @@ package com.uxplima.uxmskyblock.core.application.island;
 
 import java.util.Optional;
 
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Outbound application port for persistent Island entity and spatial location storage.
@@ -19,6 +21,17 @@ public interface IslandStoragePort {
      * @param location the spatial location and bounds
      */
     void saveIsland(Island island, IslandLocation location);
+
+    /**
+     * Persists or updates the complete Island aggregate along with its spatial location and an optional outbox event.
+     *
+     * @param island the island aggregate root
+     * @param location the spatial location and bounds
+     * @param outboxEvent optional event to stage atomically in the same transaction
+     */
+    default void saveIsland(Island island, IslandLocation location, @Nullable StagedOutboxEvent outboxEvent) {
+        saveIsland(island, location);
+    }
 
     /**
      * Retrieves an Island aggregate by its unique identity.
@@ -50,6 +63,16 @@ public interface IslandStoragePort {
      * @param id the island id to delete
      */
     void deleteIsland(IslandId id);
+
+    /**
+     * Deletes an island and stages an optional outbox event atomically in the same transaction.
+     *
+     * @param id the island id to delete
+     * @param outboxEvent optional event to stage atomically in the same transaction
+     */
+    default void deleteIsland(IslandId id, @Nullable StagedOutboxEvent outboxEvent) {
+        deleteIsland(id);
+    }
 
     /**
      * Finds an island whose bounding box contains the specified world coordinates.

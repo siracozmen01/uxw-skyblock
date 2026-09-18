@@ -24,6 +24,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezePort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -122,6 +123,11 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
 
     @Override
     public void saveIsland(Island island, IslandLocation location) {
+        saveIsland(island, location, null);
+    }
+
+    @Override
+    public void saveIsland(Island island, IslandLocation location, @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(island, "island");
         Objects.requireNonNull(location, "location");
 
@@ -143,6 +149,11 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
 
                 // 5. Save or update flags
                 saveIslandFlags(conn, island);
+
+                // 6. Stage outbox event atomically in same transaction
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(conn, outboxEvent);
+                }
 
                 commitTransaction(conn);
             } catch (Exception e) {
@@ -650,6 +661,11 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
 
     @Override
     public void deleteIsland(IslandId id) {
+        deleteIsland(id, null);
+    }
+
+    @Override
+    public void deleteIsland(IslandId id, @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(id, "id");
         try (Connection conn = database.connection()) {
             boolean prevAutoCommit = conn.getAutoCommit();
@@ -658,6 +674,9 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
                 try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM islands WHERE id = ?")) {
                     stmt.setString(1, id.value().toString());
                     stmt.executeUpdate();
+                }
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(conn, outboxEvent);
                 }
                 commitTransaction(conn);
             } catch (Exception e) {
@@ -867,16 +886,40 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
 
     @Override
     public void updateAdministrativeState(IslandId islandId, AdministrativeState state, @Nullable String freezeReason) {
+        updateAdministrativeState(islandId, state, freezeReason, null);
+    }
+
+    @Override
+    public void updateAdministrativeState(
+            IslandId islandId,
+            AdministrativeState state,
+            @Nullable String freezeReason,
+            @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(state, "state");
         String sql =
                 "UPDATE islands SET administrative_state = ?, freeze_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-        try (Connection conn = database.connection();
-                PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, state.name());
-            stmt.setString(2, freezeReason);
-            stmt.setString(3, islandId.value().toString());
-            stmt.executeUpdate();
+        try (Connection conn = database.connection()) {
+            boolean prevAutoCommit = conn.getAutoCommit();
+            beginTransaction(conn);
+            try {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, state.name());
+                    stmt.setString(2, freezeReason);
+                    stmt.setString(3, islandId.value().toString());
+                    stmt.executeUpdate();
+                }
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(conn, outboxEvent);
+                }
+                commitTransaction(conn);
+            } catch (Exception e) {
+                rollbackTransaction(conn);
+                throw new IslandPersistenceException(
+                        "Failed to update administrative state for island: " + islandId, e);
+            } finally {
+                resetAutoCommitQuietly(conn, prevAutoCommit);
+            }
         } catch (SQLException e) {
             throw new IslandPersistenceException("Failed to update administrative state for island: " + islandId, e);
         }

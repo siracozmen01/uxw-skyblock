@@ -131,6 +131,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandCommandTree commandTree;
     private final BukkitSkyblockApiBridge apiBridge;
     private final ServerNodeConfiguration nodeConfiguration;
+    private final CurrentNodeProcessIdentity nodeProcessIdentity;
     private final PlayerStateDurabilityConfig playerStateConfig;
     private final ModuleSettingsConfiguration moduleSettings;
     private final SeasonConfiguration seasonConfig;
@@ -329,8 +330,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 playerStateConfig.ambientCheckpointInterval());
         this.sessionListener = new PlayerSessionListener(sessionCoordinator);
 
-        this.protectionListener.setNodeIdentitySupplier(() ->
-                new CurrentNodeProcessIdentity(nodeConfiguration.nodeId().value(), "node-process-" + plugin.getName()));
+        this.nodeProcessIdentity =
+                CurrentNodeProcessIdentity.create(nodeConfiguration.nodeId().value());
+        this.protectionListener.setNodeIdentitySupplier(() -> this.nodeProcessIdentity);
         this.protectionListener.setSessionRecordProvider(uuid -> {
             PlayerSessionCoordinator.ActiveSession session = sessionCoordinator.getActiveSession(uuid.value());
             if (session == null) {
@@ -1400,6 +1402,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter() {
         return visitorEvictionAdapter;
+    }
+
+    public CurrentNodeProcessIdentity nodeProcessIdentity() {
+        return nodeProcessIdentity;
     }
 
     @Override

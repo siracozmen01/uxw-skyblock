@@ -378,7 +378,11 @@ class PlayerSessionAuthoritySqliteTest {
         assertThat(recoveredOutcome).isEqualTo(SessionAuthorityOutcome.success(4L, false));
         assertThat(recoveredOutcome.isRecovering()).isFalse();
 
-        // Prove releaseToOffline transitions ACTIVE -> OFFLINE
+        // Prove drain transitions ACTIVE -> DRAINING
+        SessionAuthorityOutcome drainOutcome = adapter.drain(PLAYER_1, NODE_B, 4L);
+        assertThat(drainOutcome.isSuccess()).isTrue();
+
+        // Prove releaseToOffline transitions DRAINING -> OFFLINE
         SessionAuthorityOutcome offlineOutcome = adapter.releaseToOffline(PLAYER_1, NODE_B, 4L);
         assertThat(offlineOutcome.isSuccess()).isTrue();
         assertThat(offlineOutcome).isEqualTo(SessionAuthorityOutcome.success(4L, false));

@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.core.application.freeze;
 
 import java.util.Optional;
 
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.AdministrativeState;
@@ -22,6 +23,22 @@ public interface IslandAdminFreezePort {
      * @param freezeReason rationale if frozen, or null if normal
      */
     void updateAdministrativeState(IslandId islandId, AdministrativeState state, @Nullable String freezeReason);
+
+    /**
+     * Updates an island's administrative enforcement state, optional freeze rationale, and stages an outbox event atomically.
+     *
+     * @param islandId target island
+     * @param state new administrative state
+     * @param freezeReason rationale if frozen, or null if normal
+     * @param outboxEvent optional event to stage atomically in the same transaction
+     */
+    default void updateAdministrativeState(
+            IslandId islandId,
+            AdministrativeState state,
+            @Nullable String freezeReason,
+            @Nullable StagedOutboxEvent outboxEvent) {
+        updateAdministrativeState(islandId, state, freezeReason);
+    }
 
     /**
      * Updates an island's economic solvency state.

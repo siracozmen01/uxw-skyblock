@@ -7,7 +7,9 @@ import java.util.UUID;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransaction;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Outbound application port defining authoritative operations on island bank accounts.
@@ -67,6 +69,33 @@ public interface IslandBankPort {
             long expectedVersion,
             UUID operationId,
             String idempotencyKey);
+
+    default BankTransactionOutcome executeTransaction(
+            IslandId islandId,
+            UUID actorUuid,
+            String currencyId,
+            int currencyScale,
+            long deltaAmountMinorUnits,
+            String reason,
+            String currentNode,
+            long expectedEpoch,
+            long expectedVersion,
+            UUID operationId,
+            String idempotencyKey,
+            @Nullable StagedOutboxEvent outboxEvent) {
+        return executeTransaction(
+                islandId,
+                actorUuid,
+                currencyId,
+                currencyScale,
+                deltaAmountMinorUnits,
+                reason,
+                currentNode,
+                expectedEpoch,
+                expectedVersion,
+                operationId,
+                idempotencyKey);
+    }
 
     /**
      * Retrieves recent transaction audit history for an island.

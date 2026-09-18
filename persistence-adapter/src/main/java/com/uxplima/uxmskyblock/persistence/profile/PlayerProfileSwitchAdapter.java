@@ -14,6 +14,7 @@ import com.uxplima.uxmlib.storage.StorageException;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchOperation;
@@ -21,6 +22,7 @@ import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchState;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Canonical SQL-backed implementation of {@link ProfileSwitchPort}.
@@ -308,6 +310,17 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
             ProfileId toProfileId,
             ServerNodeId currentNode,
             long expectedEpoch) {
+        return commitSwitch(operationId, playerId, toProfileId, currentNode, expectedEpoch, null);
+    }
+
+    @Override
+    public Result<ProfileSwitchOperation.Committed, String> commitSwitch(
+            UUID operationId,
+            PlayerUuid playerId,
+            ProfileId toProfileId,
+            ServerNodeId currentNode,
+            long expectedEpoch,
+            @Nullable StagedOutboxEvent outboxEvent) {
 
         Objects.requireNonNull(operationId, "operationId");
         Objects.requireNonNull(playerId, "playerId");
@@ -392,6 +405,9 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                         rollbackTransaction(connection);
                         return Result.err("FAILED_OPERATION_STATE_UPDATE");
                     }
+                }
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(connection, outboxEvent);
                 }
 
                 commitTransaction(connection);

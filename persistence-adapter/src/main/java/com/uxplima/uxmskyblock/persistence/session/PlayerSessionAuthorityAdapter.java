@@ -181,7 +181,8 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                 + "updated_at = CURRENT_TIMESTAMP "
                 + "WHERE player_uuid = ? "
                 + "AND authoritative_node = ? "
-                + "AND session_epoch = ?";
+                + "AND session_epoch = ? "
+                + "AND state = 'DRAINING'";
     }
 
     @Override

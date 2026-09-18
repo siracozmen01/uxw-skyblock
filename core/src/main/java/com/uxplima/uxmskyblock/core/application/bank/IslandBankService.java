@@ -10,6 +10,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -105,7 +106,17 @@ public final class IslandBankService {
         UUID operationId = UUID.randomUUID();
         String idempotencyKey = "tx-" + operationId;
 
-        BankTransactionOutcome outcome = islandBankPort.executeTransaction(
+        StagedOutboxEvent outboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_BANK_TRANSACTION",
+                        islandId.value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"playerUuid\":\"%s\",\"deltaMinorUnits\":%d,\"reason\":\"%s\"}",
+                                islandId.value(), playerUuid.value(), deltaMinorUnits, reason))
+                : null;
+
+        return islandBankPort.executeTransaction(
                 islandId,
                 playerUuid.value(),
                 "PRIMARY",
@@ -116,19 +127,7 @@ public final class IslandBankService {
                 epoch,
                 bank.version(),
                 operationId,
-                idempotencyKey);
-
-        if (outcome instanceof BankTransactionOutcome.Success && outboxPort != null) {
-            String payload = String.format(
-                    "{\"islandId\":\"%s\",\"playerUuid\":\"%s\",\"deltaMinorUnits\":%d,\"reason\":\"%s\"}",
-                    islandId.value(), playerUuid.value(), deltaMinorUnits, reason);
-            outboxPort.stageEvent(
-                    EventId.random(),
-                    "ISLAND_BANK_TRANSACTION",
-                    islandId.value().toString(),
-                    payload);
-        }
-
-        return outcome;
+                idempotencyKey,
+                outboxEvent);
     }
 }
