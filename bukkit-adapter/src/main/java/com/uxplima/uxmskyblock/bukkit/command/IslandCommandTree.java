@@ -26,10 +26,12 @@ import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
+import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
@@ -38,6 +40,10 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
+import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
+import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
+import com.uxplima.uxmskyblock.core.domain.chat.IslandChatPermissionDeniedException;
+import com.uxplima.uxmskyblock.core.domain.chat.NoIslandForChatException;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -72,6 +78,7 @@ public final class IslandCommandTree {
     private final String worldName;
     private final SkyblockEconomyBridge economyBridge;
     private final @Nullable IslandControlMenu controlMenu;
+    private final @Nullable IslandChatService chatService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -102,6 +109,7 @@ public final class IslandCommandTree {
                 serverNodeId,
                 worldName,
                 SkyblockEconomyBridge.createDefault(islandBankService, schedulerPort),
+                null,
                 null);
     }
 
@@ -121,6 +129,42 @@ public final class IslandCommandTree {
             String worldName,
             SkyblockEconomyBridge economyBridge,
             @Nullable IslandControlMenu controlMenu) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -139,6 +183,7 @@ public final class IslandCommandTree {
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
         this.controlMenu = controlMenu;
+        this.chatService = chatService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -176,7 +221,16 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("profile")
                         .then(Cmd.literal("switch")
                                 .then(Cmd.argument("profileId", StringArgumentType.word())
-                                        .executes(this::executeProfileSwitch))));
+                                        .executes(this::executeProfileSwitch))))
+                .then(Cmd.literal("chat")
+                        .executes(this::executeChatToggle)
+                        .then(Cmd.argument("message", StringArgumentType.greedyString())
+                                .executes(this::executeChatMessage)))
+                .then(Cmd.literal("c")
+                        .executes(this::executeChatToggle)
+                        .then(Cmd.argument("message", StringArgumentType.greedyString())
+                                .executes(this::executeChatMessage)))
+                .then(Cmd.literal("spy").executes(this::executeSpyToggle));
 
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
@@ -223,6 +277,12 @@ public final class IslandCommandTree {
         send(
                 src.getSender(),
                 Component.text("/is profile switch <uuid> - Switch active profile", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is chat - Toggle island team chat", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text(
+                        "/is chat <message> (or /is c <msg>) - Send message to island team", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is spy - Toggle island chat staff spy", NamedTextColor.YELLOW));
         return Cmd.OK;
     }
 
@@ -556,6 +616,115 @@ public final class IslandCommandTree {
             });
         });
 
+        return Cmd.OK;
+    }
+
+    private int executeChatToggle(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), Component.text("Only players can use island chat.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (chatService == null) {
+            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
+        schedulerPort.async(() -> {
+            try {
+                IslandChatChannel newChannel = chatService.toggleChannel(profileId);
+                schedulerPort.onEntity(playerUuid, () -> {
+                    if (newChannel == IslandChatChannel.ISLAND) {
+                        send(
+                                player,
+                                Component.text(
+                                        "Island chat enabled. All chat messages will now go to your island team.",
+                                        NamedTextColor.GREEN));
+                    } else {
+                        send(
+                                player,
+                                Component.text(
+                                        "Island chat disabled. Chat messages will now go to public chat.",
+                                        NamedTextColor.YELLOW));
+                    }
+                });
+            } catch (NoIslandForChatException e) {
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> send(
+                                player,
+                                Component.text(
+                                        "You must belong to an island to use island chat.", NamedTextColor.RED)));
+            }
+        });
+        return Cmd.OK;
+    }
+
+    private int executeChatMessage(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), Component.text("Only players can use island chat.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (chatService == null) {
+            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        String message = StringArgumentType.getString(ctx, "message");
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        ProfileId profileId = activeProfile(player);
+        schedulerPort.async(() -> {
+            try {
+                chatService.sendChat(profileId, player.getName(), message);
+            } catch (NoIslandForChatException e) {
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> send(
+                                player,
+                                Component.text(
+                                        "You must belong to an island to use island chat.", NamedTextColor.RED)));
+            } catch (IslandChatPermissionDeniedException e) {
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> send(
+                                player,
+                                Component.text(
+                                        "You do not have permission to send messages in island chat.",
+                                        NamedTextColor.RED)));
+            } catch (ChatRateLimitExceededException e) {
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> send(
+                                player,
+                                Component.text(
+                                        "You are sending messages too quickly. Please slow down.",
+                                        NamedTextColor.RED)));
+            }
+        });
+        return Cmd.OK;
+    }
+
+    private int executeSpyToggle(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(
+                    ctx.getSource().getSender(),
+                    Component.text("Only players can spy on island chat.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (chatService == null) {
+            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (!player.hasPermission(CatalogPermissions.CHAT_SPY.node()) && !player.hasPermission("skyblock.chat.spy")) {
+            send(player, Component.text("You do not have permission to spy on island chat.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = activeProfile(player);
+        boolean enabled = chatService.toggleSpy(profileId);
+        if (enabled) {
+            send(player, Component.text("Island chat spy enabled.", NamedTextColor.GREEN));
+        } else {
+            send(player, Component.text("Island chat spy disabled.", NamedTextColor.YELLOW));
+        }
         return Cmd.OK;
     }
 }

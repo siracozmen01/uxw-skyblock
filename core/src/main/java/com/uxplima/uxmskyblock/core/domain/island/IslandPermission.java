@@ -49,7 +49,11 @@ public enum IslandPermission {
     SETTINGS_MODIFY,
     BIOME_CHANGE,
     WARP_CREATE,
-    WARP_DELETE;
+    WARP_DELETE,
+
+    // Communication & Chat
+    CHAT_VIEW,
+    CHAT_SEND;
 
     public static final Set<IslandPermission> ALL_PERMISSIONS =
             Collections.unmodifiableSet(EnumSet.allOf(IslandPermission.class));

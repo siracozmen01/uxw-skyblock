@@ -14,8 +14,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
+import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
+import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
@@ -30,6 +33,7 @@ import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
+import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
@@ -37,6 +41,7 @@ import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.ChatFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
@@ -55,6 +60,8 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
+import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
@@ -138,6 +145,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandWarpService warpService;
     private final VaultConfiguration vaultConfig;
     private final IslandVaultService vaultService;
+    private final ChatConfiguration chatConfig;
+    private final IslandChatService chatService;
+    private final IslandChatListener chatListener;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -155,7 +165,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             TemporaryAccessConfiguration temporaryAccessConfig,
             RewardInboxConfiguration rewardConfig,
             WarpConfiguration warpConfig,
-            VaultConfiguration vaultConfig) {
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -172,6 +183,19 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.rewardConfig = Objects.requireNonNull(rewardConfig, "rewardConfig must not be null");
         this.warpConfig = Objects.requireNonNull(warpConfig, "warpConfig must not be null");
         this.vaultConfig = Objects.requireNonNull(vaultConfig, "vaultConfig must not be null");
+        this.chatConfig = Objects.requireNonNull(chatConfig, "chatConfig must not be null");
+
+        LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
+        BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
+        BukkitIslandOnlineMemberProvider chatMemberProvider =
+                new BukkitIslandOnlineMemberProvider(persistenceBootstrap.islandStoragePort());
+        this.chatService = new IslandChatService(
+                persistenceBootstrap.islandStoragePort(),
+                chatTransport,
+                chatDelivery,
+                chatMemberProvider,
+                chatConfig.rateLimitMessagesPerSecond());
+        this.chatListener = new IslandChatListener(chatService);
 
         this.dynamicPricingEngine = new DynamicPricingEngine(shopConfig.dampingFactor());
         this.temporaryAccessService = new TemporaryAccessService(persistenceBootstrap.temporaryAccessStoragePort());
@@ -342,7 +366,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 serverNodeId,
                 worldName,
                 economyBridge,
-                controlMenu);
+                controlMenu,
+                chatService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -448,7 +473,41 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new RewardInboxFeatureModule(rewardInboxService, scheduler, rewardConfig));
         this.moduleRegistry.register(new WarpFeatureModule(warpService, safeTeleportEngine, warpConfig));
         this.moduleRegistry.register(new VaultFeatureModule(vaultService, vaultConfig));
+        this.moduleRegistry.register(new ChatFeatureModule(chatService, chatConfig));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                ChatConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -984,6 +1043,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             vaultConfig = VaultConfiguration.defaultConfiguration();
         }
 
+        Path chatFile = dataDir.resolve("chat.conf");
+        if (!java.nio.file.Files.exists(chatFile)) {
+            try (java.io.InputStream in = plugin.getResource("chat.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, chatFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if chat.conf cannot be extracted
+            }
+        }
+
+        ChatConfiguration chatConfig;
+        if (java.nio.file.Files.exists(chatFile)) {
+            try {
+                CommentedConfigurationNode chatRoot = HoconConfigurationLoader.builder()
+                        .path(chatFile)
+                        .build()
+                        .load();
+                chatConfig = ChatConfiguration.load(chatRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load chat configuration from: " + chatFile, e);
+            }
+        } else {
+            chatConfig = ChatConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -998,7 +1083,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 temporaryAccessConfig,
                 rewardConfig,
                 warpConfig,
-                vaultConfig);
+                vaultConfig,
+                chatConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1041,6 +1127,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         CatalogPermissions.registerAll(pm);
         pm.registerEvents(protectionListener, plugin);
         pm.registerEvents(sessionListener, plugin);
+        pm.registerEvents(chatListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1185,6 +1272,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public VaultConfiguration vaultConfiguration() {
         return vaultConfig;
+    }
+
+    public IslandChatService chatService() {
+        return chatService;
+    }
+
+    public ChatConfiguration chatConfiguration() {
+        return chatConfig;
+    }
+
+    public IslandChatListener chatListener() {
+        return chatListener;
     }
 
     @Override

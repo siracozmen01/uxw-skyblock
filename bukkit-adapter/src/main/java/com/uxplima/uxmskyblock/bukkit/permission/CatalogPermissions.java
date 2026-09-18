@@ -27,7 +27,8 @@ public enum CatalogPermissions {
     ISLAND_BANK("uxmskyblock.island.bank", "Access island bank", PermissionDefault.TRUE),
     ISLAND_BIOME("uxmskyblock.island.biome", "Change island biome", PermissionDefault.TRUE),
     ISLAND_UPGRADE("uxmskyblock.island.upgrade", "Upgrade island perks", PermissionDefault.TRUE),
-    ISLAND_TOP("uxmskyblock.island.top", "View island leaderboards", PermissionDefault.TRUE);
+    ISLAND_TOP("uxmskyblock.island.top", "View island leaderboards", PermissionDefault.TRUE),
+    CHAT_SPY("uxmskyblock.chat.spy", "Spy on island private chat channels", PermissionDefault.OP);
 
     private final String node;
     private final String description;

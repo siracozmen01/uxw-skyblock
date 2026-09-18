@@ -65,7 +65,9 @@ public record IslandRole(String id, int weight, String displayName, Set<IslandPe
                     IslandPermission.WARP_DELETE,
                     IslandPermission.VAULT_VIEW,
                     IslandPermission.VAULT_DEPOSIT,
-                    IslandPermission.VAULT_WITHDRAW),
+                    IslandPermission.VAULT_WITHDRAW,
+                    IslandPermission.CHAT_VIEW,
+                    IslandPermission.CHAT_SEND),
             false);
 
     public static final IslandRole MODERATOR = new IslandRole(
@@ -89,7 +91,9 @@ public record IslandRole(String id, int weight, String displayName, Set<IslandPe
                     IslandPermission.MEMBER_KICK,
                     IslandPermission.VAULT_VIEW,
                     IslandPermission.VAULT_DEPOSIT,
-                    IslandPermission.VAULT_WITHDRAW),
+                    IslandPermission.VAULT_WITHDRAW,
+                    IslandPermission.CHAT_VIEW,
+                    IslandPermission.CHAT_SEND),
             false);
 
     public static final IslandRole MEMBER = new IslandRole(
@@ -110,7 +114,9 @@ public record IslandRole(String id, int weight, String displayName, Set<IslandPe
                     IslandPermission.ANIMAL_KILL,
                     IslandPermission.BANK_DEPOSIT,
                     IslandPermission.VAULT_VIEW,
-                    IslandPermission.VAULT_DEPOSIT),
+                    IslandPermission.VAULT_DEPOSIT,
+                    IslandPermission.CHAT_VIEW,
+                    IslandPermission.CHAT_SEND),
             false);
 
     public static final IslandRole VISITOR = new IslandRole("VISITOR", 0, "Visitor", Collections.emptySet(), true);

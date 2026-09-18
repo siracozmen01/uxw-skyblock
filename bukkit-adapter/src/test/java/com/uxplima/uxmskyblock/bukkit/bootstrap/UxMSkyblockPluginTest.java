@@ -52,6 +52,7 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(new java.io.File(plugin.getDataFolder(), "discord.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "warps.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "vault.conf")).exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "chat.conf")).exists();
         assertThat(plugin.bootstrap().moduleRegistry().enabledModules()).isNotEmpty();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("core")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("bank")).isPresent();
@@ -60,6 +61,7 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(plugin.bootstrap().moduleRegistry().findModule("discord")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("warps")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("vault")).isPresent();
+        assertThat(plugin.bootstrap().moduleRegistry().findModule("chat")).isPresent();
         assertThat(plugin.bootstrap().seasonService()).isNotNull();
         assertThat(plugin.bootstrap().socialService()).isNotNull();
         assertThat(plugin.bootstrap().discordService()).isNotNull();
@@ -68,6 +70,9 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(plugin.bootstrap().warpConfiguration()).isNotNull();
         assertThat(plugin.bootstrap().vaultService()).isNotNull();
         assertThat(plugin.bootstrap().vaultConfiguration()).isNotNull();
+        assertThat(plugin.bootstrap().chatService()).isNotNull();
+        assertThat(plugin.bootstrap().chatConfiguration()).isNotNull();
+        assertThat(plugin.bootstrap().chatListener()).isNotNull();
     }
 
     @Test
@@ -141,6 +146,12 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         // Execute leaderboards
         player.performCommand("is top level");
         player.performCommand("is top bank");
+
+        // Execute chat commands
+        player.performCommand("is chat");
+        player.performCommand("is c Hello island team!");
+        player.setOp(true);
+        player.performCommand("is spy");
 
         // Verify public API bridge registered and functional
         assertThat(com.uxplima.uxmskyblock.api.UxmSkyblockApiProvider.isRegistered())

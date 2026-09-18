@@ -57,6 +57,10 @@ public final class StandardPermissions {
     public static final PermissionKey WARP_CREATE = PermissionKey.uxm("warp.create");
     public static final PermissionKey WARP_DELETE = PermissionKey.uxm("warp.delete");
 
+    // Communication
+    public static final PermissionKey CHAT_VIEW = PermissionKey.uxm("chat.view");
+    public static final PermissionKey CHAT_SEND = PermissionKey.uxm("chat.send");
+
     private static final Map<IslandPermission, PermissionKey> PERMISSION_MAP;
 
     static {
@@ -92,6 +96,8 @@ public final class StandardPermissions {
         map.put(IslandPermission.BIOME_CHANGE, BIOME_CHANGE);
         map.put(IslandPermission.WARP_CREATE, WARP_CREATE);
         map.put(IslandPermission.WARP_DELETE, WARP_DELETE);
+        map.put(IslandPermission.CHAT_VIEW, CHAT_VIEW);
+        map.put(IslandPermission.CHAT_SEND, CHAT_SEND);
         PERMISSION_MAP = Collections.unmodifiableMap(map);
     }
 
