@@ -161,4 +161,59 @@ public final class LocalFilesystemStorageAdapter implements ObjectStoragePort {
             throw new RuntimeException("Failed to read metadata for " + objectKey, e);
         }
     }
+
+    @Override
+    public Optional<java.io.InputStream> openStream(StorageBucket bucket, String objectKey) {
+        Path target = resolveSafePath(bucket, objectKey);
+        if (!Files.isRegularFile(target)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Files.newInputStream(target));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to open stream for " + objectKey, e);
+        }
+    }
+
+    @Override
+    public void putStream(
+            StorageBucket bucket, String objectKey, java.io.InputStream inputStream, StorageObjectMetadata metadata) {
+        Objects.requireNonNull(inputStream, "inputStream");
+        Path target = resolveSafePath(bucket, objectKey);
+
+        try {
+            Path parent = target.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            Path tempFile = Files.createTempFile(parent, "stream-obj-", ".tmp");
+            try {
+                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                try {
+                    Files.move(tempFile, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException atomicMoveUnsupported) {
+                    Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to persist streaming object: " + objectKey, e);
+        }
+    }
+
+    @Override
+    public java.util.Set<com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability> capabilities() {
+        return java.util.Set.of(
+                com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability.STREAMING_TRANSFER,
+                com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability.RANGE_READ,
+                com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability.SERVER_SIDE_COPY,
+                com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability.CHECKSUM_ALGORITHMS);
+    }
+
+    @Override
+    public com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageProviderId providerId() {
+        return com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageProviderId.LOCAL_FS;
+    }
 }
