@@ -123,6 +123,7 @@ class ProductionMigrationFastLaneTest {
                                 "vault_edit_sessions",
                                 "vault_escrow_transfers",
                                 "vault_audit_logs",
+                                "island_missions",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -2005,7 +2006,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(18);
 
             // 2. Upgrade by applying V19
-            int v19Applied = runner.apply(allMigrations);
+            int v19Applied = runner.apply(allMigrations.subList(0, 19));
             assertThat(v19Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(19);
 
@@ -2156,9 +2157,89 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 19));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(19);
+        }
+    }
+
+    @Test
+    @DisplayName("23. Step-by-step upgrade from V19 to V20 creates island missions table")
+    void stepByStepUpgradeFromV19ToV20CreatesMissionTable() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V19
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v19Applied = runner.apply(allMigrations.subList(0, 19));
+            assertThat(v19Applied).isEqualTo(19);
+            assertThat(runner.currentVersion()).isEqualTo(19);
+
+            // 2. Upgrade by applying V20
+            int v20Applied = runner.apply(allMigrations);
+            assertThat(v20Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(20);
+
+            // 3. Verify V20 table and foreign key cascade
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(conn, """
+                        INSERT INTO islands (
+                            id, owner_profile_id, owner_account_uuid, custom_name, lifecycle,
+                            economic_state, administrative_state, level_score, net_worth_minor_units, version
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            '11111111-1111-1111-1111-111111111111',
+                            '00000000-0000-0000-0000-000000000001',
+                            'Alpha Island',
+                            'ACTIVE',
+                            'NORMAL',
+                            'NORMAL',
+                            0,
+                            0,
+                            1
+                        );
+                        """);
+
+                execute(conn, """
+                        INSERT INTO island_missions (
+                            island_id, profile_id, mission_id, progress_count, completed, completed_at, updated_at
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            '11111111-1111-1111-1111-111111111111',
+                            'wheat_1',
+                            10,
+                            0,
+                            NULL,
+                            CURRENT_TIMESTAMP
+                        );
+                        """);
+
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_missions WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(1);
+
+                // Delete island and verify cascade deletes island_missions
+                execute(conn, "DELETE FROM islands WHERE id = '99999999-9999-9999-9999-999999999999'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_missions WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(20);
         }
     }
 

@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 19;
+    public static final int LATEST_VERSION = 20;
+
+    /** Human-readable description of migration V20. */
+    public static final String V20_DESCRIPTION = "create island missions and quest progress";
 
     /** Human-readable description of migration V19. */
     public static final String V19_DESCRIPTION =
@@ -116,7 +119,8 @@ public final class SkyblockMigrations {
                 v16Migration(dialect),
                 v17Migration(dialect),
                 v18Migration(dialect),
-                v19Migration(dialect));
+                v19Migration(dialect),
+                v20Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -501,6 +505,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(19, V19_DESCRIPTION, SQLITE_V19_DDL);
             case MYSQL -> new Migration(19, V19_DESCRIPTION, MYSQL_V19_DDL);
             case POSTGRES -> new Migration(19, V19_DESCRIPTION, POSTGRES_V19_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v20Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(20, V20_DESCRIPTION, SQLITE_V20_DDL);
+            case MYSQL -> new Migration(20, V20_DESCRIPTION, MYSQL_V20_DDL);
+            case POSTGRES -> new Migration(20, V20_DESCRIPTION, POSTGRES_V20_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2370,5 +2386,55 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX IF NOT EXISTS idx_vault_audit_island ON vault_audit_logs (island_id, created_at);
+            """;
+
+    private static final String SQLITE_V20_DDL = """
+            CREATE TABLE IF NOT EXISTS island_missions (
+                island_id VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                mission_id VARCHAR(64) NOT NULL,
+                progress_count BIGINT NOT NULL DEFAULT 0,
+                completed SMALLINT NOT NULL DEFAULT 0,
+                completed_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, profile_id, mission_id),
+                CONSTRAINT fk_island_missions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_missions_island_profile ON island_missions (island_id, profile_id);
+            """;
+
+    private static final String MYSQL_V20_DDL = """
+            CREATE TABLE IF NOT EXISTS island_missions (
+                island_id VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                mission_id VARCHAR(64) NOT NULL,
+                progress_count BIGINT NOT NULL DEFAULT 0,
+                completed BOOLEAN NOT NULL DEFAULT FALSE,
+                completed_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, profile_id, mission_id),
+                INDEX idx_island_missions_island_profile (island_id, profile_id),
+                CONSTRAINT fk_island_missions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V20_DDL = """
+            CREATE TABLE IF NOT EXISTS island_missions (
+                island_id VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                mission_id VARCHAR(64) NOT NULL,
+                progress_count BIGINT NOT NULL DEFAULT 0,
+                completed BOOLEAN NOT NULL DEFAULT FALSE,
+                completed_at TIMESTAMP WITH TIME ZONE NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, profile_id, mission_id),
+                CONSTRAINT fk_island_missions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_missions_island_profile ON island_missions (island_id, profile_id);
             """;
 }

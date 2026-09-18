@@ -21,6 +21,7 @@ import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration;
@@ -40,6 +41,8 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
+import com.uxplima.uxmskyblock.bukkit.mission.IslandMissionListener;
 import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
@@ -49,6 +52,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.FreezeFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.MissionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RewardInboxFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
@@ -75,6 +79,7 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
@@ -160,6 +165,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandInactivityService inactivityService;
     private final BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter;
     private final IslandAdminFreezeService freezeService;
+    private final MissionConfiguration missionConfig;
+    private final IslandMissionService missionService;
+    private final IslandMissionsMenu missionsMenu;
+    private final IslandMissionListener missionListener;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -179,7 +188,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             WarpConfiguration warpConfig,
             VaultConfiguration vaultConfig,
             ChatConfiguration chatConfig,
-            InactivityConfiguration inactivityConfig) {
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -198,6 +208,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.vaultConfig = Objects.requireNonNull(vaultConfig, "vaultConfig must not be null");
         this.chatConfig = Objects.requireNonNull(chatConfig, "chatConfig must not be null");
         this.inactivityConfig = Objects.requireNonNull(inactivityConfig, "inactivityConfig must not be null");
+        this.missionConfig = Objects.requireNonNull(missionConfig, "missionConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -386,6 +397,19 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistenceBootstrap.outboxPort(), scheduler, serverNodeId.value() + "-outbox");
 
+        this.missionService = new IslandMissionService(persistenceBootstrap.islandMissionStoragePort());
+        this.missionService.registerMissions(missionConfig.missions());
+        this.missionsMenu = new IslandMissionsMenu(
+                missionService,
+                persistenceBootstrap.islandStoragePort(),
+                sessionCoordinator,
+                scheduler);
+        this.missionListener = new IslandMissionListener(
+                missionService,
+                persistenceBootstrap.islandStoragePort(),
+                sessionCoordinator,
+                scheduler);
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -404,7 +428,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 controlMenu,
                 chatService,
                 inactivityService,
-                freezeService);
+                freezeService,
+                missionsMenu);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -514,7 +539,45 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new InactivityFeatureModule(
                 inactivityService, scheduler, inactivityConfig, nodeConfiguration.worldName()));
         this.moduleRegistry.register(new FreezeFeatureModule(freezeService));
+        this.moduleRegistry.register(new MissionFeatureModule(missionService, missionConfig));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                MissionConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -1170,6 +1233,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             inactivityConfig = InactivityConfiguration.defaultConfiguration();
         }
 
+        Path missionsFile = dataDir.resolve("missions.conf");
+        if (!java.nio.file.Files.exists(missionsFile)) {
+            try (java.io.InputStream in = plugin.getResource("missions.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, missionsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if missions.conf cannot be extracted
+            }
+        }
+
+        MissionConfiguration missionConfig;
+        if (java.nio.file.Files.exists(missionsFile)) {
+            try {
+                CommentedConfigurationNode missionRoot = HoconConfigurationLoader.builder()
+                        .path(missionsFile)
+                        .build()
+                        .load();
+                missionConfig = MissionConfiguration.load(missionRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load missions configuration from: " + missionsFile, e);
+            }
+        } else {
+            missionConfig = MissionConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1186,7 +1275,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 warpConfig,
                 vaultConfig,
                 chatConfig,
-                inactivityConfig);
+                inactivityConfig,
+                missionConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1230,6 +1320,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(protectionListener, plugin);
         pm.registerEvents(sessionListener, plugin);
         pm.registerEvents(chatListener, plugin);
+        pm.registerEvents(missionListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1406,6 +1497,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public CurrentNodeProcessIdentity nodeProcessIdentity() {
         return nodeProcessIdentity;
+    }
+
+    public MissionConfiguration missionConfiguration() {
+        return missionConfig;
+    }
+
+    public IslandMissionService missionService() {
+        return missionService;
+    }
+
+    public IslandMissionsMenu missionsMenu() {
+        return missionsMenu;
+    }
+
+    public IslandMissionListener missionListener() {
+        return missionListener;
     }
 
     @Override

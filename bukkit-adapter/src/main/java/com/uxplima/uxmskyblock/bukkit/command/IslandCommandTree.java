@@ -29,6 +29,7 @@ import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -88,6 +89,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandChatService chatService;
     private final @Nullable IslandInactivityService inactivityService;
     private final @Nullable IslandAdminFreezeService freezeService;
+    private final @Nullable IslandMissionsMenu missionsMenu;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -233,6 +235,7 @@ public final class IslandCommandTree {
                 controlMenu,
                 chatService,
                 inactivityService,
+                null,
                 null);
     }
 
@@ -255,6 +258,48 @@ public final class IslandCommandTree {
             @Nullable IslandChatService chatService,
             @Nullable IslandInactivityService inactivityService,
             @Nullable IslandAdminFreezeService freezeService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -276,6 +321,7 @@ public final class IslandCommandTree {
         this.chatService = chatService;
         this.inactivityService = inactivityService;
         this.freezeService = freezeService;
+        this.missionsMenu = missionsMenu;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -287,6 +333,8 @@ public final class IslandCommandTree {
                 .executes(this::executeRoot)
                 .then(Cmd.literal("help").executes(this::executeHelp))
                 .then(Cmd.literal("menu").executes(this::executeMenu))
+                .then(Cmd.literal("missions").executes(this::executeMissions))
+                .then(Cmd.literal("challenges").executes(this::executeMissions))
                 .then(Cmd.literal("create")
                         .executes(ctx ->
                                 executeCreate(ctx, presetCatalog.defaultPreset().id()))
@@ -1150,6 +1198,20 @@ public final class IslandCommandTree {
         } else {
             send(player, Component.text("Island chat spy disabled.", NamedTextColor.YELLOW));
         }
+        return Cmd.OK;
+    }
+
+    private int executeMissions(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can view missions.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (missionsMenu == null) {
+            send(player, Component.text("Missions are not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> missionsMenu.open(player));
         return Cmd.OK;
     }
 }
