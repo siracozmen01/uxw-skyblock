@@ -55,6 +55,11 @@ public final class IslandBankService {
         return islandBankPort.findBankByIslandId(optIslandId.get()).map(IslandBank::primaryBalanceMinorUnits);
     }
 
+    public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        return islandStoragePort.findIslandIdByProfileId(profileId);
+    }
+
     public BankTransactionOutcome deposit(
             ProfileId profileId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
         return execute(profileId, playerUuid, amountMinorUnits, "Player deposit", serverNodeId);

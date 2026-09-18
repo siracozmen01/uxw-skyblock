@@ -7,6 +7,7 @@ import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.application.backup.BackupCatalogPort;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
 import com.uxplima.uxmskyblock.core.application.event.ConsumerInboxPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
@@ -23,6 +24,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.persistence.backup.PlayerBackupCatalogAdapter;
 import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
+import com.uxplima.uxmskyblock.persistence.economy.PlayerEconomySagaAdapter;
 import com.uxplima.uxmskyblock.persistence.event.ConsumerInboxAdapter;
 import com.uxplima.uxmskyblock.persistence.event.TransactionalOutboxAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerInventoryMutationJournalAdapter;
@@ -56,6 +58,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerProfileHandoffFinalizationAdapter handoffFinalizationAdapter;
     private final PlayerProfileSwitchAdapter profileSwitchAdapter;
     private final PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
+    private final PlayerEconomySagaAdapter economySagaAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -77,6 +80,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.handoffFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(database);
         this.profileSwitchAdapter = new PlayerProfileSwitchAdapter(database);
         this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(database);
+        this.economySagaAdapter = new PlayerEconomySagaAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -160,6 +164,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public WorldGridAllocationPort worldGridAllocationPort() {
         return worldGridAllocationAdapter;
+    }
+
+    public EconomySagaPort economySagaPort() {
+        return economySagaAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 10;
+    public static final int LATEST_VERSION = 11;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -53,6 +53,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V10. */
     public static final String V10_DESCRIPTION = "create world grid allocations";
 
+    /** Human-readable description of migration V11. */
+    public static final String V11_DESCRIPTION = "create economy sagas";
+
     private SkyblockMigrations() {}
 
     /**
@@ -79,7 +82,8 @@ public final class SkyblockMigrations {
                 v7Migration(dialect),
                 v8Migration(dialect),
                 v9Migration(dialect),
-                v10Migration(dialect));
+                v10Migration(dialect),
+                v11Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -356,6 +360,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(10, V10_DESCRIPTION, SQLITE_V10_DDL);
             case MYSQL -> new Migration(10, V10_DESCRIPTION, MYSQL_V10_DDL);
             case POSTGRES -> new Migration(10, V10_DESCRIPTION, POSTGRES_V10_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v11Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(11, V11_DESCRIPTION, SQLITE_V11_DDL);
+            case MYSQL -> new Migration(11, V11_DESCRIPTION, MYSQL_V11_DDL);
+            case POSTGRES -> new Migration(11, V11_DESCRIPTION, POSTGRES_V11_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1213,5 +1229,65 @@ public final class SkyblockMigrations {
 
             CREATE INDEX idx_grid_coords ON world_grid_allocations (world_name, center_x, center_z);
             CREATE INDEX idx_grid_island ON world_grid_allocations (island_id);
+            """;
+
+    private static final String SQLITE_V11_DDL = """
+            CREATE TABLE IF NOT EXISTS economy_sagas (
+                saga_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                player_uuid VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                saga_type VARCHAR(32) NOT NULL,
+                state VARCHAR(32) NOT NULL,
+                amount_minor_units BIGINT NOT NULL,
+                currency VARCHAR(32) NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_economy_sagas_state ON economy_sagas (state, expires_at);
+            CREATE INDEX IF NOT EXISTS idx_economy_sagas_player ON economy_sagas (player_uuid, profile_id);
+            CREATE INDEX IF NOT EXISTS idx_economy_sagas_island ON economy_sagas (island_id);
+            """;
+
+    private static final String MYSQL_V11_DDL = """
+            CREATE TABLE IF NOT EXISTS economy_sagas (
+                saga_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                player_uuid VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                saga_type VARCHAR(32) NOT NULL,
+                state VARCHAR(32) NOT NULL,
+                amount_minor_units BIGINT NOT NULL,
+                currency VARCHAR(32) NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_economy_sagas_state ON economy_sagas (state, expires_at);
+            CREATE INDEX idx_economy_sagas_player ON economy_sagas (player_uuid, profile_id);
+            CREATE INDEX idx_economy_sagas_island ON economy_sagas (island_id);
+            """;
+
+    private static final String POSTGRES_V11_DDL = """
+            CREATE TABLE IF NOT EXISTS economy_sagas (
+                saga_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                player_uuid VARCHAR(36) NOT NULL,
+                profile_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                saga_type VARCHAR(32) NOT NULL,
+                state VARCHAR(32) NOT NULL,
+                amount_minor_units BIGINT NOT NULL,
+                currency VARCHAR(32) NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_economy_sagas_state ON economy_sagas (state, expires_at);
+            CREATE INDEX idx_economy_sagas_player ON economy_sagas (player_uuid, profile_id);
+            CREATE INDEX idx_economy_sagas_island ON economy_sagas (island_id);
             """;
 }

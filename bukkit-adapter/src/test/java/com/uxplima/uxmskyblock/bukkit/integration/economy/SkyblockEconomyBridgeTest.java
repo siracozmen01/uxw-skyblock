@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -19,6 +20,7 @@ import org.bukkit.entity.Player;
 
 import com.uxplima.uxmlib.hook.economy.EconomyBridge;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.economy.EconomySagaCoordinator;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransaction;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -71,6 +73,7 @@ class SkyblockEconomyBridgeTest {
                 10000L,
                 "Test",
                 Instant.now());
+        when(mockBankService.findIslandIdByProfileId(profileId)).thenReturn(Optional.of(islandId));
     }
 
     @Test
@@ -166,6 +169,56 @@ class SkyblockEconomyBridgeTest {
         assertThat(outcomeRef.get()).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
         // Bank deposit called to refund the bank
         verify(mockBankService).deposit(eq(profileId), any(PlayerUuid.class), eq(2500L), eq(nodeId));
+    }
+
+    @Test
+    @DisplayName("deposit with saga coordinator routes through executeDeposit")
+    void depositWithSagaCoordinatorRoutesCorrectly() {
+        EconomySagaCoordinator mockCoordinator = mock(EconomySagaCoordinator.class);
+        SkyblockEconomyBridge sagaBridge =
+                new SkyblockEconomyBridge(mockEconomy, mockBankService, directScheduler, mockCoordinator);
+
+        when(mockEconomy.isPresent()).thenReturn(false);
+        when(mockCoordinator.executeDeposit(
+                        any(),
+                        any(PlayerUuid.class),
+                        eq(profileId),
+                        eq(islandId),
+                        eq(5000L),
+                        eq("VAULT"),
+                        eq(nodeId),
+                        any(Instant.class)))
+                .thenReturn(new BankTransactionOutcome.Success(sampleBank, sampleTx));
+
+        AtomicReference<BankTransactionOutcome> outcomeRef = new AtomicReference<>();
+        sagaBridge.depositToIslandBank(mockPlayer, profileId, 50, nodeId, outcomeRef::set);
+
+        assertThat(outcomeRef.get()).isInstanceOf(BankTransactionOutcome.Success.class);
+        verify(mockCoordinator)
+                .executeDeposit(
+                        any(),
+                        any(PlayerUuid.class),
+                        eq(profileId),
+                        eq(islandId),
+                        eq(5000L),
+                        eq("VAULT"),
+                        eq(nodeId),
+                        any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("recoverPendingSagas delegates to saga coordinator")
+    void recoverPendingSagasDelegates() {
+        EconomySagaCoordinator mockCoordinator = mock(EconomySagaCoordinator.class);
+        SkyblockEconomyBridge sagaBridge =
+                new SkyblockEconomyBridge(mockEconomy, mockBankService, directScheduler, mockCoordinator);
+
+        when(mockCoordinator.recoverIncompleteSagas(any(Instant.class), eq(nodeId)))
+                .thenReturn(3);
+
+        int recovered = sagaBridge.recoverPendingSagas(nodeId);
+        assertThat(recovered).isEqualTo(3);
+        verify(mockCoordinator).recoverIncompleteSagas(any(Instant.class), eq(nodeId));
     }
 
     private static class DirectSchedulerPort implements SchedulerPort {

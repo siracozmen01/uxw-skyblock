@@ -103,6 +103,7 @@ class ProductionMigrationFastLaneTest {
                                 "outbox_events",
                                 "consumer_inbox",
                                 "world_grid_allocations",
+                                "economy_sagas",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -382,6 +383,22 @@ class ProductionMigrationFastLaneTest {
                                 "island_id",
                                 "allocated_by_node",
                                 "allocated_at");
+
+                // economy_sagas columns (V11)
+                Set<String> sagaCols = getColumnNames(meta, "economy_sagas");
+                assertThat(sagaCols)
+                        .containsExactlyInAnyOrder(
+                                "saga_id",
+                                "player_uuid",
+                                "profile_id",
+                                "island_id",
+                                "saga_type",
+                                "state",
+                                "amount_minor_units",
+                                "currency",
+                                "expires_at",
+                                "created_at",
+                                "updated_at");
             }
         }
     }
@@ -1171,8 +1188,8 @@ class ProductionMigrationFastLaneTest {
                         """);
             }
 
-            // 4. Upgrade by applying all migrations (only V10 should be applied)
-            int v10Applied = runner.apply(allMigrations);
+            // 4. Upgrade by applying V10 migration (only V10 should be applied)
+            int v10Applied = runner.apply(allMigrations.subList(0, 10));
             assertThat(v10Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(10);
 
@@ -1194,9 +1211,75 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 7. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 10));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(10);
+        }
+    }
+
+    @Test
+    @DisplayName("14. Step-by-step upgrade from V10 to V11 preserves data and adds economy_sagas")
+    void stepByStepUpgradeFromV10ToV11PreservesData() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V10
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v10Applied = runner.apply(allMigrations.subList(0, 10));
+            assertThat(v10Applied).isEqualTo(10);
+            assertThat(runner.currentVersion()).isEqualTo(10);
+
+            // 2. Verify pre-V11 schema state: economy_sagas does NOT exist
+            try (Connection conn = db.connection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "economy_sagas", null)) {
+                    assertThat(rs.next()).isFalse();
+                }
+            }
+
+            // 3. Seed V10 data
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, "INSERT INTO player_accounts (player_uuid) VALUES ('p-v11-upg')");
+                execute(conn, "INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-v11', 'p-v11-upg')");
+                execute(conn, """
+                        INSERT INTO islands (id, owner_profile_id, owner_account_uuid)
+                        VALUES ('isl-v11', 'prof-v11', 'p-v11-upg')
+                        """);
+                execute(conn, """
+                        INSERT INTO world_grid_allocations (
+                            sequence_index, world_name, center_x, center_z, island_id, allocated_by_node
+                        ) VALUES (1, 'world', 100, 100, 'isl-v11', 'node-1')
+                        """);
+            }
+
+            // 4. Upgrade by applying all migrations (only V11 should be applied)
+            int v11Applied = runner.apply(allMigrations);
+            assertThat(v11Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(11);
+
+            // 5. Verify seeded data preserved
+            try (Connection conn = db.connection()) {
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM islands WHERE id = 'isl-v11'"))
+                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM world_grid_allocations WHERE sequence_index = 1"))
+                        .isEqualTo(1);
+
+                // 6. Verify economy_sagas accepts rows
+                execute(conn, """
+                        INSERT INTO economy_sagas (
+                            saga_id, player_uuid, profile_id, island_id, saga_type, state,
+                            amount_minor_units, currency, expires_at
+                        ) VALUES ('saga-1', 'p-v11-upg', 'prof-v11', 'isl-v11', 'DEPOSIT', 'STARTED', 1000, 'VAULT', CURRENT_TIMESTAMP)
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM economy_sagas WHERE saga_id = 'saga-1'"))
+                        .isEqualTo(1);
+            }
+
+            // 7. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(11);
         }
     }
 

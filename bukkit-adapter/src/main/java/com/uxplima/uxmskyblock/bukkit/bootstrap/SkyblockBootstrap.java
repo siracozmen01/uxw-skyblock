@@ -140,7 +140,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 sessionCoordinator,
                 worldName);
 
-        this.economyBridge = SkyblockEconomyBridge.createDefault(bankService, scheduler);
+        this.economyBridge =
+                SkyblockEconomyBridge.createDefault(bankService, scheduler, persistenceBootstrap.economySagaPort());
 
         this.controlMenu = new IslandControlMenu(
                 persistenceBootstrap.islandStoragePort(),
@@ -279,6 +280,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         commandTree.register(plugin);
         apiBridge.register();
+        economyBridge.recoverPendingSagas(nodeConfiguration.nodeId());
     }
 
     public PersistenceBootstrap persistenceBootstrap() {
