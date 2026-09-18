@@ -31,6 +31,7 @@ import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
+import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
 import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
@@ -46,6 +47,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ChatFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.FreezeFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RewardInboxFeatureModule;
@@ -67,6 +69,7 @@ import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
+import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
@@ -154,6 +157,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandChatListener chatListener;
     private final InactivityConfiguration inactivityConfig;
     private final IslandInactivityService inactivityService;
+    private final BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter;
+    private final IslandAdminFreezeService freezeService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -218,6 +223,13 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.temporaryAccessService = new TemporaryAccessService(persistenceBootstrap.temporaryAccessStoragePort());
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
+        this.visitorEvictionAdapter =
+                new BukkitIslandVisitorEvictionAdapter(plugin, persistenceBootstrap.islandStoragePort(), scheduler);
+        this.freezeService = new IslandAdminFreezeService(
+                persistenceBootstrap.islandStoragePort(),
+                persistenceBootstrap.islandAdminFreezePort(),
+                visitorEvictionAdapter,
+                persistenceBootstrap.outboxPort());
         this.accessService = new IslandAccessService();
         this.presetCatalog = new StarterPresetCatalog();
         this.schematicEngine = new StarterSchematicEngine();
@@ -292,7 +304,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 vaultConfig.leaseDuration());
 
         this.protectionListener = new IslandProtectionListener(
-                persistenceBootstrap.islandStoragePort(), accessService, allianceService, temporaryAccessService);
+                persistenceBootstrap.islandStoragePort(),
+                accessService,
+                allianceService,
+                temporaryAccessService,
+                freezeService);
 
         String worldName = nodeConfiguration.worldName();
         ServerNodeId serverNodeId = nodeConfiguration.nodeId();
@@ -385,7 +401,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 economyBridge,
                 controlMenu,
                 chatService,
-                inactivityService);
+                inactivityService,
+                freezeService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -494,6 +511,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new ChatFeatureModule(chatService, chatConfig));
         this.moduleRegistry.register(new InactivityFeatureModule(
                 inactivityService, scheduler, inactivityConfig, nodeConfiguration.worldName()));
+        this.moduleRegistry.register(new FreezeFeatureModule(freezeService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1374,6 +1392,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public InactivityConfiguration inactivityConfiguration() {
         return inactivityConfig;
+    }
+
+    public IslandAdminFreezeService freezeService() {
+        return freezeService;
+    }
+
+    public BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter() {
+        return visitorEvictionAdapter;
     }
 
     @Override

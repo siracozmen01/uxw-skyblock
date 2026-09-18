@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -493,5 +494,55 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
         BlockBreakEvent eventAfter = new BlockBreakEvent(block, visitorPlayer);
         customListener.onBlockBreak(eventAfter);
         assertThat(eventAfter.isCancelled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("frozen island blocks modifications for non-staff players")
+    void frozenIslandBlocksActionsForNormalPlayers() {
+        Island frozenIsland = island.freeze("Staff quarantine investigation");
+        listener.cacheIsland(frozenIsland);
+
+        Block block = world.getBlockAt(50, 64, 50);
+        block.setType(Material.STONE);
+
+        // Block break blocked
+        BlockBreakEvent breakEvent = new BlockBreakEvent(block, ownerPlayer);
+        listener.onBlockBreak(breakEvent);
+        assertThat(breakEvent.isCancelled()).isTrue();
+
+        // Block place blocked
+        BlockPlaceEvent placeEvent = new BlockPlaceEvent(
+                block, block.getState(), block, new ItemStack(Material.STONE), ownerPlayer, true, EquipmentSlot.HAND);
+        listener.onBlockPlace(placeEvent);
+        assertThat(placeEvent.isCancelled()).isTrue();
+
+        // Interact blocked
+        PlayerInteractEvent interactEvent = new PlayerInteractEvent(
+                ownerPlayer,
+                Action.RIGHT_CLICK_BLOCK,
+                new ItemStack(Material.STICK),
+                block,
+                org.bukkit.block.BlockFace.UP);
+        listener.onPlayerInteract(interactEvent);
+        assertThat(interactEvent.isCancelled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("frozen island allows staff inspector to modify and inspect")
+    void frozenIslandAllowsStaffInspector() {
+        Island frozenIsland = island.freeze("Staff quarantine investigation");
+        listener.cacheIsland(frozenIsland);
+
+        PlayerMock staffPlayer = createPlayer("StaffInspector");
+        staffPlayer.addAttachment(
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), CatalogPermissions.ADMIN_INSPECT.node(), true);
+        listener.setActiveProfile(new PlayerUuid(staffPlayer.getUniqueId()), new ProfileId(staffPlayer.getUniqueId()));
+
+        Block block = world.getBlockAt(50, 64, 50);
+        block.setType(Material.STONE);
+
+        BlockBreakEvent breakEvent = new BlockBreakEvent(block, staffPlayer);
+        listener.onBlockBreak(breakEvent);
+        assertThat(breakEvent.isCancelled()).isFalse();
     }
 }

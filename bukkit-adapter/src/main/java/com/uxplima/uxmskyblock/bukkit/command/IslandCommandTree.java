@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -17,6 +18,7 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -33,6 +35,7 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
+import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -50,6 +53,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inactivity.IslandInactivityScanReport;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
@@ -83,6 +87,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandControlMenu controlMenu;
     private final @Nullable IslandChatService chatService;
     private final @Nullable IslandInactivityService inactivityService;
+    private final @Nullable IslandAdminFreezeService freezeService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -188,6 +193,7 @@ public final class IslandCommandTree {
                 economyBridge,
                 controlMenu,
                 chatService,
+                null,
                 null);
     }
 
@@ -209,6 +215,46 @@ public final class IslandCommandTree {
             @Nullable IslandControlMenu controlMenu,
             @Nullable IslandChatService chatService,
             @Nullable IslandInactivityService inactivityService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -229,6 +275,7 @@ public final class IslandCommandTree {
         this.controlMenu = controlMenu;
         this.chatService = chatService;
         this.inactivityService = inactivityService;
+        this.freezeService = freezeService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -278,9 +325,30 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("spy").executes(this::executeSpyToggle))
                 .then(Cmd.literal("admin")
                         .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                                || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
+                                || src.getSender().hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
                                 || src.getSender().isOp())
                         .then(Cmd.literal("inactivity")
-                                .then(Cmd.literal("scan").executes(this::executeAdminInactivityScan))));
+                                .then(Cmd.literal("scan").executes(this::executeAdminInactivityScan)))
+                        .then(Cmd.literal("freeze")
+                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
+                                        || src.getSender().isOp())
+                                .then(Cmd.argument("target", StringArgumentType.word())
+                                        .executes(ctx -> executeAdminFreeze(ctx, "Administrative quarantine"))
+                                        .then(Cmd.argument("reason", StringArgumentType.greedyString())
+                                                .executes(ctx -> executeAdminFreeze(
+                                                        ctx, StringArgumentType.getString(ctx, "reason"))))))
+                        .then(Cmd.literal("unfreeze")
+                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
+                                        || src.getSender().isOp())
+                                .then(Cmd.argument("target", StringArgumentType.word())
+                                        .executes(this::executeAdminUnfreeze)))
+                        .then(Cmd.literal("inspect")
+                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
+                                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
+                                        || src.getSender().isOp())
+                                .then(Cmd.argument("target", StringArgumentType.word())
+                                        .executes(this::executeAdminInspect))));
 
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
@@ -334,10 +402,25 @@ public final class IslandCommandTree {
                         "/is chat <message> (or /is c <msg>) - Send message to island team", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is spy - Toggle island chat staff spy", NamedTextColor.YELLOW));
         if (src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
+                || src.getSender().hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
                 || src.getSender().isOp()) {
             send(
                     src.getSender(),
                     Component.text("/is admin inactivity scan - Trigger manual inactivity scan", NamedTextColor.RED));
+            send(
+                    src.getSender(),
+                    Component.text(
+                            "/is admin freeze <target> [reason] - Quarantine and freeze island", NamedTextColor.RED));
+            send(
+                    src.getSender(),
+                    Component.text(
+                            "/is admin unfreeze <target> - Lift quarantine and unfreeze island", NamedTextColor.RED));
+            send(
+                    src.getSender(),
+                    Component.text(
+                            "/is admin inspect <target> - Inspect island dimensions and quarantine state",
+                            NamedTextColor.RED));
         }
         return Cmd.OK;
     }
@@ -367,6 +450,176 @@ public final class IslandCommandTree {
             } catch (Exception e) {
                 send(src.getSender(), Component.text("Inactivity scan failed: " + e.getMessage(), NamedTextColor.RED));
             }
+        });
+        return Cmd.OK;
+    }
+
+    private Optional<IslandId> resolveIslandId(String target) {
+        try {
+            return Optional.of(IslandId.of(UUID.fromString(target)));
+        } catch (IllegalArgumentException notUuid) {
+            Player online = Bukkit.getPlayerExact(target);
+            if (online != null) {
+                ProfileId profileId = activeProfile(online);
+                Optional<IslandId> id = islandLocationService.findIslandId(profileId);
+                if (id.isPresent()) {
+                    return id;
+                }
+            }
+            @SuppressWarnings("deprecation")
+            OfflinePlayer offline = Bukkit.getOfflinePlayer(target);
+            if (offline.hasPlayedBefore() || offline.isOnline()) {
+                ProfileId profileId = new ProfileId(offline.getUniqueId());
+                return islandLocationService.findIslandId(profileId);
+            }
+            return Optional.empty();
+        }
+    }
+
+    private int executeAdminFreeze(CommandContext<CommandSourceStack> ctx, String reason) {
+        CommandSourceStack src = ctx.getSource();
+        if (freezeService == null) {
+            send(src.getSender(), Component.text("Freeze service is not enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        String target = StringArgumentType.getString(ctx, "target");
+        String actor = src.getSender().getName();
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optId = resolveIslandId(target);
+            if (optId.isEmpty()) {
+                send(
+                        src.getSender(),
+                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
+                return;
+            }
+
+            IslandId islandId = optId.get();
+            try {
+                freezeService.freezeIsland(islandId, reason, actor);
+                protectionListener.invalidateIsland(islandId);
+                send(
+                        src.getSender(),
+                        MiniMessage.miniMessage()
+                                .deserialize(
+                                        "<green>Successfully quarantined and froze island <yellow>" + islandId.value()
+                                                + "</yellow> with reason: <aqua>" + reason + "</aqua></green>"));
+            } catch (Exception e) {
+                send(src.getSender(), Component.text("Failed to freeze island: " + e.getMessage(), NamedTextColor.RED));
+            }
+        });
+        return Cmd.OK;
+    }
+
+    private int executeAdminUnfreeze(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        if (freezeService == null) {
+            send(src.getSender(), Component.text("Freeze service is not enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        String target = StringArgumentType.getString(ctx, "target");
+        String actor = src.getSender().getName();
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optId = resolveIslandId(target);
+            if (optId.isEmpty()) {
+                send(
+                        src.getSender(),
+                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
+                return;
+            }
+
+            IslandId islandId = optId.get();
+            try {
+                freezeService.unfreezeIsland(islandId, actor);
+                protectionListener.invalidateIsland(islandId);
+                send(
+                        src.getSender(),
+                        MiniMessage.miniMessage()
+                                .deserialize(
+                                        "<green>Successfully lifted administrative quarantine and unfroze island <yellow>"
+                                                + islandId.value() + "</yellow></green>"));
+            } catch (Exception e) {
+                send(
+                        src.getSender(),
+                        Component.text("Failed to unfreeze island: " + e.getMessage(), NamedTextColor.RED));
+            }
+        });
+        return Cmd.OK;
+    }
+
+    private int executeAdminInspect(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        String target = StringArgumentType.getString(ctx, "target");
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optId = resolveIslandId(target);
+            if (optId.isEmpty()) {
+                send(
+                        src.getSender(),
+                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
+                return;
+            }
+
+            IslandId islandId = optId.get();
+            Optional<Island> optIsland = freezeService != null ? freezeService.findIsland(islandId) : Optional.empty();
+            if (optIsland.isEmpty()) {
+                send(
+                        src.getSender(),
+                        Component.text("Island record not found: " + islandId.value(), NamedTextColor.RED));
+                return;
+            }
+
+            Island island = optIsland.get();
+            Optional<IslandLocation> optLoc = freezeService.findLocation(islandId);
+
+            send(
+                    src.getSender(),
+                    MiniMessage.miniMessage()
+                            .deserialize("<gold>--- Island Inspection: <yellow>" + islandId.value()
+                                    + "</yellow> ---</gold>"));
+            send(
+                    src.getSender(),
+                    MiniMessage.miniMessage()
+                            .deserialize("<gray>Owner UUID: <white>"
+                                    + island.ownerPlayerUuid().value() + "</white></gray>"));
+            send(
+                    src.getSender(),
+                    MiniMessage.miniMessage()
+                            .deserialize("<gray>Lifecycle: <green>"
+                                    + island.lifecycle().name() + "</green></gray>"));
+            send(
+                    src.getSender(),
+                    MiniMessage.miniMessage()
+                            .deserialize("<gray>Economic State: <aqua>"
+                                    + island.economicState().name() + "</aqua></gray>"));
+            String adminColor = island.isFrozen() ? "<red><bold>FROZEN</bold></red>" : "<green>NORMAL</green>";
+            send(
+                    src.getSender(),
+                    MiniMessage.miniMessage().deserialize("<gray>Administrative State: " + adminColor + "</gray>"));
+            if (island.isFrozen()) {
+                send(
+                        src.getSender(),
+                        MiniMessage.miniMessage()
+                                .deserialize("<gray>Freeze Reason: <yellow>"
+                                        + (island.freezeReason() != null ? island.freezeReason() : "None")
+                                        + "</yellow></gray>"));
+            }
+            send(
+                    src.getSender(),
+                    MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<gray>Members: <white>" + island.members().size() + "</white> | Roles: <white>"
+                                            + island.roles().size() + "</white></gray>"));
+            optLoc.ifPresent(loc -> send(
+                    src.getSender(),
+                    MiniMessage.miniMessage()
+                            .deserialize("<gray>Location: <white>" + loc.worldName() + " ("
+                                    + loc.bounds().centerX() + ", "
+                                    + loc.bounds().centerZ() + ") radius="
+                                    + loc.bounds().radius() + "</white></gray>")));
         });
         return Cmd.OK;
     }

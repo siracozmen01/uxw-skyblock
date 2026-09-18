@@ -15,6 +15,8 @@ public enum CatalogPermissions {
     ADMIN_BYPASS("uxmskyblock.admin.bypass", "Bypass all island protection and boundaries", PermissionDefault.OP),
     ADMIN_RELOAD("uxmskyblock.admin.reload", "Reload plugin configuration", PermissionDefault.OP),
     ADMIN_MANAGE("uxmskyblock.admin.manage", "Administrative island management", PermissionDefault.OP),
+    ADMIN_FREEZE("uxmskyblock.admin.freeze", "Freeze and unfreeze islands administratively", PermissionDefault.OP),
+    ADMIN_INSPECT("uxmskyblock.admin.inspect", "Inspect and bypass frozen island quarantines", PermissionDefault.OP),
 
     ISLAND_CREATE("uxmskyblock.island.create", "Create a new skyblock island", PermissionDefault.TRUE),
     ISLAND_DELETE("uxmskyblock.island.delete", "Delete an island", PermissionDefault.TRUE),

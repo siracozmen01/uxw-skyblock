@@ -16,10 +16,14 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+
+import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
+import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
@@ -42,6 +46,7 @@ public final class IslandProtectionListener implements Listener {
     private final IslandAccessService accessService;
     private final @Nullable IslandAllianceService allianceService;
     private final @Nullable TemporaryAccessService temporaryAccessService;
+    private volatile @Nullable IslandAdminFreezeService freezeService;
     private final Map<PlayerUuid, ProfileId> activeProfiles = new ConcurrentHashMap<>();
     private final Map<IslandId, Island> cachedIslands = new ConcurrentHashMap<>();
 
@@ -53,22 +58,50 @@ public final class IslandProtectionListener implements Listener {
             IslandStoragePort islandStoragePort,
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService,
-            @Nullable TemporaryAccessService temporaryAccessService) {
+            @Nullable TemporaryAccessService temporaryAccessService,
+            @Nullable IslandAdminFreezeService freezeService) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
         this.accessService = Objects.requireNonNull(accessService, "accessService");
         this.allianceService = allianceService;
         this.temporaryAccessService = temporaryAccessService;
+        this.freezeService = freezeService;
+    }
+
+    public IslandProtectionListener(
+            IslandStoragePort islandStoragePort,
+            IslandAccessService accessService,
+            @Nullable IslandAllianceService allianceService,
+            @Nullable TemporaryAccessService temporaryAccessService) {
+        this(islandStoragePort, accessService, allianceService, temporaryAccessService, null);
     }
 
     public IslandProtectionListener(
             IslandStoragePort islandStoragePort,
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService) {
-        this(islandStoragePort, accessService, allianceService, null);
+        this(islandStoragePort, accessService, allianceService, null, null);
     }
 
     public IslandProtectionListener(IslandStoragePort islandStoragePort, IslandAccessService accessService) {
-        this(islandStoragePort, accessService, null);
+        this(islandStoragePort, accessService, null, null, null);
+    }
+
+    public void setFreezeService(@Nullable IslandAdminFreezeService freezeService) {
+        this.freezeService = freezeService;
+    }
+
+    private boolean isStaffInspector(Player player) {
+        return player.isOp()
+                || player.hasPermission("uxmskyblock.admin.bypass")
+                || player.hasPermission("uxmskyblock.admin.inspect")
+                || player.hasPermission("uxmskyblock.admin.freeze");
+    }
+
+    private boolean isIslandFrozen(Island island) {
+        if (freezeService != null) {
+            return freezeService.isFrozen(island.id()) || island.isFrozen();
+        }
+        return island.isFrozen();
     }
 
     public IslandStoragePort islandStoragePort() {
@@ -166,6 +199,15 @@ public final class IslandProtectionListener implements Listener {
         }
 
         findIslandAt(event.getBlock().getLocation()).ifPresent(island -> {
+            if (isIslandFrozen(island)) {
+                if (!isStaffInspector(player)) {
+                    event.setCancelled(true);
+                    player.sendMessage(MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                }
+                return;
+            }
             PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
             ProfileId profileId = activeProfiles.get(playerUuid);
             if (profileId == null
@@ -185,6 +227,15 @@ public final class IslandProtectionListener implements Listener {
         }
 
         findIslandAt(event.getBlock().getLocation()).ifPresent(island -> {
+            if (isIslandFrozen(island)) {
+                if (!isStaffInspector(player)) {
+                    event.setCancelled(true);
+                    player.sendMessage(MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                }
+                return;
+            }
             PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
             ProfileId profileId = activeProfiles.get(playerUuid);
             if (profileId == null
@@ -207,6 +258,15 @@ public final class IslandProtectionListener implements Listener {
         }
 
         findIslandAt(event.getClickedBlock().getLocation()).ifPresent(island -> {
+            if (isIslandFrozen(island)) {
+                if (!isStaffInspector(player)) {
+                    event.setCancelled(true);
+                    player.sendMessage(MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                }
+                return;
+            }
             PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
             ProfileId profileId = activeProfiles.get(playerUuid);
             if (profileId == null
@@ -225,6 +285,16 @@ public final class IslandProtectionListener implements Listener {
                 return;
             }
             findIslandAt(event.getEntity().getLocation()).ifPresent(island -> {
+                if (isIslandFrozen(island)) {
+                    if (!isStaffInspector(damager)) {
+                        event.setCancelled(true);
+                        damager.sendMessage(
+                                MiniMessage.miniMessage()
+                                        .deserialize(
+                                                "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                    }
+                    return;
+                }
                 if (!island.flags().isEnabled(IslandFlags.PVP)) {
                     event.setCancelled(true);
                     return;
@@ -244,5 +314,20 @@ public final class IslandProtectionListener implements Listener {
                 }
             });
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+        if (isStaffInspector(player)) {
+            return;
+        }
+        findIslandAt(player.getLocation()).ifPresent(island -> {
+            if (isIslandFrozen(island)) {
+                event.setCancelled(true);
+                player.sendMessage(MiniMessage.miniMessage()
+                        .deserialize("<red>This island is under administrative freeze and cannot be modified.</red>"));
+            }
+        });
     }
 }

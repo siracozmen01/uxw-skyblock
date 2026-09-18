@@ -21,26 +21,33 @@ import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
+import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezePort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.AdministrativeState;
+import com.uxplima.uxmskyblock.core.domain.island.EconomicState;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
+import com.uxplima.uxmskyblock.core.domain.island.IslandLifecycle;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
+import com.uxplima.uxmskyblock.core.domain.island.ResidencyState;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Production SQL persistence adapter implementing {@link IslandStoragePort} and {@link IslandAuthorityPort}.
+ * Production SQL persistence adapter implementing {@link IslandStoragePort}, {@link IslandAuthorityPort}, and {@link IslandAdminFreezePort}.
  */
-public final class PlayerIslandStorageAdapter implements IslandStoragePort, IslandAuthorityPort {
+public final class PlayerIslandStorageAdapter implements IslandStoragePort, IslandAuthorityPort, IslandAdminFreezePort {
 
     private final Database database;
     private final Dialect dialect;
@@ -159,11 +166,24 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
         }
 
         if (exists) {
-            try (PreparedStatement updateStmt = conn.prepareStatement(
-                    "UPDATE islands SET owner_profile_id = ?, owner_account_uuid = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")) {
+            try (PreparedStatement updateStmt = conn.prepareStatement("""
+                    UPDATE islands SET
+                        owner_profile_id = ?,
+                        owner_account_uuid = ?,
+                        lifecycle = ?,
+                        economic_state = ?,
+                        administrative_state = ?,
+                        freeze_reason = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """)) {
                 updateStmt.setString(1, island.ownerProfileId().value().toString());
                 updateStmt.setString(2, island.ownerPlayerUuid().value().toString());
-                updateStmt.setString(3, island.id().value().toString());
+                updateStmt.setString(3, island.lifecycle().name());
+                updateStmt.setString(4, island.economicState().name());
+                updateStmt.setString(5, island.administrativeState().name());
+                updateStmt.setString(6, island.freezeReason());
+                updateStmt.setString(7, island.id().value().toString());
                 updateStmt.executeUpdate();
             }
         } else {
@@ -172,12 +192,16 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
                         id, owner_profile_id, owner_account_uuid, custom_name, lifecycle,
                         economic_state, administrative_state, freeze_reason, level_score,
                         net_worth_minor_units, version, created_at, updated_at
-                    ) VALUES (?, ?, ?, NULL, 'ACTIVE', 'NORMAL', 'NORMAL', NULL, 0, 0, 1, ?, CURRENT_TIMESTAMP)
+                    ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 0, 0, 1, ?, CURRENT_TIMESTAMP)
                     """)) {
                 insertStmt.setString(1, island.id().value().toString());
                 insertStmt.setString(2, island.ownerProfileId().value().toString());
                 insertStmt.setString(3, island.ownerPlayerUuid().value().toString());
-                insertStmt.setTimestamp(4, Timestamp.from(island.createdAt()));
+                insertStmt.setString(4, island.lifecycle().name());
+                insertStmt.setString(5, island.economicState().name());
+                insertStmt.setString(6, island.administrativeState().name());
+                insertStmt.setString(7, island.freezeReason());
+                insertStmt.setTimestamp(8, Timestamp.from(island.createdAt()));
                 insertStmt.executeUpdate();
             }
         }
@@ -410,9 +434,13 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
         PlayerUuid ownerUuid;
         ProfileId ownerProfileId;
         Instant createdAt;
+        IslandLifecycle lifecycle;
+        EconomicState economicState;
+        AdministrativeState administrativeState;
+        String freezeReason;
 
         try (PreparedStatement stmt = conn.prepareStatement(
-                "SELECT owner_profile_id, owner_account_uuid, created_at FROM islands WHERE id = ?")) {
+                "SELECT owner_profile_id, owner_account_uuid, created_at, lifecycle, economic_state, administrative_state, freeze_reason FROM islands WHERE id = ?")) {
             stmt.setString(1, islandIdStr);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) {
@@ -421,6 +449,22 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
                 ownerProfileId = ProfileId.of(UUID.fromString(rs.getString("owner_profile_id")));
                 ownerUuid = PlayerUuid.of(UUID.fromString(rs.getString("owner_account_uuid")));
                 createdAt = rs.getTimestamp("created_at").toInstant();
+                try {
+                    lifecycle = IslandLifecycle.valueOf(rs.getString("lifecycle"));
+                } catch (Exception e) {
+                    lifecycle = IslandLifecycle.ACTIVE;
+                }
+                try {
+                    economicState = EconomicState.valueOf(rs.getString("economic_state"));
+                } catch (Exception e) {
+                    economicState = EconomicState.NORMAL;
+                }
+                try {
+                    administrativeState = AdministrativeState.valueOf(rs.getString("administrative_state"));
+                } catch (Exception e) {
+                    administrativeState = AdministrativeState.NORMAL;
+                }
+                freezeReason = rs.getString("freeze_reason");
             }
         }
 
@@ -454,7 +498,20 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
         // Load flags
         IslandFlags flags = loadFlags(conn, islandIdStr);
 
-        return Optional.of(new Island(id, bounds, ownerUuid, ownerProfileId, members, roles, flags, createdAt));
+        return Optional.of(new Island(
+                id,
+                bounds,
+                ownerUuid,
+                ownerProfileId,
+                members,
+                roles,
+                flags,
+                createdAt,
+                lifecycle,
+                ResidencyState.UNLOADED,
+                economicState,
+                administrativeState,
+                freezeReason));
     }
 
     private Map<String, IslandRole> loadRoles(Connection conn, String islandIdStr) throws SQLException {
@@ -805,6 +862,86 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
             }
         } catch (SQLException e) {
             throw new IslandPersistenceException("Failed to query authority for island: " + islandId, e);
+        }
+    }
+
+    @Override
+    public void updateAdministrativeState(IslandId islandId, AdministrativeState state, @Nullable String freezeReason) {
+        Objects.requireNonNull(islandId, "islandId");
+        Objects.requireNonNull(state, "state");
+        String sql =
+                "UPDATE islands SET administrative_state = ?, freeze_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, state.name());
+            stmt.setString(2, freezeReason);
+            stmt.setString(3, islandId.value().toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new IslandPersistenceException("Failed to update administrative state for island: " + islandId, e);
+        }
+    }
+
+    @Override
+    public void updateEconomicState(IslandId islandId, EconomicState state) {
+        Objects.requireNonNull(islandId, "islandId");
+        Objects.requireNonNull(state, "state");
+        String sql = "UPDATE islands SET economic_state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, state.name());
+            stmt.setString(2, islandId.value().toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new IslandPersistenceException("Failed to update economic state for island: " + islandId, e);
+        }
+    }
+
+    @Override
+    public void updateLifecycle(IslandId islandId, IslandLifecycle lifecycle) {
+        Objects.requireNonNull(islandId, "islandId");
+        Objects.requireNonNull(lifecycle, "lifecycle");
+        String sql = "UPDATE islands SET lifecycle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, lifecycle.name());
+            stmt.setString(2, islandId.value().toString());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new IslandPersistenceException("Failed to update lifecycle for island: " + islandId, e);
+        }
+    }
+
+    @Override
+    public Optional<IslandFreezeRecord> findFreezeRecord(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId");
+        String sql = "SELECT administrative_state, freeze_reason, updated_at FROM islands WHERE id = ?";
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, islandId.value().toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                AdministrativeState adminState;
+                try {
+                    adminState = AdministrativeState.valueOf(rs.getString("administrative_state"));
+                } catch (Exception e) {
+                    adminState = AdministrativeState.NORMAL;
+                }
+                String reason = rs.getString("freeze_reason");
+                Timestamp ts = rs.getTimestamp("updated_at");
+                Instant updatedAt = ts != null ? ts.toInstant() : Instant.now();
+
+                if (adminState == AdministrativeState.FROZEN) {
+                    return Optional.of(IslandFreezeRecord.frozen(
+                            islandId, reason != null ? reason : "Administrative quarantine", null, updatedAt));
+                } else {
+                    return Optional.of(IslandFreezeRecord.normal(islandId, updatedAt));
+                }
+            }
+        } catch (SQLException e) {
+            throw new IslandPersistenceException("Failed to query freeze record for island: " + islandId, e);
         }
     }
 }

@@ -12,6 +12,7 @@ import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
 import com.uxplima.uxmskyblock.core.application.event.ConsumerInboxPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
+import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezePort;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinalizationPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
@@ -143,6 +144,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
     }
 
     public IslandAuthorityPort islandAuthorityPort() {
+        return islandStorageAdapter;
+    }
+
+    public IslandAdminFreezePort islandAdminFreezePort() {
         return islandStorageAdapter;
     }
 

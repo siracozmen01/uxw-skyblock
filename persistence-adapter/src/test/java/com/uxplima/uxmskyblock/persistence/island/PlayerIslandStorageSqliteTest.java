@@ -11,14 +11,18 @@ import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
+import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.AdministrativeState;
+import com.uxplima.uxmskyblock.core.domain.island.EconomicState;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
+import com.uxplima.uxmskyblock.core.domain.island.IslandLifecycle;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
@@ -260,5 +264,63 @@ class PlayerIslandStorageSqliteTest {
 
         List<Island> worldBIslands = adapter.findAllByWorld("world_b");
         assertThat(worldBIslands).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Administrative freeze updates and reads back freeze record and island state accurately")
+    void freezeAndUnfreezePersistence() {
+        Island island =
+                Island.create(islandId, IslandBounds.fromCenterAndRadius(0, 0, 50), ownerUuid, ownerProfileId, now);
+        IslandLocation loc = IslandLocation.fromCenterAndRadius(islandId, "skyblock_world", 0, 0, 50);
+        adapter.saveIsland(island, loc);
+
+        // Initially normal
+        Optional<IslandFreezeRecord> initialFreeze = adapter.findFreezeRecord(islandId);
+        assertThat(initialFreeze).isPresent();
+        assertThat(initialFreeze.get().isFrozen()).isFalse();
+
+        // Freeze island
+        adapter.updateAdministrativeState(islandId, AdministrativeState.FROZEN, "Staff quarantine for investigation");
+
+        Optional<IslandFreezeRecord> frozenRecord = adapter.findFreezeRecord(islandId);
+        assertThat(frozenRecord).isPresent();
+        assertThat(frozenRecord.get().isFrozen()).isTrue();
+        assertThat(frozenRecord.get().freezeReason()).isEqualTo("Staff quarantine for investigation");
+
+        Optional<Island> frozenIsland = adapter.findIslandById(islandId);
+        assertThat(frozenIsland).isPresent();
+        assertThat(frozenIsland.get().isFrozen()).isTrue();
+        assertThat(frozenIsland.get().administrativeState()).isEqualTo(AdministrativeState.FROZEN);
+        assertThat(frozenIsland.get().freezeReason()).isEqualTo("Staff quarantine for investigation");
+
+        // Unfreeze island
+        adapter.updateAdministrativeState(islandId, AdministrativeState.NORMAL, null);
+
+        Optional<IslandFreezeRecord> unfrozenRecord = adapter.findFreezeRecord(islandId);
+        assertThat(unfrozenRecord).isPresent();
+        assertThat(unfrozenRecord.get().isFrozen()).isFalse();
+
+        Optional<Island> unfrozenIsland = adapter.findIslandById(islandId);
+        assertThat(unfrozenIsland).isPresent();
+        assertThat(unfrozenIsland.get().isFrozen()).isFalse();
+        assertThat(unfrozenIsland.get().administrativeState()).isEqualTo(AdministrativeState.NORMAL);
+        assertThat(unfrozenIsland.get().freezeReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("Economic state and lifecycle transitions persist and reload accurately")
+    void economicAndLifecycleStatePersistence() {
+        Island island =
+                Island.create(islandId, IslandBounds.fromCenterAndRadius(0, 0, 50), ownerUuid, ownerProfileId, now);
+        IslandLocation loc = IslandLocation.fromCenterAndRadius(islandId, "skyblock_world", 0, 0, 50);
+        adapter.saveIsland(island, loc);
+
+        adapter.updateEconomicState(islandId, EconomicState.BANKRUPTCY_GRACE);
+        adapter.updateLifecycle(islandId, IslandLifecycle.DELETING);
+
+        Optional<Island> reloaded = adapter.findIslandById(islandId);
+        assertThat(reloaded).isPresent();
+        assertThat(reloaded.get().economicState()).isEqualTo(EconomicState.BANKRUPTCY_GRACE);
+        assertThat(reloaded.get().lifecycle()).isEqualTo(IslandLifecycle.DELETING);
     }
 }
