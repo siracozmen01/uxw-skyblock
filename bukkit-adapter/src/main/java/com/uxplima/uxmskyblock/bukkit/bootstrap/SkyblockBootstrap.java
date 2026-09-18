@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
@@ -27,6 +28,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
@@ -43,9 +45,11 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
+import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import org.jspecify.annotations.Nullable;
@@ -86,6 +90,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final ModuleSettingsConfiguration moduleSettings;
     private final SeasonConfiguration seasonConfig;
     private final IslandSeasonService seasonService;
+    private final SocialConfiguration socialConfig;
+    private final IslandSocialService socialService;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -95,7 +101,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
             ServerNodeConfiguration nodeConfiguration,
             PlayerStateDurabilityConfig playerStateConfig,
             ModuleSettingsConfiguration moduleSettings,
-            SeasonConfiguration seasonConfig) {
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -103,6 +110,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.playerStateConfig = Objects.requireNonNull(playerStateConfig, "playerStateConfig must not be null");
         this.moduleSettings = Objects.requireNonNull(moduleSettings, "moduleSettings must not be null");
         this.seasonConfig = Objects.requireNonNull(seasonConfig, "seasonConfig must not be null");
+        this.socialConfig = Objects.requireNonNull(socialConfig, "socialConfig must not be null");
 
         this.scheduler = new FoliaSchedulerAdapter(plugin);
         this.accessService = new IslandAccessService();
@@ -130,6 +138,15 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandSeasonStoragePort(),
                 persistenceBootstrap.islandLeaderboardPort(),
                 persistenceBootstrap.islandStoragePort());
+        this.socialService = new IslandSocialService(
+                persistenceBootstrap.islandSocialStoragePort(),
+                RatingPolicy.standardFiveStar(),
+                persistenceBootstrap.islandStoragePort(),
+                socialConfig.minDwellTime(),
+                socialConfig.priorWeight(),
+                socialConfig.priorMean(),
+                socialConfig.maxPinned(),
+                socialConfig.maxMessageLength());
 
         this.protectionListener = new IslandProtectionListener(persistenceBootstrap.islandStoragePort(), accessService);
 
@@ -212,7 +229,25 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new BiomesModule(biomeAdapter));
         this.moduleRegistry.register(new PresetsModule(presetCatalog, schematicEngine));
         this.moduleRegistry.register(new SeasonFeatureModule(seasonService, scheduler, seasonConfig));
+        this.moduleRegistry.register(new SocialFeatureModule(socialService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                SocialConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -227,7 +262,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 nodeConfiguration,
                 playerStateConfig,
                 moduleSettings,
-                SeasonConfiguration.defaultConfiguration());
+                SeasonConfiguration.defaultConfiguration(),
+                SocialConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -345,7 +381,34 @@ public final class SkyblockBootstrap implements AutoCloseable {
             seasonConfig = SeasonConfiguration.defaultConfiguration();
         }
 
-        return new SkyblockBootstrap(plugin, persistence, nodeConfig, playerStateConfig, moduleSettings, seasonConfig);
+        Path socialFile = dataDir.resolve("social.conf");
+        if (!java.nio.file.Files.exists(socialFile)) {
+            try (java.io.InputStream in = plugin.getResource("social.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, socialFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if social.conf cannot be extracted
+            }
+        }
+
+        SocialConfiguration socialConfig;
+        if (java.nio.file.Files.exists(socialFile)) {
+            try {
+                CommentedConfigurationNode socialRoot = HoconConfigurationLoader.builder()
+                        .path(socialFile)
+                        .build()
+                        .load();
+                socialConfig = SocialConfiguration.load(socialRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load social configuration from: " + socialFile, e);
+            }
+        } else {
+            socialConfig = SocialConfiguration.defaultConfiguration();
+        }
+
+        return new SkyblockBootstrap(
+                plugin, persistence, nodeConfig, playerStateConfig, moduleSettings, seasonConfig, socialConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -464,6 +527,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public SeasonConfiguration seasonConfiguration() {
         return seasonConfig;
+    }
+
+    public IslandSocialService socialService() {
+        return socialService;
+    }
+
+    public SocialConfiguration socialConfiguration() {
+        return socialConfig;
     }
 
     @Override

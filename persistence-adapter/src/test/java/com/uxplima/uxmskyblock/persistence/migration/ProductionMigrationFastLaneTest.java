@@ -107,6 +107,10 @@ class ProductionMigrationFastLaneTest {
                                 "island_seasons",
                                 "season_snapshots",
                                 "season_payouts",
+                                "social_ratings",
+                                "guestbook_reviews",
+                                "subject_visits",
+                                "social_bookmarks",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -432,6 +436,46 @@ class ProductionMigrationFastLaneTest {
                                 "state",
                                 "created_at",
                                 "dispatched_at");
+
+                // social_ratings columns (V14)
+                Set<String> ratingCols = getColumnNames(meta, "social_ratings");
+                assertThat(ratingCols)
+                        .containsExactlyInAnyOrder(
+                                "subject_type_id",
+                                "subject_key",
+                                "rater_profile_id",
+                                "score",
+                                "created_at",
+                                "updated_at");
+
+                // guestbook_reviews columns (V14)
+                Set<String> guestbookCols = getColumnNames(meta, "guestbook_reviews");
+                assertThat(guestbookCols)
+                        .containsExactlyInAnyOrder(
+                                "review_id",
+                                "subject_type_id",
+                                "subject_key",
+                                "author_profile_id",
+                                "message",
+                                "is_hidden",
+                                "is_pinned",
+                                "created_at");
+
+                // subject_visits columns (V14)
+                Set<String> visitCols = getColumnNames(meta, "subject_visits");
+                assertThat(visitCols)
+                        .containsExactlyInAnyOrder(
+                                "subject_type_id",
+                                "subject_key",
+                                "visitor_profile_id",
+                                "visit_count",
+                                "first_visited_at",
+                                "last_visited_at");
+
+                // social_bookmarks columns (V14)
+                Set<String> bookmarkCols = getColumnNames(meta, "social_bookmarks");
+                assertThat(bookmarkCols)
+                        .containsExactlyInAnyOrder("profile_id", "subject_type_id", "subject_key", "created_at");
             }
         }
     }
@@ -1395,7 +1439,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(12);
 
             // 2. Upgrade by applying V13
-            int v13Applied = runner.apply(allMigrations);
+            int v13Applied = runner.apply(allMigrations.subList(0, 13));
             assertThat(v13Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(13);
 
@@ -1411,9 +1455,45 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 13));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(13);
+        }
+    }
+
+    @Test
+    @DisplayName(
+            "17. Step-by-step upgrade from V13 to V14 creates social ratings, guestbook, visits, and bookmark tables")
+    void stepByStepUpgradeFromV13ToV14CreatesSocialTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V13
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v13Applied = runner.apply(allMigrations.subList(0, 13));
+            assertThat(v13Applied).isEqualTo(13);
+            assertThat(runner.currentVersion()).isEqualTo(13);
+
+            // 2. Upgrade by applying V14
+            int v14Applied = runner.apply(allMigrations);
+            assertThat(v14Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(14);
+
+            // 3. Verify V14 tables work
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, """
+                        INSERT INTO social_ratings (subject_type_id, subject_key, rater_profile_id, score)
+                        VALUES ('uxm:island', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 5)
+                        """);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM social_ratings WHERE score = 5"))
+                        .isEqualTo(1);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(14);
         }
     }
 

@@ -48,11 +48,14 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(new java.io.File(plugin.getDataFolder(), "config.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "modules.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "seasons.conf")).exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "social.conf")).exists();
         assertThat(plugin.bootstrap().moduleRegistry().enabledModules()).isNotEmpty();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("core")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("bank")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("seasons")).isPresent();
+        assertThat(plugin.bootstrap().moduleRegistry().findModule("social")).isPresent();
         assertThat(plugin.bootstrap().seasonService()).isNotNull();
+        assertThat(plugin.bootstrap().socialService()).isNotNull();
     }
 
     @Test

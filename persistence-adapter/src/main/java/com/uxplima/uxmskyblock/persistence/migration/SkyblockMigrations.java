@@ -21,7 +21,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 13;
+    public static final int LATEST_VERSION = 14;
 
     /** Human-readable description of migration V1. */
     public static final String V1_DESCRIPTION = "create player accounts profiles and sessions";
@@ -62,6 +62,9 @@ public final class SkyblockMigrations {
     /** Human-readable description of migration V13. */
     public static final String V13_DESCRIPTION = "create island seasons snapshots and payouts";
 
+    /** Human-readable description of migration V14. */
+    public static final String V14_DESCRIPTION = "create social ratings guestbook subject visits and bookmarks";
+
     private SkyblockMigrations() {}
 
     /**
@@ -91,7 +94,8 @@ public final class SkyblockMigrations {
                 v10Migration(dialect),
                 v11Migration(dialect),
                 v12Migration(dialect),
-                v13Migration(dialect));
+                v13Migration(dialect),
+                v14Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -404,6 +408,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(13, V13_DESCRIPTION, SQLITE_V13_DDL);
             case MYSQL -> new Migration(13, V13_DESCRIPTION, MYSQL_V13_DDL);
             case POSTGRES -> new Migration(13, V13_DESCRIPTION, POSTGRES_V13_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v14Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(14, V14_DESCRIPTION, SQLITE_V14_DDL);
+            case MYSQL -> new Migration(14, V14_DESCRIPTION, MYSQL_V14_DDL);
+            case POSTGRES -> new Migration(14, V14_DESCRIPTION, POSTGRES_V14_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -1477,5 +1493,158 @@ public final class SkyblockMigrations {
 
             CREATE INDEX idx_season_payouts_recipient ON season_payouts (recipient_uuid, state);
             CREATE INDEX idx_season_payouts_season ON season_payouts (season_id);
+            """;
+
+    private static final String SQLITE_V14_DDL = """
+            CREATE TABLE IF NOT EXISTS social_ratings (
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                rater_profile_id VARCHAR(36) NOT NULL,
+                score INT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_type_id, subject_key, rater_profile_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_social_ratings_subject ON social_ratings (subject_type_id, subject_key);
+            CREATE INDEX IF NOT EXISTS idx_social_ratings_rater ON social_ratings (rater_profile_id);
+
+            CREATE TABLE IF NOT EXISTS guestbook_reviews (
+                review_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                author_profile_id VARCHAR(36) NOT NULL,
+                message VARCHAR(512) NOT NULL,
+                is_hidden BOOLEAN NOT NULL DEFAULT 0,
+                is_pinned BOOLEAN NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_guestbook_subject ON guestbook_reviews (subject_type_id, subject_key);
+            CREATE INDEX IF NOT EXISTS idx_guestbook_author ON guestbook_reviews (author_profile_id);
+
+            CREATE TABLE IF NOT EXISTS subject_visits (
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                visitor_profile_id VARCHAR(36) NOT NULL,
+                visit_count INT NOT NULL DEFAULT 1,
+                first_visited_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_visited_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_type_id, subject_key, visitor_profile_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_subject_visits_visitor ON subject_visits (visitor_profile_id);
+
+            CREATE TABLE IF NOT EXISTS social_bookmarks (
+                profile_id VARCHAR(36) NOT NULL,
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (profile_id, subject_type_id, subject_key)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_social_bookmarks_subject ON social_bookmarks (subject_type_id, subject_key);
+            """;
+
+    private static final String MYSQL_V14_DDL = """
+            CREATE TABLE IF NOT EXISTS social_ratings (
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                rater_profile_id VARCHAR(36) NOT NULL,
+                score INT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_type_id, subject_key, rater_profile_id)
+            );
+
+            CREATE INDEX idx_social_ratings_subject ON social_ratings (subject_type_id, subject_key);
+            CREATE INDEX idx_social_ratings_rater ON social_ratings (rater_profile_id);
+
+            CREATE TABLE IF NOT EXISTS guestbook_reviews (
+                review_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                author_profile_id VARCHAR(36) NOT NULL,
+                message VARCHAR(512) NOT NULL,
+                is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
+                is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_guestbook_subject ON guestbook_reviews (subject_type_id, subject_key);
+            CREATE INDEX idx_guestbook_author ON guestbook_reviews (author_profile_id);
+
+            CREATE TABLE IF NOT EXISTS subject_visits (
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                visitor_profile_id VARCHAR(36) NOT NULL,
+                visit_count INT NOT NULL DEFAULT 1,
+                first_visited_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_visited_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_type_id, subject_key, visitor_profile_id)
+            );
+
+            CREATE INDEX idx_subject_visits_visitor ON subject_visits (visitor_profile_id);
+
+            CREATE TABLE IF NOT EXISTS social_bookmarks (
+                profile_id VARCHAR(36) NOT NULL,
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (profile_id, subject_type_id, subject_key)
+            );
+
+            CREATE INDEX idx_social_bookmarks_subject ON social_bookmarks (subject_type_id, subject_key);
+            """;
+
+    private static final String POSTGRES_V14_DDL = """
+            CREATE TABLE IF NOT EXISTS social_ratings (
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                rater_profile_id VARCHAR(36) NOT NULL,
+                score INT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_type_id, subject_key, rater_profile_id)
+            );
+
+            CREATE INDEX idx_social_ratings_subject ON social_ratings (subject_type_id, subject_key);
+            CREATE INDEX idx_social_ratings_rater ON social_ratings (rater_profile_id);
+
+            CREATE TABLE IF NOT EXISTS guestbook_reviews (
+                review_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                author_profile_id VARCHAR(36) NOT NULL,
+                message VARCHAR(512) NOT NULL,
+                is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
+                is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_guestbook_subject ON guestbook_reviews (subject_type_id, subject_key);
+            CREATE INDEX idx_guestbook_author ON guestbook_reviews (author_profile_id);
+
+            CREATE TABLE IF NOT EXISTS subject_visits (
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                visitor_profile_id VARCHAR(36) NOT NULL,
+                visit_count INT NOT NULL DEFAULT 1,
+                first_visited_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_visited_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_type_id, subject_key, visitor_profile_id)
+            );
+
+            CREATE INDEX idx_subject_visits_visitor ON subject_visits (visitor_profile_id);
+
+            CREATE TABLE IF NOT EXISTS social_bookmarks (
+                profile_id VARCHAR(36) NOT NULL,
+                subject_type_id VARCHAR(64) NOT NULL,
+                subject_key VARCHAR(128) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (profile_id, subject_type_id, subject_key)
+            );
+
+            CREATE INDEX idx_social_bookmarks_subject ON social_bookmarks (subject_type_id, subject_key);
             """;
 }

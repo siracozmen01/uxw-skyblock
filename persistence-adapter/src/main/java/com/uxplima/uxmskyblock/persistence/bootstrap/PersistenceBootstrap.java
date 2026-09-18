@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPor
 import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonStoragePort;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
+import com.uxplima.uxmskyblock.core.application.social.IslandSocialStoragePort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -37,6 +38,7 @@ import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.profile.PlayerProfileSwitchAdapter;
 import com.uxplima.uxmskyblock.persistence.season.PlayerIslandSeasonAdapter;
 import com.uxplima.uxmskyblock.persistence.session.PlayerSessionAuthorityAdapter;
+import com.uxplima.uxmskyblock.persistence.social.PlayerIslandSocialAdapter;
 import com.uxplima.uxmskyblock.persistence.upgrade.PlayerIslandUpgradeAdapter;
 import com.uxplima.uxmskyblock.persistence.world.PlayerWorldGridAllocationAdapter;
 
@@ -62,6 +64,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
     private final PlayerEconomySagaAdapter economySagaAdapter;
     private final PlayerIslandSeasonAdapter islandSeasonAdapter;
+    private final PlayerIslandSocialAdapter islandSocialAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -85,6 +88,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(database);
         this.economySagaAdapter = new PlayerEconomySagaAdapter(database);
         this.islandSeasonAdapter = new PlayerIslandSeasonAdapter(database);
+        this.islandSocialAdapter = new PlayerIslandSocialAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -176,6 +180,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public IslandSeasonStoragePort islandSeasonStoragePort() {
         return islandSeasonAdapter;
+    }
+
+    public IslandSocialStoragePort islandSocialStoragePort() {
+        return islandSocialAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {
