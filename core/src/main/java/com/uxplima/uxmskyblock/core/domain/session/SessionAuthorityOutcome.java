@@ -6,7 +6,11 @@ package com.uxplima.uxmskyblock.core.domain.session;
 public sealed interface SessionAuthorityOutcome {
 
     static SessionAuthorityOutcome success(long epoch) {
-        return new Success(epoch);
+        return new Success(epoch, false);
+    }
+
+    static SessionAuthorityOutcome success(long epoch, boolean recovering) {
+        return new Success(epoch, recovering);
     }
 
     static SessionAuthorityOutcome rejected() {
@@ -19,12 +23,21 @@ public sealed interface SessionAuthorityOutcome {
         return !isSuccess();
     }
 
+    default boolean isRecovering() {
+        return false;
+    }
+
     /**
      * Successful authority transition outcome carrying the canonical session epoch.
      *
      * @param epoch the session epoch guaranteed by the database transaction
+     * @param recovering whether the session was acquired into RECOVERING state
      */
-    record Success(long epoch) implements SessionAuthorityOutcome {
+    record Success(long epoch, boolean recovering) implements SessionAuthorityOutcome {
+
+        public Success(long epoch) {
+            this(epoch, false);
+        }
 
         public Success {
             if (epoch < 1) {
@@ -35,6 +48,11 @@ public sealed interface SessionAuthorityOutcome {
         @Override
         public boolean isSuccess() {
             return true;
+        }
+
+        @Override
+        public boolean isRecovering() {
+            return recovering;
         }
     }
 

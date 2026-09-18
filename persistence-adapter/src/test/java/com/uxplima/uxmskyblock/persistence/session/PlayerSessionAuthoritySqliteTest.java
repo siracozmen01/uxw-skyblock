@@ -357,7 +357,8 @@ class PlayerSessionAuthoritySqliteTest {
         SessionAuthorityOutcome outcome = adapter.failureTakeover(PLAYER_1, 3L, NODE_B);
 
         assertThat(outcome.isSuccess()).isTrue();
-        assertThat(outcome).isEqualTo(SessionAuthorityOutcome.success(4L));
+        assertThat(outcome).isEqualTo(SessionAuthorityOutcome.success(4L, true));
+        assertThat(outcome.isRecovering()).isTrue();
 
         try (Connection conn = database.connection();
                 PreparedStatement ps = conn.prepareStatement(
@@ -370,6 +371,20 @@ class PlayerSessionAuthoritySqliteTest {
                 assertThat(rs.getLong("session_epoch")).isEqualTo(4L);
             }
         }
+
+        // Prove markRecoveredActive transitions RECOVERING -> ACTIVE
+        SessionAuthorityOutcome recoveredOutcome = adapter.markRecoveredActive(PLAYER_1, NODE_B, 4L);
+        assertThat(recoveredOutcome.isSuccess()).isTrue();
+        assertThat(recoveredOutcome).isEqualTo(SessionAuthorityOutcome.success(4L, false));
+        assertThat(recoveredOutcome.isRecovering()).isFalse();
+
+        // Prove releaseToOffline transitions ACTIVE -> OFFLINE
+        SessionAuthorityOutcome offlineOutcome = adapter.releaseToOffline(PLAYER_1, NODE_B, 4L);
+        assertThat(offlineOutcome.isSuccess()).isTrue();
+        assertThat(offlineOutcome).isEqualTo(SessionAuthorityOutcome.success(4L, false));
+
+        var offlineRecord = adapter.findSession(PLAYER_1).orElseThrow();
+        assertThat(offlineRecord.state()).isEqualTo(SessionState.OFFLINE);
 
         // Prove old owner Node A is fenced
         SessionAuthorityOutcome staleRenew = adapter.renew(PLAYER_1, NODE_A, 3L);
@@ -478,5 +493,47 @@ class PlayerSessionAuthoritySqliteTest {
         SessionAuthorityOutcome repeatOutcome = adapter.ensureSession(newPlayer, defaultProf, node);
         assertThat(repeatOutcome.isSuccess()).isTrue();
         assertThat(((SessionAuthorityOutcome.Success) repeatOutcome).epoch()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("ENSURE_SESSION: expired session performs failure takeover into RECOVERING with incremented epoch")
+    void ensureSessionExpiredPerformsTakeover() throws Exception {
+        seedSession(PLAYER_1, PROFILE_1, NODE_A, 2L, SessionState.ACTIVE, true);
+
+        // Node B calls ensureSession on expired player
+        SessionAuthorityOutcome outcome = adapter.ensureSession(PLAYER_1, PROFILE_1, NODE_B);
+        assertThat(outcome.isSuccess()).isTrue();
+        assertThat(outcome.isRecovering()).isTrue();
+        assertThat(((SessionAuthorityOutcome.Success) outcome).epoch()).isEqualTo(3L);
+
+        var record = adapter.findSession(PLAYER_1).orElseThrow();
+        assertThat(record.state()).isEqualTo(SessionState.RECOVERING);
+        assertThat(record.authoritativeNode()).isEqualTo(NODE_B);
+        assertThat(record.sessionEpoch()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("ENSURE_SESSION: clean login from OFFLINE acquires ACTIVE session with incremented epoch")
+    void ensureSessionOfflineAcquiresActive() throws Exception {
+        seedSession(PLAYER_1, PROFILE_1, NODE_A, 5L, SessionState.OFFLINE, true);
+
+        SessionAuthorityOutcome outcome = adapter.ensureSession(PLAYER_1, PROFILE_1, NODE_B);
+        assertThat(outcome.isSuccess()).isTrue();
+        assertThat(outcome.isRecovering()).isFalse();
+        assertThat(((SessionAuthorityOutcome.Success) outcome).epoch()).isEqualTo(6L);
+
+        var record = adapter.findSession(PLAYER_1).orElseThrow();
+        assertThat(record.state()).isEqualTo(SessionState.ACTIVE);
+        assertThat(record.authoritativeNode()).isEqualTo(NODE_B);
+        assertThat(record.sessionEpoch()).isEqualTo(6L);
+    }
+
+    @Test
+    @DisplayName("ENSURE_SESSION: rejected if active unexpired lease held by another node")
+    void ensureSessionRejectedIfForeignActiveLease() throws Exception {
+        seedSession(PLAYER_1, PROFILE_1, NODE_A, 1L, SessionState.ACTIVE, false);
+
+        SessionAuthorityOutcome outcome = adapter.ensureSession(PLAYER_1, PROFILE_1, NODE_B);
+        assertThat(outcome.isRejected()).isTrue();
     }
 }

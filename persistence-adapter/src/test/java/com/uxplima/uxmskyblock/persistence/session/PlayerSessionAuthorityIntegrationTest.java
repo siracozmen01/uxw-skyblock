@@ -201,7 +201,8 @@ class PlayerSessionAuthorityIntegrationTest {
         // 12. Valid FAILURE_TAKEOVER: increments epoch, sets RECOVERING
         ServerNodeId recoveryNode = ServerNodeId.of("recovery-node");
         SessionAuthorityOutcome takeoverOutcome = adapter.failureTakeover(player, 2L, recoveryNode);
-        assertThat(takeoverOutcome).isEqualTo(SessionAuthorityOutcome.success(3L));
+        assertThat(takeoverOutcome).isEqualTo(SessionAuthorityOutcome.success(3L, true));
+        assertThat(takeoverOutcome.isRecovering()).isTrue();
 
         // Verify final row state
         try (Connection conn = database.connection();
@@ -216,6 +217,15 @@ class PlayerSessionAuthorityIntegrationTest {
                 assertThat(rs.getString("handoff_id")).isNull();
             }
         }
+
+        // 13. markRecoveredActive: RECOVERING -> ACTIVE
+        SessionAuthorityOutcome recoveredOutcome = adapter.markRecoveredActive(player, recoveryNode, 3L);
+        assertThat(recoveredOutcome).isEqualTo(SessionAuthorityOutcome.success(3L, false));
+
+        // 14. releaseToOffline: ACTIVE -> OFFLINE
+        SessionAuthorityOutcome offlineOutcome = adapter.releaseToOffline(player, recoveryNode, 3L);
+        assertThat(offlineOutcome).isEqualTo(SessionAuthorityOutcome.success(3L, false));
+        assertThat(adapter.findSession(player).orElseThrow().state()).isEqualTo(SessionState.OFFLINE);
 
         // Verify account and profile records were not modified
         try (Connection conn = database.connection();
@@ -307,7 +317,7 @@ class PlayerSessionAuthorityIntegrationTest {
             SessionAuthorityOutcome renewOutcome = futureRenew.get(5, TimeUnit.SECONDS);
 
             // Takeover must succeed (new epoch 2); stale renewal must fail
-            assertThat(takeoverOutcome).isEqualTo(SessionAuthorityOutcome.success(2L));
+            assertThat(takeoverOutcome).isEqualTo(SessionAuthorityOutcome.success(2L, true));
             assertThat(renewOutcome.isRejected()).isTrue();
 
             // Final state: NODE_B, epoch 2, RECOVERING

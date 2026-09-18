@@ -7,5 +7,7 @@ public enum SessionState {
     ACTIVE,
     DRAINING,
     HANDOFF_READY,
-    RECOVERING
+    RECOVERING,
+    OFFLINE,
+    LOCAL_FENCED
 }

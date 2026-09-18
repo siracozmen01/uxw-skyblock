@@ -114,4 +114,28 @@ public interface PlayerSessionAuthorityPort {
      * @return {@link SessionAuthorityOutcome.Success} carrying new epoch if taken over, or {@link SessionAuthorityOutcome.Rejected}
      */
     SessionAuthorityOutcome failureTakeover(PlayerUuid playerUuid, long expectedEpoch, ServerNodeId destinationNode);
+
+    /**
+     * Transitions a session from RECOVERING to ACTIVE once full player state restoration has completed.
+     *
+     * <p>Requires state == 'RECOVERING', matching node, matching epoch, and unexpired lease.
+     *
+     * @param playerUuid the target player UUID
+     * @param currentNode the authoritative node
+     * @param currentEpoch the expected current session epoch
+     * @return {@link SessionAuthorityOutcome.Success} if updated, or {@link SessionAuthorityOutcome.Rejected}
+     */
+    SessionAuthorityOutcome markRecoveredActive(PlayerUuid playerUuid, ServerNodeId currentNode, long currentEpoch);
+
+    /**
+     * Releases session authority cleanly on player quit or server shutdown, transitioning state to OFFLINE.
+     *
+     * <p>Requires matching node and matching epoch.
+     *
+     * @param playerUuid the target player UUID
+     * @param currentNode the authoritative node
+     * @param currentEpoch the expected current session epoch
+     * @return {@link SessionAuthorityOutcome.Success} if updated, or {@link SessionAuthorityOutcome.Rejected}
+     */
+    SessionAuthorityOutcome releaseToOffline(PlayerUuid playerUuid, ServerNodeId currentNode, long currentEpoch);
 }

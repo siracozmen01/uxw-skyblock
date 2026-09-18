@@ -7,48 +7,57 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 2 — Persistence & Multi-Profile Authority (Phase 1 COMPLETE — WP2-005 COMPLETED)
+* **Phase:** Phase 3 — V1 Complete Production Execution (P0 Correctness & P1 Advanced Subsystems)
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES (Phase 1 COMPLETE — 7 / 7 completed)
-* **Phase 2 Started:** YES (WP2-005 COMPLETED)
-* **P1-001 Status:** COMPLETED (commit `906bba0`)
-* **P1-002 Status:** COMPLETED (commit `1ea566b`)
-* **P1-003 Status:** COMPLETED (commit `da7e626`)
-* **P1-004 Status:** COMPLETED (commit `e8175c5`)
-* **P1-005 Status:** COMPLETED (commit `f4e8b7e`)
-* **P1-006 Status:** COMPLETED (commit `5b1550f`)
-* **P1-007 Status:** COMPLETED (commit `0c681c0`)
-* **WP2-001 Status:** COMPLETED (commit `fd90b2d`)
-* **WP2-002 Status:** COMPLETED (commit `e458bdd`)
-* **WP2-003 Status:** COMPLETED (commit `909c7f4`)
-* **WP2-004 Status:** COMPLETED (commit `5e74f76`)
-* **WP2-005 Status:** COMPLETED (commit `7fa276e`)
-* **WP2-006 Status:** COMPLETED (commit `9cde17a`)
-* **ISL-001 Status:** COMPLETED (commit `b09ba54`)
-* **BNK-001 Status:** COMPLETED (commit `8a1fa24`)
-* **LVL-003 Status:** COMPLETED (commit `ca41311`)
-* **BAK-001 Status:** COMPLETED (commit `1fdaf2f`)
-* **EVT-001 Status:** COMPLETED (commit `e0240c5`)
-* **ISL-010 Status:** COMPLETED
-* **ISL-011 Status:** COMPLETED
-* **Target Release:** v0.1.0-SNAPSHOT
+* **Phase 2 Started:** YES (Phase 2 COMPLETE — 38 / 38 completed)
+* **Phase 3 Started:** YES (Active P0 Correctness & P1 Advanced Subsystems)
+* **Current Active Task:** SES-001 (Player Session Authority Acquisition Hardening)
+* **Target Release:** v0.1.0-SNAPSHOT (Production V1 Complete)
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 100% (45 / 45 cards completed)
-* **Phase 1 Tasks Completed:** 7 / 7 completed (P1-001..P1-007 Completed)
+* **Overall Card Completion:** 61.6% (45 / 73 cards completed)
+* **Phase 1 Tasks Completed:** 7 / 7 completed
+* **Phase 2 Tasks Completed:** 38 / 38 completed
+* **Phase 3 Tasks Active:** 28 cards total (14 P0 Critical Correctness + 14 P1 Advanced Subsystems)
 
 ---
 
 ## Kanban Columns
 
-### 📋 Backlog (Future Milestones)
-* *No active items currently in backlog.*
+### 📋 Backlog (Future Milestones & P1 Advanced Subsystems)
+* [ ] **[MOD-001]** Dynamic FeatureModule Architecture (`FeatureModule`, `ModuleRegistry`, `modules.conf` per Section 2.25)
+* [ ] **[SEA-001]** Automated Seasons & Competitive Payout Subsystem (`IslandSeasonService`, `seasons.conf`, V13 migration per Section 2.33)
+* [ ] **[SOC-001]** Social Discovery, Ratings & Guestbook Subsystem (`IslandSocialService`, `social.conf`, V14 migration per Section 2.35)
+* [ ] **[DIS-001]** Standalone Discord Webhook Notification Subsystem (`IslandDiscordWebhookService`, `discord.conf` per Section 2.36)
+* [ ] **[ALN-001]** Island Alliances & Diplomatic Relations Subsystem (`IslandAllianceService`, `alliances.conf`, V15 migration per Section 2.28)
+* [ ] **[SHO-001]** Dynamic Shop Pricing Subsystem (`DynamicPricingEngine`, `shop.conf` per Section 2.42.8)
+* [ ] **[ACC-001]** TemporaryAccessGrant Subsystem (Expiring visitor/coop grants per Section 2.42)
+* [ ] **[RWD-001]** Durable Offline Reward Inbox (`RewardInboxService`, V16 migration per Section 2.42)
+* [ ] **[BAK-002]** General Object Storage: S3/R2 Remote Storage Adapter (`S3ObjectStorageAdapter` per Section 2.29)
+* [ ] **[WAR-001]** Public Warps & Safe Teleport Engine (`IslandWarpService`, V17 migration per Section 2.10)
+* [ ] **[VLT-001]** Shared Island Vault & Paged Inventory Subsystem (`IslandVaultService`, V18 migration per Section 2.20)
+* [ ] **[CHT-001]** Island Private Chat Subsystem (`IslandChatService` per Section 2.24)
+* [ ] **[INA-001]** Leader Inactivity & Succession Lifecycle (`IslandInactivityService` per Section 2.22)
+* [ ] **[FRZ-001]** 4-Dimensional Administrative Quarantine & Freeze Subsystem (`IslandAdminFreezeService` per Section 2.40)
 
-### 📌 To Do (Upcoming Tasks)
-* *No active items currently in to do.*
+### 📌 To Do (Upcoming P0 Correctness Sprints)
+* [ ] **[SES-002]** Runtime Self-Fencing & Fail-Closed Guard (Session lease loss fails closed, disconnects player, cancels timers)
+* [ ] **[PRF-001]** Canonical Active Profile Context Resolution (Eliminate ad-hoc `ProfileId(player.getUniqueId())` across commands, menus, PAPI, API)
+* [ ] **[PRF-002]** Profile Switch Version & Full State Restore + Startup Recovery (Inventory version, enderchest, effects, stats, crash recovery)
+* [ ] **[SES-003]** Clean Quit / Offline / Graceful Shutdown Sequence (DRAINING -> final flush -> OFFLINE release)
+* [ ] **[EVT-002]** Outbox Fail-Closed on Zero Consumers & Atomic Event Staging in Mutations (Never complete claims when zero consumers present)
+* [ ] **[EVT-003]** Durable Event Transport & Redis Streams Adapter (Redis Streams transport for cross-server event fanout and inbox deduplication)
+* [ ] **[SCH-001]** Folia-Safe Schematic Pasting on Region Scheduler & Safe Teleport (Dispatch chunk pasting to Folia region thread for target island coordinates)
+* [ ] **[PRT-001]** Spatial Island Protection Indexing & Startup Persistence (Protection listener loads persisted islands on cold-start)
+* [ ] **[SEC-001]** Compiled Namespaced Permission Architecture (`PermissionKey` -> `PermissionRegistry` -> `PermissionId` -> `PermissionSet` bitmasks)
+* [ ] **[PAPI-001]** Zero-DB PlaceholderAPI Render Path (Async background refresh cache for rankings/leaderboards)
+* [ ] **[API-001]** Public API Implementation Delegating to Canonical Domain Use Cases (Wire `:api` contracts to real application domain services)
+* [ ] **[ECO-001]** Durable Economy Saga & External Vault Bridge (V11 migration `economy_sagas` table, two-phase saga coordinator)
+* [ ] **[ISL-002]** Island Creation Idempotency & Database Unique Constraints (V12 migration unique constraints on coords and profile ownership)
 
 ### 🔄 In Progress
-* *No active items currently in progress.*
+* [/] **[SES-001]** Player Session Authority Acquisition Hardening (Dual-mode `SELECT ... FOR UPDATE` row locks, monotonic DB-clock takeover, `RECOVERING` state machine transition)
 
 ### 🔍 In Review
 * *No active items currently in review.*

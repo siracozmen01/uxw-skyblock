@@ -48,6 +48,8 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
     private final String prepareHandoffSql;
     private final String plannedAcquireSql;
     private final String failureTakeoverSql;
+    private final String markRecoveredActiveSql;
+    private final String releaseToOfflineSql;
 
     public PlayerSessionAuthorityAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -63,6 +65,8 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         this.prepareHandoffSql = buildPrepareHandoffSql(handoffLeaseExpr);
         this.plannedAcquireSql = buildPlannedAcquireSql(activeLeaseExpr);
         this.failureTakeoverSql = buildFailureTakeoverSql(activeLeaseExpr);
+        this.markRecoveredActiveSql = buildMarkRecoveredActiveSql(activeLeaseExpr);
+        this.releaseToOfflineSql = buildReleaseToOfflineSql();
     }
 
     private static void validateDialect(Dialect dialect) {
@@ -153,6 +157,31 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                 + "WHERE player_uuid = ? "
                 + "AND session_epoch = ? "
                 + "AND lease_expires_at < CURRENT_TIMESTAMP";
+    }
+
+    private static String buildMarkRecoveredActiveSql(String activeLeaseExpr) {
+        return "UPDATE player_sessions "
+                + "SET state = 'ACTIVE', "
+                + "lease_expires_at = " + activeLeaseExpr + ", "
+                + "updated_at = CURRENT_TIMESTAMP "
+                + "WHERE player_uuid = ? "
+                + "AND authoritative_node = ? "
+                + "AND session_epoch = ? "
+                + "AND state = 'RECOVERING' "
+                + "AND lease_expires_at >= CURRENT_TIMESTAMP";
+    }
+
+    private static String buildReleaseToOfflineSql() {
+        return "UPDATE player_sessions "
+                + "SET state = 'OFFLINE', "
+                + "handoff_id = NULL, "
+                + "handoff_target_node = NULL, "
+                + "handoff_expires_at = NULL, "
+                + "lease_expires_at = CURRENT_TIMESTAMP, "
+                + "updated_at = CURRENT_TIMESTAMP "
+                + "WHERE player_uuid = ? "
+                + "AND authoritative_node = ? "
+                + "AND session_epoch = ?";
     }
 
     @Override
@@ -298,13 +327,14 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                     }
                 }
 
-                // 4. Ensure or acquire player_sessions row
+                // 4. Ensure or acquire player_sessions row with FOR UPDATE on server dialects
                 String checkSessionSql =
-                        "SELECT authoritative_node, session_epoch, state, lease_expires_at FROM player_sessions WHERE player_uuid = ?";
+                        "SELECT authoritative_node, session_epoch, state, lease_expires_at FROM player_sessions WHERE player_uuid = ?"
+                                + (dialect != Dialect.SQLITE ? " FOR UPDATE" : "");
                 boolean sessionExists = false;
                 String existingNode = null;
                 long existingEpoch = 1L;
-                Timestamp leaseExpiresAt = null;
+                String existingState = null;
 
                 try (PreparedStatement ps = conn.prepareStatement(checkSessionSql)) {
                     ps.setString(1, playerUuid.value().toString());
@@ -313,7 +343,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                             sessionExists = true;
                             existingNode = rs.getString("authoritative_node");
                             existingEpoch = rs.getLong("session_epoch");
-                            leaseExpiresAt = rs.getTimestamp("lease_expires_at");
+                            existingState = rs.getString("state");
                         }
                     }
                 }
@@ -331,57 +361,105 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                         ps.executeUpdate();
                     }
                     commitTx(conn);
-                    return SessionAuthorityOutcome.success(1L);
+                    return SessionAuthorityOutcome.success(1L, false);
                 }
 
-                // Session already exists
-                if (currentNode.value().equals(existingNode)) {
-                    // Continuing or re-connecting on same node
-                    String renewSameNodeSql =
-                            "UPDATE player_sessions SET active_profile_id = ?, state = 'ACTIVE', lease_expires_at = "
-                                    + activeLeaseExpr
-                                    + ", updated_at = CURRENT_TIMESTAMP WHERE player_uuid = ? AND authoritative_node = ? AND session_epoch = ?";
-                    int updated;
-                    try (PreparedStatement ps = conn.prepareStatement(renewSameNodeSql)) {
-                        ps.setString(1, activeProfile.value().toString());
-                        ps.setString(2, playerUuid.value().toString());
-                        ps.setString(3, currentNode.value());
-                        ps.setLong(4, existingEpoch);
-                        updated = ps.executeUpdate();
-                    }
-                    commitTx(conn);
-                    return updated == 1
-                            ? SessionAuthorityOutcome.success(existingEpoch)
-                            : SessionAuthorityOutcome.rejected();
-                }
-
-                // Different node: check if prior lease has expired
-                Instant now = Instant.now();
-                if (leaseExpiresAt != null && leaseExpiresAt.toInstant().isBefore(now)) {
-                    // Prior lease expired: perform failure takeover
+                // Session row already exists: evaluate state machine
+                // A. Clean login from OFFLINE state
+                if ("OFFLINE".equalsIgnoreCase(existingState)) {
                     long newEpoch = existingEpoch + 1;
-                    String takeoverSql =
-                            "UPDATE player_sessions SET authoritative_node = ?, session_epoch = ?, state = 'ACTIVE', "
+                    String offlineClaimSql =
+                            "UPDATE player_sessions SET active_profile_id = ?, authoritative_node = ?, session_epoch = ?, state = 'ACTIVE', "
                                     + "handoff_id = NULL, handoff_target_node = NULL, handoff_expires_at = NULL, lease_expires_at = "
                                     + activeLeaseExpr
-                                    + ", updated_at = CURRENT_TIMESTAMP WHERE player_uuid = ? AND session_epoch = ? AND lease_expires_at < CURRENT_TIMESTAMP";
+                                    + ", updated_at = CURRENT_TIMESTAMP WHERE player_uuid = ? AND session_epoch = ? AND state = 'OFFLINE'";
                     int affected;
-                    try (PreparedStatement ps = conn.prepareStatement(takeoverSql)) {
-                        ps.setString(1, currentNode.value());
-                        ps.setLong(2, newEpoch);
-                        ps.setString(3, playerUuid.value().toString());
-                        ps.setLong(4, existingEpoch);
+                    try (PreparedStatement ps = conn.prepareStatement(offlineClaimSql)) {
+                        ps.setString(1, activeProfile.value().toString());
+                        ps.setString(2, currentNode.value());
+                        ps.setLong(3, newEpoch);
+                        ps.setString(4, playerUuid.value().toString());
+                        ps.setLong(5, existingEpoch);
                         affected = ps.executeUpdate();
                     }
                     commitTx(conn);
                     return affected == 1
-                            ? SessionAuthorityOutcome.success(newEpoch)
+                            ? SessionAuthorityOutcome.success(newEpoch, false)
                             : SessionAuthorityOutcome.rejected();
                 }
 
-                // Prior lease is still active on another node! Reject to prevent split-brain.
+                // B. Same node continuing or reconnecting
+                if (currentNode.value().equals(existingNode)) {
+                    if ("ACTIVE".equalsIgnoreCase(existingState)) {
+                        // Reconnecting on same node with active state: attempt renewal with lease_expires_at >=
+                        // CURRENT_TIMESTAMP
+                        String renewSameNodeSql =
+                                "UPDATE player_sessions SET active_profile_id = ?, state = 'ACTIVE', lease_expires_at = "
+                                        + activeLeaseExpr
+                                        + ", updated_at = CURRENT_TIMESTAMP WHERE player_uuid = ? AND authoritative_node = ? AND session_epoch = ? AND state = 'ACTIVE' AND lease_expires_at >= CURRENT_TIMESTAMP";
+                        int updated;
+                        try (PreparedStatement ps = conn.prepareStatement(renewSameNodeSql)) {
+                            ps.setString(1, activeProfile.value().toString());
+                            ps.setString(2, playerUuid.value().toString());
+                            ps.setString(3, currentNode.value());
+                            ps.setLong(4, existingEpoch);
+                            updated = ps.executeUpdate();
+                        }
+                        if (updated == 1) {
+                            commitTx(conn);
+                            return SessionAuthorityOutcome.success(existingEpoch, false);
+                        }
+                        // If updated == 0, lease expired on same node (e.g. crash/restart)!
+                        // Fall through to failure takeover into RECOVERING below
+                    } else if ("RECOVERING".equalsIgnoreCase(existingState)) {
+                        // Already recovering on same node: renew lease while keeping state = 'RECOVERING'
+                        String renewRecoveringSql =
+                                "UPDATE player_sessions SET active_profile_id = ?, lease_expires_at = "
+                                        + activeLeaseExpr
+                                        + ", updated_at = CURRENT_TIMESTAMP WHERE player_uuid = ? AND authoritative_node = ? AND session_epoch = ? AND state = 'RECOVERING' AND lease_expires_at >= CURRENT_TIMESTAMP";
+                        int updated;
+                        try (PreparedStatement ps = conn.prepareStatement(renewRecoveringSql)) {
+                            ps.setString(1, activeProfile.value().toString());
+                            ps.setString(2, playerUuid.value().toString());
+                            ps.setString(3, currentNode.value());
+                            ps.setLong(4, existingEpoch);
+                            updated = ps.executeUpdate();
+                        }
+                        if (updated == 1) {
+                            commitTx(conn);
+                            return SessionAuthorityOutcome.success(existingEpoch, true);
+                        }
+                        // If expired, fall through to failure takeover
+                    } else if ("DRAINING".equalsIgnoreCase(existingState)
+                            || "HANDOFF_READY".equalsIgnoreCase(existingState)) {
+                        // Session is undergoing handoff. If lease not expired, reject reconnect to avoid split-brain
+                        // with target node
+                        // If expired, fall through to failure takeover
+                    }
+                }
+
+                // C. Failure takeover via DB clock (different node OR expired same node)
+                // Evaluated strictly via database clock in SQL: lease_expires_at < CURRENT_TIMESTAMP
+                // Transition state MUST be 'RECOVERING'!
+                long newEpoch = existingEpoch + 1;
+                String takeoverSql =
+                        "UPDATE player_sessions SET active_profile_id = ?, authoritative_node = ?, session_epoch = ?, state = 'RECOVERING', "
+                                + "handoff_id = NULL, handoff_target_node = NULL, handoff_expires_at = NULL, lease_expires_at = "
+                                + activeLeaseExpr
+                                + ", updated_at = CURRENT_TIMESTAMP WHERE player_uuid = ? AND session_epoch = ? AND lease_expires_at < CURRENT_TIMESTAMP";
+                int affected;
+                try (PreparedStatement ps = conn.prepareStatement(takeoverSql)) {
+                    ps.setString(1, activeProfile.value().toString());
+                    ps.setString(2, currentNode.value());
+                    ps.setLong(3, newEpoch);
+                    ps.setString(4, playerUuid.value().toString());
+                    ps.setLong(5, existingEpoch);
+                    affected = ps.executeUpdate();
+                }
                 commitTx(conn);
-                return SessionAuthorityOutcome.rejected();
+                return affected == 1
+                        ? SessionAuthorityOutcome.success(newEpoch, true)
+                        : SessionAuthorityOutcome.rejected();
             } catch (Exception e) {
                 rollbackTx(conn);
                 throw new SessionPersistenceException("Failed to ensure player session: " + playerUuid, e);
@@ -509,7 +587,41 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         });
 
         long newEpoch = expectedEpoch + 1;
-        return affected == 1 ? SessionAuthorityOutcome.success(newEpoch) : SessionAuthorityOutcome.rejected();
+        return affected == 1 ? SessionAuthorityOutcome.success(newEpoch, true) : SessionAuthorityOutcome.rejected();
+    }
+
+    @Override
+    public SessionAuthorityOutcome markRecoveredActive(
+            PlayerUuid playerUuid, ServerNodeId currentNode, long currentEpoch) {
+        Objects.requireNonNull(playerUuid, "playerUuid");
+        Objects.requireNonNull(currentNode, "currentNode");
+
+        int affected = executeUpdate(markRecoveredActiveSql, statement -> {
+            statement.setString(1, playerUuid.value().toString());
+            statement.setString(2, currentNode.value());
+            statement.setLong(3, currentEpoch);
+        });
+
+        return affected == 1
+                ? SessionAuthorityOutcome.success(currentEpoch, false)
+                : SessionAuthorityOutcome.rejected();
+    }
+
+    @Override
+    public SessionAuthorityOutcome releaseToOffline(
+            PlayerUuid playerUuid, ServerNodeId currentNode, long currentEpoch) {
+        Objects.requireNonNull(playerUuid, "playerUuid");
+        Objects.requireNonNull(currentNode, "currentNode");
+
+        int affected = executeUpdate(releaseToOfflineSql, statement -> {
+            statement.setString(1, playerUuid.value().toString());
+            statement.setString(2, currentNode.value());
+            statement.setLong(3, currentEpoch);
+        });
+
+        return affected == 1
+                ? SessionAuthorityOutcome.success(currentEpoch, false)
+                : SessionAuthorityOutcome.rejected();
     }
 
     private int executeUpdate(String sql, StatementBinder binder) {
