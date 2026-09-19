@@ -15,6 +15,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.antiabuse.IslandAntiAbuseListener;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
+import com.uxplima.uxmskyblock.bukkit.booster.IslandBoosterListener;
 import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
 import com.uxplima.uxmskyblock.bukkit.boundary.WorldBorderPacketAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
@@ -22,6 +23,7 @@ import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
@@ -49,6 +51,7 @@ import com.uxplima.uxmskyblock.bukkit.limit.IslandLimitListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
@@ -58,6 +61,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.AntiAbuseFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.BoosterFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BoundaryFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ChatFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
@@ -90,6 +94,7 @@ import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
@@ -218,6 +223,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final AntiAbuseConfiguration antiAbuseConfig;
     private final IslandAntiAbuseService antiAbuseService;
     private final IslandAntiAbuseListener antiAbuseListener;
+    private final BoosterConfiguration boosterConfig;
+    private final IslandBoosterService boosterService;
+    private final IslandBoosterListener boosterListener;
+    private final IslandBoosterMenu boosterMenu;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -410,6 +419,54 @@ public final class SkyblockBootstrap implements AutoCloseable {
             DimensionConfiguration dimensionConfig,
             LimitConfiguration limitConfig,
             AntiAbuseConfiguration antiAbuseConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                levelConfig,
+                dimensionConfig,
+                limitConfig,
+                antiAbuseConfig,
+                BoosterConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig,
+            DimensionConfiguration dimensionConfig,
+            LimitConfiguration limitConfig,
+            AntiAbuseConfiguration antiAbuseConfig,
+            BoosterConfiguration boosterConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -433,6 +490,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.dimensionConfig = Objects.requireNonNull(dimensionConfig, "dimensionConfig must not be null");
         this.limitConfig = Objects.requireNonNull(limitConfig, "limitConfig must not be null");
         this.antiAbuseConfig = Objects.requireNonNull(antiAbuseConfig, "antiAbuseConfig must not be null");
+        this.boosterConfig = Objects.requireNonNull(boosterConfig, "boosterConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -690,6 +748,21 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.antiAbuseListener = new IslandAntiAbuseListener(
                 persistenceBootstrap.islandStoragePort(), this.antiAbuseService, this.antiAbuseConfig);
 
+        this.boosterService = new IslandBoosterService(
+                persistenceBootstrap.islandBoosterStoragePort(),
+                this.boosterConfig::policy,
+                this.boosterConfig.pauseWhenEmpty());
+        this.boosterListener = new IslandBoosterListener(
+                persistenceBootstrap.islandStoragePort(),
+                this.boosterService,
+                this.boosterConfig,
+                this.sessionCoordinator);
+        this.boosterMenu = new IslandBoosterMenu(
+                persistenceBootstrap.islandStoragePort(),
+                this.boosterService,
+                this.boosterConfig,
+                this.sessionCoordinator);
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -716,7 +789,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 worthService,
                 dimensionListener,
                 limitService,
-                antiAbuseService);
+                antiAbuseService,
+                boosterService,
+                boosterMenu);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -833,6 +908,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new DimensionFeatureModule(dimensionService));
         this.moduleRegistry.register(new LimitFeatureModule(limitService));
         this.moduleRegistry.register(new AntiAbuseFeatureModule(antiAbuseService));
+        this.moduleRegistry.register(new BoosterFeatureModule(boosterService, boosterConfig, scheduler));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1656,6 +1732,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             antiAbuseConfig = AntiAbuseConfiguration.defaultConfiguration();
         }
 
+        Path boostersFile = dataDir.resolve("boosters.conf");
+        if (!java.nio.file.Files.exists(boostersFile)) {
+            try (java.io.InputStream in = plugin.getResource("boosters.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, boostersFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if boosters.conf cannot be extracted
+            }
+        }
+
+        BoosterConfiguration boosterConfig;
+        if (java.nio.file.Files.exists(boostersFile)) {
+            try {
+                CommentedConfigurationNode boosterRoot = HoconConfigurationLoader.builder()
+                        .path(boostersFile)
+                        .build()
+                        .load();
+                boosterConfig = BoosterConfiguration.load(boosterRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load boosters configuration from: " + boostersFile, e);
+            }
+        } else {
+            boosterConfig = BoosterConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1677,7 +1779,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 levelConfig,
                 dimensionConfig,
                 limitConfig,
-                antiAbuseConfig);
+                antiAbuseConfig,
+                boosterConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1727,6 +1830,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(dimensionListener, plugin);
         pm.registerEvents(limitListener, plugin);
         pm.registerEvents(antiAbuseListener, plugin);
+        pm.registerEvents(boosterListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1999,6 +2103,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandAntiAbuseListener antiAbuseListener() {
         return antiAbuseListener;
+    }
+
+    public BoosterConfiguration boosterConfiguration() {
+        return boosterConfig;
+    }
+
+    public IslandBoosterService boosterService() {
+        return boosterService;
+    }
+
+    public IslandBoosterListener boosterListener() {
+        return boosterListener;
+    }
+
+    public IslandBoosterMenu boosterMenu() {
+        return boosterMenu;
     }
 
     @Override

@@ -88,6 +88,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final SqlIslandVaultStorageAdapter islandVaultStorageAdapter;
     private final com.uxplima.uxmskyblock.persistence.mission.PlayerIslandMissionAdapter islandMissionAdapter;
     private final SqlAntiAbuseStorageAdapter antiAbuseStorageAdapter;
+    private final com.uxplima.uxmskyblock.persistence.booster.SqlIslandBoosterStorageAdapter
+            islandBoosterStorageAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -121,6 +123,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.islandMissionAdapter =
                 new com.uxplima.uxmskyblock.persistence.mission.PlayerIslandMissionAdapter(database);
         this.antiAbuseStorageAdapter = new SqlAntiAbuseStorageAdapter(database);
+        this.islandBoosterStorageAdapter =
+                new com.uxplima.uxmskyblock.persistence.booster.SqlIslandBoosterStorageAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -252,6 +256,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public AntiAbuseStoragePort antiAbuseStoragePort() {
         return antiAbuseStorageAdapter;
+    }
+
+    public com.uxplima.uxmskyblock.core.application.booster.IslandBoosterStoragePort islandBoosterStoragePort() {
+        return islandBoosterStorageAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

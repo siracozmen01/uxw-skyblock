@@ -125,6 +125,9 @@ class ProductionMigrationFastLaneTest {
                                 "vault_audit_logs",
                                 "island_missions",
                                 "spiral_slot_pool",
+                                "player_anti_abuse_records",
+                                "island_quarantines",
+                                "island_boosters",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -652,6 +655,19 @@ class ProductionMigrationFastLaneTest {
                                 "item_summary",
                                 "quantity",
                                 "created_at");
+
+                // island_boosters columns (V23)
+                Set<String> boosterCols = getColumnNames(meta, "island_boosters");
+                assertThat(boosterCols)
+                        .containsExactlyInAnyOrder(
+                                "booster_id",
+                                "island_id",
+                                "category",
+                                "multiplier",
+                                "expires_at",
+                                "created_at",
+                                "paused_at",
+                                "remaining_seconds");
             }
         }
     }
@@ -2297,7 +2313,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(21);
 
             // 2. Upgrade by applying V22
-            int v22Applied = runner.apply(allMigrations);
+            int v22Applied = runner.apply(allMigrations.subList(0, 22));
             assertThat(v22Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(22);
 
@@ -2362,9 +2378,80 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 22));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(22);
+        }
+    }
+
+    @Test
+    @DisplayName("26. Step-by-step upgrade from V22 to V23 creates island boosters table")
+    void stepByStepUpgradeFromV22ToV23CreatesIslandBoostersTable() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V22
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v22Applied = runner.apply(allMigrations.subList(0, 22));
+            assertThat(v22Applied).isEqualTo(22);
+            assertThat(runner.currentVersion()).isEqualTo(22);
+
+            // 2. Upgrade by applying V23
+            int v23Applied = runner.apply(allMigrations);
+            assertThat(v23Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(23);
+
+            // 3. Verify island_boosters accepts rows and foreign key cascade works
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(conn, """
+                        INSERT INTO islands (
+                            id, owner_profile_id, owner_account_uuid, custom_name,
+                            lifecycle, economic_state, administrative_state, version
+                        ) VALUES (
+                            '88888888-8888-8888-8888-888888888888',
+                            '00000000-0000-0000-0000-000000000002',
+                            '00000000-0000-0000-0000-000000000001',
+                            'Booster Island', 'ACTIVE', 'NORMAL', 'NORMAL', 1
+                        );
+                        """);
+
+                execute(conn, """
+                        INSERT INTO island_boosters (
+                            booster_id, island_id, category, multiplier, expires_at, created_at, paused_at, remaining_seconds
+                        ) VALUES (
+                            'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            '88888888-8888-8888-8888-888888888888',
+                            'SPAWNER_RATE', 2.0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 0
+                        );
+                        """);
+
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_boosters WHERE booster_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"))
+                        .isEqualTo(1);
+
+                // Delete island and verify cascade deletes booster
+                execute(conn, "DELETE FROM islands WHERE id = '88888888-8888-8888-8888-888888888888'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_boosters WHERE booster_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(23);
         }
     }
 

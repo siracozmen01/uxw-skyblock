@@ -11,6 +11,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -22,6 +23,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -31,6 +33,7 @@ import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
@@ -40,6 +43,7 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
+import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
@@ -57,6 +61,8 @@ import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
+import com.uxplima.uxmskyblock.core.domain.booster.BoosterApplyResult;
+import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
 import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatPermissionDeniedException;
@@ -113,6 +119,8 @@ public final class IslandCommandTree {
     private final @Nullable IslandDimensionListener dimensionListener;
     private final @Nullable IslandLimitService limitService;
     private final @Nullable IslandAntiAbuseService antiAbuseService;
+    private final @Nullable IslandBoosterService boosterService;
+    private final @Nullable IslandBoosterMenu boosterMenu;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -627,6 +635,66 @@ public final class IslandCommandTree {
             @Nullable IslandDimensionListener dimensionListener,
             @Nullable IslandLimitService limitService,
             @Nullable IslandAntiAbuseService antiAbuseService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                boundaryService,
+                recycleService,
+                resetMenu,
+                worthService,
+                dimensionListener,
+                limitService,
+                antiAbuseService,
+                null,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService,
+            @Nullable IslandRecycleService recycleService,
+            @Nullable IslandResetConfirmationMenu resetMenu,
+            @Nullable IslandWorthService worthService,
+            @Nullable IslandDimensionListener dimensionListener,
+            @Nullable IslandLimitService limitService,
+            @Nullable IslandAntiAbuseService antiAbuseService,
+            @Nullable IslandBoosterService boosterService,
+            @Nullable IslandBoosterMenu boosterMenu) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -656,6 +724,8 @@ public final class IslandCommandTree {
         this.dimensionListener = dimensionListener;
         this.limitService = limitService;
         this.antiAbuseService = antiAbuseService;
+        this.boosterService = boosterService;
+        this.boosterMenu = boosterMenu;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -713,6 +783,13 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("end").executes(this::executeEnd))
                 .then(Cmd.literal("limits").executes(this::executeLimits))
                 .then(Cmd.literal("quarantine").executes(this::executeQuarantine))
+                .then(Cmd.literal("booster")
+                        .executes(this::executeBooster)
+                        .then(Cmd.literal("apply")
+                                .then(Cmd.argument("category", StringArgumentType.word())
+                                        .then(Cmd.argument("multiplier", DoubleArgumentType.doubleArg(1.0))
+                                                .then(Cmd.argument("duration", StringArgumentType.word())
+                                                        .executes(this::executeAdminApplyBooster))))))
                 .then(Cmd.literal("setspawn").executes(this::executeSetSpawn))
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
@@ -826,6 +903,9 @@ public final class IslandCommandTree {
         send(src.getSender(), Component.text("/is end - Teleport to your End island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is limits - View hardware & tile entity quotas", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is quarantine - View island quarantine status", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text("/is booster - View active island boosters and multipliers", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
@@ -2127,6 +2207,107 @@ public final class IslandCommandTree {
             });
         });
         return Cmd.OK;
+    }
+
+    private int executeBooster(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can access the booster menu.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (boosterMenu == null) {
+            send(player, Component.text("Island boosters are disabled on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        boosterMenu.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeAdminApplyBooster(CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        if (boosterService == null) {
+            send(sender, Component.text("Island boosters are disabled on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (!sender.hasPermission("uxmskyblock.admin.booster")) {
+            send(sender, Component.text("You do not have permission to apply boosters.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        String catStr = StringArgumentType.getString(ctx, "category");
+        Optional<BoosterCategory> optCategory = BoosterCategory.parse(catStr);
+        if (optCategory.isEmpty()) {
+            send(
+                    sender,
+                    Component.text(
+                            "Invalid booster category: " + catStr
+                                    + ". Available: SPAWNER_RATE, CROP_GROWTH, ORE_GENERATOR, MOB_EXP, ISLAND_WORTH, MISSION_REWARDS",
+                            NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        double multiplier = DoubleArgumentType.getDouble(ctx, "multiplier");
+        String durStr = StringArgumentType.getString(ctx, "duration");
+        Duration duration = parseDurationString(durStr);
+        if (duration.isZero() || duration.isNegative()) {
+            send(sender, Component.text("Invalid duration: " + durStr, NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Console must specify an island to apply boosters.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<IslandId> optIsland = islandLocationService.findIslandId(optProfile.get());
+        if (optIsland.isEmpty()) {
+            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        Instant now = Instant.now();
+        BoosterApplyResult result = boosterService.applyBooster(islandId, optCategory.get(), multiplier, duration, now);
+
+        send(
+                player,
+                MiniMessage.miniMessage()
+                        .deserialize(
+                                "<green>Successfully applied <yellow>" + multiplier + "x</yellow> booster to <gold>"
+                                        + optCategory.get().displayName() + "</gold> for <white>"
+                                        + formatDuration(duration) + "</white>! Result: "
+                                        + result.getClass().getSimpleName() + "</green>"));
+        return Cmd.OK;
+    }
+
+    private static Duration parseDurationString(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Duration.ZERO;
+        }
+        String s = raw.trim().toLowerCase(Locale.ROOT);
+        try {
+            if (s.endsWith("d")) {
+                return Duration.ofDays(Long.parseLong(s.substring(0, s.length() - 1)));
+            }
+            if (s.endsWith("h")) {
+                return Duration.ofHours(Long.parseLong(s.substring(0, s.length() - 1)));
+            }
+            if (s.endsWith("m")) {
+                return Duration.ofMinutes(Long.parseLong(s.substring(0, s.length() - 1)));
+            }
+            if (s.endsWith("s")) {
+                return Duration.ofSeconds(Long.parseLong(s.substring(0, s.length() - 1)));
+            }
+            return Duration.ofSeconds(Long.parseLong(s));
+        } catch (NumberFormatException e) {
+            return Duration.ZERO;
+        }
     }
 
     private static String formatDuration(Duration duration) {

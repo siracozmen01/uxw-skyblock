@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 22;
+    public static final int LATEST_VERSION = 23;
+
+    /** Human-readable description of migration V23. */
+    public static final String V23_DESCRIPTION = "create island boosters table";
 
     /** Human-readable description of migration V22. */
     public static final String V22_DESCRIPTION = "create player anti abuse records and island quarantines";
@@ -128,7 +131,8 @@ public final class SkyblockMigrations {
                 v19Migration(dialect),
                 v20Migration(dialect),
                 v21Migration(dialect),
-                v22Migration(dialect));
+                v22Migration(dialect),
+                v23Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -549,6 +553,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(22, V22_DESCRIPTION, SQLITE_V22_DDL);
             case MYSQL -> new Migration(22, V22_DESCRIPTION, MYSQL_V22_DDL);
             case POSTGRES -> new Migration(22, V22_DESCRIPTION, POSTGRES_V22_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v23Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(23, V23_DESCRIPTION, SQLITE_V23_DDL);
+            case MYSQL -> new Migration(23, V23_DESCRIPTION, MYSQL_V23_DDL);
+            case POSTGRES -> new Migration(23, V23_DESCRIPTION, POSTGRES_V23_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2571,5 +2587,55 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX IF NOT EXISTS idx_island_quarantines_until ON island_quarantines (quarantined_until);
+            """;
+
+    private static final String SQLITE_V23_DDL = """
+            CREATE TABLE IF NOT EXISTS island_boosters (
+                booster_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_id VARCHAR(36) NOT NULL,
+                category VARCHAR(32) NOT NULL,
+                multiplier DOUBLE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                paused_at TIMESTAMP NULL,
+                remaining_seconds BIGINT NOT NULL DEFAULT 0,
+                CONSTRAINT fk_island_boosters_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_boosters_lookup ON island_boosters (island_id, category, expires_at);
+            """;
+
+    private static final String MYSQL_V23_DDL = """
+            CREATE TABLE IF NOT EXISTS island_boosters (
+                booster_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_id VARCHAR(36) NOT NULL,
+                category VARCHAR(32) NOT NULL,
+                multiplier DOUBLE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                paused_at TIMESTAMP NULL,
+                remaining_seconds BIGINT NOT NULL DEFAULT 0,
+                INDEX idx_island_boosters_lookup (island_id, category, expires_at),
+                CONSTRAINT fk_island_boosters_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V23_DDL = """
+            CREATE TABLE IF NOT EXISTS island_boosters (
+                booster_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_id VARCHAR(36) NOT NULL,
+                category VARCHAR(32) NOT NULL,
+                multiplier DOUBLE PRECISION NOT NULL,
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                paused_at TIMESTAMP WITH TIME ZONE NULL,
+                remaining_seconds BIGINT NOT NULL DEFAULT 0,
+                CONSTRAINT fk_island_boosters_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_boosters_lookup ON island_boosters (island_id, category, expires_at);
             """;
 }
