@@ -250,6 +250,18 @@ public final class ModuleRegistry {
         return List.copyOf(activeStartupOrder);
     }
 
+    public synchronized boolean isModuleEnabled(String id) {
+        if (id == null) {
+            return false;
+        }
+        for (FeatureModule module : activeStartupOrder) {
+            if (id.equals(module.descriptor().id())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void disableModuleSilently(FeatureModule module) {
         if (module.state() != ModuleState.DISABLED) {
             try {

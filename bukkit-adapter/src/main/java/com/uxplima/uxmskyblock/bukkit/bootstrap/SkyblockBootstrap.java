@@ -35,6 +35,7 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
@@ -51,6 +52,7 @@ import com.uxplima.uxmskyblock.bukkit.config.SettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ShopConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.UpgradesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
@@ -109,6 +111,7 @@ import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
+import com.uxplima.uxmskyblock.bukkit.upgrade.OreGeneratorListener;
 import com.uxplima.uxmskyblock.bukkit.ward.KineticWardListener;
 import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
@@ -155,6 +158,7 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
+import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.application.ward.KineticWardService;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
@@ -274,6 +278,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final PerformanceConfiguration performanceConfig;
     private final InteractablesConfiguration interactablesConfig;
     private final WorldConfiguration worldConfig;
+    private final UpgradesConfiguration upgradesConfig;
+    private final GeneratorsConfiguration generatorsConfig;
+    private final IslandUpgradeService upgradeService;
+    private final OreGeneratorListener oreGeneratorListener;
+    private final UpgradesModule upgradesModule;
     private final IslandNameService islandNameService;
     private final AdaptiveBackpressureController backpressureController;
     private final KineticWardService kineticWardService;
@@ -644,6 +653,70 @@ public final class SkyblockBootstrap implements AutoCloseable {
             PerformanceConfiguration performanceConfig,
             InteractablesConfiguration interactablesConfig,
             WorldConfiguration worldConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                levelConfig,
+                dimensionConfig,
+                limitConfig,
+                antiAbuseConfig,
+                boosterConfig,
+                bankConfig,
+                settingsConfig,
+                protectionConfig,
+                performanceConfig,
+                interactablesConfig,
+                worldConfig,
+                UpgradesConfiguration.defaultConfiguration(),
+                GeneratorsConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig,
+            DimensionConfiguration dimensionConfig,
+            LimitConfiguration limitConfig,
+            AntiAbuseConfiguration antiAbuseConfig,
+            BoosterConfiguration boosterConfig,
+            BankConfiguration bankConfig,
+            SettingsConfiguration settingsConfig,
+            ProtectionConfiguration protectionConfig,
+            PerformanceConfiguration performanceConfig,
+            InteractablesConfiguration interactablesConfig,
+            WorldConfiguration worldConfig,
+            UpgradesConfiguration upgradesConfig,
+            GeneratorsConfiguration generatorsConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -674,6 +747,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.performanceConfig = Objects.requireNonNull(performanceConfig, "performanceConfig must not be null");
         this.interactablesConfig = Objects.requireNonNull(interactablesConfig, "interactablesConfig must not be null");
         this.worldConfig = Objects.requireNonNull(worldConfig, "worldConfig must not be null");
+        this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
+        this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -1157,11 +1232,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.rewardInboxService =
                 new RewardInboxService(persistenceBootstrap.rewardStoragePort(), rewardClaimCoordinator);
 
+        this.upgradeService = new IslandUpgradeService(
+                persistenceBootstrap.islandUpgradeStoragePort(), this.upgradesConfig.definitions());
+        this.oreGeneratorListener = new OreGeneratorListener(
+                this.upgradeService, this.generatorsConfig, this.protectionListener.spatialIndex());
+        this.upgradesModule = new UpgradesModule(
+                this.upgradeService,
+                this.upgradesConfig,
+                this.generatorsConfig,
+                this.oreGeneratorListener,
+                this.plugin);
+
         this.moduleRegistry = new ModuleRegistry();
         this.moduleContext = new BukkitModuleContext("1.0.0");
         this.moduleRegistry.register(new CoreModule(createIslandUseCase));
         this.moduleRegistry.register(new BankModule(bankService));
-        this.moduleRegistry.register(new UpgradesModule());
+        this.moduleRegistry.register(this.upgradesModule);
         this.moduleRegistry.register(new BiomesModule(biomeAdapter));
         this.moduleRegistry.register(new PresetsModule(presetCatalog, schematicEngine));
         this.moduleRegistry.register(new SeasonFeatureModule(seasonService, scheduler, seasonConfig));
@@ -2193,6 +2279,58 @@ public final class SkyblockBootstrap implements AutoCloseable {
             worldConfig = WorldConfiguration.defaultConfiguration();
         }
 
+        Path upgradesFile = dataDir.resolve("upgrades.conf");
+        if (!java.nio.file.Files.exists(upgradesFile)) {
+            try (java.io.InputStream in = plugin.getResource("upgrades.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, upgradesFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if upgrades.conf cannot be extracted
+            }
+        }
+
+        UpgradesConfiguration upgradesConfig;
+        if (java.nio.file.Files.exists(upgradesFile)) {
+            try {
+                CommentedConfigurationNode upgradesRoot = HoconConfigurationLoader.builder()
+                        .path(upgradesFile)
+                        .build()
+                        .load();
+                upgradesConfig = UpgradesConfiguration.load(upgradesRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load upgrades configuration from: " + upgradesFile, e);
+            }
+        } else {
+            upgradesConfig = UpgradesConfiguration.defaultConfiguration();
+        }
+
+        Path generatorsFile = dataDir.resolve("generators.conf");
+        if (!java.nio.file.Files.exists(generatorsFile)) {
+            try (java.io.InputStream in = plugin.getResource("generators.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, generatorsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if generators.conf cannot be extracted
+            }
+        }
+
+        GeneratorsConfiguration generatorsConfig;
+        if (java.nio.file.Files.exists(generatorsFile)) {
+            try {
+                CommentedConfigurationNode generatorsRoot = HoconConfigurationLoader.builder()
+                        .path(generatorsFile)
+                        .build()
+                        .load();
+                generatorsConfig = GeneratorsConfiguration.load(generatorsRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load generators configuration from: " + generatorsFile, e);
+            }
+        } else {
+            generatorsConfig = GeneratorsConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -2221,7 +2359,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 protectionConfig,
                 performanceConfig,
                 interactablesConfig,
-                worldConfig);
+                worldConfig,
+                upgradesConfig,
+                generatorsConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -2262,17 +2402,37 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         PluginManager pm = Bukkit.getPluginManager();
         CatalogPermissions.registerAll(pm);
-        pm.registerEvents(protectionListener, plugin);
-        pm.registerEvents(sessionListener, plugin);
-        pm.registerEvents(chatListener, plugin);
-        pm.registerEvents(missionListener, plugin);
-        pm.registerEvents(boundaryListener, plugin);
-        pm.registerEvents(worthListener, plugin);
-        pm.registerEvents(dimensionListener, plugin);
-        pm.registerEvents(limitListener, plugin);
-        pm.registerEvents(antiAbuseListener, plugin);
-        pm.registerEvents(boosterListener, plugin);
-        pm.registerEvents(bankruptcyListener, plugin);
+        if (moduleRegistry.isModuleEnabled("core")) {
+            pm.registerEvents(protectionListener, plugin);
+            pm.registerEvents(sessionListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("chat")) {
+            pm.registerEvents(chatListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("missions")) {
+            pm.registerEvents(missionListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("boundary")) {
+            pm.registerEvents(boundaryListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("worth")) {
+            pm.registerEvents(worthListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("dimensions")) {
+            pm.registerEvents(dimensionListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("limits")) {
+            pm.registerEvents(limitListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("anti-abuse")) {
+            pm.registerEvents(antiAbuseListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("boosters")) {
+            pm.registerEvents(boosterListener, plugin);
+        }
+        if (moduleRegistry.isModuleEnabled("bank-upkeep")) {
+            pm.registerEvents(bankruptcyListener, plugin);
+        }
         pm.registerEvents(obsidianRecoveryListener, plugin);
         pm.registerEvents(voidProtectionListener, plugin);
         pm.registerEvents(categoricalInteractablesListener, plugin);
@@ -2615,6 +2775,26 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public WorldConfiguration worldConfiguration() {
         return worldConfig;
+    }
+
+    public UpgradesConfiguration upgradesConfiguration() {
+        return upgradesConfig;
+    }
+
+    public GeneratorsConfiguration generatorsConfiguration() {
+        return generatorsConfig;
+    }
+
+    public IslandUpgradeService upgradeService() {
+        return upgradeService;
+    }
+
+    public OreGeneratorListener oreGeneratorListener() {
+        return oreGeneratorListener;
+    }
+
+    public UpgradesModule upgradesModule() {
+        return upgradesModule;
     }
 
     public IslandNameService islandNameService() {

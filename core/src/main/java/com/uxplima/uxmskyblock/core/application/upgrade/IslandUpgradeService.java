@@ -21,6 +21,10 @@ public final class IslandUpgradeService {
 
     private final IslandUpgradeStoragePort storagePort;
     private final Map<UpgradeId, UpgradeDefinition> definitions;
+    private final java.util.concurrent.ConcurrentMap<IslandId, java.util.concurrent.ConcurrentMap<UpgradeId, Integer>>
+            tierCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<IslandId> loadingIslands =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     public IslandUpgradeService(IslandUpgradeStoragePort storagePort, Map<UpgradeId, UpgradeDefinition> definitions) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort");
@@ -31,10 +35,62 @@ public final class IslandUpgradeService {
         return Optional.ofNullable(definitions.get(upgradeId));
     }
 
+    public boolean isCached(IslandId islandId) {
+        return tierCache.containsKey(islandId);
+    }
+
+    public int getCachedTier(IslandId islandId, UpgradeId upgradeId) {
+        Objects.requireNonNull(islandId, "islandId");
+        Objects.requireNonNull(upgradeId, "upgradeId");
+        java.util.concurrent.ConcurrentMap<UpgradeId, Integer> islandTiers = tierCache.get(islandId);
+        if (islandTiers != null) {
+            Integer cached = islandTiers.get(upgradeId);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        return 0;
+    }
+
+    @SuppressWarnings("FutureReturnValueIgnored")
+    public void refreshCacheAsync(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId");
+        if (loadingIslands.add(islandId)) {
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    warmCache(islandId);
+                } finally {
+                    loadingIslands.remove(islandId);
+                }
+            });
+        }
+    }
+
+    public void warmCache(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId");
+        Map<UpgradeId, Integer> upgrades = storagePort.getUpgrades(islandId);
+        tierCache.put(islandId, new java.util.concurrent.ConcurrentHashMap<>(upgrades));
+    }
+
+    public void invalidateCache(IslandId islandId) {
+        tierCache.remove(islandId);
+    }
+
     public int getCurrentTier(IslandId islandId, UpgradeId upgradeId) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(upgradeId, "upgradeId");
-        return storagePort.getUpgradeTier(islandId, upgradeId);
+        java.util.concurrent.ConcurrentMap<UpgradeId, Integer> islandTiers = tierCache.get(islandId);
+        if (islandTiers != null) {
+            Integer cached = islandTiers.get(upgradeId);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        int tier = storagePort.getUpgradeTier(islandId, upgradeId);
+        tierCache
+                .computeIfAbsent(islandId, k -> new java.util.concurrent.ConcurrentHashMap<>())
+                .put(upgradeId, tier);
+        return tier;
     }
 
     public Map<UpgradeId, Integer> getAllUpgrades(IslandId islandId) {
@@ -108,6 +164,9 @@ public final class IslandUpgradeService {
 
         // Apply new tier
         storagePort.setUpgradeTier(islandId, upgradeId, nextTierNum);
+        tierCache
+                .computeIfAbsent(islandId, k -> new java.util.concurrent.ConcurrentHashMap<>())
+                .put(upgradeId, nextTierNum);
         return new UpgradePurchaseOutcome.Success(upgradeId, nextTierNum, nextTier.costMinorUnits());
     }
 }

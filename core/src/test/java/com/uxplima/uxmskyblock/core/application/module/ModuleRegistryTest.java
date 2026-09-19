@@ -265,6 +265,37 @@ class ModuleRegistryTest {
         assertThat(core.state()).isEqualTo(ModuleState.DISABLED);
     }
 
+    @Test
+    @DisplayName("isModuleEnabled reflects true lifecycle state before, during, and after module activation")
+    void isModuleEnabledReflectsLifecycle() {
+        TestFeatureModule core = new TestFeatureModule(
+                new ModuleDescriptor("core", "1.0.0", List.of(), List.of(), List.of(), ">=1.0.0", true),
+                new ArrayList<>());
+        TestFeatureModule missions = new TestFeatureModule(
+                new ModuleDescriptor(
+                        "missions", "1.0.0", List.of("core >= 1.0.0"), List.of(), List.of(), ">=1.0.0", false),
+                new ArrayList<>());
+
+        registry.register(core);
+        registry.register(missions);
+        registry.configure(Map.of("missions", false), Map.of());
+
+        assertThat(registry.isModuleEnabled("core")).isFalse();
+        assertThat(registry.isModuleEnabled("missions")).isFalse();
+        assertThat(registry.isModuleEnabled(null)).isFalse();
+
+        registry.enableModules(context);
+
+        assertThat(registry.isModuleEnabled("core")).isTrue();
+        assertThat(registry.isModuleEnabled("missions")).isFalse();
+        assertThat(registry.isModuleEnabled("nonexistent")).isFalse();
+
+        registry.disableModules();
+
+        assertThat(registry.isModuleEnabled("core")).isFalse();
+        assertThat(registry.isModuleEnabled("missions")).isFalse();
+    }
+
     private static class TestFeatureModule implements FeatureModule {
         private final ModuleDescriptor descriptor;
         private final List<String> log;
