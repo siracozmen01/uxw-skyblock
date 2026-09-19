@@ -14,6 +14,7 @@ import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
 import com.uxplima.uxmskyblock.core.application.event.ConsumerInboxPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezePort;
+import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyStoragePort;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinalizationPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
@@ -40,6 +41,7 @@ import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
 import com.uxplima.uxmskyblock.persistence.economy.PlayerEconomySagaAdapter;
 import com.uxplima.uxmskyblock.persistence.event.ConsumerInboxAdapter;
 import com.uxplima.uxmskyblock.persistence.event.TransactionalOutboxAdapter;
+import com.uxplima.uxmskyblock.persistence.gamemode.SqlGameModeHierarchyAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerInventoryMutationJournalAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerProfileHandoffFinalizationAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerProfileInventoryAdapter;
@@ -93,6 +95,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final com.uxplima.uxmskyblock.persistence.bank.SqlIslandBankruptcyStorageAdapter
             islandBankruptcyStorageAdapter;
     private final com.uxplima.uxmskyblock.persistence.name.SqlIslandNameStorageAdapter islandNameStorageAdapter;
+    private final SqlGameModeHierarchyAdapter gameModeHierarchyAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -132,6 +135,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
                 new com.uxplima.uxmskyblock.persistence.bank.SqlIslandBankruptcyStorageAdapter(database);
         this.islandNameStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.name.SqlIslandNameStorageAdapter(database.dataSource());
+        this.gameModeHierarchyAdapter = new SqlGameModeHierarchyAdapter(database.dataSource());
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -275,6 +279,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public com.uxplima.uxmskyblock.core.application.name.IslandNameStoragePort islandNameStoragePort() {
         return islandNameStorageAdapter;
+    }
+
+    public GameModeHierarchyStoragePort gameModeHierarchyStoragePort() {
+        return gameModeHierarchyAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

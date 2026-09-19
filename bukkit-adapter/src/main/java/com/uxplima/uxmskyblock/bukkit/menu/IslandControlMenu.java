@@ -23,6 +23,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -52,6 +53,26 @@ public final class IslandControlMenu {
     private final SchedulerPort schedulerPort;
     private final String worldName;
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
+    private final @Nullable BedrockFormService bedrockFormService;
+
+    public IslandControlMenu(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandUpgradeStoragePort upgradeStoragePort,
+            IslandLocationService locationService,
+            SchedulerPort schedulerPort,
+            String worldName,
+            Function<UUID, Optional<ProfileId>> activeProfileProvider,
+            @Nullable BedrockFormService bedrockFormService) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
+        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
+        this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.bedrockFormService = bedrockFormService;
+    }
 
     public IslandControlMenu(
             IslandStoragePort islandStoragePort,
@@ -61,13 +82,35 @@ public final class IslandControlMenu {
             SchedulerPort schedulerPort,
             String worldName,
             Function<UUID, Optional<ProfileId>> activeProfileProvider) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
-        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
-        this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
-        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
-        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
-        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this(
+                islandStoragePort,
+                islandBankPort,
+                upgradeStoragePort,
+                locationService,
+                schedulerPort,
+                worldName,
+                activeProfileProvider,
+                null);
+    }
+
+    public IslandControlMenu(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandUpgradeStoragePort upgradeStoragePort,
+            IslandLocationService locationService,
+            SchedulerPort schedulerPort,
+            String worldName,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            @Nullable BedrockFormService bedrockFormService) {
+        this(
+                islandStoragePort,
+                islandBankPort,
+                upgradeStoragePort,
+                locationService,
+                schedulerPort,
+                worldName,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
+                bedrockFormService);
     }
 
     public IslandControlMenu(
@@ -85,7 +128,8 @@ public final class IslandControlMenu {
                 locationService,
                 schedulerPort,
                 worldName,
-                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
+                sessionCoordinator,
+                null);
     }
 
     public IslandControlMenu(
@@ -139,6 +183,33 @@ public final class IslandControlMenu {
 
             schedulerPort.onEntity(playerUuid, () -> {
                 if (!player.isOnline()) {
+                    return;
+                }
+                if (bedrockFormService != null && bedrockFormService.isBedrock(player)) {
+                    bedrockFormService.openIslandControlForm(
+                            player,
+                            island,
+                            () -> {
+                                if (optLoc.isPresent()) {
+                                    IslandLocation loc = optLoc.get();
+                                    World world = Bukkit.getWorld(worldName);
+                                    if (world != null) {
+                                        Location target = new Location(
+                                                world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
+                                        var unused = player.teleportAsync(target);
+                                        player.sendMessage(Component.text("Teleported to island home!", NamedTextColor.GREEN));
+                                    } else {
+                                        player.sendMessage(Component.text("Island world is unloaded.", NamedTextColor.RED));
+                                    }
+                                } else {
+                                    player.sendMessage(Component.text("Island home location not found.", NamedTextColor.RED));
+                                }
+                            },
+                            () -> player.sendMessage(Component.text("Warps: Use /is warps to browse destinations.", NamedTextColor.AQUA)),
+                            () -> player.sendMessage(Component.text("Bank: Use /is bank deposit <amount> or /is bank withdraw <amount>", NamedTextColor.GOLD)),
+                            () -> player.sendMessage(Component.text("Members: Use /is invite <player> or /is kick <player>", NamedTextColor.YELLOW)),
+                            () -> player.sendMessage(Component.text("Settings: Use /is lock or /is unlock to control visitor access.", NamedTextColor.RED))
+                    );
                     return;
                 }
                 SimpleGui gui = buildGui(player, island, bank, upgrades, optLoc);

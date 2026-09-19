@@ -18,6 +18,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
@@ -37,16 +38,27 @@ public final class IslandResetConfirmationMenu {
     private final IslandStoragePort islandStoragePort;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
+    private final @Nullable BedrockFormService bedrockFormService;
+
+    public IslandResetConfirmationMenu(
+            IslandRecycleService recycleService,
+            IslandStoragePort islandStoragePort,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            @Nullable BedrockFormService bedrockFormService) {
+        this.recycleService = Objects.requireNonNull(recycleService, "recycleService must not be null");
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.sessionCoordinator = sessionCoordinator;
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.bedrockFormService = bedrockFormService;
+    }
 
     public IslandResetConfirmationMenu(
             IslandRecycleService recycleService,
             IslandStoragePort islandStoragePort,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort) {
-        this.recycleService = Objects.requireNonNull(recycleService, "recycleService must not be null");
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.sessionCoordinator = sessionCoordinator;
-        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this(recycleService, islandStoragePort, sessionCoordinator, schedulerPort, null);
     }
 
     public void open(Player player, String verificationCode) {
@@ -79,6 +91,44 @@ public final class IslandResetConfirmationMenu {
             IslandId islandId = optIslandId.get();
             schedulerPort.onEntity(playerUuid, () -> {
                 if (!player.isOnline()) {
+                    return;
+                }
+                if (bedrockFormService != null && bedrockFormService.isBedrock(player)) {
+                    bedrockFormService.openConfirmationModal(
+                            player,
+                            "Confirm Island Reset",
+                            "WARNING: This action CANNOT BE UNDONE!\nConfirmation Code: " + verificationCode + "\nAll island blocks, items, and bank funds will be wiped.",
+                            "§cCONFIRM RESET",
+                            "§aCANCEL",
+                            () -> schedulerPort.onEntity(playerUuid, () -> {
+                                RecycleResult result = recycleService.executeReset(profileId, islandId, verificationCode, false);
+                                switch (result) {
+                                    case RecycleResult.Success s -> {
+                                        player.sendMessage(
+                                                MiniMessage.miniMessage()
+                                                        .deserialize(
+                                                                "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
+                                        player.sendMessage(MiniMessage.miniMessage()
+                                                .deserialize("<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
+                                    }
+                                    case RecycleResult.NotOwner no ->
+                                        player.sendMessage(MiniMessage.miniMessage()
+                                                .deserialize("<red>Only the island owner can reset this island!</red>"));
+                                    case RecycleResult.InvalidChallenge ic ->
+                                        player.sendMessage(MiniMessage.miniMessage()
+                                                .deserialize("<red>Reset confirmation failed: " + ic.reason() + "</red>"));
+                                    case RecycleResult.IslandNotFound nf ->
+                                        player.sendMessage(MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
+                                    case RecycleResult.Failure f ->
+                                        player.sendMessage(
+                                                MiniMessage.miniMessage().deserialize("<red>Reset failed: " + f.reason() + "</red>"));
+                                }
+                            }),
+                            () -> {
+                                recycleService.cancelResetChallenge(profileId);
+                                player.sendMessage(MiniMessage.miniMessage().deserialize("<yellow>Island reset cancelled.</yellow>"));
+                            }
+                    );
                     return;
                 }
                 SimpleGui gui = buildGui(player, profileId, islandId, verificationCode);

@@ -129,6 +129,8 @@ class ProductionMigrationFastLaneTest {
                                 "island_quarantines",
                                 "island_boosters",
                                 "island_bankruptcies",
+                                "game_mode_instances",
+                                "primary_gameplay_roots",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -675,6 +677,17 @@ class ProductionMigrationFastLaneTest {
                 assertThat(bankruptcyCols)
                         .containsExactlyInAnyOrder(
                                 "island_id", "status", "debt_minor_units", "grace_until", "updated_at");
+
+                // game_mode_instances and primary_gameplay_roots columns (V25)
+                Set<String> gmiCols = getColumnNames(meta, "game_mode_instances");
+                assertThat(gmiCols)
+                        .containsExactlyInAnyOrder(
+                                "id", "profile_id", "game_mode_type", "ruleset_config", "created_at", "updated_at");
+
+                Set<String> rootCols = getColumnNames(meta, "primary_gameplay_roots");
+                assertThat(rootCols)
+                        .containsExactlyInAnyOrder(
+                                "game_mode_instance_id", "root_id", "root_type", "bound_at");
             }
         }
     }
@@ -2475,7 +2488,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(23);
 
             // 2. Upgrade by applying V24
-            int v24Applied = runner.apply(allMigrations);
+            int v24Applied = runner.apply(allMigrations.subList(0, 24));
             assertThat(v24Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(24);
 
@@ -2498,8 +2511,7 @@ class ProductionMigrationFastLaneTest {
                             '00000000-0000-0000-0000-000000000002',
                             '00000000-0000-0000-0000-000000000001',
                             'Bankruptcy Island', 'ACTIVE', 'NORMAL', 'NORMAL', 1
-                        );
-                        """);
+                        );""");
 
                 execute(conn, """
                         INSERT INTO island_bankruptcies (
@@ -2507,28 +2519,74 @@ class ProductionMigrationFastLaneTest {
                         ) VALUES (
                             '99999999-8888-7777-6666-555555555555',
                             'GRACE', 50000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                        );
-                        """);
+                        );""");
 
-                assertThat(
-                                queryCount(
-                                        conn,
-                                        "SELECT COUNT(*) FROM island_bankruptcies WHERE island_id = '99999999-8888-7777-6666-555555555555'"))
-                        .isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_bankruptcies;")).isEqualTo(1);
 
-                // Delete island and verify cascade deletes bankruptcy record
-                execute(conn, "DELETE FROM islands WHERE id = '99999999-8888-7777-6666-555555555555'");
-                assertThat(
-                                queryCount(
-                                        conn,
-                                        "SELECT COUNT(*) FROM island_bankruptcies WHERE island_id = '99999999-8888-7777-6666-555555555555'"))
-                        .isEqualTo(0);
+                // Cascade delete when island is deleted
+                execute(conn, "DELETE FROM islands WHERE id = '99999999-8888-7777-6666-555555555555';");
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_bankruptcies;")).isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations.subList(0, 24));
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(24);
+        }
+    }
+
+    @Test
+    @DisplayName("28. Step-by-step upgrade from V24 to V25 creates game mode hierarchy tables")
+    void stepByStepUpgradeFromV24ToV25CreatesGameModeHierarchyTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V24
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v24Applied = runner.apply(allMigrations.subList(0, 24));
+            assertThat(v24Applied).isEqualTo(24);
+            assertThat(runner.currentVersion()).isEqualTo(24);
+
+            // 2. Upgrade by applying V25
+            int v25Applied = runner.apply(allMigrations);
+            assertThat(v25Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(25);
+
+            // 3. Verify game_mode_instances and primary_gameplay_roots accept rows
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(
+                        conn,
+                        "INSERT INTO game_mode_instances (id, profile_id, game_mode_type, ruleset_config) "
+                                + "VALUES ('test-inst-1', '00000000-0000-0000-0000-000000000002', 'SKYBLOCK', '{}');");
+                execute(
+                        conn,
+                        "INSERT INTO primary_gameplay_roots (game_mode_instance_id, root_id, root_type) "
+                                + "VALUES ('test-inst-1', '99999999-8888-7777-6666-555555555555', 'ISLAND');");
+
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM game_mode_instances;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM primary_gameplay_roots;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
             }
 
             // 4. Rerun and assert zero migrations applied
             int rerun = runner.apply(allMigrations);
             assertThat(rerun).isEqualTo(0);
-            assertThat(runner.currentVersion()).isEqualTo(24);
+            assertThat(runner.currentVersion()).isEqualTo(25);
         }
     }
 

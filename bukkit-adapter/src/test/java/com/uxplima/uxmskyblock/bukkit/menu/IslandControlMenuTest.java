@@ -126,6 +126,39 @@ class IslandControlMenuTest extends MockBukkitHarness {
         assertThat(player.getOpenInventory().getTopInventory().getSize()).isEqualTo(36);
     }
 
+    @Test
+    @DisplayName("open delegates to BedrockFormService when player is on Bedrock")
+    void openDelegatesToBedrockFormServiceWhenBedrockPlayer() {
+        com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService mockBedrock =
+                mock(com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService.class);
+        when(mockBedrock.isBedrock(player)).thenReturn(true);
+
+        IslandControlMenu bedrockMenu = new IslandControlMenu(
+                mockStorage,
+                mockBank,
+                mockUpgrades,
+                mockLocations,
+                scheduler,
+                "skyblock_world",
+                uuid -> Optional.of(new ProfileId(uuid)),
+                mockBedrock);
+
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+
+        bedrockMenu.open(player);
+
+        org.mockito.Mockito.verify(mockBedrock).openIslandControlForm(
+                eq(player),
+                eq(sampleIsland),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
     private static class DirectSchedulerPort implements SchedulerPort {
         @Override
         public void onGlobal(Runnable task) {

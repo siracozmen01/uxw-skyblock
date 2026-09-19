@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 24;
+    public static final int LATEST_VERSION = 25;
+
+    /** Human-readable description of migration V25. */
+    public static final String V25_DESCRIPTION = "create game mode instances and canonical gameplay root references";
 
     /** Human-readable description of migration V24. */
     public static final String V24_DESCRIPTION = "create island bankruptcies table";
@@ -136,7 +139,8 @@ public final class SkyblockMigrations {
                 v21Migration(dialect),
                 v22Migration(dialect),
                 v23Migration(dialect),
-                v24Migration(dialect));
+                v24Migration(dialect),
+                v25Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -581,6 +585,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(24, V24_DESCRIPTION, SQLITE_V24_DDL);
             case MYSQL -> new Migration(24, V24_DESCRIPTION, MYSQL_V24_DDL);
             case POSTGRES -> new Migration(24, V24_DESCRIPTION, POSTGRES_V24_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v25Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(25, V25_DESCRIPTION, SQLITE_V25_DDL);
+            case MYSQL -> new Migration(25, V25_DESCRIPTION, MYSQL_V25_DDL);
+            case POSTGRES -> new Migration(25, V25_DESCRIPTION, POSTGRES_V25_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2694,5 +2710,84 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX IF NOT EXISTS idx_island_bankruptcies_status ON island_bankruptcies (status);
+            """;
+
+    private static final String SQLITE_V25_DDL = """
+            CREATE TABLE IF NOT EXISTS game_mode_instances (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                profile_id VARCHAR(36) NOT NULL,
+                game_mode_type VARCHAR(32) NOT NULL,
+                ruleset_config TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_game_mode_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_game_mode_profile ON game_mode_instances (profile_id);
+
+            CREATE TABLE IF NOT EXISTS primary_gameplay_roots (
+                game_mode_instance_id VARCHAR(36) NOT NULL,
+                root_id VARCHAR(36) NOT NULL,
+                root_type VARCHAR(32) NOT NULL,
+                bound_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (game_mode_instance_id, root_id),
+                CONSTRAINT fk_gameplay_root_instance FOREIGN KEY (game_mode_instance_id)
+                    REFERENCES game_mode_instances (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_gameplay_roots_lookup ON primary_gameplay_roots (root_id, root_type);
+            """;
+
+    private static final String MYSQL_V25_DDL = """
+            CREATE TABLE IF NOT EXISTS game_mode_instances (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                profile_id VARCHAR(36) NOT NULL,
+                game_mode_type VARCHAR(32) NOT NULL,
+                ruleset_config TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_game_mode_profile (profile_id),
+                CONSTRAINT fk_game_mode_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+            CREATE TABLE IF NOT EXISTS primary_gameplay_roots (
+                game_mode_instance_id VARCHAR(36) NOT NULL,
+                root_id VARCHAR(36) NOT NULL,
+                root_type VARCHAR(32) NOT NULL,
+                bound_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (game_mode_instance_id, root_id),
+                INDEX idx_gameplay_roots_lookup (root_id, root_type),
+                CONSTRAINT fk_gameplay_root_instance FOREIGN KEY (game_mode_instance_id)
+                    REFERENCES game_mode_instances (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V25_DDL = """
+            CREATE TABLE IF NOT EXISTS game_mode_instances (
+                id VARCHAR(36) NOT NULL PRIMARY KEY,
+                profile_id VARCHAR(36) NOT NULL,
+                game_mode_type VARCHAR(32) NOT NULL,
+                ruleset_config TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_game_mode_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_game_mode_profile ON game_mode_instances (profile_id);
+
+            CREATE TABLE IF NOT EXISTS primary_gameplay_roots (
+                game_mode_instance_id VARCHAR(36) NOT NULL,
+                root_id VARCHAR(36) NOT NULL,
+                root_type VARCHAR(32) NOT NULL,
+                bound_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (game_mode_instance_id, root_id),
+                CONSTRAINT fk_gameplay_root_instance FOREIGN KEY (game_mode_instance_id)
+                    REFERENCES game_mode_instances (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_gameplay_roots_lookup ON primary_gameplay_roots (root_id, root_type);
             """;
 }

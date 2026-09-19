@@ -67,6 +67,9 @@ import com.uxplima.uxmskyblock.core.application.event.LocalEventTransport;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
+import com.uxplima.uxmlib.bedrock.BedrockDetector;
+import com.uxplima.uxmlib.bedrock.BedrockScreen;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
@@ -280,6 +283,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final AsyncStructureSuppressionListener structureSuppressionListener;
     private final DurableEventTransportPort eventTransport;
     private final VelocityBridgePort velocityBridge;
+    private final BedrockDetector bedrockDetector;
+    private final BedrockScreen bedrockScreen;
+    private final BedrockFormService bedrockFormService;
     private final ClusterRoutingDirectoryPort clusterRoutingDirectory;
     private final IslandNetworkRouter networkRouter;
     private final MessageProvider messageProvider;
@@ -839,6 +845,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.economyBridge =
                 SkyblockEconomyBridge.createDefault(bankService, scheduler, persistenceBootstrap.economySagaPort());
 
+        this.bedrockDetector = BedrockDetector.forServer(plugin.getServer());
+        this.bedrockScreen = BedrockScreen.forServer(plugin.getServer());
+        this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen);
+
         this.controlMenu = new IslandControlMenu(
                 persistenceBootstrap.islandStoragePort(),
                 persistenceBootstrap.islandBankPort(),
@@ -846,7 +856,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 locationService,
                 scheduler,
                 worldName,
-                sessionCoordinator);
+                sessionCoordinator,
+                bedrockFormService);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistenceBootstrap.islandStoragePort(),
@@ -928,7 +939,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 islandBackupAdapter,
                 persistenceBootstrap.outboxPort());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
-                recycleService, persistenceBootstrap.islandStoragePort(), sessionCoordinator, scheduler);
+                recycleService, persistenceBootstrap.islandStoragePort(), sessionCoordinator, scheduler, bedrockFormService);
 
         this.chunkScanner = new FoliaIslandChunkScanner(
                 this.scheduler,
@@ -2525,6 +2536,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandResetConfirmationMenu resetConfirmationMenu() {
         return resetConfirmationMenu;
+    }
+
+    public BedrockFormService bedrockFormService() {
+        return bedrockFormService;
     }
 
     public FoliaIslandVoidingAdapter voidingAdapter() {
