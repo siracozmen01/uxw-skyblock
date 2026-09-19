@@ -164,6 +164,7 @@ import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
+import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -281,6 +282,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final VelocityBridgePort velocityBridge;
     private final ClusterRoutingDirectoryPort clusterRoutingDirectory;
     private final IslandNetworkRouter networkRouter;
+    private final MessageProvider messageProvider;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -885,6 +887,24 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandAuthorityPort(),
                 velocityBridge,
                 clusterRoutingDirectory);
+
+        this.messageProvider = new MessageProvider("en");
+        this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
+        java.io.File messagesDir = new java.io.File(plugin.getDataFolder(), "messages");
+        if (messagesDir.exists() && messagesDir.isDirectory()) {
+            java.io.File[] files = messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
+            if (files != null) {
+                for (java.io.File file : files) {
+                    String name = file.getName();
+                    String locale = name.substring("messages_".length(), name.length() - ".conf".length());
+                    try {
+                        this.messageProvider.loadFromFile(locale, file.toPath());
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Failed loading custom message file " + file + ": " + e.getMessage());
+                    }
+                }
+            }
+        }
 
         this.missionService = new IslandMissionService(persistenceBootstrap.islandMissionStoragePort());
         this.missionService.registerMissions(missionConfig.missions());
@@ -2669,6 +2689,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandNetworkRouter networkRouter() {
         return networkRouter;
+    }
+
+    public MessageProvider messageProvider() {
+        return messageProvider;
     }
 
     @Override

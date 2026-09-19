@@ -43,5 +43,6 @@ include(
     ":api",
     ":core",
     ":persistence-adapter",
-    ":bukkit-adapter"
+    ":bukkit-adapter",
+    ":rest-adapter"
 )

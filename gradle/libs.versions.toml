@@ -14,6 +14,7 @@ postgresql     = "42.7.4"
 gson           = "2.11.0"
 jspecify       = "1.0.0"
 slf4j          = "2.0.16"
+javalin        = "6.4.0"
 
 # Testing
 junit          = "5.12.1"
@@ -60,6 +61,8 @@ postgresql        = { module = "org.postgresql:postgresql",                     
 gson              = { module = "com.google.code.gson:gson",                      version.ref = "gson" }
 jspecify          = { module = "org.jspecify:jspecify",                          version.ref = "jspecify" }
 slf4j-api         = { module = "org.slf4j:slf4j-api",                            version.ref = "slf4j" }
+slf4j-simple      = { module = "org.slf4j:slf4j-simple",                         version.ref = "slf4j" }
+javalin           = { module = "io.javalin:javalin",                             version.ref = "javalin" }
 
 # Testing Harness
 junit-bom         = { module = "org.junit:junit-bom",                            version.ref = "junit" }

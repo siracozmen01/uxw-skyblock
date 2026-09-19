@@ -67,6 +67,12 @@ public final class IslandBankService {
         return execute(islandId, playerUuid, amountMinorUnits, "Bank deposit", serverNodeId);
     }
 
+    public BankTransactionOutcome depositToIsland(
+            IslandId islandId, PlayerUuid playerUuid, long amountMinorUnits, String reason, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return execute(islandId, playerUuid, amountMinorUnits, reason, serverNodeId);
+    }
+
     public BankTransactionOutcome withdrawFromIsland(
             IslandId islandId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
