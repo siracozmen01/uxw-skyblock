@@ -158,4 +158,17 @@ class IslandBoundaryListenerTest extends MockBukkitHarness {
         // Does not throw and perimeter calculation executes
         assertThat(boundaryService.isPerimeterActive(uuid)).isTrue();
     }
+
+    @Test
+    @DisplayName("PlayerMoveEvent cancels border breach into void when stopBorderCrossing is enabled")
+    void testStopBorderCrossingCancelled() {
+        boundaryListener.setStopBorderCrossing(true);
+        Location inside = new Location(world, 0, 64, 0);
+        Location outside = new Location(world, 50, 64, 50);
+
+        PlayerMoveEvent breachEvent = new PlayerMoveEvent(player, inside, outside);
+        boundaryListener.onPlayerMove(breachEvent);
+
+        assertThat(breachEvent.isCancelled()).isTrue();
+    }
 }

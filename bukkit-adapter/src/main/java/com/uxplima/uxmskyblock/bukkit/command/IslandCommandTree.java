@@ -53,6 +53,7 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
+import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
@@ -82,6 +83,7 @@ import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitCategory;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
+import com.uxplima.uxmskyblock.core.domain.name.IslandName;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.worth.IslandScoreBreakdown;
@@ -126,6 +128,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandBoosterService boosterService;
     private final @Nullable IslandBoosterMenu boosterMenu;
     private volatile @Nullable IslandBankruptcyService bankruptcyService;
+    private volatile @Nullable IslandNameService nameService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -761,6 +764,14 @@ public final class IslandCommandTree {
         return antiAbuseService;
     }
 
+    public void setNameService(@Nullable IslandNameService nameService) {
+        this.nameService = nameService;
+    }
+
+    public @Nullable IslandNameService nameService() {
+        return nameService;
+    }
+
     public void register(JavaPlugin plugin) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
@@ -804,6 +815,10 @@ public final class IslandCommandTree {
                                                 .then(Cmd.argument("duration", StringArgumentType.word())
                                                         .executes(this::executeAdminApplyBooster))))))
                 .then(Cmd.literal("setspawn").executes(this::executeSetSpawn))
+                .then(Cmd.literal("rename")
+                        .executes(this::executeGetRename)
+                        .then(Cmd.argument("name", StringArgumentType.greedyString())
+                                .executes(this::executeRename)))
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
                         .then(Cmd.literal("balance").executes(this::executeBankBalance))
@@ -1379,6 +1394,77 @@ public final class IslandCommandTree {
             });
         });
 
+        return Cmd.OK;
+    }
+
+    private Optional<IslandId> findIslandId(Player player) {
+        return activeProfile(player).flatMap(islandLocationService::findIslandId);
+    }
+
+    private int executeGetRename(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(
+                    ctx.getSource().getSender(),
+                    Component.text("Only players can view or rename islands.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (nameService == null) {
+            send(player, Component.text("Island naming service is not enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        Optional<IslandId> optIslandId = findIslandId(player);
+        if (optIslandId.isEmpty()) {
+            send(player, Component.text("You must have an island to view its name.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        Optional<IslandName> current = nameService.getIslandName(optIslandId.get());
+        if (current.isPresent()) {
+            player.sendMessage(MiniMessage.miniMessage()
+                    .deserialize(
+                            "<green>Current island name: <gold>" + current.get().value()
+                                    + "</gold>. Use <gold>/is rename <new-name></gold> to change it.</green>"));
+        } else {
+            player.sendMessage(
+                    MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<yellow>Your island has no custom name. Use <gold>/is rename <name></gold> to set one.</yellow>"));
+        }
+        return Cmd.OK;
+    }
+
+    private int executeRename(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), Component.text("Only players can rename islands.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (nameService == null) {
+            send(player, Component.text("Island naming service is not enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        Optional<IslandId> optIslandId = findIslandId(player);
+        if (optIslandId.isEmpty()) {
+            send(player, Component.text("You must have an island to rename it.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
+        String rawName = StringArgumentType.getString(ctx, "name");
+
+        try {
+            IslandName newName = nameService.renameIsland(optIslandId.get(), profileId, rawName);
+            player.sendMessage(MiniMessage.miniMessage()
+                    .deserialize(
+                            "<green>Island successfully renamed to: <gold>" + newName.value() + "</gold>!</green>"));
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            player.sendMessage(MiniMessage.miniMessage().deserialize("<red>" + e.getMessage() + "</red>"));
+        }
         return Cmd.OK;
     }
 

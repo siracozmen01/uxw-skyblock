@@ -41,6 +41,7 @@ public final class IslandBoundaryListener implements Listener {
 
     private final IslandBoundaryService boundaryService;
     private final IslandProtectionListener protectionListener;
+    private volatile boolean stopBorderCrossing = false;
 
     public IslandBoundaryListener(IslandBoundaryService boundaryService, IslandProtectionListener protectionListener) {
         this.boundaryService = Objects.requireNonNull(boundaryService, "boundaryService must not be null");
@@ -52,6 +53,14 @@ public final class IslandBoundaryListener implements Listener {
             IslandProtectionListener protectionListener,
             @SuppressWarnings("unused") SchedulerPort schedulerPort) {
         this(boundaryService, protectionListener);
+    }
+
+    public void setStopBorderCrossing(boolean stopBorderCrossing) {
+        this.stopBorderCrossing = stopBorderCrossing;
+    }
+
+    public boolean isStopBorderCrossing() {
+        return stopBorderCrossing;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -135,7 +144,7 @@ public final class IslandBoundaryListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Location from = event.getFrom();
         Location to = event.getTo();
@@ -150,6 +159,13 @@ public final class IslandBoundaryListener implements Listener {
         if (fromIsland.isEmpty() && toIsland.isPresent()) {
             boundaryService.handlePlayerEnterIsland(playerUuid, toIsland.get().bounds());
         } else if (fromIsland.isPresent() && toIsland.isEmpty()) {
+            if (stopBorderCrossing && !event.getPlayer().hasPermission("uxmskyblock.admin.bypass")) {
+                event.setCancelled(true);
+                event.getPlayer()
+                        .sendMessage(MiniMessage.miniMessage()
+                                .deserialize("<red>You cannot cross the island boundary into the void!</red>"));
+                return;
+            }
             boundaryService.handlePlayerExitIsland(playerUuid);
         } else if (fromIsland.isPresent()
                 && toIsland.isPresent()

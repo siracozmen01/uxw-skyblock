@@ -30,19 +30,24 @@ import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LimitConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.PerformanceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
+import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.SettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ShopConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
 import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
@@ -85,12 +90,18 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.VaultFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.WarpFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.WorthFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.performance.IslandRedstoneOptimizationListener;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
+import com.uxplima.uxmskyblock.bukkit.protection.CategoricalInteractablesListener;
+import com.uxplima.uxmskyblock.bukkit.protection.ObsidianRecoveryListener;
+import com.uxplima.uxmskyblock.bukkit.protection.VoidProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
 import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.ward.KineticWardListener;
+import com.uxplima.uxmskyblock.bukkit.world.AsyncStructureSuppressionListener;
 import com.uxplima.uxmskyblock.bukkit.worth.FoliaIslandChunkScanner;
 import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
@@ -114,6 +125,8 @@ import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardSer
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
+import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
+import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
@@ -125,8 +138,10 @@ import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
+import com.uxplima.uxmskyblock.core.application.ward.KineticWardService;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
+import com.uxplima.uxmskyblock.core.application.webmap.IslandWebMapService;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
@@ -235,6 +250,21 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandBankruptcyService bankruptcyService;
     private final IslandBankruptcyListener bankruptcyListener;
     private final BankUpkeepFeatureModule bankUpkeepFeatureModule;
+    private final SettingsConfiguration settingsConfig;
+    private final ProtectionConfiguration protectionConfig;
+    private final PerformanceConfiguration performanceConfig;
+    private final InteractablesConfiguration interactablesConfig;
+    private final WorldConfiguration worldConfig;
+    private final IslandNameService islandNameService;
+    private final AdaptiveBackpressureController backpressureController;
+    private final KineticWardService kineticWardService;
+    private final IslandWebMapService islandWebMapService;
+    private final ObsidianRecoveryListener obsidianRecoveryListener;
+    private final VoidProtectionListener voidProtectionListener;
+    private final CategoricalInteractablesListener categoricalInteractablesListener;
+    private final KineticWardListener kineticWardListener;
+    private final IslandRedstoneOptimizationListener redstoneOptimizationListener;
+    private final AsyncStructureSuppressionListener structureSuppressionListener;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -525,6 +555,66 @@ public final class SkyblockBootstrap implements AutoCloseable {
             AntiAbuseConfiguration antiAbuseConfig,
             BoosterConfiguration boosterConfig,
             BankConfiguration bankConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                levelConfig,
+                dimensionConfig,
+                limitConfig,
+                antiAbuseConfig,
+                boosterConfig,
+                bankConfig,
+                SettingsConfiguration.defaultConfiguration(),
+                ProtectionConfiguration.defaultConfiguration(),
+                PerformanceConfiguration.defaultConfiguration(),
+                InteractablesConfiguration.defaultConfiguration(),
+                WorldConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig,
+            DimensionConfiguration dimensionConfig,
+            LimitConfiguration limitConfig,
+            AntiAbuseConfiguration antiAbuseConfig,
+            BoosterConfiguration boosterConfig,
+            BankConfiguration bankConfig,
+            SettingsConfiguration settingsConfig,
+            ProtectionConfiguration protectionConfig,
+            PerformanceConfiguration performanceConfig,
+            InteractablesConfiguration interactablesConfig,
+            WorldConfiguration worldConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -550,6 +640,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.antiAbuseConfig = Objects.requireNonNull(antiAbuseConfig, "antiAbuseConfig must not be null");
         this.boosterConfig = Objects.requireNonNull(boosterConfig, "boosterConfig must not be null");
         this.bankConfig = Objects.requireNonNull(bankConfig, "bankConfig must not be null");
+        this.settingsConfig = Objects.requireNonNull(settingsConfig, "settingsConfig must not be null");
+        this.protectionConfig = Objects.requireNonNull(protectionConfig, "protectionConfig must not be null");
+        this.performanceConfig = Objects.requireNonNull(performanceConfig, "performanceConfig must not be null");
+        this.interactablesConfig = Objects.requireNonNull(interactablesConfig, "interactablesConfig must not be null");
+        this.worldConfig = Objects.requireNonNull(worldConfig, "worldConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -748,6 +843,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.worldBorderAdapter = new WorldBorderPacketAdapter(scheduler);
         this.boundaryService = new IslandBoundaryService(worldBorderAdapter);
         this.boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, scheduler);
+        this.boundaryListener.setStopBorderCrossing(this.settingsConfig.stopBorderCrossing());
 
         this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler);
         this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder());
@@ -867,6 +963,66 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 boosterService,
                 boosterMenu);
         this.commandTree.setBankruptcyService(this.bankruptcyService);
+        this.islandNameService = new IslandNameService(
+                persistenceBootstrap.islandNameStoragePort(),
+                persistenceBootstrap.islandStoragePort(),
+                this.accessService,
+                persistenceBootstrap.outboxPort());
+        this.commandTree.setNameService(this.islandNameService);
+
+        this.backpressureController = new AdaptiveBackpressureController(
+                () -> {
+                    double[] tps = Bukkit.getTPS();
+                    return (tps != null && tps.length > 0) ? tps[0] : 20.0;
+                },
+                this.performanceConfig.adaptiveThrottle(),
+                this.performanceConfig.tpsThreshold(),
+                this.performanceConfig.normalBlocksPerTick(),
+                this.performanceConfig.throttledBlocksPerTick(),
+                this.performanceConfig.normalChunksPerSec(),
+                this.performanceConfig.throttledChunksPerSec());
+
+        this.kineticWardService = new KineticWardService(
+                this.protectionConfig.kineticWardRadius(),
+                this.protectionConfig.kineticWardForce(),
+                this.protectionConfig.kineticWardVerticalLift());
+        this.kineticWardListener = new KineticWardListener(this.protectionConfig, this.kineticWardService);
+
+        this.islandWebMapService = new IslandWebMapService();
+
+        this.obsidianRecoveryListener = new ObsidianRecoveryListener(this.protectionConfig);
+
+        this.voidProtectionListener = new VoidProtectionListener(
+                this.protectionConfig, this.settingsConfig, this.protectionListener::findIslandAt);
+
+        this.categoricalInteractablesListener = new CategoricalInteractablesListener(
+                this.interactablesConfig,
+                this.protectionListener::findIslandAt,
+                uuid -> this.sessionCoordinator.activeProfile(uuid.value()).orElse(null),
+                this.temporaryAccessService);
+        this.categoricalInteractablesListener.setNodeIdentitySupplier(() -> this.nodeProcessIdentity);
+        this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
+            PlayerSessionCoordinator.ActiveSession session = this.sessionCoordinator.getActiveSession(uuid.value());
+            if (session == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new PlayerSessionRecord(
+                    uuid,
+                    session.activeProfileId(),
+                    this.nodeConfiguration.nodeId(),
+                    session.sessionEpoch(),
+                    session.state(),
+                    Instant.now().plusSeconds(60),
+                    session.lastDurableVersion(),
+                    null,
+                    null,
+                    null));
+        });
+
+        this.redstoneOptimizationListener =
+                new IslandRedstoneOptimizationListener(this.settingsConfig, this.protectionListener::findIslandAt);
+
+        this.structureSuppressionListener = new AsyncStructureSuppressionListener(this.worldConfig);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -1834,6 +1990,163 @@ public final class SkyblockBootstrap implements AutoCloseable {
             boosterConfig = BoosterConfiguration.defaultConfiguration();
         }
 
+        Path bankFile = dataDir.resolve("bank.conf");
+        if (!java.nio.file.Files.exists(bankFile)) {
+            try (java.io.InputStream in = plugin.getResource("bank.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, bankFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if bank.conf cannot be extracted
+            }
+        }
+
+        BankConfiguration bankConfig;
+        if (java.nio.file.Files.exists(bankFile)) {
+            try {
+                CommentedConfigurationNode bankRoot = HoconConfigurationLoader.builder()
+                        .path(bankFile)
+                        .build()
+                        .load();
+                bankConfig = BankConfiguration.load(bankRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load bank configuration from: " + bankFile, e);
+            }
+        } else {
+            bankConfig = BankConfiguration.defaultConfiguration();
+        }
+
+        Path settingsFile = dataDir.resolve("settings.conf");
+        if (!java.nio.file.Files.exists(settingsFile)) {
+            try (java.io.InputStream in = plugin.getResource("settings.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, settingsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if settings.conf cannot be extracted
+            }
+        }
+
+        SettingsConfiguration settingsConfig;
+        if (java.nio.file.Files.exists(settingsFile)) {
+            try {
+                CommentedConfigurationNode settingsRoot = HoconConfigurationLoader.builder()
+                        .path(settingsFile)
+                        .build()
+                        .load();
+                settingsConfig = SettingsConfiguration.load(settingsRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load settings configuration from: " + settingsFile, e);
+            }
+        } else {
+            settingsConfig = SettingsConfiguration.defaultConfiguration();
+        }
+
+        Path protectionFile = dataDir.resolve("protection.conf");
+        if (!java.nio.file.Files.exists(protectionFile)) {
+            try (java.io.InputStream in = plugin.getResource("protection.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, protectionFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if protection.conf cannot be extracted
+            }
+        }
+
+        ProtectionConfiguration protectionConfig;
+        if (java.nio.file.Files.exists(protectionFile)) {
+            try {
+                CommentedConfigurationNode protectionRoot = HoconConfigurationLoader.builder()
+                        .path(protectionFile)
+                        .build()
+                        .load();
+                protectionConfig = ProtectionConfiguration.load(protectionRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load protection configuration from: " + protectionFile, e);
+            }
+        } else {
+            protectionConfig = ProtectionConfiguration.defaultConfiguration();
+        }
+
+        Path performanceFile = dataDir.resolve("performance.conf");
+        if (!java.nio.file.Files.exists(performanceFile)) {
+            try (java.io.InputStream in = plugin.getResource("performance.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, performanceFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if performance.conf cannot be extracted
+            }
+        }
+
+        PerformanceConfiguration performanceConfig;
+        if (java.nio.file.Files.exists(performanceFile)) {
+            try {
+                CommentedConfigurationNode performanceRoot = HoconConfigurationLoader.builder()
+                        .path(performanceFile)
+                        .build()
+                        .load();
+                performanceConfig = PerformanceConfiguration.load(performanceRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load performance configuration from: " + performanceFile, e);
+            }
+        } else {
+            performanceConfig = PerformanceConfiguration.defaultConfiguration();
+        }
+
+        Path interactablesFile = dataDir.resolve("interactables.conf");
+        if (!java.nio.file.Files.exists(interactablesFile)) {
+            try (java.io.InputStream in = plugin.getResource("interactables.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, interactablesFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if interactables.conf cannot be extracted
+            }
+        }
+
+        InteractablesConfiguration interactablesConfig;
+        if (java.nio.file.Files.exists(interactablesFile)) {
+            try {
+                CommentedConfigurationNode interactablesRoot = HoconConfigurationLoader.builder()
+                        .path(interactablesFile)
+                        .build()
+                        .load();
+                interactablesConfig = InteractablesConfiguration.load(interactablesRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                        "Failed to load interactables configuration from: " + interactablesFile, e);
+            }
+        } else {
+            interactablesConfig = InteractablesConfiguration.defaultConfiguration();
+        }
+
+        Path worldConfigFile = dataDir.resolve("world.conf");
+        if (!java.nio.file.Files.exists(worldConfigFile)) {
+            try (java.io.InputStream in = plugin.getResource("world.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, worldConfigFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if world.conf cannot be extracted
+            }
+        }
+
+        WorldConfiguration worldConfig;
+        if (java.nio.file.Files.exists(worldConfigFile)) {
+            try {
+                CommentedConfigurationNode worldRoot = HoconConfigurationLoader.builder()
+                        .path(worldConfigFile)
+                        .build()
+                        .load();
+                worldConfig = WorldConfiguration.load(worldRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load world configuration from: " + worldConfigFile, e);
+            }
+        } else {
+            worldConfig = WorldConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1856,7 +2169,13 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 dimensionConfig,
                 limitConfig,
                 antiAbuseConfig,
-                boosterConfig);
+                boosterConfig,
+                bankConfig,
+                settingsConfig,
+                protectionConfig,
+                performanceConfig,
+                interactablesConfig,
+                worldConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1908,6 +2227,12 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(antiAbuseListener, plugin);
         pm.registerEvents(boosterListener, plugin);
         pm.registerEvents(bankruptcyListener, plugin);
+        pm.registerEvents(obsidianRecoveryListener, plugin);
+        pm.registerEvents(voidProtectionListener, plugin);
+        pm.registerEvents(categoricalInteractablesListener, plugin);
+        pm.registerEvents(kineticWardListener, plugin);
+        pm.registerEvents(redstoneOptimizationListener, plugin);
+        pm.registerEvents(structureSuppressionListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -2212,6 +2537,66 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public BankUpkeepFeatureModule bankUpkeepFeatureModule() {
         return bankUpkeepFeatureModule;
+    }
+
+    public SettingsConfiguration settingsConfiguration() {
+        return settingsConfig;
+    }
+
+    public ProtectionConfiguration protectionConfiguration() {
+        return protectionConfig;
+    }
+
+    public PerformanceConfiguration performanceConfiguration() {
+        return performanceConfig;
+    }
+
+    public InteractablesConfiguration interactablesConfiguration() {
+        return interactablesConfig;
+    }
+
+    public WorldConfiguration worldConfiguration() {
+        return worldConfig;
+    }
+
+    public IslandNameService islandNameService() {
+        return islandNameService;
+    }
+
+    public AdaptiveBackpressureController backpressureController() {
+        return backpressureController;
+    }
+
+    public KineticWardService kineticWardService() {
+        return kineticWardService;
+    }
+
+    public IslandWebMapService islandWebMapService() {
+        return islandWebMapService;
+    }
+
+    public ObsidianRecoveryListener obsidianRecoveryListener() {
+        return obsidianRecoveryListener;
+    }
+
+    public VoidProtectionListener voidProtectionListener() {
+        return voidProtectionListener;
+    }
+
+    public CategoricalInteractablesListener categoricalInteractablesListener() {
+        return categoricalInteractablesListener;
+    }
+
+    public KineticWardListener kineticWardListener() {
+        return kineticWardListener;
+    }
+
+    public IslandRedstoneOptimizationListener redstoneOptimizationListener() {
+        return redstoneOptimizationListener;
+    }
+
+    public AsyncStructureSuppressionListener structureSuppressionListener() {
+        return structureSuppressionListener;
     }
 
     @Override
