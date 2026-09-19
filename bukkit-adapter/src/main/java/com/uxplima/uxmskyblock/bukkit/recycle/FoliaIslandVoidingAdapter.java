@@ -26,9 +26,23 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
 
     private final SchedulerPort schedulerPort;
+    private final com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
+            backpressureController;
+
+    public FoliaIslandVoidingAdapter(
+            SchedulerPort schedulerPort,
+            com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
+                    backpressureController) {
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.backpressureController = backpressureController;
+    }
 
     public FoliaIslandVoidingAdapter(SchedulerPort schedulerPort) {
-        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this(schedulerPort, null);
+    }
+
+    public com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController backpressureController() {
+        return backpressureController;
     }
 
     @Override

@@ -323,6 +323,29 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
         }
     }
 
+    @Override
+    public boolean transitionSeasonState(SeasonId id, SeasonState expected, SeasonState target) {
+        Objects.requireNonNull(id, "id must not be null");
+        Objects.requireNonNull(expected, "expected must not be null");
+        Objects.requireNonNull(target, "target must not be null");
+
+        String sql = """
+                UPDATE island_seasons
+                SET state = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE season_id = ? AND state = ?
+                """;
+
+        try (Connection conn = database.connection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, target.name());
+            ps.setInt(2, id.number());
+            ps.setString(3, expected.name());
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new SeasonPersistenceException("Failed CAS transition for season: " + id.number(), e);
+        }
+    }
+
     private SeasonRecord mapSeason(ResultSet rs) throws SQLException {
         return new SeasonRecord(
                 SeasonId.of(rs.getInt("season_id")),

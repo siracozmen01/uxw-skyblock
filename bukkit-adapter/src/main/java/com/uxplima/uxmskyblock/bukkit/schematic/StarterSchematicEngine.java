@@ -13,6 +13,23 @@ import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
  */
 public final class StarterSchematicEngine {
 
+    private final com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
+            backpressureController;
+
+    public StarterSchematicEngine(
+            com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
+                    backpressureController) {
+        this.backpressureController = backpressureController;
+    }
+
+    public StarterSchematicEngine() {
+        this(null);
+    }
+
+    public com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController backpressureController() {
+        return backpressureController;
+    }
+
     public void pastePreset(World world, int centerX, int y, int centerZ, StarterPreset preset) {
         Objects.requireNonNull(world, "world");
         Objects.requireNonNull(preset, "preset");

@@ -33,4 +33,9 @@ public interface IslandSeasonStoragePort {
     List<SeasonPayoutRecord> findPendingPayouts(PlayerUuid recipient);
 
     void markPayoutDispatched(String payoutId, Instant dispatchedAt);
+
+    boolean transitionSeasonState(
+            com.uxplima.uxmskyblock.core.domain.season.SeasonId id,
+            com.uxplima.uxmskyblock.core.domain.season.SeasonState expected,
+            com.uxplima.uxmskyblock.core.domain.season.SeasonState target);
 }

@@ -123,10 +123,50 @@ class IslandSeasonServiceTest {
         assertThat(pendingAfter).isEmpty();
     }
 
+    @Test
+    @DisplayName("aborts rotation when CAS transition fails due to concurrent cluster node")
+    void abortsWhenCasTransitionFailsDueToConcurrentRotation() {
+        Instant now = Instant.now();
+        SeasonId seasonId = SeasonId.of(99);
+        Instant startsAt = now.minus(30, ChronoUnit.DAYS);
+        Instant endsAt = now.minus(1, ChronoUnit.DAYS);
+        SeasonRecord activeSeason = new SeasonRecord(seasonId, "Season 99", startsAt, endsAt, SeasonState.ACTIVE);
+        storage.saveSeason(activeSeason);
+
+        // Inject CAS failure by wrapping storage or setting a flag
+        storage.setSimulateCasFailure(true);
+
+        seasonService.checkAndAdvanceSeason(now, Map.of(1, List.of("eco give %leader% 1000")));
+
+        // Since CAS failed, snapshots and payouts must NOT be processed
+        List<SeasonSnapshotEntry> snapshots = storage.findSnapshots(seasonId, SeasonMetric.LEVEL, 10);
+        assertThat(snapshots).isEmpty();
+    }
+
     private static class InMemorySeasonStorage implements IslandSeasonStoragePort {
         private final Map<SeasonId, SeasonRecord> seasons = new HashMap<>();
         private final List<SeasonSnapshotEntry> snapshots = new ArrayList<>();
         private final Map<String, SeasonPayoutRecord> payouts = new HashMap<>();
+        private boolean simulateCasFailure = false;
+
+        public void setSimulateCasFailure(boolean simulateCasFailure) {
+            this.simulateCasFailure = simulateCasFailure;
+        }
+
+        @Override
+        public boolean transitionSeasonState(SeasonId id, SeasonState expected, SeasonState target) {
+            if (simulateCasFailure) {
+                return false;
+            }
+            SeasonRecord current = seasons.get(id);
+            if (current != null && current.state() == expected) {
+                seasons.put(
+                        id,
+                        new SeasonRecord(current.id(), current.name(), current.startsAt(), current.endsAt(), target));
+                return true;
+            }
+            return false;
+        }
 
         @Override
         public void saveSeason(SeasonRecord season) {

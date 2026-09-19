@@ -74,10 +74,11 @@ public final class IslandSeasonService {
             return;
         }
 
-        // 1. Freeze season mutations
-        SeasonRecord frozen =
-                new SeasonRecord(active.id(), active.name(), active.startsAt(), active.endsAt(), SeasonState.FROZEN);
-        storage.saveSeason(frozen);
+        // 1. Cluster-safe CAS transition ACTIVE -> FROZEN.
+        // Prevents split-brain duplicate rotation across multiple cluster nodes.
+        if (!storage.transitionSeasonState(active.id(), SeasonState.ACTIVE, SeasonState.FROZEN)) {
+            return;
+        }
 
         // 2. Take immutable snapshots across tracked metrics
         List<SeasonSnapshotEntry> allSnapshots = new ArrayList<>();
@@ -114,9 +115,7 @@ public final class IslandSeasonService {
         }
 
         // 4. Complete season
-        SeasonRecord completed =
-                new SeasonRecord(active.id(), active.name(), active.startsAt(), active.endsAt(), SeasonState.COMPLETED);
-        storage.saveSeason(completed);
+        storage.transitionSeasonState(active.id(), SeasonState.FROZEN, SeasonState.COMPLETED);
     }
 
     public List<String> claimPendingPayouts(PlayerUuid playerUuid) {

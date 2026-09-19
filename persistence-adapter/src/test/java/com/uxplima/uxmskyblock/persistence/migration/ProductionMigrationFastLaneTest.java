@@ -134,6 +134,7 @@ class ProductionMigrationFastLaneTest {
                                 "activity_events",
                                 "notifications",
                                 "island_homes",
+                                "island_dimensions",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -2653,7 +2654,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(25);
 
             // 2. Upgrade by applying V26
-            int v26Applied = runner.apply(allMigrations);
+            int v26Applied = runner.apply(allMigrations.subList(0, 26));
             assertThat(v26Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(26);
 
@@ -2704,9 +2705,57 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 26));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(26);
+        }
+    }
+
+    @Test
+    @DisplayName("30. Step-by-step upgrade from V26 to V27 creates island dimensions table")
+    void stepByStepUpgradeFromV26ToV27CreatesIslandDimensionsTable() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V26
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v26Applied = runner.apply(allMigrations.subList(0, 26));
+            assertThat(v26Applied).isEqualTo(26);
+            assertThat(runner.currentVersion()).isEqualTo(26);
+
+            // 2. Upgrade by applying V27
+            int v27Applied = runner.apply(allMigrations);
+            assertThat(v27Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(27);
+
+            // 3. Verify island_dimensions accepts rows
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(
+                        conn,
+                        "INSERT INTO islands (id, owner_profile_id, owner_account_uuid) VALUES ('11111111-2222-3333-4444-555555555555', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO island_dimensions (island_id, dimension_type) VALUES ('11111111-2222-3333-4444-555555555555', 'NETHER');");
+
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM island_dimensions;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(27);
         }
     }
 

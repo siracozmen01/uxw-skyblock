@@ -21,7 +21,11 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 26;
+    public static final int LATEST_VERSION = 27;
+
+    /** Human-readable description of migration V27. */
+    public static final String V27_DESCRIPTION =
+            "create island dimensions table for durable multi-world platform state";
 
     /** Human-readable description of migration V26. */
     public static final String V26_DESCRIPTION =
@@ -145,7 +149,8 @@ public final class SkyblockMigrations {
                 v23Migration(dialect),
                 v24Migration(dialect),
                 v25Migration(dialect),
-                v26Migration(dialect));
+                v26Migration(dialect),
+                v27Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -614,6 +619,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(26, V26_DESCRIPTION, SQLITE_V26_DDL);
             case MYSQL -> new Migration(26, V26_DESCRIPTION, MYSQL_V26_DDL);
             case POSTGRES -> new Migration(26, V26_DESCRIPTION, POSTGRES_V26_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v27Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(27, V27_DESCRIPTION, SQLITE_V27_DDL);
+            case MYSQL -> new Migration(27, V27_DESCRIPTION, MYSQL_V27_DDL);
+            case POSTGRES -> new Migration(27, V27_DESCRIPTION, POSTGRES_V27_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2977,5 +2994,39 @@ public final class SkyblockMigrations {
 
             CREATE INDEX IF NOT EXISTS idx_island_homes_island ON island_homes (island_id, home_scope);
             CREATE INDEX IF NOT EXISTS idx_island_homes_owner ON island_homes (owner_profile_id);
+            """;
+
+    private static final String SQLITE_V27_DDL = """
+            CREATE TABLE IF NOT EXISTS island_dimensions (
+                island_id TEXT NOT NULL,
+                dimension_type TEXT NOT NULL,
+                generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, dimension_type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_island_dimensions_island ON island_dimensions (island_id);
+            """;
+
+    private static final String MYSQL_V27_DDL = """
+            CREATE TABLE IF NOT EXISTS island_dimensions (
+                island_id VARCHAR(36) NOT NULL,
+                dimension_type VARCHAR(32) NOT NULL,
+                generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, dimension_type),
+                INDEX idx_island_dimensions_island (island_id),
+                CONSTRAINT fk_island_dimensions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V27_DDL = """
+            CREATE TABLE IF NOT EXISTS island_dimensions (
+                island_id VARCHAR(36) NOT NULL,
+                dimension_type VARCHAR(32) NOT NULL,
+                generated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (island_id, dimension_type),
+                CONSTRAINT fk_island_dimensions_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_island_dimensions_island ON island_dimensions (island_id);
             """;
 }

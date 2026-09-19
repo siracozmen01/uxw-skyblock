@@ -177,6 +177,9 @@ public final class IslandLimitListener implements Listener {
     }
 
     public static LimitType resolveEntityLimitType(Entity entity) {
+        if (entity == null) {
+            return null;
+        }
         if (entity instanceof Villager) {
             return LimitType.VILLAGER;
         }

@@ -13,6 +13,7 @@ import com.uxplima.uxmskyblock.core.domain.dimension.DimensionMapping;
 import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionAccessResult;
 import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Pure domain application service orchestrating cross-dimension travel, portal linkage,
@@ -22,15 +23,24 @@ public final class IslandDimensionService {
 
     private final IslandUpgradeStoragePort upgradeStoragePort;
     private final Map<IslandDimensionType, DimensionMapping> dimensionMappings;
+    private final @Nullable IslandDimensionStoragePort dimensionStoragePort;
     private final ConcurrentHashMap<IslandId, Set<IslandDimensionType>> generatedDimensions = new ConcurrentHashMap<>();
 
     public IslandDimensionService(
-            IslandUpgradeStoragePort upgradeStoragePort, Map<IslandDimensionType, DimensionMapping> dimensionMappings) {
+            IslandUpgradeStoragePort upgradeStoragePort,
+            Map<IslandDimensionType, DimensionMapping> dimensionMappings,
+            @Nullable IslandDimensionStoragePort dimensionStoragePort) {
         this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
         Objects.requireNonNull(dimensionMappings, "dimensionMappings must not be null");
+        this.dimensionStoragePort = dimensionStoragePort;
         EnumMap<IslandDimensionType, DimensionMapping> copy = new EnumMap<>(IslandDimensionType.class);
         copy.putAll(dimensionMappings);
         this.dimensionMappings = Collections.unmodifiableMap(copy);
+    }
+
+    public IslandDimensionService(
+            IslandUpgradeStoragePort upgradeStoragePort, Map<IslandDimensionType, DimensionMapping> dimensionMappings) {
+        this(upgradeStoragePort, dimensionMappings, null);
     }
 
     /**
@@ -77,6 +87,9 @@ public final class IslandDimensionService {
         generatedDimensions
                 .computeIfAbsent(islandId, k -> ConcurrentHashMap.newKeySet())
                 .add(dimension);
+        if (dimensionStoragePort != null) {
+            dimensionStoragePort.markDimensionGenerated(islandId, dimension);
+        }
     }
 
     /**
@@ -86,7 +99,16 @@ public final class IslandDimensionService {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(dimension, "dimension must not be null");
         Set<IslandDimensionType> set = generatedDimensions.get(islandId);
-        return set != null && set.contains(dimension);
+        if (set != null && set.contains(dimension)) {
+            return true;
+        }
+        if (dimensionStoragePort != null && dimensionStoragePort.hasGeneratedDimension(islandId, dimension)) {
+            generatedDimensions
+                    .computeIfAbsent(islandId, k -> ConcurrentHashMap.newKeySet())
+                    .add(dimension);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -95,6 +117,9 @@ public final class IslandDimensionService {
     public void resetIslandDimensions(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         generatedDimensions.remove(islandId);
+        if (dimensionStoragePort != null) {
+            dimensionStoragePort.deleteIslandDimensions(islandId);
+        }
     }
 
     /**

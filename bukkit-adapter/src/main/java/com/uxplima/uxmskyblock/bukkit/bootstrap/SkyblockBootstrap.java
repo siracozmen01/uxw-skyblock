@@ -262,6 +262,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final LimitConfiguration limitConfig;
     private final IslandLimitService limitService;
     private final IslandLimitListener limitListener;
+    private final com.uxplima.uxmskyblock.bukkit.limit.IslandLimitReconciler limitReconciler;
     private final AntiAbuseConfiguration antiAbuseConfig;
     private final IslandAntiAbuseService antiAbuseService;
     private final IslandAntiAbuseListener antiAbuseListener;
@@ -750,6 +751,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
 
+        this.backpressureController = new AdaptiveBackpressureController(
+                () -> {
+                    double[] tps = Bukkit.getTPS();
+                    return (tps != null && tps.length > 0) ? tps[0] : 20.0;
+                },
+                this.performanceConfig.adaptiveThrottle(),
+                this.performanceConfig.tpsThreshold(),
+                this.performanceConfig.normalBlocksPerTick(),
+                this.performanceConfig.throttledBlocksPerTick(),
+                this.performanceConfig.normalChunksPerSec(),
+                this.performanceConfig.throttledChunksPerSec());
+
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
         AtomicReference<PlayerSessionCoordinator> sessionCoordinatorRef = new AtomicReference<>();
@@ -789,7 +802,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.outboxPort());
         this.accessService = new IslandAccessService();
         this.presetCatalog = new StarterPresetCatalog();
-        this.schematicEngine = new StarterSchematicEngine();
+        this.schematicEngine = new StarterSchematicEngine(this.backpressureController);
         this.coordinateAllocator = new SpiralGridCoordinateAllocator();
         this.gridService = new SpiralWorldGridService(coordinateAllocator);
 
@@ -1010,7 +1023,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, scheduler);
         this.boundaryListener.setStopBorderCrossing(this.settingsConfig.stopBorderCrossing());
 
-        this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler);
+        this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler, this.backpressureController);
         this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder());
         this.recycleService = new IslandRecycleService(
                 persistenceBootstrap.islandStoragePort(),
@@ -1046,7 +1059,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.worthListener = new IslandWorthListener(this.worthService, this.protectionListener);
 
         this.dimensionService = new IslandDimensionService(
-                persistenceBootstrap.islandUpgradeStoragePort(), this.dimensionConfig.mappings());
+                persistenceBootstrap.islandUpgradeStoragePort(),
+                this.dimensionConfig.mappings(),
+                persistenceBootstrap.islandDimensionStoragePort());
         this.dimensionListener = new IslandDimensionListener(
                 this.dimensionService,
                 locationService,
@@ -1059,6 +1074,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 new IslandLimitService(persistenceBootstrap.islandUpgradeStoragePort(), this.limitConfig.quotas());
         this.limitListener = new IslandLimitListener(
                 this.limitService, this.protectionListener, this.limitConfig.bypassPermission());
+        this.limitReconciler =
+                new com.uxplima.uxmskyblock.bukkit.limit.IslandLimitReconciler(this.scheduler, this.limitService);
 
         this.antiAbuseService = new IslandAntiAbuseService(
                 persistenceBootstrap.antiAbuseStoragePort(),
@@ -1145,18 +1162,6 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.outboxPort());
         this.commandTree.setNameService(this.islandNameService);
         this.commandTree.setNetworkRouter(this.networkRouter);
-
-        this.backpressureController = new AdaptiveBackpressureController(
-                () -> {
-                    double[] tps = Bukkit.getTPS();
-                    return (tps != null && tps.length > 0) ? tps[0] : 20.0;
-                },
-                this.performanceConfig.adaptiveThrottle(),
-                this.performanceConfig.tpsThreshold(),
-                this.performanceConfig.normalBlocksPerTick(),
-                this.performanceConfig.throttledBlocksPerTick(),
-                this.performanceConfig.normalChunksPerSec(),
-                this.performanceConfig.throttledChunksPerSec());
 
         this.kineticWardService = new KineticWardService(
                 this.protectionConfig.kineticWardRadius(),
@@ -2711,6 +2716,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandLimitListener limitListener() {
         return limitListener;
+    }
+
+    public com.uxplima.uxmskyblock.bukkit.limit.IslandLimitReconciler limitReconciler() {
+        return limitReconciler;
     }
 
     public AntiAbuseConfiguration antiAbuseConfiguration() {

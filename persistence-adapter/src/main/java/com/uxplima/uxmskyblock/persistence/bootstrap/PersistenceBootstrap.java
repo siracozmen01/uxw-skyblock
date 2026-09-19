@@ -12,6 +12,7 @@ import com.uxplima.uxmskyblock.core.application.antiabuse.AntiAbuseStoragePort;
 import com.uxplima.uxmskyblock.core.application.backup.BackupCatalogPort;
 import com.uxplima.uxmskyblock.core.application.backup.DatabaseBackupPort;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionStoragePort;
 import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
 import com.uxplima.uxmskyblock.core.application.event.ConsumerInboxPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
@@ -45,6 +46,7 @@ import com.uxplima.uxmskyblock.persistence.antiabuse.SqlAntiAbuseStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.backup.PlayerBackupCatalogAdapter;
 import com.uxplima.uxmskyblock.persistence.backup.SqlDatabaseBackupAdapter;
 import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
+import com.uxplima.uxmskyblock.persistence.dimension.PlayerIslandDimensionAdapter;
 import com.uxplima.uxmskyblock.persistence.economy.PlayerEconomySagaAdapter;
 import com.uxplima.uxmskyblock.persistence.event.ConsumerInboxAdapter;
 import com.uxplima.uxmskyblock.persistence.event.TransactionalOutboxAdapter;
@@ -111,6 +113,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final SqlHomeStorageAdapter homeStorageAdapter;
     private final SqlActivityFeedAdapter activityFeedAdapter;
     private final SqlNotificationAdapter notificationAdapter;
+    private final PlayerIslandDimensionAdapter islandDimensionAdapter;
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -122,6 +125,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.islandStorageAdapter = new PlayerIslandStorageAdapter(database);
         this.islandBankAdapter = new PlayerIslandBankAdapter(database);
         this.islandUpgradeAdapter = new PlayerIslandUpgradeAdapter(database);
+        this.islandDimensionAdapter = new PlayerIslandDimensionAdapter(database);
         this.islandLeaderboardAdapter = new PlayerIslandLeaderboardAdapter(database);
         this.backupCatalogAdapter = new PlayerBackupCatalogAdapter(database);
         this.outboxAdapter = new TransactionalOutboxAdapter(database);
@@ -323,6 +327,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public NotificationStoragePort notificationStoragePort() {
         return notificationAdapter;
+    }
+
+    public IslandDimensionStoragePort islandDimensionStoragePort() {
+        return islandDimensionAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {
