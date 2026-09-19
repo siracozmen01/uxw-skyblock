@@ -27,6 +27,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
+import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
@@ -56,6 +57,7 @@ import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatPermissionDeniedException;
 import com.uxplima.uxmskyblock.core.domain.chat.NoIslandForChatException;
+import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -102,6 +104,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandRecycleService recycleService;
     private final @Nullable IslandResetConfirmationMenu resetMenu;
     private final @Nullable IslandWorthService worthService;
+    private final @Nullable IslandDimensionListener dimensionListener;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -454,6 +457,58 @@ public final class IslandCommandTree {
             @Nullable IslandRecycleService recycleService,
             @Nullable IslandResetConfirmationMenu resetMenu,
             @Nullable IslandWorthService worthService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                boundaryService,
+                recycleService,
+                resetMenu,
+                worthService,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService,
+            @Nullable IslandRecycleService recycleService,
+            @Nullable IslandResetConfirmationMenu resetMenu,
+            @Nullable IslandWorthService worthService,
+            @Nullable IslandDimensionListener dimensionListener) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -480,6 +535,7 @@ public final class IslandCommandTree {
         this.recycleService = recycleService;
         this.resetMenu = resetMenu;
         this.worthService = worthService;
+        this.dimensionListener = dimensionListener;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -488,6 +544,10 @@ public final class IslandCommandTree {
 
     public @Nullable IslandWorthService worthService() {
         return worthService;
+    }
+
+    public @Nullable IslandDimensionListener dimensionListener() {
+        return dimensionListener;
     }
 
     public void register(JavaPlugin plugin) {
@@ -521,6 +581,8 @@ public final class IslandCommandTree {
                                 .executes(ctx -> executeCreate(ctx, StringArgumentType.getString(ctx, "preset")))))
                 .then(Cmd.literal("home").executes(this::executeHome))
                 .then(Cmd.literal("go").executes(this::executeHome))
+                .then(Cmd.literal("nether").executes(this::executeNether))
+                .then(Cmd.literal("end").executes(this::executeEnd))
                 .then(Cmd.literal("setspawn").executes(this::executeSetSpawn))
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
@@ -630,6 +692,8 @@ public final class IslandCommandTree {
         send(src.getSender(), Component.text("/is menu - Open interactive island panel", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is create [preset] - Create your island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is home - Teleport to your island", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is nether - Teleport to your Nether island", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is end - Teleport to your End island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
@@ -1723,6 +1787,34 @@ public final class IslandCommandTree {
                 });
             });
         });
+        return Cmd.OK;
+    }
+
+    private int executeNether(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can travel to the Nether.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (dimensionListener == null) {
+            send(player, Component.text("Multi-dimension travel is not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        dimensionListener.executeDimensionTeleport(player, IslandDimensionType.NETHER);
+        return Cmd.OK;
+    }
+
+    private int executeEnd(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can travel to The End.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (dimensionListener == null) {
+            send(player, Component.text("Multi-dimension travel is not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        dimensionListener.executeDimensionTeleport(player, IslandDimensionType.THE_END);
         return Cmd.OK;
     }
 }

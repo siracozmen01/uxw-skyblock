@@ -21,6 +21,7 @@ import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
@@ -35,6 +36,7 @@ import com.uxplima.uxmskyblock.bukkit.config.SocialConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
+import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
 import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
@@ -54,6 +56,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BoundaryFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ChatFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.DimensionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.FreezeFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
@@ -83,6 +86,7 @@ import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
+import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
@@ -197,6 +201,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final FoliaIslandChunkScanner chunkScanner;
     private final IslandWorthService worthService;
     private final IslandWorthListener worthListener;
+    private final DimensionConfiguration dimensionConfig;
+    private final IslandDimensionService dimensionService;
+    private final IslandDimensionListener dimensionListener;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -256,6 +263,48 @@ public final class SkyblockBootstrap implements AutoCloseable {
             InactivityConfiguration inactivityConfig,
             MissionConfiguration missionConfig,
             LevelConfiguration levelConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                levelConfig,
+                DimensionConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig,
+            DimensionConfiguration dimensionConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -276,6 +325,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.inactivityConfig = Objects.requireNonNull(inactivityConfig, "inactivityConfig must not be null");
         this.missionConfig = Objects.requireNonNull(missionConfig, "missionConfig must not be null");
         this.levelConfig = Objects.requireNonNull(levelConfig, "levelConfig must not be null");
+        this.dimensionConfig = Objects.requireNonNull(dimensionConfig, "dimensionConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -506,6 +556,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 this.chunkScanner);
         this.worthListener = new IslandWorthListener(this.worthService, this.protectionListener);
 
+        this.dimensionService = new IslandDimensionService(
+                persistenceBootstrap.islandUpgradeStoragePort(), this.dimensionConfig.mappings());
+        this.dimensionListener = new IslandDimensionListener(
+                this.dimensionService,
+                locationService,
+                schematicEngine,
+                this.scheduler,
+                p -> sessionCoordinator.activeProfile(p.getUniqueId()),
+                nodeConfiguration.worldName());
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -529,7 +589,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 boundaryService,
                 recycleService,
                 resetConfirmationMenu,
-                worthService);
+                worthService,
+                dimensionListener);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -643,6 +704,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new BoundaryFeatureModule(boundaryService, boundaryListener, scheduler));
         this.moduleRegistry.register(new RecycleFeatureModule(recycleService));
         this.moduleRegistry.register(new WorthFeatureModule(worthService));
+        this.moduleRegistry.register(new DimensionFeatureModule(dimensionService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1388,6 +1450,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             levelConfig = LevelConfiguration.defaultConfiguration();
         }
 
+        Path dimensionsFile = dataDir.resolve("dimensions.conf");
+        if (!java.nio.file.Files.exists(dimensionsFile)) {
+            try (java.io.InputStream in = plugin.getResource("dimensions.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, dimensionsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if dimensions.conf cannot be extracted
+            }
+        }
+
+        DimensionConfiguration dimensionConfig;
+        if (java.nio.file.Files.exists(dimensionsFile)) {
+            try {
+                CommentedConfigurationNode dimRoot = HoconConfigurationLoader.builder()
+                        .path(dimensionsFile)
+                        .build()
+                        .load();
+                dimensionConfig = DimensionConfiguration.load(dimRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load dimensions configuration from: " + dimensionsFile, e);
+            }
+        } else {
+            dimensionConfig = DimensionConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1406,7 +1494,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 chatConfig,
                 inactivityConfig,
                 missionConfig,
-                levelConfig);
+                levelConfig,
+                dimensionConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1453,6 +1542,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(missionListener, plugin);
         pm.registerEvents(boundaryListener, plugin);
         pm.registerEvents(worthListener, plugin);
+        pm.registerEvents(dimensionListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1689,6 +1779,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandWorthListener worthListener() {
         return worthListener;
+    }
+
+    public DimensionConfiguration dimensionConfiguration() {
+        return dimensionConfig;
+    }
+
+    public IslandDimensionService dimensionService() {
+        return dimensionService;
+    }
+
+    public IslandDimensionListener dimensionListener() {
+        return dimensionListener;
     }
 
     @Override

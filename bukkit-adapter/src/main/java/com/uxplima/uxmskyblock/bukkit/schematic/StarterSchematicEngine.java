@@ -63,4 +63,54 @@ public final class StarterSchematicEngine {
             }
         }
     }
+
+    public void pasteDimensionPlatform(
+            World world,
+            int centerX,
+            int y,
+            int centerZ,
+            com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType dimensionType) {
+        Objects.requireNonNull(world, "world");
+        Objects.requireNonNull(dimensionType, "dimensionType");
+
+        Material primaryBlock =
+                switch (dimensionType) {
+                    case NETHER -> Material.NETHER_BRICKS;
+                    case THE_END -> Material.END_STONE_BRICKS;
+                    default -> Material.GRASS_BLOCK;
+                };
+
+        Material subBlock =
+                switch (dimensionType) {
+                    case NETHER -> Material.BASALT;
+                    case THE_END -> Material.END_STONE;
+                    default -> Material.DIRT;
+                };
+
+        // Create 5x5 platform around center
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                world.getBlockAt(centerX + dx, y - 2, centerZ + dz).setType(Material.BEDROCK);
+                world.getBlockAt(centerX + dx, y - 1, centerZ + dz).setType(subBlock);
+                world.getBlockAt(centerX + dx, y, centerZ + dz).setType(primaryBlock);
+            }
+        }
+
+        // Add dimension specific center marker / chest
+        Block featureBlock = world.getBlockAt(centerX, y + 1, centerZ);
+        switch (dimensionType) {
+            case NETHER -> {
+                featureBlock.setType(Material.GLOWSTONE);
+                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
+            }
+            case THE_END -> {
+                featureBlock.setType(Material.END_ROD);
+                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
+            }
+            default -> {
+                featureBlock.setType(Material.TORCH);
+                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
+            }
+        }
+    }
 }
