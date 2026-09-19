@@ -92,4 +92,37 @@ class ServerNodeConfigurationTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("world-name must not be blank");
     }
+
+    @Test
+    @DisplayName("loads clustered configuration with default redis uri")
+    void loadsClusteredConfigurationWithDefaultRedisUri() throws Exception {
+        String hocon = """
+                server-node {
+                    id = "skyblock-node-cluster-01"
+                    clustered = true
+                }
+                """;
+        CommentedConfigurationNode node = parseHocon(hocon);
+        ServerNodeConfiguration config = ServerNodeConfiguration.load(node);
+
+        assertThat(config.isClustered()).isTrue();
+        assertThat(config.redisUri()).isEqualTo(ServerNodeConfiguration.DEFAULT_REDIS_URI);
+    }
+
+    @Test
+    @DisplayName("loads custom redis-uri when configured")
+    void loadsCustomRedisUri() throws Exception {
+        String hocon = """
+                server-node {
+                    id = "skyblock-node-cluster-02"
+                    clustered = true
+                    redis-uri = "redis://custom-redis:6380"
+                }
+                """;
+        CommentedConfigurationNode node = parseHocon(hocon);
+        ServerNodeConfiguration config = ServerNodeConfiguration.load(node);
+
+        assertThat(config.isClustered()).isTrue();
+        assertThat(config.redisUri()).isEqualTo("redis://custom-redis:6380");
+    }
 }

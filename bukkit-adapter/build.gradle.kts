@@ -23,6 +23,8 @@ dependencies {
     implementation(libs.uxmlib.bedrock)
     implementation(libs.uxmlib.condition)
     implementation(libs.uxmlib.integration)
+    implementation(libs.uxmlib.redis)
+    implementation(libs.lettuce.core)
 
     // Testing harness
     testImplementation(libs.mockbukkit)

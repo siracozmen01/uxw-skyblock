@@ -55,6 +55,7 @@ import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
+import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
@@ -172,6 +173,38 @@ public final class GameplayWiring {
             SchedulerPort scheduler,
             AdaptiveBackpressureController backpressureController,
             Supplier<SkyblockEconomyBridge> economyBridgeSupplier) {
+        this(
+                plugin,
+                config,
+                persistence,
+                authority,
+                protectionListener,
+                accessService,
+                allianceService,
+                temporaryAccessService,
+                visitorEvictionAdapter,
+                freezeService,
+                scheduler,
+                backpressureController,
+                economyBridgeSupplier,
+                new LocalIslandChatTransportAdapter());
+    }
+
+    public GameplayWiring(
+            JavaPlugin plugin,
+            ConfigurationWiring config,
+            PersistenceBootstrap persistence,
+            AuthorityWiring authority,
+            IslandProtectionListener protectionListener,
+            IslandAccessService accessService,
+            IslandAllianceService allianceService,
+            TemporaryAccessService temporaryAccessService,
+            BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter,
+            IslandAdminFreezeService freezeService,
+            SchedulerPort scheduler,
+            AdaptiveBackpressureController backpressureController,
+            Supplier<SkyblockEconomyBridge> economyBridgeSupplier,
+            IslandChatTransportPort chatTransport) {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.backpressureController =
                 Objects.requireNonNull(backpressureController, "backpressureController must not be null");
@@ -245,13 +278,14 @@ public final class GameplayWiring {
                 config.vaultConfig().maxPages(),
                 config.vaultConfig().leaseDuration());
 
-        LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
+        IslandChatTransportPort actualChatTransport =
+                Objects.requireNonNull(chatTransport, "chatTransport must not be null");
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(config.chatConfig());
         BukkitIslandOnlineMemberProvider chatMemberProvider = new BukkitIslandOnlineMemberProvider(
                 persistence.islandStoragePort(), authority.activeProfileProvider());
         this.chatService = new IslandChatService(
                 persistence.islandStoragePort(),
-                chatTransport,
+                actualChatTransport,
                 chatDelivery,
                 chatMemberProvider,
                 config.chatConfig().rateLimitMessagesPerSecond());

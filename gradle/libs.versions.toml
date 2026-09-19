@@ -15,6 +15,7 @@ gson           = "2.11.0"
 jspecify       = "1.0.0"
 slf4j          = "2.0.16"
 javalin        = "6.4.0"
+lettuce        = "7.6.0.RELEASE"
 
 # Testing
 junit          = "5.12.1"
@@ -53,6 +54,7 @@ uxmlib-bedrock    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-bedrock",     
 uxmlib-condition  = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-condition",            version.ref = "uxmlib" }
 uxmlib-integration = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-integration",        version.ref = "uxmlib" }
 uxmlib-redis      = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-redis",                version.ref = "uxmlib" }
+lettuce-core      = { module = "io.lettuce:lettuce-core",                                version.ref = "lettuce" }
 
 # Utilities & Infrastructure
 sqlite-jdbc       = { module = "org.xerial:sqlite-jdbc",                         version.ref = "sqlite-jdbc" }

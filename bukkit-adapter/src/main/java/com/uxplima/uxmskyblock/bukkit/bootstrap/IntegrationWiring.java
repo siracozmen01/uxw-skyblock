@@ -1,12 +1,8 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import java.io.File;
-import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -28,15 +24,14 @@ import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
+import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
-import com.uxplima.uxmskyblock.core.application.event.LocalEventTransport;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
 import com.uxplima.uxmskyblock.core.application.webmap.IslandWebMapService;
-import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 
@@ -58,6 +53,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final IslandControlMenu controlMenu;
     private final SkyblockPlaceholderExpansion placeholderExpansion;
     private final TransactionalOutboxDispatcher outboxDispatcher;
+    private final ClusterTransportWiring clusterTransport;
     private final DurableEventTransportPort eventTransport;
     private final VelocityBridgePort velocityBridge;
     private final ClusterRoutingDirectoryPort clusterRoutingDirectory;
@@ -73,7 +69,24 @@ public final class IntegrationWiring implements AutoCloseable {
             PersistenceBootstrap persistence,
             AuthorityWiring authority,
             GameplayWiring gameplay) {
+        this(
+                plugin,
+                config,
+                persistence,
+                authority,
+                gameplay,
+                ClusterTransportWiring.create(plugin, config.nodeConfig()));
+    }
+
+    public IntegrationWiring(
+            JavaPlugin plugin,
+            ConfigurationWiring config,
+            PersistenceBootstrap persistence,
+            AuthorityWiring authority,
+            GameplayWiring gameplay,
+            ClusterTransportWiring clusterTransport) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
+        this.clusterTransport = Objects.requireNonNull(clusterTransport, "clusterTransport must not be null");
         this.serverNodeId = config.nodeConfig().nodeId();
         String worldName = config.nodeConfig().worldName();
 
@@ -110,30 +123,13 @@ public final class IntegrationWiring implements AutoCloseable {
 
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistence.outboxPort(), gameplay.scheduler(), serverNodeId.value() + "-outbox");
-        this.eventTransport = new LocalEventTransport();
+        this.eventTransport = this.clusterTransport.eventTransport();
         this.outboxDispatcher.registerConsumer(event -> {
             this.eventTransport.publish("uxmskyblock:stream:domain_events", event);
         });
 
         this.velocityBridge = new BukkitVelocityBridge(plugin);
-        this.clusterRoutingDirectory = new ClusterRoutingDirectoryPort() {
-            private final Map<IslandId, ServerNodeId> cache = new ConcurrentHashMap<>();
-
-            @Override
-            public Optional<ServerNodeId> findAuthoritativeNode(IslandId islandId) {
-                return Optional.ofNullable(cache.get(islandId));
-            }
-
-            @Override
-            public void cacheRoute(IslandId islandId, ServerNodeId nodeId, long epoch, Duration ttl) {
-                cache.put(islandId, nodeId);
-            }
-
-            @Override
-            public void invalidateRoute(IslandId islandId) {
-                cache.remove(islandId);
-            }
-        };
+        this.clusterRoutingDirectory = this.clusterTransport.clusterRoutingDirectory();
         this.networkRouter = new IslandNetworkRouter(
                 serverNodeId, persistence.islandAuthorityPort(), velocityBridge, clusterRoutingDirectory);
 
@@ -292,11 +288,19 @@ public final class IntegrationWiring implements AutoCloseable {
         return apiBridge;
     }
 
+    public ClusterTransportWiring clusterTransport() {
+        return clusterTransport;
+    }
+
+    public IslandChatTransportPort chatTransport() {
+        return clusterTransport.chatTransport();
+    }
+
     @Override
     public void close() {
         discordService.close();
         outboxDispatcher.close();
-        eventTransport.close();
+        clusterTransport.close();
         if (Guis.isInstalled()) {
             Guis.uninstall();
         }

@@ -179,6 +179,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 scheduler,
                 protectionListener);
 
+        ClusterTransportWiring clusterTransportWiring =
+                ClusterTransportWiring.create(plugin, configWiring.nodeConfig());
+
         AtomicReference<SkyblockEconomyBridge> economyBridgeRef = new AtomicReference<>();
         this.gameplayWiring = new GameplayWiring(
                 plugin,
@@ -193,10 +196,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 freezeService,
                 scheduler,
                 backpressureController,
-                economyBridgeRef::get);
+                economyBridgeRef::get,
+                clusterTransportWiring.chatTransport());
 
         this.integrationWiring = new IntegrationWiring(
-                plugin, configWiring, persistenceWiring.bootstrap(), authorityWiring, gameplayWiring);
+                plugin,
+                configWiring,
+                persistenceWiring.bootstrap(),
+                authorityWiring,
+                gameplayWiring,
+                clusterTransportWiring);
         economyBridgeRef.set(this.integrationWiring.economyBridge());
 
         this.featureModuleWiring =
