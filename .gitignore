@@ -18,8 +18,16 @@ out/
 # Testing
 .jqwik-database
 
-# Agents
+# Agents & AI
 .agents/
+docs/
+project-board.html
+CLAUDE.md
+claude.md
+.claude/
+.gemini/
+.cursor/
+.windsurf/
 
 # Archives
 *.zip
