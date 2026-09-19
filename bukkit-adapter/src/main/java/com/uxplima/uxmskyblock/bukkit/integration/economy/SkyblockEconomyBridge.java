@@ -77,6 +77,13 @@ public final class SkyblockEconomyBridge {
         return economyBridge.format(amount);
     }
 
+    public boolean depositWallet(OfflinePlayer player, double amount) {
+        if (!economyBridge.isPresent()) {
+            return false;
+        }
+        return economyBridge.deposit(player, amount);
+    }
+
     public int recoverPendingSagas(ServerNodeId nodeId) {
         if (sagaCoordinator != null) {
             return sagaCoordinator.recoverIncompleteSagas(Instant.now(), nodeId);

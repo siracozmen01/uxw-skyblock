@@ -100,36 +100,37 @@ public final class IslandResetConfirmationMenu {
                                     + "\nAll island blocks, items, and bank funds will be wiped.",
                             "§cCONFIRM RESET",
                             "§aCANCEL",
-                            () -> schedulerPort.onEntity(playerUuid, () -> {
-                                RecycleResult result =
-                                        recycleService.executeReset(profileId, islandId, verificationCode, false);
-                                switch (result) {
-                                    case RecycleResult.Success s -> {
-                                        player.sendMessage(
-                                                MiniMessage.miniMessage()
-                                                        .deserialize(
-                                                                "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
-                                        player.sendMessage(
-                                                MiniMessage.miniMessage()
-                                                        .deserialize(
-                                                                "<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
-                                    }
-                                    case RecycleResult.NotOwner no ->
-                                        player.sendMessage(MiniMessage.miniMessage()
-                                                .deserialize(
-                                                        "<red>Only the island owner can reset this island!</red>"));
-                                    case RecycleResult.InvalidChallenge ic ->
-                                        player.sendMessage(MiniMessage.miniMessage()
-                                                .deserialize(
-                                                        "<red>Reset confirmation failed: " + ic.reason() + "</red>"));
-                                    case RecycleResult.IslandNotFound nf ->
-                                        player.sendMessage(
-                                                MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
-                                    case RecycleResult.Failure f ->
-                                        player.sendMessage(MiniMessage.miniMessage()
-                                                .deserialize("<red>Reset failed: " + f.reason() + "</red>"));
-                                }
-                            }),
+                            () -> {
+                                var unused = recycleService.executeReset(profileId, islandId, verificationCode, false)
+                                        .thenAccept(result -> schedulerPort.onEntity(playerUuid, () -> {
+                                            switch (result) {
+                                                case RecycleResult.Success s -> {
+                                                    player.sendMessage(
+                                                            MiniMessage.miniMessage()
+                                                                    .deserialize(
+                                                                            "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
+                                                    player.sendMessage(
+                                                            MiniMessage.miniMessage()
+                                                                    .deserialize(
+                                                                            "<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
+                                                }
+                                                case RecycleResult.NotOwner no ->
+                                                    player.sendMessage(MiniMessage.miniMessage()
+                                                            .deserialize(
+                                                                    "<red>Only the island owner can reset this island!</red>"));
+                                                case RecycleResult.InvalidChallenge ic ->
+                                                    player.sendMessage(MiniMessage.miniMessage()
+                                                            .deserialize(
+                                                                    "<red>Reset confirmation failed: " + ic.reason() + "</red>"));
+                                                case RecycleResult.IslandNotFound nf ->
+                                                    player.sendMessage(
+                                                            MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
+                                                case RecycleResult.Failure f ->
+                                                    player.sendMessage(MiniMessage.miniMessage()
+                                                            .deserialize("<red>Reset failed: " + f.reason() + "</red>"));
+                                            }
+                                        }));
+                            },
                             () -> {
                                 recycleService.cancelResetChallenge(profileId);
                                 player.sendMessage(MiniMessage.miniMessage()
@@ -179,30 +180,30 @@ public final class IslandResetConfirmationMenu {
 
         gui.set(11, GuiItem.button(confirmItem, event -> {
             player.closeInventory();
-            schedulerPort.onEntity(player.getUniqueId(), () -> {
-                RecycleResult result = recycleService.executeReset(profileId, islandId, verificationCode, false);
-                switch (result) {
-                    case RecycleResult.Success s -> {
-                        player.sendMessage(
-                                MiniMessage.miniMessage()
-                                        .deserialize(
-                                                "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize("<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
-                    }
-                    case RecycleResult.NotOwner no ->
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize("<red>Only the island owner can reset this island!</red>"));
-                    case RecycleResult.InvalidChallenge ic ->
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize("<red>Reset confirmation failed: " + ic.reason() + "</red>"));
-                    case RecycleResult.IslandNotFound nf ->
-                        player.sendMessage(MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
-                    case RecycleResult.Failure f ->
-                        player.sendMessage(
-                                MiniMessage.miniMessage().deserialize("<red>Reset failed: " + f.reason() + "</red>"));
-                }
-            });
+            var unused = recycleService.executeReset(profileId, islandId, verificationCode, false)
+                    .thenAccept(result -> schedulerPort.onEntity(player.getUniqueId(), () -> {
+                        switch (result) {
+                            case RecycleResult.Success s -> {
+                                player.sendMessage(
+                                        MiniMessage.miniMessage()
+                                                .deserialize(
+                                                        "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
+                                player.sendMessage(MiniMessage.miniMessage()
+                                        .deserialize("<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
+                            }
+                            case RecycleResult.NotOwner no ->
+                                player.sendMessage(MiniMessage.miniMessage()
+                                        .deserialize("<red>Only the island owner can reset this island!</red>"));
+                            case RecycleResult.InvalidChallenge ic ->
+                                player.sendMessage(MiniMessage.miniMessage()
+                                        .deserialize("<red>Reset confirmation failed: " + ic.reason() + "</red>"));
+                            case RecycleResult.IslandNotFound nf ->
+                                player.sendMessage(MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
+                            case RecycleResult.Failure f ->
+                                player.sendMessage(
+                                        MiniMessage.miniMessage().deserialize("<red>Reset failed: " + f.reason() + "</red>"));
+                        }
+                    }));
         }));
 
         // Cancel button

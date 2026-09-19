@@ -1,5 +1,7 @@
 package com.uxplima.uxmskyblock.core.application.recycle;
 
+import java.util.concurrent.CompletableFuture;
+
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 
@@ -15,6 +17,7 @@ public interface IslandVoidingPort {
      * @param islandId target island ID
      * @param worldName target world identifier
      * @param bounds spatial bounds of the island
+     * @return CompletableFuture completing once all chunk voiding tasks have finished
      */
-    void voidIslandChunks(IslandId islandId, String worldName, IslandBounds bounds);
+    CompletableFuture<Void> voidIslandChunks(IslandId islandId, String worldName, IslandBounds bounds);
 }

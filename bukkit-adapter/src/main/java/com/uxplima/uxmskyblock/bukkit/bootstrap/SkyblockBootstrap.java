@@ -1127,80 +1127,27 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         this.structureSuppressionListener = new AsyncStructureSuppressionListener(this.worldConfig);
 
-        RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
-            @Override
-            public RewardComponentType supportedType() {
-                return RewardComponentType.ITEM;
-            }
+        com.uxplima.uxmskyblock.bukkit.reward.ItemRewardDeliveryHandler itemDeliveryHandler =
+                new com.uxplima.uxmskyblock.bukkit.reward.ItemRewardDeliveryHandler(
+                        this.sessionCoordinator,
+                        persistenceBootstrap.mutationJournalPort(),
+                        this.nodeConfiguration.nodeId());
 
-            @Override
-            public DeliveryResult deliver(
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
-                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
-                return DeliveryResult.success(component.componentOperationId().value());
-            }
-        };
+        com.uxplima.uxmskyblock.bukkit.reward.SqlCurrencyRewardDeliveryHandler currencyDeliveryHandler =
+                new com.uxplima.uxmskyblock.bukkit.reward.SqlCurrencyRewardDeliveryHandler(
+                        persistenceBootstrap.islandStoragePort(),
+                        this.bankService,
+                        this.nodeConfiguration.nodeId());
 
-        RewardDeliveryHandler currencyDeliveryHandler = new RewardDeliveryHandler() {
-            @Override
-            public RewardComponentType supportedType() {
-                return RewardComponentType.SQL_CURRENCY;
-            }
+        com.uxplima.uxmskyblock.bukkit.reward.ExternalVaultRewardDeliveryHandler vaultDeliveryHandler =
+                new com.uxplima.uxmskyblock.bukkit.reward.ExternalVaultRewardDeliveryHandler(this.economyBridge);
 
-            @Override
-            public DeliveryResult deliver(
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
-                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
-                return DeliveryResult.success(component.componentOperationId().value());
-            }
-        };
+        com.uxplima.uxmskyblock.bukkit.reward.CosmeticRewardDeliveryHandler cosmeticDeliveryHandler =
+                new com.uxplima.uxmskyblock.bukkit.reward.CosmeticRewardDeliveryHandler();
 
-        RewardDeliveryHandler vaultDeliveryHandler = new RewardDeliveryHandler() {
-            @Override
-            public RewardComponentType supportedType() {
-                return RewardComponentType.EXTERNAL_VAULT;
-            }
-
-            @Override
-            public DeliveryResult deliver(
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
-                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
-                return DeliveryResult.success(component.componentOperationId().value());
-            }
-        };
-
-        RewardDeliveryHandler cosmeticDeliveryHandler = new RewardDeliveryHandler() {
-            @Override
-            public RewardComponentType supportedType() {
-                return RewardComponentType.COSMETIC;
-            }
-
-            @Override
-            public DeliveryResult deliver(
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
-                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
-                return DeliveryResult.success(component.componentOperationId().value());
-            }
-        };
-
-        RewardDeliveryHandler permDeliveryHandler = new RewardDeliveryHandler() {
-            @Override
-            public RewardComponentType supportedType() {
-                return RewardComponentType.PERMISSION;
-            }
-
-            @Override
-            public DeliveryResult deliver(
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrant grant,
-                    com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent component,
-                    com.uxplima.uxmskyblock.core.domain.identity.ProfileId recipient) {
-                return DeliveryResult.success(component.componentOperationId().value());
-            }
-        };
+        com.uxplima.uxmskyblock.bukkit.reward.PermissionRewardDeliveryHandler permDeliveryHandler =
+                new com.uxplima.uxmskyblock.bukkit.reward.PermissionRewardDeliveryHandler(
+                        this.plugin, this.sessionCoordinator);
 
         RewardClaimCoordinator rewardClaimCoordinator = new RewardClaimCoordinator(
                 persistenceBootstrap.rewardStoragePort(),

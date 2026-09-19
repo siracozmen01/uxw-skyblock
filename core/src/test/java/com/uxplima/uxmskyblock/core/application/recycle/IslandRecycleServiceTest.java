@@ -2,8 +2,12 @@ package com.uxplima.uxmskyblock.core.application.recycle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +17,11 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -28,9 +37,6 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 
 class IslandRecycleServiceTest {
 
@@ -41,6 +47,7 @@ class IslandRecycleServiceTest {
     private IslandBackupPort backupPort;
     private OutboxPort outboxPort;
     private MutableClock clock;
+
     private IslandRecycleService service;
 
     private IslandId islandId;
@@ -59,7 +66,7 @@ class IslandRecycleServiceTest {
         voidingPort = mock(IslandVoidingPort.class);
         backupPort = mock(IslandBackupPort.class);
         outboxPort = mock(OutboxPort.class);
-        clock = new MutableClock(Instant.parse("2026-09-19T12:00:00Z"));
+        clock = new MutableClock(Instant.parse("2026-06-01T12:00:00Z"));
 
         service = new IslandRecycleService(
                 islandStoragePort,
@@ -84,6 +91,7 @@ class IslandRecycleServiceTest {
         when(islandStoragePort.findIslandById(islandId)).thenReturn(Optional.of(island));
         when(islandStoragePort.findLocationByIslandId(islandId)).thenReturn(Optional.of(location));
         when(worldGridAllocationPort.findByIslandId(islandId)).thenReturn(Optional.of(allocation));
+        when(voidingPort.voidIslandChunks(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(null));
     }
 
     @Test
@@ -129,24 +137,24 @@ class IslandRecycleServiceTest {
         IslandId nonExistent = IslandId.of(UUID.randomUUID());
         when(islandStoragePort.findIslandById(nonExistent)).thenReturn(Optional.empty());
 
-        RecycleResult result = service.executeReset(ownerProfileId, nonExistent, "1234", false);
+        RecycleResult result = service.executeReset(ownerProfileId, nonExistent, "1234", false).join();
         assertThat(result).isInstanceOf(RecycleResult.IslandNotFound.class);
     }
 
     @Test
     @DisplayName("executeReset fails if requester is not island owner without admin bypass")
     void executeResetFailsWhenNotOwner() {
-        RecycleResult result = service.executeReset(visitorProfileId, islandId, "1234", false);
+        RecycleResult result = service.executeReset(visitorProfileId, islandId, "1234", false).join();
         assertThat(result).isInstanceOf(RecycleResult.NotOwner.class);
     }
 
     @Test
     @DisplayName("executeReset fails if challenge code is missing or invalid")
     void executeResetFailsWhenInvalidChallenge() {
-        RecycleResult resultNull = service.executeReset(ownerProfileId, islandId, null, false);
+        RecycleResult resultNull = service.executeReset(ownerProfileId, islandId, null, false).join();
         assertThat(resultNull).isInstanceOf(RecycleResult.InvalidChallenge.class);
 
-        RecycleResult resultWrong = service.executeReset(ownerProfileId, islandId, "0000", false);
+        RecycleResult resultWrong = service.executeReset(ownerProfileId, islandId, "0000", false).join();
         assertThat(resultWrong).isInstanceOf(RecycleResult.InvalidChallenge.class);
     }
 
@@ -155,7 +163,7 @@ class IslandRecycleServiceTest {
     void executeResetSucceedsWithValidChallenge() {
         ResetChallenge challenge = service.generateResetChallenge(ownerProfileId, islandId);
 
-        RecycleResult result = service.executeReset(ownerProfileId, islandId, challenge.code(), false);
+        RecycleResult result = service.executeReset(ownerProfileId, islandId, challenge.code(), false).join();
         assertThat(result).isInstanceOf(RecycleResult.Success.class);
 
         RecycleResult.Success success = (RecycleResult.Success) result;
@@ -184,13 +192,42 @@ class IslandRecycleServiceTest {
     void executeResetWithAdminBypassSucceeds() {
         ProfileId staffProfile = new ProfileId(UUID.randomUUID());
 
-        RecycleResult result = service.executeReset(staffProfile, islandId, null, true);
+        RecycleResult result = service.executeReset(staffProfile, islandId, null, true).join();
         assertThat(result).isInstanceOf(RecycleResult.Success.class);
 
         verify(backupPort).createPreDeletionBackup(eq(island), eq(location));
         verify(spiralSlotPoolPort).releaseSlot(eq(42L), eq("skyblock_world"), eq(100), eq(200));
         verify(voidingPort).voidIslandChunks(eq(islandId), eq("skyblock_world"), eq(island.bounds()));
         verify(islandStoragePort).deleteIsland(eq(islandId), any());
+    }
+
+    @Test
+    @DisplayName("executeReset fails-closed and aborts deletion if pre-deletion backup throws")
+    void executeResetFailsClosedWhenBackupFails() {
+        ResetChallenge challenge = service.generateResetChallenge(ownerProfileId, islandId);
+        doThrow(new RuntimeException("Disk full")).when(backupPort).createPreDeletionBackup(any(), any());
+
+        RecycleResult result = service.executeReset(ownerProfileId, islandId, challenge.code(), false).join();
+        assertThat(result).isInstanceOf(RecycleResult.Failure.class);
+        assertThat(((RecycleResult.Failure) result).reason()).contains("Disk full");
+
+        verify(spiralSlotPoolPort, never()).releaseSlot(anyLong(), any(), anyInt(), anyInt());
+        verify(islandStoragePort, never()).deleteIsland(any(), any());
+    }
+
+    @Test
+    @DisplayName("executeReset fails-closed and aborts deletion if voiding completes exceptionally")
+    void executeResetFailsClosedWhenVoidingFails() {
+        ResetChallenge challenge = service.generateResetChallenge(ownerProfileId, islandId);
+        CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+        failedFuture.completeExceptionally(new RuntimeException("Folia region timeout"));
+        when(voidingPort.voidIslandChunks(any(), any(), any())).thenReturn(failedFuture);
+
+        RecycleResult result = service.executeReset(ownerProfileId, islandId, challenge.code(), false).join();
+        assertThat(result).isInstanceOf(RecycleResult.Failure.class);
+
+        verify(spiralSlotPoolPort, never()).releaseSlot(anyLong(), any(), anyInt(), anyInt());
+        verify(islandStoragePort, never()).deleteIsland(any(), any());
     }
 
     private static final class MutableClock extends Clock {

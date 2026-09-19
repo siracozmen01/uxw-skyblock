@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
@@ -145,52 +146,63 @@ public final class IslandRecycleService {
     }
 
     /**
-     * Safely executes an island reset or deletion.
+     * Safely executes an asynchronous island reset or deletion.
+     *
+     * <p>Enforces:
+     * <ul>
+     *   <li>Ownership and cryptographic challenge verification.</li>
+     *   <li>Fail-closed pre-deletion backup (fails the reset if backup throws, unless admin bypass).</li>
+     *   <li>Folia-safe asynchronous chunk voiding awaited BEFORE spiral slot release or database deletion.</li>
+     * </ul>
      *
      * @param requester profile ID of the initiator
      * @param islandId target island ID
      * @param verificationCode verification code string, or null if admin bypass
      * @param adminBypass true if initiated by staff bypass permission
-     * @return outcome record
+     * @return CompletableFuture completing with the final RecycleResult
      */
-    public RecycleResult executeReset(
+    public CompletableFuture<RecycleResult> executeReset(
             ProfileId requester, IslandId islandId, @Nullable String verificationCode, boolean adminBypass) {
         Objects.requireNonNull(requester, "requester must not be null");
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         Optional<Island> optIsland = islandStoragePort.findIslandById(islandId);
         if (optIsland.isEmpty()) {
-            return new RecycleResult.IslandNotFound(islandId);
+            return CompletableFuture.completedFuture(new RecycleResult.IslandNotFound(islandId));
         }
         Island island = optIsland.get();
 
         if (!adminBypass) {
             if (!island.ownerProfileId().equals(requester)) {
-                return new RecycleResult.NotOwner(islandId, requester);
+                return CompletableFuture.completedFuture(new RecycleResult.NotOwner(islandId, requester));
             }
             if (!verifyResetChallenge(requester, verificationCode)) {
-                return new RecycleResult.InvalidChallenge(
-                        verificationCode == null ? "Confirmation required." : "Invalid or expired confirmation code.");
+                return CompletableFuture.completedFuture(new RecycleResult.InvalidChallenge(
+                        verificationCode == null ? "Confirmation required." : "Invalid or expired confirmation code."));
             }
             pendingChallenges.remove(requester);
         }
 
         Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(islandId);
         if (optLocation.isEmpty()) {
-            return new RecycleResult.Failure("Island location record missing for islandId=" + islandId);
+            return CompletableFuture.completedFuture(
+                    new RecycleResult.Failure("Island location record missing for islandId=" + islandId));
         }
         IslandLocation location = optLocation.get();
 
-        // 1. Pre-deletion backup snapshot
+        // 1. Pre-deletion disaster recovery backup snapshot (fail-closed)
         if (backupPort != null) {
             try {
                 backupPort.createPreDeletionBackup(island, location);
             } catch (Exception e) {
-                // Log and continue to prevent blocking emergency administrative deletions
+                if (!adminBypass) {
+                    return CompletableFuture.completedFuture(
+                            new RecycleResult.Failure("Failed to create pre-deletion backup: " + e.getMessage()));
+                }
             }
         }
 
-        // 2. Resolve world grid allocation and return slot to SpiralSlotPool
+        // 2. Resolve world grid allocation
         long slotIndex = 0L;
         String worldName = location.worldName();
         int gridX = location.bounds().centerX();
@@ -205,25 +217,44 @@ public final class IslandRecycleService {
             gridZ = alloc.centerZ();
         }
 
-        spiralSlotPoolPort.releaseSlot(slotIndex, worldName, gridX, gridZ);
+        final long finalSlotIndex = slotIndex;
+        final String finalWorldName = worldName;
+        final int finalGridX = gridX;
+        final int finalGridZ = gridZ;
 
         // 3. Folia-native asynchronous chunk voiding
-        if (voidingPort != null) {
-            voidingPort.voidIslandChunks(islandId, worldName, island.bounds());
-        }
+        CompletableFuture<Void> voidFuture = (voidingPort != null)
+                ? voidingPort.voidIslandChunks(islandId, finalWorldName, island.bounds())
+                : CompletableFuture.completedFuture(null);
 
-        // 4. Staged outbox event emission and storage deletion
-        String payload = String.format(
-                "{\"islandId\":\"%s\",\"ownerProfileId\":\"%s\",\"slotIndex\":%d,\"worldName\":\"%s\",\"gridX\":%d,\"gridZ\":%d}",
-                islandId.value(), island.ownerProfileId().value(), slotIndex, worldName, gridX, gridZ);
+        // 4. Defer slot release and storage deletion until voiding COMPLETES successfully
+        return voidFuture.handle((v, ex) -> {
+            if (ex != null) {
+                return new RecycleResult.Failure("Asynchronous chunk voiding failed: " + ex.getMessage());
+            }
 
-        StagedOutboxEvent outboxEvent = (outboxPort != null)
-                ? new StagedOutboxEvent(
-                        EventId.random(), "ISLAND_RECYCLED", islandId.value().toString(), payload)
-                : null;
+            spiralSlotPoolPort.releaseSlot(finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
 
-        islandStoragePort.deleteIsland(islandId, outboxEvent);
+            String payload = String.format(
+                    "{\"islandId\":\"%s\",\"ownerProfileId\":\"%s\",\"slotIndex\":%d,\"worldName\":\"%s\",\"gridX\":%d,\"gridZ\":%d}",
+                    islandId.value(), island.ownerProfileId().value(), finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
 
-        return new RecycleResult.Success(islandId, slotIndex, worldName, gridX, gridZ);
+            StagedOutboxEvent outboxEvent = (outboxPort != null)
+                    ? new StagedOutboxEvent(
+                            EventId.random(), "ISLAND_RECYCLED", islandId.value().toString(), payload)
+                    : null;
+
+            islandStoragePort.deleteIsland(islandId, outboxEvent);
+
+            return new RecycleResult.Success(islandId, finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
+        });
+    }
+
+    /**
+     * Synchronous blocking convenience method for test harnesses and synchronous callers.
+     */
+    public RecycleResult executeResetSync(
+            ProfileId requester, IslandId islandId, @Nullable String verificationCode, boolean adminBypass) {
+        return executeReset(requester, islandId, verificationCode, adminBypass).join();
     }
 }

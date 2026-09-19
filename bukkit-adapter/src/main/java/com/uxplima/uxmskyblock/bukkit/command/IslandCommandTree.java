@@ -2187,8 +2187,7 @@ public final class IslandCommandTree {
             }
         }
 
-        schedulerPort.async(() -> {
-            RecycleResult result = recycleService.executeReset(profileId, islandId, code, false);
+        var unused = recycleService.executeReset(profileId, islandId, code, false).thenAccept(result -> {
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                 switch (result) {
                     case RecycleResult.Success s -> {
@@ -2252,21 +2251,22 @@ public final class IslandCommandTree {
                     Component.text(
                             "Initiating administrative deletion of island " + islandId.value() + "...",
                             NamedTextColor.YELLOW));
-            RecycleResult result = recycleService.executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true);
-            schedulerPort.onGlobal(() -> {
-                if (result instanceof RecycleResult.Success) {
-                    send(
-                            src.getSender(),
-                            Component.text(
-                                    "Island " + islandId.value() + " was deleted and recycled successfully.",
-                                    NamedTextColor.GREEN));
-                } else {
-                    send(
-                            src.getSender(),
-                            Component.text(
-                                    "Administrative deletion failed for island " + islandId.value(),
-                                    NamedTextColor.RED));
-                }
+            var unusedAdminReset = recycleService.executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true).thenAccept(result -> {
+                schedulerPort.onGlobal(() -> {
+                    if (result instanceof RecycleResult.Success) {
+                        send(
+                                src.getSender(),
+                                Component.text(
+                                        "Island " + islandId.value() + " was deleted and recycled successfully.",
+                                        NamedTextColor.GREEN));
+                    } else {
+                        send(
+                                src.getSender(),
+                                Component.text(
+                                        "Administrative deletion failed for island " + islandId.value(),
+                                        NamedTextColor.RED));
+                    }
+                });
             });
         });
         return Cmd.OK;
