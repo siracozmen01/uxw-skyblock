@@ -47,13 +47,30 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
         assertThat(plugin.bootstrap().outboxDispatcher()).isNotNull();
         assertThat(new java.io.File(plugin.getDataFolder(), "config.conf")).exists();
         assertThat(new java.io.File(plugin.getDataFolder(), "modules.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "seasons.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "social.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "discord.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "warps.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "vault.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "chat.conf")).exists();
-        assertThat(new java.io.File(plugin.getDataFolder(), "inactivity.conf")).exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/seasons.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/social.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/discord.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/warps.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/vault.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/chat.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "modules/inactivity.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "menus/island-main.conf"))
+                .exists();
+        assertThat(new java.io.File(plugin.getDataFolder(), "messages/messages_en.conf"))
+                .exists();
+        assertThat(plugin.bootstrap().configurationWiring()).isNotNull();
+        assertThat(plugin.bootstrap().persistenceWiring()).isNotNull();
+        assertThat(plugin.bootstrap().authorityWiring()).isNotNull();
+        assertThat(plugin.bootstrap().gameplayWiring()).isNotNull();
+        assertThat(plugin.bootstrap().integrationWiring()).isNotNull();
+        assertThat(plugin.bootstrap().featureModuleWiring()).isNotNull();
         assertThat(plugin.bootstrap().moduleRegistry().enabledModules()).isNotEmpty();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("core")).isPresent();
         assertThat(plugin.bootstrap().moduleRegistry().findModule("bank")).isPresent();

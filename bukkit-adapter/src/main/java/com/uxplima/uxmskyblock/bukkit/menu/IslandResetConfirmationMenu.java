@@ -38,7 +38,7 @@ public final class IslandResetConfirmationMenu {
     private final IslandStoragePort islandStoragePort;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
-    private final @Nullable BedrockFormService bedrockFormService;
+    private volatile @Nullable BedrockFormService bedrockFormService;
 
     public IslandResetConfirmationMenu(
             IslandRecycleService recycleService,
@@ -59,6 +59,10 @@ public final class IslandResetConfirmationMenu {
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort) {
         this(recycleService, islandStoragePort, sessionCoordinator, schedulerPort, null);
+    }
+
+    public void setBedrockFormService(@Nullable BedrockFormService bedrockFormService) {
+        this.bedrockFormService = bedrockFormService;
     }
 
     public void open(Player player, String verificationCode) {

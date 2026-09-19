@@ -1,0 +1,305 @@
+package com.uxplima.uxmskyblock.bukkit.bootstrap;
+
+import java.io.File;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.bukkit.plugin.java.JavaPlugin;
+
+import com.uxplima.uxmlib.bedrock.BedrockDetector;
+import com.uxplima.uxmlib.bedrock.BedrockScreen;
+import com.uxplima.uxmlib.gui.Guis;
+import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
+import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
+import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
+import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.network.BukkitVelocityBridge;
+import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
+import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
+import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
+import com.uxplima.uxmskyblock.core.application.event.LocalEventTransport;
+import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
+import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
+import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
+import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
+import com.uxplima.uxmskyblock.core.application.webmap.IslandWebMapService;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+
+/**
+ * Encapsulates outbound integrations: Economy, Discord webhooks, Outbox event streaming,
+ * Velocity proxy bridges, Placeholders, WebMaps, Menus, Commands, and the Public Skyblock API.
+ */
+public final class IntegrationWiring implements AutoCloseable {
+
+    private final JavaPlugin plugin;
+    private final ServerNodeId serverNodeId;
+    private final SkyblockEconomyBridge economyBridge;
+    private final BedrockDetector bedrockDetector;
+    private final BedrockScreen bedrockScreen;
+    private final BedrockFormService bedrockFormService;
+    private final WorldDimensionSnapshotAdapter worldDimensionSnapshotAdapter;
+    private final CompositeWebMapAdapter webMapAdapter;
+    private final IslandWebMapService islandWebMapService;
+    private final IslandControlMenu controlMenu;
+    private final SkyblockPlaceholderExpansion placeholderExpansion;
+    private final TransactionalOutboxDispatcher outboxDispatcher;
+    private final DurableEventTransportPort eventTransport;
+    private final VelocityBridgePort velocityBridge;
+    private final ClusterRoutingDirectoryPort clusterRoutingDirectory;
+    private final IslandNetworkRouter networkRouter;
+    private final IslandDiscordWebhookService discordService;
+    private final MessageProvider messageProvider;
+    private final IslandCommandTree commandTree;
+    private final BukkitSkyblockApiBridge apiBridge;
+
+    public IntegrationWiring(
+            JavaPlugin plugin,
+            ConfigurationWiring config,
+            PersistenceBootstrap persistence,
+            AuthorityWiring authority,
+            GameplayWiring gameplay) {
+        this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
+        this.serverNodeId = config.nodeConfig().nodeId();
+        String worldName = config.nodeConfig().worldName();
+
+        this.economyBridge = SkyblockEconomyBridge.createDefault(
+                gameplay.bankService(), gameplay.scheduler(), persistence.economySagaPort());
+
+        this.bedrockDetector = BedrockDetector.forServer(plugin.getServer());
+        this.bedrockScreen = BedrockScreen.forServer(plugin.getServer());
+        this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen);
+        gameplay.resetConfirmationMenu().setBedrockFormService(this.bedrockFormService);
+
+        this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin);
+        this.webMapAdapter = new CompositeWebMapAdapter(
+                List.of(new DynmapAdapter(plugin), new BlueMapAdapter(plugin), new Pl3xMapAdapter(plugin)));
+        this.islandWebMapService = new IslandWebMapService();
+
+        this.controlMenu = new IslandControlMenu(
+                persistence.islandStoragePort(),
+                persistence.islandBankPort(),
+                persistence.islandUpgradeStoragePort(),
+                gameplay.locationService(),
+                gameplay.scheduler(),
+                worldName,
+                authority.sessionCoordinator(),
+                this.bedrockFormService);
+
+        this.placeholderExpansion = new SkyblockPlaceholderExpansion(
+                persistence.islandStoragePort(),
+                persistence.islandBankPort(),
+                persistence.islandUpgradeStoragePort(),
+                persistence.islandLeaderboardPort(),
+                gameplay.scheduler(),
+                authority.sessionCoordinator());
+
+        this.outboxDispatcher = new TransactionalOutboxDispatcher(
+                persistence.outboxPort(), gameplay.scheduler(), serverNodeId.value() + "-outbox");
+        this.eventTransport = new LocalEventTransport();
+        this.outboxDispatcher.registerConsumer(event -> {
+            this.eventTransport.publish("uxmskyblock:stream:domain_events", event);
+        });
+
+        this.velocityBridge = new BukkitVelocityBridge(plugin);
+        this.clusterRoutingDirectory = new ClusterRoutingDirectoryPort() {
+            private final Map<IslandId, ServerNodeId> cache = new ConcurrentHashMap<>();
+
+            @Override
+            public Optional<ServerNodeId> findAuthoritativeNode(IslandId islandId) {
+                return Optional.ofNullable(cache.get(islandId));
+            }
+
+            @Override
+            public void cacheRoute(IslandId islandId, ServerNodeId nodeId, long epoch, Duration ttl) {
+                cache.put(islandId, nodeId);
+            }
+
+            @Override
+            public void invalidateRoute(IslandId islandId) {
+                cache.remove(islandId);
+            }
+        };
+        this.networkRouter = new IslandNetworkRouter(
+                serverNodeId, persistence.islandAuthorityPort(), velocityBridge, clusterRoutingDirectory);
+
+        this.discordService = new IslandDiscordWebhookService(
+                new JavaHttpClientDiscordAdapter(),
+                config.discordConfig().webhookUrls(),
+                config.discordConfig().enabled(),
+                config.discordConfig().botUsername(),
+                config.discordConfig().avatarUrl(),
+                config.discordConfig().rateLimitPerSecond());
+
+        this.messageProvider = new MessageProvider("en");
+        this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
+        File messagesDir = new File(plugin.getDataFolder(), "messages");
+        if (messagesDir.exists() && messagesDir.isDirectory()) {
+            File[] files = messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
+            if (files != null) {
+                for (File file : files) {
+                    String name = file.getName();
+                    String locale = name.substring("messages_".length(), name.length() - ".conf".length());
+                    try {
+                        this.messageProvider.loadFromFile(locale, file.toPath());
+                    } catch (Exception e) {
+                        plugin.getLogger()
+                                .warning("Failed loading custom message file " + file + ": " + e.getMessage());
+                    }
+                }
+            }
+        }
+
+        this.commandTree = new IslandCommandTree(
+                gameplay.createIslandUseCase(),
+                gameplay.locationService(),
+                gameplay.bankService(),
+                persistence.islandUpgradeStoragePort(),
+                gameplay.leaderboardService(),
+                gameplay.biomeAdapter(),
+                gameplay.presetCatalog(),
+                gameplay.schematicEngine(),
+                gameplay.protectionListener(),
+                authority.sessionCoordinator(),
+                gameplay.scheduler(),
+                serverNodeId,
+                worldName,
+                this.economyBridge,
+                this.controlMenu,
+                gameplay.chatService(),
+                gameplay.inactivityService(),
+                gameplay.freezeService(),
+                gameplay.missionsMenu(),
+                gameplay.boundaryService(),
+                gameplay.recycleService(),
+                gameplay.resetConfirmationMenu(),
+                gameplay.worthService(),
+                gameplay.dimensionListener(),
+                gameplay.limitService(),
+                gameplay.antiAbuseService(),
+                gameplay.boosterService(),
+                gameplay.boosterMenu());
+        this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
+        this.commandTree.setNameService(gameplay.islandNameService());
+        this.commandTree.setNetworkRouter(this.networkRouter);
+
+        this.apiBridge = new BukkitSkyblockApiBridge(
+                persistence.islandStoragePort(),
+                persistence.islandBankPort(),
+                persistence.islandLeaderboardPort(),
+                gameplay.bankService(),
+                gameplay.createIslandUseCase(),
+                serverNodeId,
+                gameplay.scheduler(),
+                authority.sessionCoordinator(),
+                worldName);
+    }
+
+    public void enable() {
+        if (!Guis.isInstalled()) {
+            Guis.install(plugin);
+        }
+        outboxDispatcher.start();
+        placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
+        commandTree.register(plugin);
+        apiBridge.register();
+        economyBridge.recoverPendingSagas(serverNodeId);
+    }
+
+    public SkyblockEconomyBridge economyBridge() {
+        return economyBridge;
+    }
+
+    public BedrockDetector bedrockDetector() {
+        return bedrockDetector;
+    }
+
+    public BedrockScreen bedrockScreen() {
+        return bedrockScreen;
+    }
+
+    public BedrockFormService bedrockFormService() {
+        return bedrockFormService;
+    }
+
+    public WorldDimensionSnapshotAdapter worldDimensionSnapshotAdapter() {
+        return worldDimensionSnapshotAdapter;
+    }
+
+    public WebMapAdapter webMapAdapter() {
+        return webMapAdapter;
+    }
+
+    public IslandWebMapService islandWebMapService() {
+        return islandWebMapService;
+    }
+
+    public IslandControlMenu controlMenu() {
+        return controlMenu;
+    }
+
+    public SkyblockPlaceholderExpansion placeholderExpansion() {
+        return placeholderExpansion;
+    }
+
+    public TransactionalOutboxDispatcher outboxDispatcher() {
+        return outboxDispatcher;
+    }
+
+    public DurableEventTransportPort eventTransport() {
+        return eventTransport;
+    }
+
+    public VelocityBridgePort velocityBridge() {
+        return velocityBridge;
+    }
+
+    public ClusterRoutingDirectoryPort clusterRoutingDirectory() {
+        return clusterRoutingDirectory;
+    }
+
+    public IslandNetworkRouter networkRouter() {
+        return networkRouter;
+    }
+
+    public IslandDiscordWebhookService discordService() {
+        return discordService;
+    }
+
+    public MessageProvider messageProvider() {
+        return messageProvider;
+    }
+
+    public IslandCommandTree commandTree() {
+        return commandTree;
+    }
+
+    public BukkitSkyblockApiBridge apiBridge() {
+        return apiBridge;
+    }
+
+    @Override
+    public void close() {
+        discordService.close();
+        outboxDispatcher.close();
+        eventTransport.close();
+        if (Guis.isInstalled()) {
+            Guis.uninstall();
+        }
+        apiBridge.unregister();
+    }
+}

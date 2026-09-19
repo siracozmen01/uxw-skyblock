@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.reward;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -22,10 +23,20 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryHandler {
 
-    private final @Nullable SkyblockEconomyBridge economyBridge;
+    private final @Nullable Supplier<SkyblockEconomyBridge> economyBridgeSupplier;
 
     public ExternalVaultRewardDeliveryHandler(@Nullable SkyblockEconomyBridge economyBridge) {
-        this.economyBridge = economyBridge;
+        this.economyBridgeSupplier = economyBridge != null ? () -> economyBridge : null;
+    }
+
+    private ExternalVaultRewardDeliveryHandler(
+            @Nullable Supplier<SkyblockEconomyBridge> economyBridgeSupplier, boolean unused) {
+        this.economyBridgeSupplier = economyBridgeSupplier;
+    }
+
+    public static ExternalVaultRewardDeliveryHandler ofSupplier(
+            @Nullable Supplier<SkyblockEconomyBridge> economyBridgeSupplier) {
+        return new ExternalVaultRewardDeliveryHandler(economyBridgeSupplier, false);
     }
 
     @Override
@@ -39,6 +50,7 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
         Objects.requireNonNull(component, "component must not be null");
         Objects.requireNonNull(recipient, "recipient must not be null");
 
+        SkyblockEconomyBridge economyBridge = economyBridgeSupplier != null ? economyBridgeSupplier.get() : null;
         if (economyBridge == null) {
             return DeliveryResult.failure("External Vault economy bridge is not initialized.");
         }
