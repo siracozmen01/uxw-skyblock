@@ -35,6 +35,7 @@ import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
+import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
@@ -90,6 +91,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandInactivityService inactivityService;
     private final @Nullable IslandAdminFreezeService freezeService;
     private final @Nullable IslandMissionsMenu missionsMenu;
+    private final @Nullable IslandBoundaryService boundaryService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -300,6 +302,50 @@ public final class IslandCommandTree {
             @Nullable IslandInactivityService inactivityService,
             @Nullable IslandAdminFreezeService freezeService,
             @Nullable IslandMissionsMenu missionsMenu) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -322,6 +368,7 @@ public final class IslandCommandTree {
         this.inactivityService = inactivityService;
         this.freezeService = freezeService;
         this.missionsMenu = missionsMenu;
+        this.boundaryService = boundaryService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -335,6 +382,8 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("menu").executes(this::executeMenu))
                 .then(Cmd.literal("missions").executes(this::executeMissions))
                 .then(Cmd.literal("challenges").executes(this::executeMissions))
+                .then(Cmd.literal("border").executes(this::executeBorder))
+                .then(Cmd.literal("bounds").executes(this::executeBorder))
                 .then(Cmd.literal("create")
                         .executes(ctx ->
                                 executeCreate(ctx, presetCatalog.defaultPreset().id()))
@@ -1212,6 +1261,26 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> missionsMenu.open(player));
+        return Cmd.OK;
+    }
+
+    private int executeBorder(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can toggle border view.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (boundaryService == null) {
+            send(player, Component.text("Island boundary visualization is not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
+        boolean active = boundaryService.togglePerimeter(uuid);
+        if (active) {
+            send(player, Component.text("Perimeter particle projection enabled. Outlines will project around your island boundary.", NamedTextColor.AQUA));
+        } else {
+            send(player, Component.text("Perimeter particle projection disabled.", NamedTextColor.YELLOW));
+        }
         return Cmd.OK;
     }
 }

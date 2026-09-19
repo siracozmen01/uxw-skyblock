@@ -17,6 +17,8 @@ import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
+import com.uxplima.uxmskyblock.bukkit.boundary.WorldBorderPacketAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
@@ -47,6 +49,7 @@ import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.BoundaryFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ChatFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.CoreModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
@@ -69,6 +72,7 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
@@ -169,6 +173,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandMissionService missionService;
     private final IslandMissionsMenu missionsMenu;
     private final IslandMissionListener missionListener;
+    private final WorldBorderPacketAdapter worldBorderAdapter;
+    private final IslandBoundaryService boundaryService;
+    private final IslandBoundaryListener boundaryListener;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -410,6 +417,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 sessionCoordinator,
                 scheduler);
 
+        this.worldBorderAdapter = new WorldBorderPacketAdapter(scheduler);
+        this.boundaryService = new IslandBoundaryService(worldBorderAdapter);
+        this.boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, scheduler);
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -429,7 +440,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 chatService,
                 inactivityService,
                 freezeService,
-                missionsMenu);
+                missionsMenu,
+                boundaryService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -540,6 +552,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 inactivityService, scheduler, inactivityConfig, nodeConfiguration.worldName()));
         this.moduleRegistry.register(new FreezeFeatureModule(freezeService));
         this.moduleRegistry.register(new MissionFeatureModule(missionService, missionConfig));
+        this.moduleRegistry.register(new BoundaryFeatureModule(boundaryService, boundaryListener, scheduler));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1321,6 +1334,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(sessionListener, plugin);
         pm.registerEvents(chatListener, plugin);
         pm.registerEvents(missionListener, plugin);
+        pm.registerEvents(boundaryListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1513,6 +1527,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandMissionListener missionListener() {
         return missionListener;
+    }
+
+    public IslandBoundaryService boundaryService() {
+        return boundaryService;
+    }
+
+    public IslandBoundaryListener boundaryListener() {
+        return boundaryListener;
+    }
+
+    public WorldBorderPacketAdapter worldBorderAdapter() {
+        return worldBorderAdapter;
     }
 
     @Override
