@@ -21,6 +21,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
+import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
@@ -47,8 +48,8 @@ public final class IslandProtectionListener implements Listener {
     private final @Nullable IslandAllianceService allianceService;
     private final @Nullable TemporaryAccessService temporaryAccessService;
     private volatile @Nullable IslandAdminFreezeService freezeService;
+    private final SpatialIslandIndex spatialIndex;
     private final Map<PlayerUuid, ProfileId> activeProfiles = new ConcurrentHashMap<>();
-    private final Map<IslandId, Island> cachedIslands = new ConcurrentHashMap<>();
 
     private volatile @Nullable Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier;
     private volatile @Nullable Function<PlayerUuid, Optional<PlayerSessionRecord>> sessionRecordProvider;
@@ -59,12 +60,23 @@ public final class IslandProtectionListener implements Listener {
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService,
             @Nullable TemporaryAccessService temporaryAccessService,
-            @Nullable IslandAdminFreezeService freezeService) {
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable SpatialIslandIndex spatialIndex) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
         this.accessService = Objects.requireNonNull(accessService, "accessService");
         this.allianceService = allianceService;
         this.temporaryAccessService = temporaryAccessService;
         this.freezeService = freezeService;
+        this.spatialIndex = spatialIndex != null ? spatialIndex : new SpatialIslandIndex(islandStoragePort, null);
+    }
+
+    public IslandProtectionListener(
+            IslandStoragePort islandStoragePort,
+            IslandAccessService accessService,
+            @Nullable IslandAllianceService allianceService,
+            @Nullable TemporaryAccessService temporaryAccessService,
+            @Nullable IslandAdminFreezeService freezeService) {
+        this(islandStoragePort, accessService, allianceService, temporaryAccessService, freezeService, null);
     }
 
     public IslandProtectionListener(
@@ -72,18 +84,18 @@ public final class IslandProtectionListener implements Listener {
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService,
             @Nullable TemporaryAccessService temporaryAccessService) {
-        this(islandStoragePort, accessService, allianceService, temporaryAccessService, null);
+        this(islandStoragePort, accessService, allianceService, temporaryAccessService, null, null);
     }
 
     public IslandProtectionListener(
             IslandStoragePort islandStoragePort,
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService) {
-        this(islandStoragePort, accessService, allianceService, null, null);
+        this(islandStoragePort, accessService, allianceService, null, null, null);
     }
 
     public IslandProtectionListener(IslandStoragePort islandStoragePort, IslandAccessService accessService) {
-        this(islandStoragePort, accessService, null, null, null);
+        this(islandStoragePort, accessService, null, null, null, null);
     }
 
     public void setFreezeService(@Nullable IslandAdminFreezeService freezeService) {
@@ -108,6 +120,10 @@ public final class IslandProtectionListener implements Listener {
         return islandStoragePort;
     }
 
+    public SpatialIslandIndex spatialIndex() {
+        return spatialIndex;
+    }
+
     public void setActiveProfile(PlayerUuid playerUuid, ProfileId profileId) {
         activeProfiles.put(playerUuid, profileId);
     }
@@ -117,11 +133,23 @@ public final class IslandProtectionListener implements Listener {
     }
 
     public void cacheIsland(Island island) {
-        cachedIslands.put(island.id(), island);
+        if (org.bukkit.Bukkit.getServer() != null
+                && !org.bukkit.Bukkit.getWorlds().isEmpty()) {
+            for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
+                spatialIndex.indexIsland(island, world.getName());
+            }
+        } else {
+            spatialIndex.indexIsland(island, "world");
+            spatialIndex.indexIsland(island, "skyblock_world");
+        }
+    }
+
+    public void cacheIsland(Island island, String worldName) {
+        spatialIndex.indexIsland(island, worldName);
     }
 
     public void invalidateIsland(IslandId islandId) {
-        cachedIslands.remove(islandId);
+        spatialIndex.removeIsland(islandId);
     }
 
     /**
@@ -132,27 +160,11 @@ public final class IslandProtectionListener implements Listener {
      */
     public void loadPersistedIslands(String worldName) {
         Objects.requireNonNull(worldName, "worldName");
-        for (Island island : islandStoragePort.findAllByWorld(worldName)) {
-            cacheIsland(island);
-        }
+        spatialIndex.warmFromStorage(worldName);
     }
 
     public Optional<Island> findIslandAt(Location location) {
-        if (location == null || location.getWorld() == null) {
-            return Optional.empty();
-        }
-        int x = location.getBlockX();
-        int z = location.getBlockZ();
-        for (Island island : cachedIslands.values()) {
-            if (island.bounds().contains(x, z)) {
-                return Optional.of(island);
-            }
-        }
-        // Cache miss fallback: query persisted spatial boundary in database
-        Optional<Island> persisted =
-                islandStoragePort.findIslandByLocation(location.getWorld().getName(), x, z);
-        persisted.ifPresent(this::cacheIsland);
-        return persisted;
+        return spatialIndex.findIslandAt(location);
     }
 
     public void setNodeIdentitySupplier(Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier) {

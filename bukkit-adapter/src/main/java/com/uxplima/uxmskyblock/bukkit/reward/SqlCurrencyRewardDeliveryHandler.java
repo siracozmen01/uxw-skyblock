@@ -49,8 +49,8 @@ public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHan
         // 1. Resolve recipient's island
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(recipient);
         if (optIslandId.isEmpty()) {
-            return DeliveryResult.failure(
-                    "Recipient profile " + recipient + " does not belong to an active island to receive bank currency.");
+            return DeliveryResult.failure("Recipient profile " + recipient
+                    + " does not belong to an active island to receive bank currency.");
         }
         IslandId islandId = optIslandId.get();
 
@@ -79,13 +79,15 @@ public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHan
         } else if (outcome instanceof BankTransactionOutcome.StaleVersion) {
             return DeliveryResult.failure("Bank deposit encountered concurrent update; retrying.");
         } else {
-            return DeliveryResult.failure("Bank deposit failed: " + outcome.getClass().getSimpleName());
+            return DeliveryResult.failure(
+                    "Bank deposit failed: " + outcome.getClass().getSimpleName());
         }
     }
 
     private long parseAmount(String payload) {
         if (payload == null) return 0L;
-        String clean = payload.replace("{", "").replace("}", "").replace("\"", "").trim();
+        String clean =
+                payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         int idx = clean.indexOf("amount:");
         if (idx < 0) return 0L;
         int end = clean.indexOf(",", idx);
@@ -99,7 +101,8 @@ public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHan
 
     private String parseCurrency(String payload) {
         if (payload == null) return "PRIMARY";
-        String clean = payload.replace("{", "").replace("}", "").replace("\"", "").trim();
+        String clean =
+                payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         int idx = clean.indexOf("currency:");
         if (idx < 0) return "PRIMARY";
         int end = clean.indexOf(",", idx);

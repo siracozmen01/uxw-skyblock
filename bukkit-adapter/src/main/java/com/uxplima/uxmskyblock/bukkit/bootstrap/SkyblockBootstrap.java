@@ -150,7 +150,6 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.reward.RewardClaimCoordinator;
-import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
@@ -168,7 +167,6 @@ import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfi
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
-import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
@@ -1135,9 +1133,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         com.uxplima.uxmskyblock.bukkit.reward.SqlCurrencyRewardDeliveryHandler currencyDeliveryHandler =
                 new com.uxplima.uxmskyblock.bukkit.reward.SqlCurrencyRewardDeliveryHandler(
-                        persistenceBootstrap.islandStoragePort(),
-                        this.bankService,
-                        this.nodeConfiguration.nodeId());
+                        persistenceBootstrap.islandStoragePort(), this.bankService, this.nodeConfiguration.nodeId());
 
         com.uxplima.uxmskyblock.bukkit.reward.ExternalVaultRewardDeliveryHandler vaultDeliveryHandler =
                 new com.uxplima.uxmskyblock.bukkit.reward.ExternalVaultRewardDeliveryHandler(this.economyBridge);
@@ -1182,7 +1178,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new InactivityFeatureModule(
                 inactivityService, scheduler, inactivityConfig, nodeConfiguration.worldName()));
         this.moduleRegistry.register(new FreezeFeatureModule(freezeService));
-        this.moduleRegistry.register(new MissionFeatureModule(missionService, missionConfig));
+        this.moduleRegistry.register(new MissionFeatureModule(missionService, missionConfig, scheduler));
         this.moduleRegistry.register(new BoundaryFeatureModule(boundaryService, boundaryListener, scheduler));
         this.moduleRegistry.register(new RecycleFeatureModule(recycleService));
         this.moduleRegistry.register(new WorthFeatureModule(worthService));
@@ -2680,6 +2676,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
     @Override
     public void close() {
         moduleRegistry.disableModules();
+        missionService.flushDirtyProgress();
         discordService.close();
         outboxDispatcher.close();
         eventTransport.close();

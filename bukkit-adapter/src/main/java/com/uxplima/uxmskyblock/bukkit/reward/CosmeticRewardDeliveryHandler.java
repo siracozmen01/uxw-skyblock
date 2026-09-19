@@ -49,7 +49,8 @@ public final class CosmeticRewardDeliveryHandler implements RewardDeliveryHandle
 
     private String parseCosmeticId(String payload) {
         if (payload == null) return null;
-        String clean = payload.replace("{", "").replace("}", "").replace("\"", "").trim();
+        String clean =
+                payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         int idx = clean.indexOf("cosmeticId:");
         if (idx < 0) {
             idx = clean.indexOf("cosmetic:");

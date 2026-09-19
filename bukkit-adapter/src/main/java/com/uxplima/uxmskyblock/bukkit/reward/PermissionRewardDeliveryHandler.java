@@ -1,7 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.reward;
 
 import java.util.Objects;
-import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -72,7 +71,8 @@ public final class PermissionRewardDeliveryHandler implements RewardDeliveryHand
 
     private String parsePermission(String payload) {
         if (payload == null) return null;
-        String clean = payload.replace("{", "").replace("}", "").replace("\"", "").trim();
+        String clean =
+                payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         int idx = clean.indexOf("permission:");
         if (idx < 0) return clean.isEmpty() ? null : clean;
         int end = clean.indexOf(",", idx);

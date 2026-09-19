@@ -147,6 +147,63 @@ class IslandMissionServiceTest {
         assertThat(rewardDispatched.get()).isTrue();
     }
 
+    @Test
+    @DisplayName("routine non-completion triggers are buffered in memory and flushed on demand")
+    void routineIncrementsAreBufferedAndFlushed() {
+        MissionDefinition def = new MissionDefinition(
+                MissionId.of("mine_stone"),
+                MissionBranch.MINING,
+                "Miner",
+                "Mine 100 stone",
+                MissionTriggerType.BLOCK_BREAK,
+                "STONE",
+                100L,
+                new MissionReward(10L, 500L, 100L, List.of()));
+        service.registerMission(def);
+
+        Instant now = Instant.now();
+        // Trigger partial progress (10 out of 100)
+        List<MissionProgress> updated =
+                service.handleTrigger(islandId, profileId, MissionTriggerType.BLOCK_BREAK, "STONE", 10L, now);
+
+        assertThat(updated).hasSize(1);
+        assertThat(service.dirtyEntriesCount()).isEqualTo(1);
+        // Storage should NOT have received it yet
+        assertThat(storage.findProgress(islandId, profileId, MissionId.of("mine_stone")))
+                .isEmpty();
+
+        // Flushed
+        int flushed = service.flushDirtyProgress();
+        assertThat(flushed).isEqualTo(1);
+        assertThat(service.dirtyEntriesCount()).isEqualTo(0);
+        // Now storage has it
+        assertThat(storage.findProgress(islandId, profileId, MissionId.of("mine_stone")))
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("invalidate automatically flushes dirty progress before clearing cache")
+    void invalidateFlushesDirtyEntries() {
+        MissionDefinition def = new MissionDefinition(
+                MissionId.of("slay_spider"),
+                MissionBranch.SLAYER,
+                "Spider Slayer",
+                "Kill 50 spiders",
+                MissionTriggerType.MOB_KILL,
+                "SPIDER",
+                50L,
+                new MissionReward(10L, 500L, 100L, List.of()));
+        service.registerMission(def);
+
+        service.handleTrigger(islandId, profileId, MissionTriggerType.MOB_KILL, "SPIDER", 5L, Instant.now());
+        assertThat(service.dirtyEntriesCount()).isEqualTo(1);
+
+        service.invalidate(islandId, profileId);
+        assertThat(service.dirtyEntriesCount()).isEqualTo(0);
+        assertThat(storage.findProgress(islandId, profileId, MissionId.of("slay_spider")))
+                .isPresent();
+    }
+
     private static class InMemoryMissionStorage implements IslandMissionStoragePort {
         private final Map<String, Map<MissionId, MissionProgress>> data = new HashMap<>();
 

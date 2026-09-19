@@ -1,0 +1,192 @@
+package com.uxplima.uxmskyblock.bukkit.spatial;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import org.bukkit.Location;
+
+import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * High-performance O(1) in-memory spatial chunk index for Skyblock islands.
+ *
+ * <p>Eliminates O(N) iterative boundary scanning and eliminates synchronous relational
+ * database lookups on high-frequency Bukkit event threads (BlockBreak, BlockPlace, Move, Interact).
+ */
+public final class SpatialIslandIndex {
+
+    public record SpatialChunkKey(String world, int chunkX, int chunkZ) {
+        public SpatialChunkKey {
+            Objects.requireNonNull(world, "world must not be null");
+        }
+    }
+
+    private final ConcurrentMap<SpatialChunkKey, IslandId> chunkToIsland = new ConcurrentHashMap<>();
+    private final ConcurrentMap<IslandId, Island> islandMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<IslandId, String> islandWorldMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<IslandId, Set<SpatialChunkKey>> islandChunksMap = new ConcurrentHashMap<>();
+    private final Set<SpatialChunkKey> pendingLookups = ConcurrentHashMap.newKeySet();
+
+    private final @Nullable IslandStoragePort storagePort;
+    private final @Nullable SchedulerPort schedulerPort;
+
+    public SpatialIslandIndex(@Nullable IslandStoragePort storagePort, @Nullable SchedulerPort schedulerPort) {
+        this.storagePort = storagePort;
+        this.schedulerPort = schedulerPort;
+    }
+
+    public SpatialIslandIndex() {
+        this(null, null);
+    }
+
+    /**
+     * Indexes an island across all chunks covered by its spatial boundaries in O(chunks).
+     */
+    public void indexIsland(Island island, String worldName) {
+        Objects.requireNonNull(island, "island must not be null");
+        Objects.requireNonNull(worldName, "worldName must not be null");
+
+        IslandId id = island.id();
+        islandMap.put(id, island);
+        islandWorldMap.put(id, worldName);
+
+        int minCX = island.bounds().minX() >> 4;
+        int maxCX = island.bounds().maxX() >> 4;
+        int minCZ = island.bounds().minZ() >> 4;
+        int maxCZ = island.bounds().maxZ() >> 4;
+
+        Set<SpatialChunkKey> newKeys = ConcurrentHashMap.newKeySet();
+        for (int cx = minCX; cx <= maxCX; cx++) {
+            for (int cz = minCZ; cz <= maxCZ; cz++) {
+                SpatialChunkKey key = new SpatialChunkKey(worldName, cx, cz);
+                chunkToIsland.put(key, id);
+                newKeys.add(key);
+            }
+        }
+
+        Set<SpatialChunkKey> oldKeys = islandChunksMap.put(id, newKeys);
+        if (oldKeys != null) {
+            for (SpatialChunkKey oldKey : oldKeys) {
+                if (!newKeys.contains(oldKey)) {
+                    chunkToIsland.remove(oldKey, id);
+                }
+            }
+        }
+    }
+
+    /**
+     * Removes an island and purges all of its chunk mappings from the spatial index.
+     */
+    public void removeIsland(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        islandMap.remove(islandId);
+        islandWorldMap.remove(islandId);
+        Set<SpatialChunkKey> keys = islandChunksMap.remove(islandId);
+        if (keys != null) {
+            for (SpatialChunkKey key : keys) {
+                chunkToIsland.remove(key, islandId);
+            }
+        }
+    }
+
+    /**
+     * Finds the island encompassing the given location in O(1) time without blocking on relational DB I/O.
+     */
+    public Optional<Island> findIslandAt(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return Optional.empty();
+        }
+        return findIslandAt(location.getWorld().getName(), location.getBlockX(), location.getBlockZ());
+    }
+
+    /**
+     * Finds the island encompassing the world and block coordinates in O(1) time.
+     * In production (when schedulerPort is present), on cache miss returns empty and dispatches
+     * an asynchronous background refresh without stalling the server thread.
+     */
+    public Optional<Island> findIslandAt(String worldName, int blockX, int blockZ) {
+        Objects.requireNonNull(worldName, "worldName must not be null");
+
+        int chunkX = blockX >> 4;
+        int chunkZ = blockZ >> 4;
+        SpatialChunkKey key = new SpatialChunkKey(worldName, chunkX, chunkZ);
+
+        IslandId islandId = chunkToIsland.get(key);
+        if (islandId != null) {
+            Island island = islandMap.get(islandId);
+            if (island != null && island.bounds().contains(blockX, blockZ)) {
+                return Optional.of(island);
+            }
+        }
+
+        // Cache miss: if asynchronous scheduler is present, dispatch async refresh and return empty (zero sync DB I/O
+        // on hot path)
+        if (storagePort != null) {
+            if (schedulerPort != null) {
+                if (pendingLookups.add(key)) {
+                    schedulerPort.async(() -> {
+                        try {
+                            Optional<Island> persisted = storagePort.findIslandByLocation(worldName, blockX, blockZ);
+                            persisted.ifPresent(is -> indexIsland(is, worldName));
+                        } finally {
+                            pendingLookups.remove(key);
+                        }
+                    });
+                }
+            } else {
+                // Synchronous fallback only when running in offline unit tests without scheduler
+                Optional<Island> persisted = storagePort.findIslandByLocation(worldName, blockX, blockZ);
+                persisted.ifPresent(is -> indexIsland(is, worldName));
+                return persisted;
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    /**
+     * Bulk loads and indexes all islands persisted for the specified world.
+     */
+    public void warmFromStorage(String worldName) {
+        Objects.requireNonNull(worldName, "worldName must not be null");
+        if (storagePort == null) {
+            return;
+        }
+        for (Island island : storagePort.findAllByWorld(worldName)) {
+            indexIsland(island, worldName);
+        }
+    }
+
+    public Optional<Island> getCachedIsland(IslandId islandId) {
+        return Optional.ofNullable(islandMap.get(islandId));
+    }
+
+    public Collection<Island> allCachedIslands() {
+        return Collections.unmodifiableCollection(islandMap.values());
+    }
+
+    public int totalIndexedIslands() {
+        return islandMap.size();
+    }
+
+    public int totalIndexedChunks() {
+        return chunkToIsland.size();
+    }
+
+    public void clear() {
+        chunkToIsland.clear();
+        islandMap.clear();
+        islandWorldMap.clear();
+        islandChunksMap.clear();
+        pendingLookups.clear();
+    }
+}

@@ -2187,44 +2187,52 @@ public final class IslandCommandTree {
             }
         }
 
-        var unused = recycleService.executeReset(profileId, islandId, code, false).thenAccept(result -> {
-            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                switch (result) {
-                    case RecycleResult.Success s -> {
-                        if (antiAbuseService != null) {
-                            antiAbuseService.recordReset(new PlayerUuid(player.getUniqueId()), Instant.now());
-                            if (antiAbuseService.purgeInventoryOnReset()) {
-                                player.getInventory().clear();
-                                player.getInventory().setArmorContents(null);
-                                player.getInventory().setItemInOffHand(null);
-                                player.getEnderChest().clear();
-                                player.setExp(0.0f);
-                                player.setLevel(0);
-                                player.setTotalExperience(0);
+        var unused = recycleService
+                .executeReset(profileId, islandId, code, false)
+                .thenAccept(result -> {
+                    schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                        switch (result) {
+                            case RecycleResult.Success s -> {
+                                if (antiAbuseService != null) {
+                                    antiAbuseService.recordReset(new PlayerUuid(player.getUniqueId()), Instant.now());
+                                    if (antiAbuseService.purgeInventoryOnReset()) {
+                                        player.getInventory().clear();
+                                        player.getInventory().setArmorContents(null);
+                                        player.getInventory().setItemInOffHand(null);
+                                        player.getEnderChest().clear();
+                                        player.setExp(0.0f);
+                                        player.setLevel(0);
+                                        player.setTotalExperience(0);
+                                    }
+                                }
+                                player.teleport(player.getWorld().getSpawnLocation());
+                                send(
+                                        player,
+                                        Component.text(
+                                                "Your island has been reset and recycled successfully!",
+                                                NamedTextColor.GREEN,
+                                                TextDecoration.BOLD));
+                                send(
+                                        player,
+                                        Component.text("Create a new island with /is create.", NamedTextColor.GRAY));
                             }
+                            case RecycleResult.NotOwner no ->
+                                send(
+                                        player,
+                                        Component.text(
+                                                "Only the island owner can reset this island!", NamedTextColor.RED));
+                            case RecycleResult.InvalidChallenge ic ->
+                                send(
+                                        player,
+                                        Component.text(
+                                                "Reset confirmation failed: " + ic.reason(), NamedTextColor.RED));
+                            case RecycleResult.IslandNotFound nf ->
+                                send(player, Component.text("Island not found.", NamedTextColor.RED));
+                            case RecycleResult.Failure f ->
+                                send(player, Component.text("Reset failed: " + f.reason(), NamedTextColor.RED));
                         }
-                        player.teleport(player.getWorld().getSpawnLocation());
-                        send(
-                                player,
-                                Component.text(
-                                        "Your island has been reset and recycled successfully!",
-                                        NamedTextColor.GREEN,
-                                        TextDecoration.BOLD));
-                        send(player, Component.text("Create a new island with /is create.", NamedTextColor.GRAY));
-                    }
-                    case RecycleResult.NotOwner no ->
-                        send(
-                                player,
-                                Component.text("Only the island owner can reset this island!", NamedTextColor.RED));
-                    case RecycleResult.InvalidChallenge ic ->
-                        send(player, Component.text("Reset confirmation failed: " + ic.reason(), NamedTextColor.RED));
-                    case RecycleResult.IslandNotFound nf ->
-                        send(player, Component.text("Island not found.", NamedTextColor.RED));
-                    case RecycleResult.Failure f ->
-                        send(player, Component.text("Reset failed: " + f.reason(), NamedTextColor.RED));
-                }
-            });
-        });
+                    });
+                });
         return Cmd.OK;
     }
 
@@ -2251,23 +2259,26 @@ public final class IslandCommandTree {
                     Component.text(
                             "Initiating administrative deletion of island " + islandId.value() + "...",
                             NamedTextColor.YELLOW));
-            var unusedAdminReset = recycleService.executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true).thenAccept(result -> {
-                schedulerPort.onGlobal(() -> {
-                    if (result instanceof RecycleResult.Success) {
-                        send(
-                                src.getSender(),
-                                Component.text(
-                                        "Island " + islandId.value() + " was deleted and recycled successfully.",
-                                        NamedTextColor.GREEN));
-                    } else {
-                        send(
-                                src.getSender(),
-                                Component.text(
-                                        "Administrative deletion failed for island " + islandId.value(),
-                                        NamedTextColor.RED));
-                    }
-                });
-            });
+            var unusedAdminReset = recycleService
+                    .executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true)
+                    .thenAccept(result -> {
+                        schedulerPort.onGlobal(() -> {
+                            if (result instanceof RecycleResult.Success) {
+                                send(
+                                        src.getSender(),
+                                        Component.text(
+                                                "Island " + islandId.value()
+                                                        + " was deleted and recycled successfully.",
+                                                NamedTextColor.GREEN));
+                            } else {
+                                send(
+                                        src.getSender(),
+                                        Component.text(
+                                                "Administrative deletion failed for island " + islandId.value(),
+                                                NamedTextColor.RED));
+                            }
+                        });
+                    });
         });
         return Cmd.OK;
     }

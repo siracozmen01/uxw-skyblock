@@ -12,7 +12,6 @@ import java.util.zip.GZIPOutputStream;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 
 import com.uxplima.uxmskyblock.core.application.recycle.IslandBackupPort;
 import com.uxplima.uxmskyblock.core.domain.island.Island;

@@ -7,6 +7,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -53,6 +55,7 @@ public final class IslandMissionListener implements Listener {
     private final IslandStoragePort islandStoragePort;
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
+    private final ConcurrentMap<ProfileId, IslandId> profileIslandCache = new ConcurrentHashMap<>();
 
     public IslandMissionListener(
             IslandMissionService missionService,
@@ -107,21 +110,53 @@ public final class IslandMissionListener implements Listener {
             return;
         }
         ProfileId profileId = optProfile.get();
-        Optional<IslandId> optIsland = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIsland.isEmpty()) {
+        IslandId cachedIslandId = profileIslandCache.get(profileId);
+        if (cachedIslandId != null) {
+            schedulerPort.async(() -> executeTrigger(player, uuid, cachedIslandId, profileId, trigger, target, amount));
             return;
         }
-        IslandId islandId = optIsland.get();
 
         schedulerPort.async(() -> {
-            List<MissionProgress> updated =
-                    missionService.handleTrigger(islandId, profileId, trigger, target, amount, Instant.now());
-            for (MissionProgress progress : updated) {
-                if (progress.completed()) {
-                    notifyCompletion(player, uuid, progress);
-                }
+            Optional<IslandId> optIsland = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (optIsland.isEmpty()) {
+                return;
             }
+            IslandId islandId = optIsland.get();
+            profileIslandCache.put(profileId, islandId);
+            executeTrigger(player, uuid, islandId, profileId, trigger, target, amount);
         });
+    }
+
+    private void executeTrigger(
+            Player player,
+            UUID uuid,
+            IslandId islandId,
+            ProfileId profileId,
+            MissionTriggerType trigger,
+            String target,
+            long amount) {
+        List<MissionProgress> updated =
+                missionService.handleTrigger(islandId, profileId, trigger, target, amount, Instant.now());
+        for (MissionProgress progress : updated) {
+            if (progress.completed()) {
+                notifyCompletion(player, uuid, progress);
+            }
+        }
+    }
+
+    public void setProfileIsland(ProfileId profileId, IslandId islandId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        profileIslandCache.put(profileId, islandId);
+    }
+
+    public void invalidateProfile(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        profileIslandCache.remove(profileId);
+    }
+
+    public void clearCache() {
+        profileIslandCache.clear();
     }
 
     @SuppressWarnings("EmptyCatch")

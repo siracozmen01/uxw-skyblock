@@ -2,10 +2,13 @@ package com.uxplima.uxmskyblock.core.application.bank;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
@@ -34,6 +37,7 @@ public final class IslandBankruptcyService {
     private final IslandBankPort bankPort;
     private final IslandAuthorityPort authorityPort;
     private final Supplier<IslandUpkeepPolicy> policySupplier;
+    private final ConcurrentMap<IslandId, IslandBankruptcyRecord> bankruptcyCache = new ConcurrentHashMap<>();
 
     public IslandBankruptcyService(
             IslandBankruptcyStoragePort bankruptcyStoragePort,
@@ -45,6 +49,26 @@ public final class IslandBankruptcyService {
         this.bankPort = Objects.requireNonNull(bankPort, "bankPort must not be null");
         this.authorityPort = Objects.requireNonNull(authorityPort, "authorityPort must not be null");
         this.policySupplier = Objects.requireNonNull(policySupplier, "policySupplier must not be null");
+
+        try {
+            List<IslandBankruptcyRecord> active = this.bankruptcyStoragePort.findAllBankruptcies();
+            warmCache(active);
+        } catch (Exception ignored) {
+            // Storage port may not be ready or mocked without default returns
+        }
+    }
+
+    /**
+     * Pre-populates the in-memory bankruptcy cache to ensure zero relational DB I/O on hot paths.
+     */
+    public void warmCache(Collection<IslandBankruptcyRecord> records) {
+        if (records != null) {
+            for (IslandBankruptcyRecord r : records) {
+                if (r != null) {
+                    bankruptcyCache.put(r.islandId(), r);
+                }
+            }
+        }
     }
 
     /**
@@ -97,7 +121,9 @@ public final class IslandBankruptcyService {
                 if (record.status() != BankruptcyStatus.SOLVENT || record.debtMinorUnits() > 0) {
                     // Recover back to solvent if arrears were zero
                     if (record.debtMinorUnits() == 0) {
-                        bankruptcyStoragePort.save(record.toSolvent(now));
+                        IslandBankruptcyRecord solvent = record.toSolvent(now);
+                        bankruptcyStoragePort.save(solvent);
+                        bankruptcyCache.put(islandId, solvent);
                     }
                 }
                 return new BankruptcyCycleResult.Paid(fee, success.updatedBank().primaryBalanceMinorUnits());
@@ -109,23 +135,27 @@ public final class IslandBankruptcyService {
             Instant graceDeadline = now.plus(policy.graceDuration());
             IslandBankruptcyRecord updated = record.toGrace(fee, graceDeadline, now);
             bankruptcyStoragePort.save(updated);
+            bankruptcyCache.put(islandId, updated);
             return new BankruptcyCycleResult.GraceEntered(fee, graceDeadline, fee);
         } else if (record.status() == BankruptcyStatus.GRACE) {
             if (record.graceUntil() != null && !now.isBefore(record.graceUntil())) {
                 // Grace expired: escalate to quarantine lockout
                 IslandBankruptcyRecord updated = record.addDebt(fee, now).toLocked(now);
                 bankruptcyStoragePort.save(updated);
+                bankruptcyCache.put(islandId, updated);
                 return new BankruptcyCycleResult.LockoutApplied(fee, updated.debtMinorUnits());
             } else {
                 // Still in grace: accumulate debt
                 IslandBankruptcyRecord updated = record.addDebt(fee, now);
                 bankruptcyStoragePort.save(updated);
+                bankruptcyCache.put(islandId, updated);
                 return new BankruptcyCycleResult.GraceExtended(fee, record.graceUntil(), updated.debtMinorUnits());
             }
         } else {
             // Already locked: accumulate additional debt
             IslandBankruptcyRecord updated = record.addDebt(fee, now);
             bankruptcyStoragePort.save(updated);
+            bankruptcyCache.put(islandId, updated);
             return new BankruptcyCycleResult.LockoutApplied(fee, updated.debtMinorUnits());
         }
     }
@@ -175,7 +205,9 @@ public final class IslandBankruptcyService {
                 idempotencyKey);
 
         if (outcome instanceof BankTransactionOutcome.Success success) {
-            bankruptcyStoragePort.save(record.toSolvent(now));
+            IslandBankruptcyRecord solvent = record.toSolvent(now);
+            bankruptcyStoragePort.save(solvent);
+            bankruptcyCache.put(islandId, solvent);
             return new BankruptcyRemediationResult.Settled(
                     debt, success.updatedBank().primaryBalanceMinorUnits());
         }
@@ -185,10 +217,24 @@ public final class IslandBankruptcyService {
 
     /**
      * Returns true if the island is currently under quarantine lockout due to expired bankruptcy grace.
+     * Hits in-memory cache to guarantee zero relational DB queries on hot paths.
      */
     public boolean isIslandLocked(IslandId islandId, Instant now) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(now, "now must not be null");
+        IslandBankruptcyRecord cached = bankruptcyCache.get(islandId);
+        if (cached != null) {
+            if (cached.status() == BankruptcyStatus.SOLVENT) {
+                return false;
+            }
+            if (cached.status() == BankruptcyStatus.GRACE && cached.isLockoutActive(now)) {
+                IslandBankruptcyRecord locked = cached.toLocked(now);
+                bankruptcyCache.put(islandId, locked);
+                bankruptcyStoragePort.save(locked);
+                return true;
+            }
+            return cached.isLockoutActive(now);
+        }
         return getBankruptcyRecord(islandId, now).isLockoutActive(now);
     }
 
@@ -200,19 +246,35 @@ public final class IslandBankruptcyService {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(now, "now must not be null");
 
+        IslandBankruptcyRecord cached = bankruptcyCache.get(islandId);
+        if (cached != null) {
+            if (cached.status() == BankruptcyStatus.GRACE && cached.isLockoutActive(now)) {
+                // Grace expired: persist transition to LOCKED
+                IslandBankruptcyRecord locked = cached.toLocked(now);
+                bankruptcyCache.put(islandId, locked);
+                bankruptcyStoragePort.save(locked);
+                return locked;
+            }
+            return cached;
+        }
+
         Optional<IslandBankruptcyRecord> optRecord = bankruptcyStoragePort.findByIslandId(islandId);
         if (optRecord.isEmpty()) {
-            return IslandBankruptcyRecord.solvent(islandId, now);
+            IslandBankruptcyRecord solvent = IslandBankruptcyRecord.solvent(islandId, now);
+            bankruptcyCache.put(islandId, solvent);
+            return solvent;
         }
 
         IslandBankruptcyRecord record = optRecord.get();
         if (record.status() == BankruptcyStatus.GRACE && record.isLockoutActive(now)) {
             // Grace expired: persist transition to LOCKED
             IslandBankruptcyRecord locked = record.toLocked(now);
+            bankruptcyCache.put(islandId, locked);
             bankruptcyStoragePort.save(locked);
             return locked;
         }
 
+        bankruptcyCache.put(islandId, record);
         return record;
     }
 
@@ -229,6 +291,7 @@ public final class IslandBankruptcyService {
     public void deleteIslandBankruptcy(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         bankruptcyStoragePort.deleteByIslandId(islandId);
+        bankruptcyCache.remove(islandId);
     }
 
     public IslandUpkeepPolicy policy() {

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -14,14 +13,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.bukkit.OfflinePlayer;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import org.mockbukkit.mockbukkit.MockBukkit;
-import org.mockbukkit.mockbukkit.ServerMock;
-import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -44,6 +35,13 @@ import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantState;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockbukkit.mockbukkit.ServerMock;
+import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 class ProductionRewardDeliveryHandlersTest {
 
@@ -116,7 +114,8 @@ class ProductionRewardDeliveryHandlersTest {
                 new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
-        when(journalPort.recordIntent(any(), any(), any(), anyLong(), anyLong(), any(), any(), any(), any(), any(), any()))
+        when(journalPort.recordIntent(
+                        any(), any(), any(), anyLong(), anyLong(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(InventoryMutationJournalOutcome.intentRecorded());
         when(journalPort.commitMutation(any(), any(), any(), anyLong(), anyLong(), any(), any()))
                 .thenReturn(InventoryMutationJournalOutcome.success(2L));
@@ -137,7 +136,8 @@ class ProductionRewardDeliveryHandlersTest {
 
         DeliveryResult result = handler.deliver(testGrant, component, recipientProfile);
         assertThat(result.success()).isTrue();
-        assertThat(result.journalOperationId()).isEqualTo(component.componentOperationId().value());
+        assertThat(result.journalOperationId())
+                .isEqualTo(component.componentOperationId().value());
     }
 
     @Test
@@ -194,7 +194,8 @@ class ProductionRewardDeliveryHandlersTest {
 
         DeliveryResult result = handler.deliver(testGrant, component, recipientProfile);
         assertThat(result.success()).isTrue();
-        assertThat(result.journalOperationId()).isEqualTo(component.componentOperationId().value());
+        assertThat(result.journalOperationId())
+                .isEqualTo(component.componentOperationId().value());
     }
 
     @Test
@@ -256,7 +257,8 @@ class ProductionRewardDeliveryHandlersTest {
 
         DeliveryResult result = handler.deliver(grantForPlayer, component, playerProfile);
         assertThat(result.success()).isTrue();
-        assertThat(result.journalOperationId()).isEqualTo(component.componentOperationId().value());
+        assertThat(result.journalOperationId())
+                .isEqualTo(component.componentOperationId().value());
     }
 
     @Test

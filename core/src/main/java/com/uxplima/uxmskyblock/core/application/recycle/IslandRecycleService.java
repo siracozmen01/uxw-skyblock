@@ -237,11 +237,19 @@ public final class IslandRecycleService {
 
             String payload = String.format(
                     "{\"islandId\":\"%s\",\"ownerProfileId\":\"%s\",\"slotIndex\":%d,\"worldName\":\"%s\",\"gridX\":%d,\"gridZ\":%d}",
-                    islandId.value(), island.ownerProfileId().value(), finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
+                    islandId.value(),
+                    island.ownerProfileId().value(),
+                    finalSlotIndex,
+                    finalWorldName,
+                    finalGridX,
+                    finalGridZ);
 
             StagedOutboxEvent outboxEvent = (outboxPort != null)
                     ? new StagedOutboxEvent(
-                            EventId.random(), "ISLAND_RECYCLED", islandId.value().toString(), payload)
+                            EventId.random(),
+                            "ISLAND_RECYCLED",
+                            islandId.value().toString(),
+                            payload)
                     : null;
 
             islandStoragePort.deleteIsland(islandId, outboxEvent);

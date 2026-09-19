@@ -64,8 +64,8 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         // 1. Resolve online player and active session authority
         Player player = findOnlinePlayerForProfile(recipient);
         if (player == null || !player.isOnline()) {
-            return DeliveryResult.failure(
-                    "Recipient profile " + recipient + " is offline or has no active online session; item reward remains in inbox.");
+            return DeliveryResult.failure("Recipient profile " + recipient
+                    + " is offline or has no active online session; item reward remains in inbox.");
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
@@ -101,8 +101,8 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
                 Duration.ofSeconds(60));
 
         if (!intentOutcome.isSuccess()) {
-            return DeliveryResult.failure(
-                    "Journal intent rejected: " + intentOutcome.rejectionReason().orElse("unknown"));
+            return DeliveryResult.failure("Journal intent rejected: "
+                    + intentOutcome.rejectionReason().orElse("unknown"));
         }
 
         // 4. Safely apply to player's live inventory
@@ -115,16 +115,10 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         }
 
         // 5. Commit journal mutation and trigger session checkpoint
-        byte[] updatedInventoryNbt =
-                BukkitInventorySerializer.serializeItemStacks(player.getInventory().getContents());
+        byte[] updatedInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
+                player.getInventory().getContents());
         InventoryMutationJournalOutcome commitOutcome = journalPort.commitMutation(
-                playerUuid,
-                recipient,
-                nodeId,
-                sessionEpoch,
-                expectedVersion,
-                opId,
-                updatedInventoryNbt);
+                playerUuid, recipient, nodeId, sessionEpoch, expectedVersion, opId, updatedInventoryNbt);
 
         if (!commitOutcome.isSuccess()) {
             return DeliveryResult.failure("Failed to commit journal mutation: "
@@ -153,7 +147,8 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         if (payload == null || payload.isBlank()) {
             return null;
         }
-        String clean = payload.replace("{", "").replace("}", "").replace("\"", "").trim();
+        String clean =
+                payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         String materialName = "DIRT";
         int amount = 1;
 
@@ -164,7 +159,8 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         if (itemIdx >= 0) {
             int endIdx = clean.indexOf(",", itemIdx);
             if (endIdx < 0) endIdx = clean.length();
-            String matStr = clean.substring(itemIdx + (clean.startsWith("item:", itemIdx) ? 5 : 9), endIdx).trim();
+            String matStr = clean.substring(itemIdx + (clean.startsWith("item:", itemIdx) ? 5 : 9), endIdx)
+                    .trim();
             materialName = matStr.toUpperCase(Locale.ROOT);
         }
 

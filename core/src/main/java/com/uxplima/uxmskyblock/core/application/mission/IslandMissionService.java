@@ -30,6 +30,15 @@ public final class IslandMissionService {
 
     private final Map<MissionId, MissionDefinition> missionCatalog = new ConcurrentHashMap<>();
     private final Map<String, Map<MissionId, MissionProgress>> progressCache = new ConcurrentHashMap<>();
+    private final Map<String, DirtyProgressEntry> dirtyEntries = new ConcurrentHashMap<>();
+
+    public record DirtyProgressEntry(IslandId islandId, ProfileId profileId, MissionProgress progress) {
+        public DirtyProgressEntry {
+            Objects.requireNonNull(islandId, "islandId must not be null");
+            Objects.requireNonNull(profileId, "profileId must not be null");
+            Objects.requireNonNull(progress, "progress must not be null");
+        }
+    }
 
     public IslandMissionService(IslandMissionStoragePort storagePort, @Nullable IslandMissionRewardPort rewardPort) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
@@ -134,7 +143,13 @@ public final class IslandMissionService {
 
             MissionProgress next = current.increment(amount, def.requiredAmount(), now);
             playerProgress.put(def.id(), next);
-            storagePort.saveProgress(islandId, profileId, next);
+            if (next.completed()) {
+                dirtyEntries.remove(dirtyKey(islandId, profileId, def.id()));
+                storagePort.saveProgress(islandId, profileId, next);
+            } else {
+                dirtyEntries.put(
+                        dirtyKey(islandId, profileId, def.id()), new DirtyProgressEntry(islandId, profileId, next));
+            }
             updated.add(next);
 
             if (!current.completed() && next.completed() && rewardPort != null) {
@@ -167,6 +182,7 @@ public final class IslandMissionService {
 
         MissionProgress next = current.increment(amount, def.requiredAmount(), now);
         playerProgress.put(def.id(), next);
+        dirtyEntries.remove(dirtyKey(islandId, profileId, def.id()));
         storagePort.saveProgress(islandId, profileId, next);
 
         if (next.completed() && rewardPort != null) {
@@ -175,10 +191,63 @@ public final class IslandMissionService {
         return Optional.of(next);
     }
 
+    /**
+     * Flushes all buffered unpersisted non-completion progress increments to relational storage.
+     *
+     * @return count of dirty progress entries persisted
+     */
+    public int flushDirtyProgress() {
+        if (dirtyEntries.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        List<Map.Entry<String, DirtyProgressEntry>> snapshot = new ArrayList<>(dirtyEntries.entrySet());
+        for (Map.Entry<String, DirtyProgressEntry> entry : snapshot) {
+            if (dirtyEntries.remove(entry.getKey(), entry.getValue())) {
+                DirtyProgressEntry val = entry.getValue();
+                storagePort.saveProgress(val.islandId(), val.profileId(), val.progress());
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Flushes buffered unpersisted progress increments for the specified island and profile.
+     *
+     * @return count of dirty progress entries persisted
+     */
+    public int flushFor(IslandId islandId, ProfileId profileId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        String prefix = islandId.value() + ":" + profileId.value() + ":";
+        int count = 0;
+        List<Map.Entry<String, DirtyProgressEntry>> snapshot = new ArrayList<>(dirtyEntries.entrySet());
+        for (Map.Entry<String, DirtyProgressEntry> entry : snapshot) {
+            if (entry.getKey().startsWith(prefix)) {
+                if (dirtyEntries.remove(entry.getKey(), entry.getValue())) {
+                    DirtyProgressEntry val = entry.getValue();
+                    storagePort.saveProgress(val.islandId(), val.profileId(), val.progress());
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    public int dirtyEntriesCount() {
+        return dirtyEntries.size();
+    }
+
     public void invalidate(IslandId islandId, ProfileId profileId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(profileId, "profileId must not be null");
+        flushFor(islandId, profileId);
         progressCache.remove(cacheKey(islandId, profileId));
+    }
+
+    private String dirtyKey(IslandId islandId, ProfileId profileId, MissionId missionId) {
+        return islandId.value() + ":" + profileId.value() + ":" + missionId.value();
     }
 
     private boolean matchesFilter(String filter, @Nullable String target) {

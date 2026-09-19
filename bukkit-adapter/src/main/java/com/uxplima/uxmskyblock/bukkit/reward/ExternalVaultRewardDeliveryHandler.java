@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
-import org.jspecify.annotations.Nullable;
 
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
@@ -13,6 +12,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrant;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Production reward delivery handler for External Vault economy.
@@ -48,7 +48,8 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
             return DeliveryResult.failure("Invalid external vault amount: " + component.payloadData());
         }
 
-        OfflinePlayer player = Bukkit.getOfflinePlayer(grant.recipientProfileId().value());
+        OfflinePlayer player =
+                Bukkit.getOfflinePlayer(grant.recipientProfileId().value());
         if (!player.hasPlayedBefore() && !player.isOnline()) {
             return DeliveryResult.failure("Player has never played or account is unavailable: " + recipient);
         }
@@ -68,7 +69,8 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
 
     private double parseAmount(String payload) {
         if (payload == null) return 0.0;
-        String clean = payload.replace("{", "").replace("}", "").replace("\"", "").trim();
+        String clean =
+                payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         int idx = clean.indexOf("amount:");
         if (idx < 0) return 0.0;
         int end = clean.indexOf(",", idx);
