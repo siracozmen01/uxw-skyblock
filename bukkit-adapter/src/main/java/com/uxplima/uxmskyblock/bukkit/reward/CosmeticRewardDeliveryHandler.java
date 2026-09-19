@@ -2,8 +2,8 @@ package com.uxplima.uxmskyblock.bukkit.reward;
 
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
+import com.uxplima.uxmskyblock.core.application.cosmetic.ProfileCosmeticStoragePort;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
@@ -13,11 +13,16 @@ import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
 /**
  * Production reward delivery handler for cosmetics.
  *
- * <p>Tracks unlocked cosmetic tags and features for player profiles.
+ * <p>Enforces durable storage of cosmetic unlocks via {@link ProfileCosmeticStoragePort}.
+ * Never returns durable success for ephemeral or JVM-only state.
  */
 public final class CosmeticRewardDeliveryHandler implements RewardDeliveryHandler {
 
-    private final ConcurrentHashMap<ProfileId, Set<String>> unlockedCosmetics = new ConcurrentHashMap<>();
+    private final ProfileCosmeticStoragePort cosmeticStoragePort;
+
+    public CosmeticRewardDeliveryHandler(ProfileCosmeticStoragePort cosmeticStoragePort) {
+        this.cosmeticStoragePort = Objects.requireNonNull(cosmeticStoragePort, "cosmeticStoragePort must not be null");
+    }
 
     @Override
     public RewardComponentType supportedType() {
@@ -35,16 +40,21 @@ public final class CosmeticRewardDeliveryHandler implements RewardDeliveryHandle
             return DeliveryResult.failure("Invalid cosmetic payload: " + component.payloadData());
         }
 
-        unlockedCosmetics
-                .computeIfAbsent(recipient, k -> ConcurrentHashMap.newKeySet())
-                .add(cosmeticId);
-
-        return DeliveryResult.success(component.componentOperationId().value());
+        try {
+            String grantor = grant.sourceType() != null ? grant.sourceType() : "REWARD_INBOX";
+            cosmeticStoragePort.grantCosmetic(recipient, cosmeticId, grantor);
+            return DeliveryResult.success(component.componentOperationId().value());
+        } catch (Exception e) {
+            return DeliveryResult.failure("Failed to durably persist cosmetic grant: " + e.getMessage());
+        }
     }
 
     public boolean hasCosmetic(ProfileId profileId, String cosmeticId) {
-        Set<String> cosmetics = unlockedCosmetics.get(profileId);
-        return cosmetics != null && cosmetics.contains(cosmeticId);
+        return cosmeticStoragePort.hasCosmetic(profileId, cosmeticId);
+    }
+
+    public Set<String> getCosmetics(ProfileId profileId) {
+        return cosmeticStoragePort.getCosmetics(profileId);
     }
 
     private String parseCosmeticId(String payload) {

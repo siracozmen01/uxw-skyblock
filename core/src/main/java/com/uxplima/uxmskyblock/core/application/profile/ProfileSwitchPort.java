@@ -84,4 +84,9 @@ public interface ProfileSwitchPort {
      * Locates active/in-flight switch operation for the player, if any.
      */
     Optional<ProfileSwitchOperation> findActiveOperation(PlayerUuid playerId);
+
+    /**
+     * Resolves the canonical owning PlayerUuid for a given ProfileId from storage.
+     */
+    Optional<PlayerUuid> resolvePlayerUuid(ProfileId profileId);
 }

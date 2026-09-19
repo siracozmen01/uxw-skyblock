@@ -6,33 +6,48 @@ import java.util.UUID;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrant;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Production reward delivery handler for SQL island bank currency.
  *
  * <p>Executes an atomic bank deposit transaction against the recipient's island bank.
- * Fails closed if the recipient owns no active island or the transaction is rejected by OCC.
+ * Strictly resolves canonical player account identity through profile/island membership,
+ * never confusing ProfileId with PlayerUuid.
  */
 public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHandler {
 
     private final IslandStoragePort islandStoragePort;
     private final IslandBankService bankService;
     private final ServerNodeId nodeId;
+    private final @Nullable ProfileSwitchPort profileSwitchPort;
 
     public SqlCurrencyRewardDeliveryHandler(
-            IslandStoragePort islandStoragePort, IslandBankService bankService, ServerNodeId nodeId) {
+            IslandStoragePort islandStoragePort,
+            IslandBankService bankService,
+            ServerNodeId nodeId,
+            @Nullable ProfileSwitchPort profileSwitchPort) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.bankService = Objects.requireNonNull(bankService, "bankService must not be null");
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId must not be null");
+        this.profileSwitchPort = profileSwitchPort;
+    }
+
+    public SqlCurrencyRewardDeliveryHandler(
+            IslandStoragePort islandStoragePort, IslandBankService bankService, ServerNodeId nodeId) {
+        this(islandStoragePort, bankService, nodeId, null);
     }
 
     @Override
@@ -54,18 +69,37 @@ public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHan
         }
         IslandId islandId = optIslandId.get();
 
-        // 2. Parse currency amount and currency name
+        // 2. Resolve canonical PlayerUuid without casting ProfileId
+        PlayerUuid actorUuid = null;
+        Optional<Island> optIsland = islandStoragePort.findIslandById(islandId);
+        if (optIsland.isPresent()) {
+            Island island = optIsland.get();
+            IslandMember member = island.members().get(recipient);
+            if (member != null) {
+                actorUuid = member.playerUuid();
+            } else if (island.ownerProfileId().equals(recipient)) {
+                actorUuid = island.ownerPlayerUuid();
+            }
+        }
+        if (actorUuid == null && profileSwitchPort != null) {
+            actorUuid = profileSwitchPort.resolvePlayerUuid(recipient).orElse(null);
+        }
+        if (actorUuid == null) {
+            return DeliveryResult.failure("Unable to resolve canonical player account for profile " + recipient);
+        }
+
+        // 3. Parse currency amount and currency name
         long amountMinorUnits = parseAmount(component.payloadData());
         if (amountMinorUnits <= 0) {
             return DeliveryResult.failure("Invalid currency amount in payload: " + component.payloadData());
         }
         String currency = parseCurrency(component.payloadData());
 
-        // 3. Execute canonical bank deposit
+        // 4. Execute canonical bank deposit
         UUID opId = component.componentOperationId().value();
         BankTransactionOutcome outcome = bankService.depositToIsland(
                 islandId,
-                new PlayerUuid(recipient.value()),
+                actorUuid,
                 amountMinorUnits,
                 "Reward Inbox Claim (" + currency + "): " + grant.sourceType(),
                 nodeId);

@@ -426,15 +426,22 @@ public final class GameplayWiring {
         SqlCurrencyRewardDeliveryHandler currencyDeliveryHandler = new SqlCurrencyRewardDeliveryHandler(
                 persistence.islandStoragePort(),
                 this.bankService,
-                config.nodeConfig().nodeId());
+                config.nodeConfig().nodeId(),
+                persistence.profileSwitchPort());
 
-        ExternalVaultRewardDeliveryHandler vaultDeliveryHandler =
-                ExternalVaultRewardDeliveryHandler.ofSupplier(economyBridgeSupplier);
+        ExternalVaultRewardDeliveryHandler vaultDeliveryHandler = new ExternalVaultRewardDeliveryHandler(
+                economyBridgeSupplier,
+                persistence.economySagaPort(),
+                persistence.profileSwitchPort(),
+                persistence.islandStoragePort());
 
-        CosmeticRewardDeliveryHandler cosmeticDeliveryHandler = new CosmeticRewardDeliveryHandler();
+        CosmeticRewardDeliveryHandler cosmeticDeliveryHandler =
+                new CosmeticRewardDeliveryHandler(persistence.profileCosmeticStoragePort());
 
-        PermissionRewardDeliveryHandler permDeliveryHandler =
-                new PermissionRewardDeliveryHandler(plugin, authority.sessionCoordinator());
+        PermissionRewardDeliveryHandler permDeliveryHandler = new PermissionRewardDeliveryHandler(
+                PermissionRewardDeliveryHandler::fromVault,
+                persistence.profileSwitchPort(),
+                authority.sessionCoordinator());
 
         RewardClaimCoordinator rewardClaimCoordinator = new RewardClaimCoordinator(
                 persistence.rewardStoragePort(),

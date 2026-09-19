@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 27;
+    public static final int LATEST_VERSION = 28;
+
+    /** Human-readable description of migration V28. */
+    public static final String V28_DESCRIPTION = "create profile cosmetics and island recycle operations";
 
     /** Human-readable description of migration V27. */
     public static final String V27_DESCRIPTION =
@@ -150,7 +153,8 @@ public final class SkyblockMigrations {
                 v24Migration(dialect),
                 v25Migration(dialect),
                 v26Migration(dialect),
-                v27Migration(dialect));
+                v27Migration(dialect),
+                v28Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -631,6 +635,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(27, V27_DESCRIPTION, SQLITE_V27_DDL);
             case MYSQL -> new Migration(27, V27_DESCRIPTION, MYSQL_V27_DDL);
             case POSTGRES -> new Migration(27, V27_DESCRIPTION, POSTGRES_V27_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v28Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(28, V28_DESCRIPTION, SQLITE_V28_DDL);
+            case MYSQL -> new Migration(28, V28_DESCRIPTION, MYSQL_V28_DDL);
+            case POSTGRES -> new Migration(28, V28_DESCRIPTION, POSTGRES_V28_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -3028,5 +3044,86 @@ public final class SkyblockMigrations {
                     REFERENCES islands (id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_island_dimensions_island ON island_dimensions (island_id);
+            """;
+
+    private static final String SQLITE_V28_DDL = """
+            CREATE TABLE IF NOT EXISTS profile_cosmetics (
+                profile_id TEXT NOT NULL,
+                cosmetic_id TEXT NOT NULL,
+                unlocked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                granted_by TEXT NULL,
+                PRIMARY KEY (profile_id, cosmetic_id),
+                CONSTRAINT fk_profile_cosmetics_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_profile_cosmetics_profile ON profile_cosmetics (profile_id);
+
+            CREATE TABLE IF NOT EXISTS island_recycle_operations (
+                operation_id TEXT NOT NULL PRIMARY KEY,
+                island_id TEXT NOT NULL,
+                initiator_uuid TEXT NOT NULL,
+                target_slot INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                backup_path TEXT NULL,
+                error_message TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_recycle_ops_island ON island_recycle_operations (island_id);
+            CREATE INDEX IF NOT EXISTS idx_recycle_ops_state ON island_recycle_operations (state);
+            """;
+
+    private static final String MYSQL_V28_DDL = """
+            CREATE TABLE IF NOT EXISTS profile_cosmetics (
+                profile_id VARCHAR(36) NOT NULL,
+                cosmetic_id VARCHAR(64) NOT NULL,
+                unlocked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                granted_by VARCHAR(64) NULL,
+                PRIMARY KEY (profile_id, cosmetic_id),
+                INDEX idx_profile_cosmetics_profile (profile_id),
+                CONSTRAINT fk_profile_cosmetics_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+            CREATE TABLE IF NOT EXISTS island_recycle_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_id VARCHAR(36) NOT NULL,
+                initiator_uuid VARCHAR(36) NOT NULL,
+                target_slot INT NOT NULL,
+                state VARCHAR(32) NOT NULL,
+                backup_path VARCHAR(255) NULL,
+                error_message TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_recycle_ops_island (island_id),
+                INDEX idx_recycle_ops_state (state)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V28_DDL = """
+            CREATE TABLE IF NOT EXISTS profile_cosmetics (
+                profile_id VARCHAR(36) NOT NULL,
+                cosmetic_id VARCHAR(64) NOT NULL,
+                unlocked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                granted_by VARCHAR(64) NULL,
+                PRIMARY KEY (profile_id, cosmetic_id),
+                CONSTRAINT fk_profile_cosmetics_profile FOREIGN KEY (profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_profile_cosmetics_profile ON profile_cosmetics (profile_id);
+
+            CREATE TABLE IF NOT EXISTS island_recycle_operations (
+                operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                island_id VARCHAR(36) NOT NULL,
+                initiator_uuid VARCHAR(36) NOT NULL,
+                target_slot INT NOT NULL,
+                state VARCHAR(32) NOT NULL,
+                backup_path VARCHAR(255) NULL,
+                error_message TEXT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_recycle_ops_island ON island_recycle_operations (island_id);
+            CREATE INDEX IF NOT EXISTS idx_recycle_ops_state ON island_recycle_operations (state);
             """;
 }

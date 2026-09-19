@@ -1,14 +1,19 @@
 package com.uxplima.uxmskyblock.bukkit.reward;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
 
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -17,11 +22,14 @@ import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalRecord;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrant;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Production reward delivery handler for item grants.
@@ -31,8 +39,10 @@ import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
  *   <li>Requires an active player session; if offline, delivery fails safely so the item remains
  *       persisted in the durable reward inbox.</li>
  *   <li>Executes through write-ahead {@link InventoryMutationJournalPort} with OCC versioning.</li>
- *   <li>Never returns success unless the item is genuinely added to the player's inventory and
- *       committed to the write-ahead journal.</li>
+ *   <li>Calculates real SHA-256 fingerprints representing actual slot state; rejects literal tokens.</li>
+ *   <li>Protects against duplicate payouts by checking previous journal commit state.</li>
+ *   <li>Performs rollback reconciliation and aborts intent if journal commit fails.</li>
+ *   <li>Never drops overflow items into the world before durable commit has succeeded.</li>
  * </ul>
  */
 public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
@@ -40,6 +50,14 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
     private final PlayerSessionCoordinator sessionCoordinator;
     private final InventoryMutationJournalPort journalPort;
     private final ServerNodeId nodeId;
+
+    public ItemRewardDeliveryHandler(
+            @Nullable Plugin plugin,
+            PlayerSessionCoordinator sessionCoordinator,
+            InventoryMutationJournalPort journalPort,
+            ServerNodeId nodeId) {
+        this(sessionCoordinator, journalPort, nodeId);
+    }
 
     public ItemRewardDeliveryHandler(
             PlayerSessionCoordinator sessionCoordinator,
@@ -83,10 +101,28 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             return DeliveryResult.failure("Invalid item payload: " + component.payloadData());
         }
 
-        // 3. Record write-ahead intent in inventory journal
         UUID opUuid = component.componentOperationId().value();
         InventoryMutationOperationId opId = new InventoryMutationOperationId(opUuid);
 
+        // 3. Check for previous committed journal record (idempotency / duplicate protection)
+        Optional<InventoryMutationJournalRecord> existingJournal = journalPort.loadJournal(opId);
+        if (existingJournal.isPresent()) {
+            InventoryMutationJournalRecord record = existingJournal.get();
+            if (record.state() == InventoryMutationJournalState.COMMITTED) {
+                return DeliveryResult.success(opUuid);
+            }
+        }
+
+        // 4. Calculate real BEFORE and simulated AFTER fingerprints
+        byte[] beforeInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
+                player.getInventory().getContents());
+        String beforeFingerprint = computeSha256(beforeInventoryNbt);
+
+        ItemStack[] simulatedContents = simulateAddItem(player.getInventory().getContents(), itemToDeliver);
+        byte[] simulatedAfterNbt = BukkitInventorySerializer.serializeItemStacks(simulatedContents);
+        String afterFingerprint = computeSha256(simulatedAfterNbt);
+
+        // 5. Record write-ahead intent before live mutation begins
         InventoryMutationJournalOutcome intentOutcome = journalPort.recordIntent(
                 playerUuid,
                 recipient,
@@ -95,8 +131,8 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
                 expectedVersion,
                 opId,
                 "REWARD_DELIVERY",
-                "before",
-                "after",
+                beforeFingerprint,
+                afterFingerprint,
                 component.payloadData(),
                 Duration.ofSeconds(60));
 
@@ -105,24 +141,50 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
                     + intentOutcome.rejectionReason().orElse("unknown"));
         }
 
-        // 4. Safely apply to player's live inventory
-        var overflow = player.getInventory().addItem(itemToDeliver);
-        if (!overflow.isEmpty()) {
-            // Drop overflow at player's feet so items are never lost
-            for (ItemStack drop : overflow.values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), drop);
-            }
+        // 6. Snapshot current inventory for rollback reconciliation
+        ItemStack[] beforeContents = cloneContents(player.getInventory().getContents());
+        Map<Integer, ItemStack> overflow;
+        byte[] updatedInventoryNbt;
+
+        try {
+            // Apply live item mutation
+            overflow = player.getInventory().addItem(itemToDeliver);
+            updatedInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
+                    player.getInventory().getContents());
+        } catch (Exception e) {
+            journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
+            return DeliveryResult.failure("Live inventory mutation failed: " + e.getMessage());
         }
 
-        // 5. Commit journal mutation and trigger session checkpoint
-        byte[] updatedInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
-                player.getInventory().getContents());
-        InventoryMutationJournalOutcome commitOutcome = journalPort.commitMutation(
-                playerUuid, recipient, nodeId, sessionEpoch, expectedVersion, opId, updatedInventoryNbt);
+        // 7. Commit journal mutation
+        InventoryMutationJournalOutcome commitOutcome;
+        try {
+            commitOutcome = journalPort.commitMutation(
+                    playerUuid, recipient, nodeId, sessionEpoch, expectedVersion, opId, updatedInventoryNbt);
+        } catch (Exception e) {
+            // Rollback inventory on commit exception
+            player.getInventory().setContents(beforeContents);
+            player.updateInventory();
+            journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
+            return DeliveryResult.failure("Commit exception; rolled back inventory: " + e.getMessage());
+        }
 
         if (!commitOutcome.isSuccess()) {
+            // Rollback inventory on commit rejection
+            player.getInventory().setContents(beforeContents);
+            player.updateInventory();
+            journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
             return DeliveryResult.failure("Failed to commit journal mutation: "
-                    + commitOutcome.rejectionReason().orElse("unknown"));
+                    + commitOutcome.rejectionReason().orElse("unknown") + "; inventory rolled back.");
+        }
+
+        // 8. Safely drop overflow into the world ONLY AFTER durable commit succeeded
+        if (overflow != null && !overflow.isEmpty()) {
+            for (ItemStack drop : overflow.values()) {
+                if (drop != null && !drop.getType().isAir()) {
+                    player.getWorld().dropItemNaturally(player.getLocation(), drop);
+                }
+            }
         }
 
         if (commitOutcome.version().isPresent()) {
@@ -141,6 +203,59 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             }
         }
         return null;
+    }
+
+    private static String computeSha256(byte[] data) {
+        if (data == null || data.length == 0) {
+            return "0000000000000000000000000000000000000000000000000000000000000000";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(data);
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm missing", e);
+        }
+    }
+
+    private static ItemStack[] cloneContents(ItemStack[] contents) {
+        ItemStack[] copy = new ItemStack[contents.length];
+        for (int i = 0; i < contents.length; i++) {
+            if (contents[i] != null) {
+                copy[i] = contents[i].clone();
+            }
+        }
+        return copy;
+    }
+
+    private static ItemStack[] simulateAddItem(ItemStack[] contents, ItemStack itemToAdd) {
+        ItemStack[] copy = cloneContents(contents);
+        int remaining = itemToAdd.getAmount();
+        int maxStack = itemToAdd.getMaxStackSize();
+
+        for (int i = 0; i < copy.length && remaining > 0; i++) {
+            ItemStack slot = copy[i];
+            if (slot != null && slot.isSimilar(itemToAdd) && slot.getAmount() < maxStack) {
+                int canAdd = Math.min(remaining, maxStack - slot.getAmount());
+                slot.setAmount(slot.getAmount() + canAdd);
+                remaining -= canAdd;
+            }
+        }
+
+        for (int i = 0; i < copy.length && remaining > 0; i++) {
+            if (copy[i] == null || copy[i].getType().isAir()) {
+                int toPlace = Math.min(remaining, maxStack);
+                ItemStack newStack = itemToAdd.clone();
+                newStack.setAmount(toPlace);
+                copy[i] = newStack;
+                remaining -= toPlace;
+            }
+        }
+        return copy;
     }
 
     private ItemStack parseItemStack(String payload) {

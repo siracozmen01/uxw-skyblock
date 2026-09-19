@@ -176,8 +176,13 @@ class ProductionRewardDeliveryHandlersTest {
         when(bankService.depositToIsland(any(), any(), anyLong(), any(), any()))
                 .thenReturn(new BankTransactionOutcome.Success(bankMock, txMock));
 
+        com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort profileSwitchPort =
+                mock(com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort.class);
+        when(profileSwitchPort.resolvePlayerUuid(recipientProfile))
+                .thenReturn(Optional.of(new PlayerUuid(UUID.randomUUID())));
+
         SqlCurrencyRewardDeliveryHandler handler =
-                new SqlCurrencyRewardDeliveryHandler(islandStoragePort, bankService, nodeId);
+                new SqlCurrencyRewardDeliveryHandler(islandStoragePort, bankService, nodeId, profileSwitchPort);
 
         RewardGrantComponent component = new RewardGrantComponent(
                 UUID.randomUUID(),
@@ -227,9 +232,15 @@ class ProductionRewardDeliveryHandlersTest {
         when(mockBridge.depositWallet(any(OfflinePlayer.class), anyDouble())).thenReturn(true);
 
         PlayerMock player = server.addPlayer();
-        ProfileId playerProfile = new ProfileId(player.getUniqueId());
+        ProfileId playerProfile = new ProfileId(UUID.randomUUID());
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
 
-        ExternalVaultRewardDeliveryHandler handler = new ExternalVaultRewardDeliveryHandler(mockBridge);
+        com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort profileSwitchPort =
+                mock(com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort.class);
+        when(profileSwitchPort.resolvePlayerUuid(playerProfile)).thenReturn(Optional.of(playerUuid));
+
+        ExternalVaultRewardDeliveryHandler handler =
+                new ExternalVaultRewardDeliveryHandler(() -> mockBridge, null, profileSwitchPort, null);
         RewardGrantComponent component = new RewardGrantComponent(
                 UUID.randomUUID(),
                 testGrant.grantId(),
@@ -262,10 +273,17 @@ class ProductionRewardDeliveryHandlersTest {
     }
 
     @Test
-    @DisplayName("PermissionRewardDeliveryHandler: Fails when player is offline, succeeds when online")
+    @DisplayName(
+            "PermissionRewardDeliveryHandler: Fails when provider unavailable or player offline, succeeds when online")
     void permissionDeliveryHandlesOnlineAndOffline() {
-        var plugin = MockBukkit.createMockPlugin();
-        PermissionRewardDeliveryHandler handler = new PermissionRewardDeliveryHandler(plugin, sessionCoordinator);
+        PermissionRewardDeliveryHandler.PermissionService mockVaultPerm =
+                mock(PermissionRewardDeliveryHandler.PermissionService.class);
+        when(mockVaultPerm.add(any(OfflinePlayer.class), any())).thenReturn(true);
+        when(mockVaultPerm.has(any(OfflinePlayer.class), any())).thenReturn(false, true);
+
+        // 1. Provider unavailable fails closed (pending)
+        PermissionRewardDeliveryHandler unavailableHandler =
+                new PermissionRewardDeliveryHandler(() -> Optional.empty(), null, sessionCoordinator);
 
         RewardGrantComponent component = new RewardGrantComponent(
                 UUID.randomUUID(),
@@ -280,23 +298,56 @@ class ProductionRewardDeliveryHandlersTest {
                 null,
                 Instant.now());
 
-        // Offline check
+        DeliveryResult failRes = unavailableHandler.deliver(testGrant, component, recipientProfile);
+        assertThat(failRes.success()).isFalse();
+        assertThat(failRes.errorMessage()).contains("unavailable");
+
+        // 2. Offline check with mock provider
+        PermissionRewardDeliveryHandler handler =
+                new PermissionRewardDeliveryHandler(() -> Optional.of(mockVaultPerm), null, sessionCoordinator);
+
         DeliveryResult offlineRes = handler.deliver(testGrant, component, recipientProfile);
         assertThat(offlineRes.success()).isFalse();
+        assertThat(offlineRes.errorMessage()).contains("cannot be resolved to a player account");
 
-        // Online check
+        // 3. Online check
         PlayerMock player = server.addPlayer();
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
 
         DeliveryResult onlineRes = handler.deliver(testGrant, component, recipientProfile);
         assertThat(onlineRes.success()).isTrue();
-        assertThat(player.hasPermission("uxmskyblock.vip")).isTrue();
     }
 
     @Test
-    @DisplayName("CosmeticRewardDeliveryHandler: Grants and tracks cosmetics")
+    @DisplayName("CosmeticRewardDeliveryHandler: Grants and tracks cosmetics via ProfileCosmeticStoragePort")
     void cosmeticDeliveryGrantsAndTracks() {
-        CosmeticRewardDeliveryHandler handler = new CosmeticRewardDeliveryHandler();
+        com.uxplima.uxmskyblock.core.application.cosmetic.ProfileCosmeticStoragePort cosmeticStoragePort =
+                new com.uxplima.uxmskyblock.core.application.cosmetic.ProfileCosmeticStoragePort() {
+                    private final java.util.Map<ProfileId, java.util.Set<String>> cosmetics =
+                            new java.util.concurrent.ConcurrentHashMap<>();
+
+                    @Override
+                    public void grantCosmetic(ProfileId profileId, String cosmeticId, String grantedBy) {
+                        cosmetics
+                                .computeIfAbsent(profileId, k -> new java.util.concurrent.ConcurrentSkipListSet<>())
+                                .add(cosmeticId);
+                    }
+
+                    @Override
+                    public boolean hasCosmetic(ProfileId profileId, String cosmeticId) {
+                        return cosmetics
+                                .getOrDefault(profileId, java.util.Set.of())
+                                .contains(cosmeticId);
+                    }
+
+                    @Override
+                    public java.util.Set<String> getCosmetics(ProfileId profileId) {
+                        return java.util.Collections.unmodifiableSet(
+                                cosmetics.getOrDefault(profileId, java.util.Set.of()));
+                    }
+                };
+
+        CosmeticRewardDeliveryHandler handler = new CosmeticRewardDeliveryHandler(cosmeticStoragePort);
         RewardGrantComponent component = new RewardGrantComponent(
                 UUID.randomUUID(),
                 testGrant.grantId(),

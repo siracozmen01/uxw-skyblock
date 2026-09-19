@@ -576,4 +576,22 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                         failReason != null ? failReason : "Recovery required");
         };
     }
+
+    @Override
+    public Optional<PlayerUuid> resolvePlayerUuid(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId");
+        String sql = "SELECT player_uuid FROM player_profiles WHERE profile_id = ?";
+        try (Connection conn = database.connection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, profileId.value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(new PlayerUuid(UUID.fromString(rs.getString("player_uuid"))));
+                }
+                return Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new StorageException("Failed to resolve player_uuid for profile_id " + profileId, e);
+        }
+    }
 }

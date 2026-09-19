@@ -135,6 +135,8 @@ class ProductionMigrationFastLaneTest {
                                 "notifications",
                                 "island_homes",
                                 "island_dimensions",
+                                "profile_cosmetics",
+                                "island_recycle_operations",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -734,6 +736,24 @@ class ProductionMigrationFastLaneTest {
                                 "z",
                                 "yaw",
                                 "pitch",
+                                "created_at",
+                                "updated_at");
+
+                // profile_cosmetics and island_recycle_operations columns (V28)
+                Set<String> cosmeticCols = getColumnNames(meta, "profile_cosmetics");
+                assertThat(cosmeticCols)
+                        .containsExactlyInAnyOrder("profile_id", "cosmetic_id", "unlocked_at", "granted_by");
+
+                Set<String> recycleCols = getColumnNames(meta, "island_recycle_operations");
+                assertThat(recycleCols)
+                        .containsExactlyInAnyOrder(
+                                "operation_id",
+                                "island_id",
+                                "initiator_uuid",
+                                "target_slot",
+                                "state",
+                                "backup_path",
+                                "error_message",
                                 "created_at",
                                 "updated_at");
             }
@@ -2724,7 +2744,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(26);
 
             // 2. Upgrade by applying V27
-            int v27Applied = runner.apply(allMigrations);
+            int v27Applied = runner.apply(allMigrations.subList(0, 27));
             assertThat(v27Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(27);
 
@@ -2753,9 +2773,65 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 27));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(27);
+        }
+    }
+
+    @Test
+    @DisplayName("31. Step-by-step upgrade from V27 to V28 creates profile cosmetics and island recycle operations")
+    void stepByStepUpgradeFromV27ToV28CreatesCosmeticsAndRecycleTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V27
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v27Applied = runner.apply(allMigrations.subList(0, 27));
+            assertThat(v27Applied).isEqualTo(27);
+            assertThat(runner.currentVersion()).isEqualTo(27);
+
+            // 2. Upgrade by applying V28
+            int v28Applied = runner.apply(allMigrations);
+            assertThat(v28Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(28);
+
+            // 3. Verify profile_cosmetics and island_recycle_operations accept rows
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(
+                        conn,
+                        "INSERT INTO islands (id, owner_profile_id, owner_account_uuid) VALUES ('11111111-2222-3333-4444-555555555555', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO profile_cosmetics (profile_id, cosmetic_id, granted_by) VALUES ('00000000-0000-0000-0000-000000000002', 'trail_sparks', 'REWARD');");
+                execute(
+                        conn,
+                        "INSERT INTO island_recycle_operations (operation_id, island_id, initiator_uuid, target_slot, state) VALUES ('22222222-3333-4444-5555-666666666666', '11111111-2222-3333-4444-555555555555', '00000000-0000-0000-0000-000000000001', 42, 'REQUESTED');");
+
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM profile_cosmetics;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM island_recycle_operations;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(28);
         }
     }
 

@@ -221,10 +221,10 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 19. Apply all migrations to upgrade to V10
-        int v10Applied = mariaRunner.apply(allMigrations);
+        // 19. Apply migrations up to V10
+        int v10Applied = mariaRunner.apply(allMigrations.subList(0, 10));
         assertThat(v10Applied).isEqualTo(1);
-        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(10);
 
         // 20. Verify V10 schema: world_grid_allocations now exists
         try (Connection conn = mariaDatabase.connection()) {
@@ -233,6 +233,11 @@ class ProductionMigrationIntegrationTest {
                 assertThat(rs.next()).isTrue();
             }
         }
+
+        // 21. Apply remaining migrations up to LATEST_VERSION
+        int remainingApplied = mariaRunner.apply(allMigrations);
+        assertThat(remainingApplied).isEqualTo(allMigrations.size() - 10);
+        assertThat(mariaRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
     }
 
     @Test
@@ -403,10 +408,10 @@ class ProductionMigrationIntegrationTest {
             }
         }
 
-        // 19. Apply all migrations to upgrade to V10
-        int v10Applied = postgresRunner.apply(allMigrations);
+        // 19. Apply migrations up to V10
+        int v10Applied = postgresRunner.apply(allMigrations.subList(0, 10));
         assertThat(v10Applied).isEqualTo(1);
-        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(10);
 
         // 20. Verify V10 schema: world_grid_allocations now exists
         try (Connection conn = postgresDatabase.connection()) {
@@ -415,6 +420,11 @@ class ProductionMigrationIntegrationTest {
                 assertThat(rs.next()).isTrue();
             }
         }
+
+        // 21. Apply remaining migrations up to LATEST_VERSION
+        int remainingApplied = postgresRunner.apply(allMigrations);
+        assertThat(remainingApplied).isEqualTo(allMigrations.size() - 10);
+        assertThat(postgresRunner.currentVersion()).isEqualTo(SkyblockMigrations.LATEST_VERSION);
     }
 
     @Test

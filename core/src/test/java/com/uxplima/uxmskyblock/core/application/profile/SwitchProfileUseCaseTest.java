@@ -223,6 +223,11 @@ class SwitchProfileUseCaseTest {
         public Optional<ProfileSwitchOperation> findActiveOperation(PlayerUuid playerId) {
             return Optional.empty();
         }
+
+        @Override
+        public Optional<PlayerUuid> resolvePlayerUuid(ProfileId profileId) {
+            return Optional.of(playerUuid);
+        }
     }
 
     private static class FakeInventoryCheckpointPort implements ProfileInventoryCheckpointPort {
