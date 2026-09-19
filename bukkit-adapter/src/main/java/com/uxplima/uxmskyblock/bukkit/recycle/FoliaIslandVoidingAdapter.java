@@ -79,7 +79,7 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                         for (Entity entity : chunk.getEntities()) {
                             if (entity instanceof Player player) {
                                 if (player.isOnline()) {
-                                    player.teleport(spawn);
+                                    var unused = player.teleportAsync(spawn);
                                 }
                             } else {
                                 entity.remove();
@@ -92,11 +92,11 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                         int startZ = Math.max(chunkZ << 4, bounds.minZ());
                         int endZ = Math.min((chunkZ << 4) + 15, bounds.maxZ());
                         int minY = world.getMinHeight();
-                        int maxY = Math.min(world.getMaxHeight(), 256);
+                        int maxY = world.getMaxHeight();
 
                         for (int x = startX; x <= endX; x++) {
                             for (int z = startZ; z <= endZ; z++) {
-                                for (int y = minY; y <= maxY; y++) {
+                                for (int y = minY; y < maxY; y++) {
                                     Block block = world.getBlockAt(x, y, z);
                                     if (!block.isEmpty()) {
                                         block.setType(Material.AIR, false);

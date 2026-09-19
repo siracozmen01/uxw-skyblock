@@ -14,6 +14,7 @@ public interface IslandBackupPort {
      *
      * @param island island domain aggregate
      * @param location island center location and world
+     * @return absolute path to the generated backup artifact
      */
-    void createPreDeletionBackup(Island island, IslandLocation location);
+    String createPreDeletionBackup(Island island, IslandLocation location);
 }

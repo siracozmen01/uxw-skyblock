@@ -281,14 +281,18 @@ public final class GameplayWiring {
         this.boundaryListener.setStopBorderCrossing(config.settingsConfig().stopBorderCrossing());
 
         this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler, this.backpressureController);
-        this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder());
+        com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter dimensionSnapshotAdapter =
+                new com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter(
+                        plugin, persistence.islandStoragePort());
+        this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder(), dimensionSnapshotAdapter);
         this.recycleService = new IslandRecycleService(
                 persistence.islandStoragePort(),
                 persistence.worldGridAllocationPort(),
                 persistence.spiralSlotPoolPort(),
                 voidingAdapter,
                 islandBackupAdapter,
-                persistence.outboxPort());
+                persistence.outboxPort(),
+                persistence.islandRecycleOperationPort());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
                 recycleService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
 

@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +21,8 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import com.uxplima.uxmskyblock.core.domain.recycle.IslandRecycleOperation;
+import com.uxplima.uxmskyblock.core.domain.recycle.IslandRecycleState;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
 import org.jspecify.annotations.Nullable;
@@ -27,7 +30,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Enterprise domain application service orchestrating safe island deletion, multi-step
  * cryptographic confirmation challenges, pre-deletion disaster recovery backups,
- * Folia-native asynchronous chunk voiding, and Archimedean spiral slot recycling.
+ * Folia-native asynchronous chunk voiding, transactional state tracking, and Archimedean spiral slot recycling.
  */
 public final class IslandRecycleService {
 
@@ -54,6 +57,7 @@ public final class IslandRecycleService {
     private final @Nullable IslandVoidingPort voidingPort;
     private final @Nullable IslandBackupPort backupPort;
     private final @Nullable OutboxPort outboxPort;
+    private final @Nullable IslandRecycleOperationPort recycleOperationPort;
     private final Clock clock;
     private final SecureRandom secureRandom;
     private final Map<ProfileId, ChallengeEntry> pendingChallenges = new ConcurrentHashMap<>();
@@ -65,6 +69,7 @@ public final class IslandRecycleService {
             @Nullable IslandVoidingPort voidingPort,
             @Nullable IslandBackupPort backupPort,
             @Nullable OutboxPort outboxPort,
+            @Nullable IslandRecycleOperationPort recycleOperationPort,
             Clock clock) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.worldGridAllocationPort =
@@ -73,8 +78,47 @@ public final class IslandRecycleService {
         this.voidingPort = voidingPort;
         this.backupPort = backupPort;
         this.outboxPort = outboxPort;
+        this.recycleOperationPort = recycleOperationPort;
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
         this.secureRandom = new SecureRandom();
+    }
+
+    public IslandRecycleService(
+            IslandStoragePort islandStoragePort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            SpiralSlotPoolPort spiralSlotPoolPort,
+            @Nullable IslandVoidingPort voidingPort,
+            @Nullable IslandBackupPort backupPort,
+            @Nullable OutboxPort outboxPort,
+            @Nullable IslandRecycleOperationPort recycleOperationPort) {
+        this(
+                islandStoragePort,
+                worldGridAllocationPort,
+                spiralSlotPoolPort,
+                voidingPort,
+                backupPort,
+                outboxPort,
+                recycleOperationPort,
+                Clock.systemUTC());
+    }
+
+    public IslandRecycleService(
+            IslandStoragePort islandStoragePort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            SpiralSlotPoolPort spiralSlotPoolPort,
+            @Nullable IslandVoidingPort voidingPort,
+            @Nullable IslandBackupPort backupPort,
+            @Nullable OutboxPort outboxPort,
+            Clock clock) {
+        this(
+                islandStoragePort,
+                worldGridAllocationPort,
+                spiralSlotPoolPort,
+                voidingPort,
+                backupPort,
+                outboxPort,
+                null,
+                clock);
     }
 
     public IslandRecycleService(
@@ -91,6 +135,7 @@ public final class IslandRecycleService {
                 voidingPort,
                 backupPort,
                 outboxPort,
+                null,
                 Clock.systemUTC());
     }
 
@@ -146,13 +191,16 @@ public final class IslandRecycleService {
     }
 
     /**
-     * Safely executes an asynchronous island reset or deletion.
+     * Safely executes an asynchronous island reset or deletion following the strict transactional lifecycle:
+     * REQUESTED -&gt; BACKUP_COMPLETE -&gt; VOIDING -&gt; VOID_COMPLETE -&gt; CANONICAL_DELETE -&gt; SLOT_RELEASED -&gt; COMPLETED.
      *
      * <p>Enforces:
      * <ul>
      *   <li>Ownership and cryptographic challenge verification.</li>
-     *   <li>Fail-closed pre-deletion backup (fails the reset if backup throws, unless admin bypass).</li>
-     *   <li>Folia-safe asynchronous chunk voiding awaited BEFORE spiral slot release or database deletion.</li>
+     *   <li>Fail-closed pre-deletion backup (fails the reset if backup throws, even under admin bypass).</li>
+     *   <li>Folia-safe asynchronous chunk voiding awaited BEFORE database deletion.</li>
+     *   <li>Canonical database deletion performed BEFORE releasing the spiral slot pool reservation.</li>
+     *   <li>Durable state machine logging to {@link IslandRecycleOperationPort}.</li>
      * </ul>
      *
      * @param requester profile ID of the initiator
@@ -190,19 +238,7 @@ public final class IslandRecycleService {
         }
         IslandLocation location = optLocation.get();
 
-        // 1. Pre-deletion disaster recovery backup snapshot (fail-closed)
-        if (backupPort != null) {
-            try {
-                backupPort.createPreDeletionBackup(island, location);
-            } catch (Exception e) {
-                if (!adminBypass) {
-                    return CompletableFuture.completedFuture(
-                            new RecycleResult.Failure("Failed to create pre-deletion backup: " + e.getMessage()));
-                }
-            }
-        }
-
-        // 2. Resolve world grid allocation
+        // Resolve world grid allocation
         long slotIndex = 0L;
         String worldName = location.worldName();
         int gridX = location.bounds().centerX();
@@ -222,18 +258,71 @@ public final class IslandRecycleService {
         final int finalGridX = gridX;
         final int finalGridZ = gridZ;
 
-        // 3. Folia-native asynchronous chunk voiding
+        String operationId = UUID.randomUUID().toString();
+        Instant now = clock.instant();
+
+        // 1. Transaction State: REQUESTED
+        if (recycleOperationPort != null) {
+            recycleOperationPort.recordOperation(new IslandRecycleOperation(
+                    operationId,
+                    islandId,
+                    island.ownerPlayerUuid(),
+                    finalSlotIndex,
+                    IslandRecycleState.REQUESTED,
+                    null,
+                    null,
+                    now,
+                    now));
+        }
+
+        // 2. Pre-deletion disaster recovery backup snapshot (fail-closed, never bypassed)
+        String backupPath = null;
+        if (backupPort != null) {
+            try {
+                backupPath = backupPort.createPreDeletionBackup(island, location);
+                if (recycleOperationPort != null) {
+                    recycleOperationPort.updateState(
+                            operationId, IslandRecycleState.BACKUP_COMPLETE, backupPath, null, clock.instant());
+                }
+            } catch (Exception e) {
+                if (recycleOperationPort != null) {
+                    recycleOperationPort.updateState(
+                            operationId, IslandRecycleState.FAILED, null, e.getMessage(), clock.instant());
+                }
+                return CompletableFuture.completedFuture(
+                        new RecycleResult.Failure("Failed to create pre-deletion backup: " + e.getMessage()));
+            }
+        }
+
+        // 3. Transaction State: VOIDING
+        if (recycleOperationPort != null) {
+            recycleOperationPort.updateState(operationId, IslandRecycleState.VOIDING, null, null, clock.instant());
+        }
+
         CompletableFuture<Void> voidFuture = (voidingPort != null)
                 ? voidingPort.voidIslandChunks(islandId, finalWorldName, island.bounds())
                 : CompletableFuture.completedFuture(null);
 
-        // 4. Defer slot release and storage deletion until voiding COMPLETES successfully
+        // 4. Defer canonical delete, slot release and completion until voiding completes
         return voidFuture.handle((v, ex) -> {
             if (ex != null) {
+                if (recycleOperationPort != null) {
+                    recycleOperationPort.updateState(
+                            operationId, IslandRecycleState.FAILED, null, ex.getMessage(), clock.instant());
+                }
                 return new RecycleResult.Failure("Asynchronous chunk voiding failed: " + ex.getMessage());
             }
 
-            spiralSlotPoolPort.releaseSlot(finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
+            if (recycleOperationPort != null) {
+                recycleOperationPort.updateState(
+                        operationId, IslandRecycleState.VOID_COMPLETE, null, null, clock.instant());
+            }
+
+            // 5. Transaction State: CANONICAL_DELETE (Must succeed before releasing slot)
+            if (recycleOperationPort != null) {
+                recycleOperationPort.updateState(
+                        operationId, IslandRecycleState.CANONICAL_DELETE, null, null, clock.instant());
+            }
 
             String payload = String.format(
                     "{\"islandId\":\"%s\",\"ownerProfileId\":\"%s\",\"slotIndex\":%d,\"worldName\":\"%s\",\"gridX\":%d,\"gridZ\":%d}",
@@ -252,7 +341,45 @@ public final class IslandRecycleService {
                             payload)
                     : null;
 
-            islandStoragePort.deleteIsland(islandId, outboxEvent);
+            try {
+                islandStoragePort.deleteIsland(islandId, outboxEvent);
+            } catch (Exception e) {
+                if (recycleOperationPort != null) {
+                    recycleOperationPort.updateState(
+                            operationId,
+                            IslandRecycleState.FAILED,
+                            null,
+                            "Canonical island deletion failed: " + e.getMessage(),
+                            clock.instant());
+                }
+                return new RecycleResult.Failure("Canonical island deletion failed: " + e.getMessage());
+            }
+
+            // 6. Transaction State: SLOT_RELEASED (Only after database deletion succeeds)
+            if (recycleOperationPort != null) {
+                recycleOperationPort.updateState(
+                        operationId, IslandRecycleState.SLOT_RELEASED, null, null, clock.instant());
+            }
+
+            try {
+                spiralSlotPoolPort.releaseSlot(finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
+            } catch (Exception e) {
+                if (recycleOperationPort != null) {
+                    recycleOperationPort.updateState(
+                            operationId,
+                            IslandRecycleState.FAILED,
+                            null,
+                            "Slot release failed: " + e.getMessage(),
+                            clock.instant());
+                }
+                return new RecycleResult.Failure("Slot release failed: " + e.getMessage());
+            }
+
+            // 7. Transaction State: COMPLETED
+            if (recycleOperationPort != null) {
+                recycleOperationPort.updateState(
+                        operationId, IslandRecycleState.COMPLETED, null, null, clock.instant());
+            }
 
             return new RecycleResult.Success(islandId, finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
         });

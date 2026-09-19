@@ -85,7 +85,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen);
         gameplay.resetConfirmationMenu().setBedrockFormService(this.bedrockFormService);
 
-        this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin);
+        this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin, persistence.islandStoragePort());
         this.webMapAdapter = new CompositeWebMapAdapter(
                 List.of(new DynmapAdapter(plugin), new BlueMapAdapter(plugin), new Pl3xMapAdapter(plugin)));
         this.islandWebMapService = new IslandWebMapService();

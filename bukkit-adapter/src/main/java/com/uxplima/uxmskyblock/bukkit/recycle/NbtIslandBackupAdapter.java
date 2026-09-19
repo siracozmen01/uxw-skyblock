@@ -14,8 +14,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 
 import com.uxplima.uxmskyblock.core.application.recycle.IslandBackupPort;
+import com.uxplima.uxmskyblock.core.application.snapshot.WorldDimensionSnapshotPort;
+import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId;
+import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Platform adapter serializing pre-deletion disaster-recovery backup snapshots
@@ -27,14 +32,20 @@ public final class NbtIslandBackupAdapter implements IslandBackupPort {
     private static final int BACKUP_FORMAT_VERSION = 1;
 
     private final File backupDirectory;
+    private final @Nullable WorldDimensionSnapshotPort worldDimensionSnapshotPort;
 
-    public NbtIslandBackupAdapter(File dataFolder) {
+    public NbtIslandBackupAdapter(File dataFolder, @Nullable WorldDimensionSnapshotPort worldDimensionSnapshotPort) {
         Objects.requireNonNull(dataFolder, "dataFolder must not be null");
         this.backupDirectory = new File(dataFolder, "backups/islands");
+        this.worldDimensionSnapshotPort = worldDimensionSnapshotPort;
+    }
+
+    public NbtIslandBackupAdapter(File dataFolder) {
+        this(dataFolder, null);
     }
 
     @Override
-    public void createPreDeletionBackup(Island island, IslandLocation location) {
+    public String createPreDeletionBackup(Island island, IslandLocation location) {
         Objects.requireNonNull(island, "island must not be null");
         Objects.requireNonNull(location, "location must not be null");
 
@@ -120,14 +131,28 @@ public final class NbtIslandBackupAdapter implements IslandBackupPort {
             World world = Bukkit.getWorld(location.worldName());
             if (world != null) {
                 dos.writeBoolean(true);
-                // Sample key anchor points or bounds extent for disaster validation
                 dos.writeInt(location.bounds().radius());
+
+                if (worldDimensionSnapshotPort != null) {
+                    PrimaryGameplayRootRef rootRef = new PrimaryGameplayRootRef(
+                            GameModeInstanceId.of(island.id().value()),
+                            island.id().value().toString(),
+                            "ISLAND",
+                            Instant.now());
+                    byte[] snapshotBytes =
+                            worldDimensionSnapshotPort.captureWorldDimension(rootRef, DimensionId.OVERWORLD);
+                    dos.writeInt(snapshotBytes.length);
+                    dos.write(snapshotBytes);
+                } else {
+                    dos.writeInt(0);
+                }
             } else {
                 dos.writeBoolean(false);
             }
 
             dos.flush();
             gzos.finish();
+            return targetFile.getAbsolutePath();
         } catch (IOException e) {
             throw new IllegalStateException(
                     "Failed to write compressed disaster recovery backup snapshot to " + targetFile.getAbsolutePath(),
