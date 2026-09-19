@@ -128,6 +128,7 @@ class ProductionMigrationFastLaneTest {
                                 "player_anti_abuse_records",
                                 "island_quarantines",
                                 "island_boosters",
+                                "island_bankruptcies",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -668,6 +669,12 @@ class ProductionMigrationFastLaneTest {
                                 "created_at",
                                 "paused_at",
                                 "remaining_seconds");
+
+                // island_bankruptcies columns (V24)
+                Set<String> bankruptcyCols = getColumnNames(meta, "island_bankruptcies");
+                assertThat(bankruptcyCols)
+                        .containsExactlyInAnyOrder(
+                                "island_id", "status", "debt_minor_units", "grace_until", "updated_at");
             }
         }
     }
@@ -2397,7 +2404,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(22);
 
             // 2. Upgrade by applying V23
-            int v23Applied = runner.apply(allMigrations);
+            int v23Applied = runner.apply(allMigrations.subList(0, 23));
             assertThat(v23Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(23);
 
@@ -2449,9 +2456,79 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 23));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(23);
+        }
+    }
+
+    @Test
+    @DisplayName("27. Step-by-step upgrade from V23 to V24 creates island bankruptcies table")
+    void stepByStepUpgradeFromV23ToV24CreatesIslandBankruptciesTable() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V23
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v23Applied = runner.apply(allMigrations.subList(0, 23));
+            assertThat(v23Applied).isEqualTo(23);
+            assertThat(runner.currentVersion()).isEqualTo(23);
+
+            // 2. Upgrade by applying V24
+            int v24Applied = runner.apply(allMigrations);
+            assertThat(v24Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(24);
+
+            // 3. Verify island_bankruptcies accepts rows and foreign key cascade works
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(conn, """
+                        INSERT INTO islands (
+                            id, owner_profile_id, owner_account_uuid, custom_name,
+                            lifecycle, economic_state, administrative_state, version
+                        ) VALUES (
+                            '99999999-8888-7777-6666-555555555555',
+                            '00000000-0000-0000-0000-000000000002',
+                            '00000000-0000-0000-0000-000000000001',
+                            'Bankruptcy Island', 'ACTIVE', 'NORMAL', 'NORMAL', 1
+                        );
+                        """);
+
+                execute(conn, """
+                        INSERT INTO island_bankruptcies (
+                            island_id, status, debt_minor_units, grace_until, updated_at
+                        ) VALUES (
+                            '99999999-8888-7777-6666-555555555555',
+                            'GRACE', 50000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                        );
+                        """);
+
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_bankruptcies WHERE island_id = '99999999-8888-7777-6666-555555555555'"))
+                        .isEqualTo(1);
+
+                // Delete island and verify cascade deletes bankruptcy record
+                execute(conn, "DELETE FROM islands WHERE id = '99999999-8888-7777-6666-555555555555'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_bankruptcies WHERE island_id = '99999999-8888-7777-6666-555555555555'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(24);
         }
     }
 

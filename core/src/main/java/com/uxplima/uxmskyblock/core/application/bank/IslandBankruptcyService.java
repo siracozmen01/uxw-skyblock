@@ -1,0 +1,249 @@
+package com.uxplima.uxmskyblock.core.application.bank;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Supplier;
+
+import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
+import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
+import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyCycleResult;
+import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult;
+import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus;
+import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
+import com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord;
+import com.uxplima.uxmskyblock.core.domain.bank.IslandUpkeepPolicy;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
+import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+
+/**
+ * Core application service managing island upkeep maintenance, two-stage bankruptcy lifecycles
+ * (GRACE and LOCKED), debt accumulation, and instant atomic remediation (Section 2.39).
+ */
+public final class IslandBankruptcyService {
+
+    public static final UUID SYSTEM_UPKEEP_ACTOR =
+            UUID.nameUUIDFromBytes("island-upkeep-actor".getBytes(StandardCharsets.UTF_8));
+
+    private final IslandBankruptcyStoragePort bankruptcyStoragePort;
+    private final IslandBankPort bankPort;
+    private final IslandAuthorityPort authorityPort;
+    private final Supplier<IslandUpkeepPolicy> policySupplier;
+
+    public IslandBankruptcyService(
+            IslandBankruptcyStoragePort bankruptcyStoragePort,
+            IslandBankPort bankPort,
+            IslandAuthorityPort authorityPort,
+            Supplier<IslandUpkeepPolicy> policySupplier) {
+        this.bankruptcyStoragePort =
+                Objects.requireNonNull(bankruptcyStoragePort, "bankruptcyStoragePort must not be null");
+        this.bankPort = Objects.requireNonNull(bankPort, "bankPort must not be null");
+        this.authorityPort = Objects.requireNonNull(authorityPort, "authorityPort must not be null");
+        this.policySupplier = Objects.requireNonNull(policySupplier, "policySupplier must not be null");
+    }
+
+    /**
+     * Evaluates and executes an upkeep debit cycle for the specified island.
+     *
+     * @param islandId target island identity
+     * @param memberCount active registered member count for per-member fee scaling
+     * @param now current evaluation timestamp
+     * @param serverNodeId local cluster node asserting authority
+     * @return typed outcome of the upkeep cycle
+     */
+    public BankruptcyCycleResult processUpkeepCycle(
+            IslandId islandId, int memberCount, Instant now, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
+
+        IslandUpkeepPolicy policy = policySupplier.get();
+        if (!policy.enabled()) {
+            return new BankruptcyCycleResult.SkippedDisabled();
+        }
+
+        long fee = policy.calculateUpkeepFee(memberCount);
+        Optional<IslandBank> optBank = bankPort.findBankByIslandId(islandId);
+        long currentBalance = optBank.map(IslandBank::primaryBalanceMinorUnits).orElse(0L);
+
+        IslandBankruptcyRecord record = getBankruptcyRecord(islandId, now);
+
+        if (currentBalance >= fee) {
+            // Sufficient funds: debit upkeep fee
+            long epoch = resolveAuthorityEpoch(islandId, serverNodeId);
+            long expectedVersion = optBank.map(IslandBank::version).orElse(1L);
+            UUID opId = UUID.randomUUID();
+            String idempotencyKey = "upkeep-" + opId;
+
+            BankTransactionOutcome outcome = bankPort.executeTransaction(
+                    islandId,
+                    SYSTEM_UPKEEP_ACTOR,
+                    "PRIMARY",
+                    2,
+                    -fee,
+                    "Automated island upkeep fee",
+                    serverNodeId.value(),
+                    epoch,
+                    expectedVersion,
+                    opId,
+                    idempotencyKey);
+
+            if (outcome instanceof BankTransactionOutcome.Success success) {
+                if (record.status() != BankruptcyStatus.SOLVENT || record.debtMinorUnits() > 0) {
+                    // Recover back to solvent if arrears were zero
+                    if (record.debtMinorUnits() == 0) {
+                        bankruptcyStoragePort.save(record.toSolvent(now));
+                    }
+                }
+                return new BankruptcyCycleResult.Paid(fee, success.updatedBank().primaryBalanceMinorUnits());
+            }
+        }
+
+        // Insufficient funds: apply two-stage failure escalation
+        if (record.status() == BankruptcyStatus.SOLVENT) {
+            Instant graceDeadline = now.plus(policy.graceDuration());
+            IslandBankruptcyRecord updated = record.toGrace(fee, graceDeadline, now);
+            bankruptcyStoragePort.save(updated);
+            return new BankruptcyCycleResult.GraceEntered(fee, graceDeadline, fee);
+        } else if (record.status() == BankruptcyStatus.GRACE) {
+            if (record.graceUntil() != null && !now.isBefore(record.graceUntil())) {
+                // Grace expired: escalate to quarantine lockout
+                IslandBankruptcyRecord updated = record.addDebt(fee, now).toLocked(now);
+                bankruptcyStoragePort.save(updated);
+                return new BankruptcyCycleResult.LockoutApplied(fee, updated.debtMinorUnits());
+            } else {
+                // Still in grace: accumulate debt
+                IslandBankruptcyRecord updated = record.addDebt(fee, now);
+                bankruptcyStoragePort.save(updated);
+                return new BankruptcyCycleResult.GraceExtended(fee, record.graceUntil(), updated.debtMinorUnits());
+            }
+        } else {
+            // Already locked: accumulate additional debt
+            IslandBankruptcyRecord updated = record.addDebt(fee, now);
+            bankruptcyStoragePort.save(updated);
+            return new BankruptcyCycleResult.LockoutApplied(fee, updated.debtMinorUnits());
+        }
+    }
+
+    /**
+     * Attempts to settle outstanding arrears and instantly remediate bankruptcy status.
+     *
+     * @param islandId target island identity
+     * @param now current evaluation timestamp
+     * @param serverNodeId local cluster node asserting authority
+     * @return typed outcome of the remediation attempt
+     */
+    public BankruptcyRemediationResult settleArrears(IslandId islandId, Instant now, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
+
+        IslandBankruptcyRecord record = getBankruptcyRecord(islandId, now);
+        if (record.debtMinorUnits() == 0 && record.status() == BankruptcyStatus.SOLVENT) {
+            return new BankruptcyRemediationResult.NotInArrears();
+        }
+
+        long debt = record.debtMinorUnits();
+        Optional<IslandBank> optBank = bankPort.findBankByIslandId(islandId);
+        long currentBalance = optBank.map(IslandBank::primaryBalanceMinorUnits).orElse(0L);
+
+        if (currentBalance < debt) {
+            return new BankruptcyRemediationResult.InsufficientFunds(debt, currentBalance);
+        }
+
+        long epoch = resolveAuthorityEpoch(islandId, serverNodeId);
+        long expectedVersion = optBank.map(IslandBank::version).orElse(1L);
+        UUID opId = UUID.randomUUID();
+        String idempotencyKey = "settle-debt-" + opId;
+
+        BankTransactionOutcome outcome = bankPort.executeTransaction(
+                islandId,
+                SYSTEM_UPKEEP_ACTOR,
+                "PRIMARY",
+                2,
+                -debt,
+                "Settlement of island upkeep arrears",
+                serverNodeId.value(),
+                epoch,
+                expectedVersion,
+                opId,
+                idempotencyKey);
+
+        if (outcome instanceof BankTransactionOutcome.Success success) {
+            bankruptcyStoragePort.save(record.toSolvent(now));
+            return new BankruptcyRemediationResult.Settled(
+                    debt, success.updatedBank().primaryBalanceMinorUnits());
+        }
+
+        return new BankruptcyRemediationResult.InsufficientFunds(debt, currentBalance);
+    }
+
+    /**
+     * Returns true if the island is currently under quarantine lockout due to expired bankruptcy grace.
+     */
+    public boolean isIslandLocked(IslandId islandId, Instant now) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        return getBankruptcyRecord(islandId, now).isLockoutActive(now);
+    }
+
+    /**
+     * Retrieves the current bankruptcy record for an island, automatically checking whether
+     * an unexpired grace window has matured into quarantine lockout.
+     */
+    public IslandBankruptcyRecord getBankruptcyRecord(IslandId islandId, Instant now) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+
+        Optional<IslandBankruptcyRecord> optRecord = bankruptcyStoragePort.findByIslandId(islandId);
+        if (optRecord.isEmpty()) {
+            return IslandBankruptcyRecord.solvent(islandId, now);
+        }
+
+        IslandBankruptcyRecord record = optRecord.get();
+        if (record.status() == BankruptcyStatus.GRACE && record.isLockoutActive(now)) {
+            // Grace expired: persist transition to LOCKED
+            IslandBankruptcyRecord locked = record.toLocked(now);
+            bankruptcyStoragePort.save(locked);
+            return locked;
+        }
+
+        return record;
+    }
+
+    /**
+     * Returns all active bankruptcies (either in GRACE or LOCKED) across the network.
+     */
+    public List<IslandBankruptcyRecord> getActiveBankruptcies() {
+        return bankruptcyStoragePort.findAllBankruptcies();
+    }
+
+    /**
+     * Cleans up bankruptcy persistence when an island is deleted or reset.
+     */
+    public void deleteIslandBankruptcy(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        bankruptcyStoragePort.deleteByIslandId(islandId);
+    }
+
+    public IslandUpkeepPolicy policy() {
+        return policySupplier.get();
+    }
+
+    private long resolveAuthorityEpoch(IslandId islandId, ServerNodeId serverNodeId) {
+        Optional<IslandAuthorityRecord> optAuth = authorityPort.findAuthority(islandId);
+        if (optAuth.isPresent()) {
+            return optAuth.get().authorityEpoch();
+        }
+        IslandAuthorityOutcome outcome = authorityPort.acquireAuthority(islandId, serverNodeId, 86400);
+        if (outcome instanceof IslandAuthorityOutcome.Success s) {
+            return s.epoch();
+        }
+        return 1L;
+    }
+}

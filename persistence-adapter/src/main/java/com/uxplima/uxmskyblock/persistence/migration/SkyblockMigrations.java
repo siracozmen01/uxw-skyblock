@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 23;
+    public static final int LATEST_VERSION = 24;
+
+    /** Human-readable description of migration V24. */
+    public static final String V24_DESCRIPTION = "create island bankruptcies table";
 
     /** Human-readable description of migration V23. */
     public static final String V23_DESCRIPTION = "create island boosters table";
@@ -132,7 +135,8 @@ public final class SkyblockMigrations {
                 v20Migration(dialect),
                 v21Migration(dialect),
                 v22Migration(dialect),
-                v23Migration(dialect));
+                v23Migration(dialect),
+                v24Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -565,6 +569,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(23, V23_DESCRIPTION, SQLITE_V23_DDL);
             case MYSQL -> new Migration(23, V23_DESCRIPTION, MYSQL_V23_DDL);
             case POSTGRES -> new Migration(23, V23_DESCRIPTION, POSTGRES_V23_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v24Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(24, V24_DESCRIPTION, SQLITE_V24_DDL);
+            case MYSQL -> new Migration(24, V24_DESCRIPTION, MYSQL_V24_DDL);
+            case POSTGRES -> new Migration(24, V24_DESCRIPTION, POSTGRES_V24_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2637,5 +2653,46 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX IF NOT EXISTS idx_island_boosters_lookup ON island_boosters (island_id, category, expires_at);
+            """;
+
+    private static final String SQLITE_V24_DDL = """
+            CREATE TABLE IF NOT EXISTS island_bankruptcies (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                status VARCHAR(32) NOT NULL,
+                debt_minor_units BIGINT NOT NULL DEFAULT 0,
+                grace_until TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_bankruptcies_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_bankruptcies_status ON island_bankruptcies (status);
+            """;
+
+    private static final String MYSQL_V24_DDL = """
+            CREATE TABLE IF NOT EXISTS island_bankruptcies (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                status VARCHAR(32) NOT NULL,
+                debt_minor_units BIGINT NOT NULL DEFAULT 0,
+                grace_until TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_island_bankruptcies_status (status),
+                CONSTRAINT fk_island_bankruptcies_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V24_DDL = """
+            CREATE TABLE IF NOT EXISTS island_bankruptcies (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                status VARCHAR(32) NOT NULL,
+                debt_minor_units BIGINT NOT NULL DEFAULT 0,
+                grace_until TIMESTAMP WITH TIME ZONE NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_bankruptcies_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_bankruptcies_status ON island_bankruptcies (status);
             """;
 }

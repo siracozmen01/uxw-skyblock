@@ -42,6 +42,7 @@ import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
@@ -60,6 +61,9 @@ import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
+import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult;
+import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus;
+import com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterApplyResult;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
@@ -121,6 +125,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandAntiAbuseService antiAbuseService;
     private final @Nullable IslandBoosterService boosterService;
     private final @Nullable IslandBoosterMenu boosterMenu;
+    private volatile @Nullable IslandBankruptcyService bankruptcyService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -736,6 +741,14 @@ public final class IslandCommandTree {
         return worthService;
     }
 
+    public void setBankruptcyService(@Nullable IslandBankruptcyService bankruptcyService) {
+        this.bankruptcyService = bankruptcyService;
+    }
+
+    public @Nullable IslandBankruptcyService bankruptcyService() {
+        return bankruptcyService;
+    }
+
     public @Nullable IslandDimensionListener dimensionListener() {
         return dimensionListener;
     }
@@ -794,6 +807,9 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
                         .then(Cmd.literal("balance").executes(this::executeBankBalance))
+                        .then(Cmd.literal("status").executes(this::executeBankStatus))
+                        .then(Cmd.literal("upkeep").executes(this::executeBankStatus))
+                        .then(Cmd.literal("paydebt").executes(this::executeBankPayDebt))
                         .then(Cmd.literal("deposit")
                                 .then(Cmd.argument("amount", LongArgumentType.longArg(1))
                                         .executes(this::executeBankDeposit)))
@@ -909,7 +925,9 @@ public final class IslandCommandTree {
         send(src.getSender(), Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
-                Component.text("/is bank [deposit|withdraw|balance] - Manage island bank", NamedTextColor.YELLOW));
+                Component.text(
+                        "/is bank [deposit|withdraw|balance|status|paydebt] - Manage island bank & upkeep",
+                        NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is biome <type> - Change island biome", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is top [level|worth|bank] - View leaderboards", NamedTextColor.YELLOW));
         send(
@@ -1397,6 +1415,149 @@ public final class IslandCommandTree {
         return Cmd.OK;
     }
 
+    private int executeBankStatus(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            return Cmd.OK;
+        }
+
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (optIslandId.isEmpty()) {
+                    send(player, Component.text("You do not belong to an island.", NamedTextColor.RED));
+                    return;
+                }
+                IslandId islandId = optIslandId.get();
+                if (bankruptcyService == null) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Island upkeep and bankruptcy subsystem is not active.", NamedTextColor.GRAY));
+                    return;
+                }
+
+                Instant now = Instant.now();
+                IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
+                NamedTextColor statusColor =
+                        switch (record.status()) {
+                            case SOLVENT -> NamedTextColor.GREEN;
+                            case GRACE -> NamedTextColor.YELLOW;
+                            case LOCKED -> NamedTextColor.RED;
+                        };
+
+                send(player, Component.text("--- Island Bank & Upkeep Status ---", NamedTextColor.GOLD));
+                send(
+                        player,
+                        Component.text("Bankruptcy Status: ", NamedTextColor.GRAY)
+                                .append(Component.text(record.status().name(), statusColor)));
+                send(
+                        player,
+                        Component.text(
+                                "Outstanding Debt: $" + String.format("%.2f", record.debtMinorUnits() / 100.0),
+                                NamedTextColor.GRAY));
+
+                if (record.status() == BankruptcyStatus.GRACE && record.graceUntil() != null) {
+                    java.time.Duration remaining = java.time.Duration.between(now, record.graceUntil());
+                    long hours = Math.max(0, remaining.toHours());
+                    long minutes = Math.max(0, remaining.toMinutesPart());
+                    send(
+                            player,
+                            Component.text(
+                                    "Grace Remaining: " + hours + "h " + minutes + "m (until lockout)",
+                                    NamedTextColor.YELLOW));
+                } else if (record.status() == BankruptcyStatus.LOCKED) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Island is LOCKED! Spawners, crops, and visitor entries are suppressed.",
+                                    NamedTextColor.RED));
+                    send(player, Component.text("Use /is bank paydebt or deposit to remediate.", NamedTextColor.AQUA));
+                }
+            });
+        });
+
+        return Cmd.OK;
+    }
+
+    private int executeBankPayDebt(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            return Cmd.OK;
+        }
+
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(
+                    player,
+                    Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (optIslandId.isEmpty()) {
+                    send(player, Component.text("You do not belong to an island.", NamedTextColor.RED));
+                    return;
+                }
+                if (bankruptcyService == null) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Island upkeep and bankruptcy subsystem is not active.", NamedTextColor.GRAY));
+                    return;
+                }
+
+                IslandId islandId = optIslandId.get();
+                Instant now = Instant.now();
+                BankruptcyRemediationResult result = bankruptcyService.settleArrears(islandId, now, serverNodeId);
+
+                if (result instanceof BankruptcyRemediationResult.Settled settled) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Successfully settled $"
+                                            + String.format("%.2f", settled.amountPaid() / 100.0)
+                                            + " in arrears! New bank balance: $"
+                                            + String.format("%.2f", settled.remainingBalance() / 100.0)
+                                            + ". Island is now SOLVENT.",
+                                    NamedTextColor.GREEN));
+                } else if (result instanceof BankruptcyRemediationResult.InsufficientFunds ins) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Insufficient bank funds to settle arrears! Debt: $"
+                                            + String.format("%.2f", ins.debtAmount() / 100.0)
+                                            + ", Available bank balance: $"
+                                            + String.format("%.2f", ins.currentBalance() / 100.0)
+                                            + ". Deposit more funds to clear debt.",
+                                    NamedTextColor.RED));
+                } else if (result instanceof BankruptcyRemediationResult.NotInArrears) {
+                    send(
+                            player,
+                            Component.text(
+                                    "Your island has no outstanding arrears and is fully SOLVENT.",
+                                    NamedTextColor.GREEN));
+                }
+            });
+        });
+
+        return Cmd.OK;
+    }
+
     private int executeBankDeposit(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             return Cmd.OK;
@@ -1415,6 +1576,21 @@ public final class IslandCommandTree {
         economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
                 send(player, Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
+                if (bankruptcyService != null && bankruptcyService.policy().autoRemediateOnDeposit()) {
+                    islandLocationService.findIslandId(profileId).ifPresent(islandId -> {
+                        BankruptcyRemediationResult rem =
+                                bankruptcyService.settleArrears(islandId, Instant.now(), serverNodeId);
+                        if (rem instanceof BankruptcyRemediationResult.Settled settled) {
+                            send(
+                                    player,
+                                    Component.text(
+                                            "Outstanding arrears of $"
+                                                    + String.format("%.2f", settled.amountPaid() / 100.0)
+                                                    + " were automatically settled from deposit! Island is now SOLVENT.",
+                                            NamedTextColor.GOLD));
+                        }
+                    });
+                }
             } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
                 send(player, Component.text("Insufficient funds in your personal wallet.", NamedTextColor.RED));
             } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
