@@ -2271,10 +2271,9 @@ class ProductionMigrationFastLaneTest {
                         );
                         """);
 
-                assertThat(
-                                queryCount(
-                                        conn,
-                                        "SELECT COUNT(*) FROM spiral_slot_pool WHERE slot_index = 42 AND is_allocated = 0"))
+                assertThat(queryCount(
+                                conn,
+                                "SELECT COUNT(*) FROM spiral_slot_pool WHERE slot_index = 42 AND is_allocated = 0"))
                         .isEqualTo(1);
             }
 

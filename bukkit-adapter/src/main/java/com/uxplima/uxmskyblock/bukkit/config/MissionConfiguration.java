@@ -107,7 +107,8 @@ public record MissionConfiguration(boolean enabled, List<MissionDefinition> miss
         }
 
         List<MissionDefinition> list = new ArrayList<>();
-        for (Map.Entry<Object, ? extends ConfigurationNode> entry : catalogNode.childrenMap().entrySet()) {
+        for (Map.Entry<Object, ? extends ConfigurationNode> entry :
+                catalogNode.childrenMap().entrySet()) {
             String missionKey = String.valueOf(entry.getKey());
             ConfigurationNode mNode = entry.getValue();
 
@@ -134,7 +135,8 @@ public record MissionConfiguration(boolean enabled, List<MissionDefinition> miss
 
             ConfigurationNode rewardsNode = mNode.node("rewards");
             long crystals = Math.max(0L, rewardsNode.node("crystals").getLong(0L));
-            long currency = Math.max(0L, rewardsNode.node("currency-minor-units").getLong(0L));
+            long currency =
+                    Math.max(0L, rewardsNode.node("currency-minor-units").getLong(0L));
             long exp = Math.max(0L, rewardsNode.node("island-exp").getLong(0L));
             List<String> commands = new ArrayList<>();
             for (ConfigurationNode cmdNode : rewardsNode.node("commands").childrenList()) {

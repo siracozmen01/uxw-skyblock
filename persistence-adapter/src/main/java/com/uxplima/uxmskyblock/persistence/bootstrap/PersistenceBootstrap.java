@@ -115,7 +115,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.rewardStorageAdapter = new SqlRewardStorageAdapter(database);
         this.islandWarpStorageAdapter = new SqlIslandWarpStorageAdapter(database);
         this.islandVaultStorageAdapter = new SqlIslandVaultStorageAdapter(database);
-        this.islandMissionAdapter = new com.uxplima.uxmskyblock.persistence.mission.PlayerIslandMissionAdapter(database);
+        this.islandMissionAdapter =
+                new com.uxplima.uxmskyblock.persistence.mission.PlayerIslandMissionAdapter(database);
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {

@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.core.domain.mission;
 
 import java.time.Instant;
 import java.util.Objects;
+
 import org.jspecify.annotations.Nullable;
 
 public record MissionProgress(

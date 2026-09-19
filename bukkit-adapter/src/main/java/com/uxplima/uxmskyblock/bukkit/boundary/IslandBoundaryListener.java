@@ -42,9 +42,7 @@ public final class IslandBoundaryListener implements Listener {
     private final IslandBoundaryService boundaryService;
     private final IslandProtectionListener protectionListener;
 
-    public IslandBoundaryListener(
-            IslandBoundaryService boundaryService,
-            IslandProtectionListener protectionListener) {
+    public IslandBoundaryListener(IslandBoundaryService boundaryService, IslandProtectionListener protectionListener) {
         this.boundaryService = Objects.requireNonNull(boundaryService, "boundaryService must not be null");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
     }
@@ -67,7 +65,8 @@ public final class IslandBoundaryListener implements Listener {
         Optional<Island> fromIsland = protectionListener.findIslandAt(from);
         if (fromIsland.isPresent()) {
             IslandBounds bounds = fromIsland.get().bounds();
-            if (boundaryService.isSpillover(bounds, from.getBlockX(), from.getBlockZ(), to.getBlockX(), to.getBlockZ())) {
+            if (boundaryService.isSpillover(
+                    bounds, from.getBlockX(), from.getBlockZ(), to.getBlockX(), to.getBlockZ())) {
                 event.setCancelled(true);
             }
         }
@@ -130,8 +129,9 @@ public final class IslandBoundaryListener implements Listener {
 
         if (fromIsland.isPresent() && toIsland.isEmpty()) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(MiniMessage.miniMessage()
-                    .deserialize("<red>Ender pearls cannot be thrown beyond island boundaries!</red>"));
+            event.getPlayer()
+                    .sendMessage(MiniMessage.miniMessage()
+                            .deserialize("<red>Ender pearls cannot be thrown beyond island boundaries!</red>"));
         }
     }
 
@@ -151,7 +151,8 @@ public final class IslandBoundaryListener implements Listener {
             boundaryService.handlePlayerEnterIsland(playerUuid, toIsland.get().bounds());
         } else if (fromIsland.isPresent() && toIsland.isEmpty()) {
             boundaryService.handlePlayerExitIsland(playerUuid);
-        } else if (fromIsland.isPresent() && toIsland.isPresent()
+        } else if (fromIsland.isPresent()
+                && toIsland.isPresent()
                 && !fromIsland.get().id().equals(toIsland.get().id())) {
             boundaryService.handlePlayerEnterIsland(playerUuid, toIsland.get().bounds());
         }
@@ -194,7 +195,8 @@ public final class IslandBoundaryListener implements Listener {
             if (dx * dx + dz * dz <= 2304.0) {
                 player.spawnParticle(Particle.DUST, pt.x(), pt.y(), pt.z(), 1, 0.0, 0.0, 0.0, 0.0, PERIMETER_DUST);
                 // Also spawn at eye height + 1 block for visibility
-                player.spawnParticle(Particle.DUST, pt.x(), pt.y() + 1.2, pt.z(), 1, 0.0, 0.0, 0.0, 0.0, PERIMETER_DUST);
+                player.spawnParticle(
+                        Particle.DUST, pt.x(), pt.y() + 1.2, pt.z(), 1, 0.0, 0.0, 0.0, 0.0, PERIMETER_DUST);
             }
         }
     }

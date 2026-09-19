@@ -11,16 +11,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.domain.world.RecycledSlot;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 class SqlSpiralSlotPoolAdapterTest {
 

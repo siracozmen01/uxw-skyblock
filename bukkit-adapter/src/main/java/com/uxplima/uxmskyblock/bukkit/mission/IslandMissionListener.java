@@ -8,17 +8,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
-import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
-import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
-import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
-import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
-import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition;
-import com.uxplima.uxmskyblock.core.domain.mission.MissionProgress;
-import com.uxplima.uxmskyblock.core.domain.mission.MissionTriggerType;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -29,6 +18,19 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerFishEvent;
+
+import net.kyori.adventure.text.minimessage.MiniMessage;
+
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionProgress;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionTriggerType;
 
 /**
  * Event-driven zero-friction listener intercepting player actions and updating
@@ -112,8 +114,8 @@ public final class IslandMissionListener implements Listener {
         IslandId islandId = optIsland.get();
 
         schedulerPort.async(() -> {
-            List<MissionProgress> updated = missionService.handleTrigger(
-                    islandId, profileId, trigger, target, amount, Instant.now());
+            List<MissionProgress> updated =
+                    missionService.handleTrigger(islandId, profileId, trigger, target, amount, Instant.now());
             for (MissionProgress progress : updated) {
                 if (progress.completed()) {
                     notifyCompletion(player, uuid, progress);
@@ -134,8 +136,8 @@ public final class IslandMissionListener implements Listener {
             if (!player.isOnline()) {
                 return;
             }
-            player.sendMessage(MiniMessage.miniMessage().deserialize(
-                    "<gold><b>[MISSION COMPLETED]</b></gold> <yellow>" + def.displayName() + "</yellow>"));
+            player.sendMessage(MiniMessage.miniMessage()
+                    .deserialize("<gold><b>[MISSION COMPLETED]</b></gold> <yellow>" + def.displayName() + "</yellow>"));
             try {
                 player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
             } catch (Throwable ignored) {

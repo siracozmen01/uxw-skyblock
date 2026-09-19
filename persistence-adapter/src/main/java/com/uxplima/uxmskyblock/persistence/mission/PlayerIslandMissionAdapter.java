@@ -57,7 +57,8 @@ public final class PlayerIslandMissionAdapter implements IslandMissionStoragePor
             }
         } catch (SQLException e) {
             throw new MissionPersistenceException(
-                    "Failed to query mission progress for island " + islandId + ", profile " + profileId + ", mission " + missionId,
+                    "Failed to query mission progress for island " + islandId + ", profile " + profileId + ", mission "
+                            + missionId,
                     e);
         }
     }
@@ -112,7 +113,8 @@ public final class PlayerIslandMissionAdapter implements IslandMissionStoragePor
             }
         } catch (SQLException e) {
             throw new MissionPersistenceException(
-                    "Failed to save mission progress for island " + islandId + ", profile " + profileId + ", mission " + progress.missionId(),
+                    "Failed to save mission progress for island " + islandId + ", profile " + profileId + ", mission "
+                            + progress.missionId(),
                     e);
         }
     }

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,10 +13,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -33,6 +28,9 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 class IslandRecycleServiceTest {
 
@@ -95,7 +93,8 @@ class IslandRecycleServiceTest {
 
         assertThat(challenge.code()).matches("\\d{4}");
         assertThat(challenge.expiresAt()).isEqualTo(clock.instant().plus(Duration.ofSeconds(60)));
-        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code())).isTrue();
+        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code()))
+                .isTrue();
     }
 
     @Test
@@ -105,11 +104,13 @@ class IslandRecycleServiceTest {
 
         assertThat(service.verifyResetChallenge(ownerProfileId, "99999")).isFalse();
         assertThat(service.verifyResetChallenge(ownerProfileId, "wrong")).isFalse();
-        assertThat(service.verifyResetChallenge(visitorProfileId, challenge.code())).isFalse();
+        assertThat(service.verifyResetChallenge(visitorProfileId, challenge.code()))
+                .isFalse();
 
         // Advance past expiry
         clock.advance(Duration.ofSeconds(61));
-        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code())).isFalse();
+        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code()))
+                .isFalse();
     }
 
     @Test
@@ -118,7 +119,8 @@ class IslandRecycleServiceTest {
         ResetChallenge challenge = service.generateResetChallenge(ownerProfileId, islandId);
         service.cancelResetChallenge(ownerProfileId);
 
-        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code())).isFalse();
+        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code()))
+                .isFalse();
     }
 
     @Test
@@ -167,10 +169,12 @@ class IslandRecycleServiceTest {
         verify(spiralSlotPoolPort).releaseSlot(eq(42L), eq("skyblock_world"), eq(100), eq(200));
         verify(voidingPort).voidIslandChunks(eq(islandId), eq("skyblock_world"), eq(island.bounds()));
         verify(islandStoragePort).deleteIsland(eq(islandId), any());
-        verify(outboxPort).stageEvent(any(), eq("ISLAND_RECYCLED"), eq(islandId.value().toString()), any());
+        verify(outboxPort)
+                .stageEvent(any(), eq("ISLAND_RECYCLED"), eq(islandId.value().toString()), any());
 
         // Challenge should be consumed
-        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code())).isFalse();
+        assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code()))
+                .isFalse();
     }
 
     @Test

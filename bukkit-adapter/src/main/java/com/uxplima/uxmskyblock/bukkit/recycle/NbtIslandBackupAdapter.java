@@ -33,7 +33,8 @@ public final class NbtIslandBackupAdapter implements IslandBackupPort {
         if (!backupDirectory.exists() && !backupDirectory.mkdirs()) {
             // If mkdirs fails, proceed if it was created concurrently
             if (!backupDirectory.exists()) {
-                throw new IllegalStateException("Failed to create backup directory: " + backupDirectory.getAbsolutePath());
+                throw new IllegalStateException(
+                        "Failed to create backup directory: " + backupDirectory.getAbsolutePath());
             }
         }
 
@@ -86,7 +87,8 @@ public final class NbtIslandBackupAdapter implements IslandBackupPort {
         try (FileOutputStream fos = new FileOutputStream(targetFile)) {
             fos.write(snapshotPayload.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to write pre-deletion snapshot to " + targetFile.getAbsolutePath(), e);
+            throw new IllegalStateException(
+                    "Failed to write pre-deletion snapshot to " + targetFile.getAbsolutePath(), e);
         }
     }
 

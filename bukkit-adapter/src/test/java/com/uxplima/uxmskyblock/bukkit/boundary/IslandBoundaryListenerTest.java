@@ -1,10 +1,8 @@
 package com.uxplima.uxmskyblock.bukkit.boundary;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.time.Instant;
@@ -20,10 +18,6 @@ import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
@@ -36,6 +30,10 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 @SuppressWarnings({"deprecation", "removal"})
 class IslandBoundaryListenerTest extends MockBukkitHarness {
@@ -124,8 +122,8 @@ class IslandBoundaryListenerTest extends MockBukkitHarness {
         Location from = new Location(world, 0, 64, 0);
         Location toOutside = new Location(world, 50, 64, 50);
 
-        PlayerTeleportEvent event = new PlayerTeleportEvent(
-                player, from, toOutside, PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        PlayerTeleportEvent event =
+                new PlayerTeleportEvent(player, from, toOutside, PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
         boundaryListener.onPlayerTeleport(event);
 
         assertThat(event.isCancelled()).isTrue();

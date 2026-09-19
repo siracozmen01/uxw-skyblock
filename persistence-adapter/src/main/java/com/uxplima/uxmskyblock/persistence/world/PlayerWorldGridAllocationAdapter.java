@@ -11,8 +11,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.sql.Database;
-import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
+import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.IslandCoordinates;
@@ -36,9 +36,7 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
     private final @Nullable SpiralSlotPoolPort spiralSlotPool;
 
     public PlayerWorldGridAllocationAdapter(
-            Database database,
-            SpiralGridCoordinateAllocator allocator,
-            @Nullable SpiralSlotPoolPort spiralSlotPool) {
+            Database database, SpiralGridCoordinateAllocator allocator, @Nullable SpiralSlotPoolPort spiralSlotPool) {
         this.database = Objects.requireNonNull(database, "database must not be null");
         this.allocator = Objects.requireNonNull(allocator, "allocator must not be null");
         this.spiralSlotPool = spiralSlotPool;
@@ -136,13 +134,7 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
                     spiralSlotPool.recordAllocatedSlot(candidateSeq, worldName, coords.x(), coords.z());
                 }
                 return new WorldGridAllocation(
-                        candidateSeq,
-                        worldName,
-                        coords.x(),
-                        coords.z(),
-                        Optional.ofNullable(islandId),
-                        nodeId,
-                        now);
+                        candidateSeq, worldName, coords.x(), coords.z(), Optional.ofNullable(islandId), nodeId, now);
             }
             backoff(attempt);
         }

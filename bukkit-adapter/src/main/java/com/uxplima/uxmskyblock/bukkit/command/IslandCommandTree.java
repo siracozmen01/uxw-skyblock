@@ -49,6 +49,7 @@ import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
+import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
@@ -65,6 +66,7 @@ import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.core.domain.worth.IslandScoreBreakdown;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -99,6 +101,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandBoundaryService boundaryService;
     private final @Nullable IslandRecycleService recycleService;
     private final @Nullable IslandResetConfirmationMenu resetMenu;
+    private final @Nullable IslandWorthService worthService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -401,6 +404,56 @@ public final class IslandCommandTree {
             @Nullable IslandBoundaryService boundaryService,
             @Nullable IslandRecycleService recycleService,
             @Nullable IslandResetConfirmationMenu resetMenu) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                boundaryService,
+                recycleService,
+                resetMenu,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService,
+            @Nullable IslandRecycleService recycleService,
+            @Nullable IslandResetConfirmationMenu resetMenu,
+            @Nullable IslandWorthService worthService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -426,10 +479,15 @@ public final class IslandCommandTree {
         this.boundaryService = boundaryService;
         this.recycleService = recycleService;
         this.resetMenu = resetMenu;
+        this.worthService = worthService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
         return islandUpgradePort;
+    }
+
+    public @Nullable IslandWorthService worthService() {
+        return worthService;
     }
 
     public void register(JavaPlugin plugin) {
@@ -441,6 +499,11 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("challenges").executes(this::executeMissions))
                 .then(Cmd.literal("border").executes(this::executeBorder))
                 .then(Cmd.literal("bounds").executes(this::executeBorder))
+                .then(Cmd.literal("level")
+                        .executes(this::executeLevel)
+                        .then(Cmd.literal("recalculate").executes(this::executeLevelRecalculate)))
+                .then(Cmd.literal("worth").executes(this::executeWorth))
+                .then(Cmd.literal("value").executes(this::executeWorth))
                 .then(Cmd.literal("reset")
                         .executes(this::executeReset)
                         .then(Cmd.literal("confirm")
@@ -577,6 +640,16 @@ public final class IslandCommandTree {
                 src.getSender(),
                 Component.text("/is profile switch <uuid> - Switch active profile", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is chat - Toggle island team chat", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text("/is level - View island level and block valuation score", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text(
+                        "/is level recalculate - Recalculate all island blocks and worth", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text("/is worth - View island economic worth and valuation", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is reset - Reset and recycle your island", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
@@ -1350,7 +1423,11 @@ public final class IslandCommandTree {
         PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
         boolean active = boundaryService.togglePerimeter(uuid);
         if (active) {
-            send(player, Component.text("Perimeter particle projection enabled. Outlines will project around your island boundary.", NamedTextColor.AQUA));
+            send(
+                    player,
+                    Component.text(
+                            "Perimeter particle projection enabled. Outlines will project around your island boundary.",
+                            NamedTextColor.AQUA));
         } else {
             send(player, Component.text("Perimeter particle projection disabled.", NamedTextColor.YELLOW));
         }
@@ -1384,10 +1461,20 @@ public final class IslandCommandTree {
         IslandId islandId = optIsland.get();
         ResetChallenge challenge = recycleService.generateResetChallenge(profileId, islandId);
 
-        send(player, Component.text("WARNING: ISLAND RESET CANNOT BE UNDONE!", NamedTextColor.DARK_RED, TextDecoration.BOLD));
-        send(player, Component.text("All island blocks, chests, items, and bank balance will be permanently wiped.", NamedTextColor.GRAY));
-        send(player, Component.text("To confirm in chat, type: ", NamedTextColor.YELLOW)
-                .append(Component.text("/is reset confirm " + challenge.code(), NamedTextColor.GOLD, TextDecoration.BOLD)));
+        send(
+                player,
+                Component.text(
+                        "WARNING: ISLAND RESET CANNOT BE UNDONE!", NamedTextColor.DARK_RED, TextDecoration.BOLD));
+        send(
+                player,
+                Component.text(
+                        "All island blocks, chests, items, and bank balance will be permanently wiped.",
+                        NamedTextColor.GRAY));
+        send(
+                player,
+                Component.text("To confirm in chat, type: ", NamedTextColor.YELLOW)
+                        .append(Component.text(
+                                "/is reset confirm " + challenge.code(), NamedTextColor.GOLD, TextDecoration.BOLD)));
 
         if (resetMenu != null) {
             resetMenu.open(player, challenge.code());
@@ -1427,11 +1514,18 @@ public final class IslandCommandTree {
                 switch (result) {
                     case RecycleResult.Success s -> {
                         player.teleport(player.getWorld().getSpawnLocation());
-                        send(player, Component.text("Your island has been reset and recycled successfully!", NamedTextColor.GREEN, TextDecoration.BOLD));
+                        send(
+                                player,
+                                Component.text(
+                                        "Your island has been reset and recycled successfully!",
+                                        NamedTextColor.GREEN,
+                                        TextDecoration.BOLD));
                         send(player, Component.text("Create a new island with /is create.", NamedTextColor.GRAY));
                     }
                     case RecycleResult.NotOwner no ->
-                        send(player, Component.text("Only the island owner can reset this island!", NamedTextColor.RED));
+                        send(
+                                player,
+                                Component.text("Only the island owner can reset this island!", NamedTextColor.RED));
                     case RecycleResult.InvalidChallenge ic ->
                         send(player, Component.text("Reset confirmation failed: " + ic.reason(), NamedTextColor.RED));
                     case RecycleResult.IslandNotFound nf ->
@@ -1459,15 +1553,174 @@ public final class IslandCommandTree {
         }
 
         IslandId islandId = optIsland.get();
-        send(src.getSender(), Component.text("Initiating administrative deletion of island " + islandId.value() + "...", NamedTextColor.YELLOW));
+        send(
+                src.getSender(),
+                Component.text(
+                        "Initiating administrative deletion of island " + islandId.value() + "...",
+                        NamedTextColor.YELLOW));
         schedulerPort.async(() -> {
             RecycleResult result = recycleService.executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true);
             schedulerPort.onGlobal(() -> {
                 if (result instanceof RecycleResult.Success) {
-                    send(src.getSender(), Component.text("Island " + islandId.value() + " was deleted and recycled successfully.", NamedTextColor.GREEN));
+                    send(
+                            src.getSender(),
+                            Component.text(
+                                    "Island " + islandId.value() + " was deleted and recycled successfully.",
+                                    NamedTextColor.GREEN));
                 } else {
-                    send(src.getSender(), Component.text("Administrative deletion failed for island " + islandId.value(), NamedTextColor.RED));
+                    send(
+                            src.getSender(),
+                            Component.text(
+                                    "Administrative deletion failed for island " + islandId.value(),
+                                    NamedTextColor.RED));
                 }
+            });
+        });
+        return Cmd.OK;
+    }
+
+    private int executeLevel(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can check island level.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (worthService == null) {
+            send(player, Component.text("Island worth and level engine is not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        ProfileId profileId = optProfile.get();
+        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+        if (optIsland.isEmpty()) {
+            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        schedulerPort.async(() -> {
+            long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
+            IslandScoreBreakdown score = worthService.calculateScore(islandId, 0, bankBalance);
+            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                send(
+                        player,
+                        Component.text("=== Island Level & Valuation ===", NamedTextColor.GOLD, TextDecoration.BOLD));
+                send(
+                        player,
+                        Component.text("Calculated Level: ", NamedTextColor.YELLOW)
+                                .append(Component.text(
+                                        String.format("%,d", score.calculatedLevel()),
+                                        NamedTextColor.GREEN,
+                                        TextDecoration.BOLD)));
+                send(
+                        player,
+                        Component.text("Total Score: ", NamedTextColor.YELLOW)
+                                .append(Component.text(String.format("%,d", score.totalScore()), NamedTextColor.AQUA)));
+                send(
+                        player,
+                        Component.text(" • Block Score: ", NamedTextColor.GRAY)
+                                .append(Component.text(
+                                        String.format("%,d", score.blockScore()), NamedTextColor.WHITE)));
+                send(
+                        player,
+                        Component.text(" • Spawner Score: ", NamedTextColor.GRAY)
+                                .append(Component.text(
+                                        String.format("%,d", score.spawnerScore()), NamedTextColor.WHITE)));
+                send(
+                        player,
+                        Component.text(" • Bank Score: ", NamedTextColor.GRAY)
+                                .append(Component.text(String.format("%,d", score.bankScore()), NamedTextColor.WHITE)));
+                send(
+                        player,
+                        Component.text("Economic Worth: ", NamedTextColor.YELLOW)
+                                .append(Component.text(
+                                        "$" + String.format("%,.2f", score.dampedEconomicWorthMinorUnits() / 100.0),
+                                        NamedTextColor.GOLD)));
+                send(
+                        player,
+                        Component.text(
+                                "Use /is level recalculate to rescan all blocks on your island.",
+                                NamedTextColor.DARK_GRAY));
+            });
+        });
+        return Cmd.OK;
+    }
+
+    private int executeWorth(CommandContext<CommandSourceStack> ctx) {
+        return executeLevel(ctx);
+    }
+
+    private int executeLevelRecalculate(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can recalculate island level.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (worthService == null) {
+            send(player, Component.text("Island worth and level engine is not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        ProfileId profileId = optProfile.get();
+        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+        if (optIsland.isEmpty()) {
+            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        send(
+                player,
+                Component.text(
+                        "Recalculating island blocks and valuation across region chunks...", NamedTextColor.YELLOW));
+
+        schedulerPort.async(() -> {
+            Optional<com.uxplima.uxmskyblock.core.domain.island.IslandLocation> optLoc =
+                    islandLocationService.findLocation(islandId);
+            if (optLoc.isEmpty()) {
+                schedulerPort.onEntity(
+                        new PlayerUuid(player.getUniqueId()),
+                        () -> send(player, Component.text("Could not find island details.", NamedTextColor.RED)));
+                return;
+            }
+            com.uxplima.uxmskyblock.core.domain.island.IslandLocation loc = optLoc.get();
+            long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
+
+            worthService.triggerAsyncRecalculation(islandId, loc.worldName(), loc.bounds(), 0, bankBalance, score -> {
+                schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                    send(
+                            player,
+                            Component.text(
+                                    "Island recalculation complete!", NamedTextColor.GREEN, TextDecoration.BOLD));
+                    send(
+                            player,
+                            Component.text("New Level: ", NamedTextColor.YELLOW)
+                                    .append(Component.text(
+                                            String.format("%,d", score.calculatedLevel()),
+                                            NamedTextColor.GREEN,
+                                            TextDecoration.BOLD))
+                                    .append(Component.text(
+                                            " (Total Score: " + String.format("%,d", score.totalScore()) + ")",
+                                            NamedTextColor.GRAY)));
+                    send(
+                            player,
+                            Component.text("Economic Worth: ", NamedTextColor.YELLOW)
+                                    .append(Component.text(
+                                            "$" + String.format("%,.2f", score.dampedEconomicWorthMinorUnits() / 100.0),
+                                            NamedTextColor.GOLD)));
+                });
             });
         });
         return Cmd.OK;

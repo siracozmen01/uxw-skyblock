@@ -182,6 +182,21 @@ public final class IslandMaterialIndex {
     }
 
     /**
+     * Directly adjusts the economic worth accumulator using an externally computed price delta.
+     *
+     * @param materialKey namespaced material identifier
+     * @param priceDelta difference between new price and old price
+     */
+    public void applyPriceDelta(String materialKey, long priceDelta) {
+        Objects.requireNonNull(materialKey, "materialKey");
+        int count = getCount(materialKey);
+        if (count > 0 && priceDelta != 0) {
+            long worthDelta = (long) count * priceDelta;
+            cachedEconomicWorth.addAndGet(worthDelta);
+        }
+    }
+
+    /**
      * Fully recomputes both level score and economic net worth in O(M) time,
      * where M is the number of distinct tracked material types.
      */

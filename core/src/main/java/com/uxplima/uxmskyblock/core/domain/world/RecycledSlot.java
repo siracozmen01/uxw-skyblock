@@ -33,6 +33,12 @@ public record RecycledSlot(
     }
 
     public static RecycledSlot vacated(long slotIndex, String worldName, int gridX, int gridZ, Instant vacatedAt) {
-        return new RecycledSlot(slotIndex, worldName, gridX, gridZ, false, Objects.requireNonNull(vacatedAt, "vacatedAt must not be null"));
+        return new RecycledSlot(
+                slotIndex,
+                worldName,
+                gridX,
+                gridZ,
+                false,
+                Objects.requireNonNull(vacatedAt, "vacatedAt must not be null"));
     }
 }

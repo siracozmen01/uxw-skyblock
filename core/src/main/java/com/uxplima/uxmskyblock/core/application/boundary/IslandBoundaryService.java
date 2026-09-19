@@ -116,13 +116,7 @@ public final class IslandBoundaryService {
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
         Objects.requireNonNull(bounds, "bounds must not be null");
         if (worldBorderPort != null) {
-            worldBorderPort.sendWorldBorder(
-                    playerUuid,
-                    bounds.centerX(),
-                    bounds.centerZ(),
-                    bounds.radius(),
-                    0.0,
-                    0L);
+            worldBorderPort.sendWorldBorder(playerUuid, bounds.centerX(), bounds.centerZ(), bounds.radius(), 0.0, 0L);
         }
     }
 
@@ -134,10 +128,7 @@ public final class IslandBoundaryService {
     }
 
     public void handleIslandExpand(
-            PlayerUuid playerUuid,
-            IslandBounds oldBounds,
-            IslandBounds newBounds,
-            long transitionDurationMs) {
+            PlayerUuid playerUuid, IslandBounds oldBounds, IslandBounds newBounds, long transitionDurationMs) {
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
         Objects.requireNonNull(oldBounds, "oldBounds must not be null");
         Objects.requireNonNull(newBounds, "newBounds must not be null");

@@ -87,14 +87,14 @@ class IslandMissionServiceTest {
         Instant now = Instant.now();
 
         // 1. Non-matching target has no effect
-        List<MissionProgress> res1 = service.handleTrigger(
-                islandId, profileId, MissionTriggerType.CROP_HARVEST, "CARROT", 5L, now);
+        List<MissionProgress> res1 =
+                service.handleTrigger(islandId, profileId, MissionTriggerType.CROP_HARVEST, "CARROT", 5L, now);
         assertThat(res1).isEmpty();
         assertThat(rewardDispatched.get()).isFalse();
 
         // 2. Partial progress
-        List<MissionProgress> res2 = service.handleTrigger(
-                islandId, profileId, MissionTriggerType.CROP_HARVEST, "WHEAT", 4L, now);
+        List<MissionProgress> res2 =
+                service.handleTrigger(islandId, profileId, MissionTriggerType.CROP_HARVEST, "WHEAT", 4L, now);
         assertThat(res2).hasSize(1);
         assertThat(res2.get(0).progressCount()).isEqualTo(4L);
         assertThat(res2.get(0).completed()).isFalse();
@@ -132,15 +132,15 @@ class IslandMissionServiceTest {
         service.registerMission(m1);
 
         Instant now = Instant.now();
-        Optional<MissionProgress> p1 = service.submitManualItem(
-                islandId, profileId, MissionId.of("submit_cobble"), 32L, now);
+        Optional<MissionProgress> p1 =
+                service.submitManualItem(islandId, profileId, MissionId.of("submit_cobble"), 32L, now);
         assertThat(p1).isPresent();
         assertThat(p1.get().progressCount()).isEqualTo(32L);
         assertThat(p1.get().completed()).isFalse();
         assertThat(rewardDispatched.get()).isFalse();
 
-        Optional<MissionProgress> p2 = service.submitManualItem(
-                islandId, profileId, MissionId.of("submit_cobble"), 32L, now.plusSeconds(1));
+        Optional<MissionProgress> p2 =
+                service.submitManualItem(islandId, profileId, MissionId.of("submit_cobble"), 32L, now.plusSeconds(1));
         assertThat(p2).isPresent();
         assertThat(p2.get().progressCount()).isEqualTo(64L);
         assertThat(p2.get().completed()).isTrue();

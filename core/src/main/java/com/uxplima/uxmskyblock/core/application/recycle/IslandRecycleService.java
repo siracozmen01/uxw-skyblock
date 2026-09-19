@@ -154,10 +154,7 @@ public final class IslandRecycleService {
      * @return outcome record
      */
     public RecycleResult executeReset(
-            ProfileId requester,
-            IslandId islandId,
-            @Nullable String verificationCode,
-            boolean adminBypass) {
+            ProfileId requester, IslandId islandId, @Nullable String verificationCode, boolean adminBypass) {
         Objects.requireNonNull(requester, "requester must not be null");
         Objects.requireNonNull(islandId, "islandId must not be null");
 
@@ -221,7 +218,8 @@ public final class IslandRecycleService {
                 islandId.value(), island.ownerProfileId().value(), slotIndex, worldName, gridX, gridZ);
 
         StagedOutboxEvent outboxEvent = (outboxPort != null)
-                ? new StagedOutboxEvent(EventId.random(), "ISLAND_RECYCLED", islandId.value().toString(), payload)
+                ? new StagedOutboxEvent(
+                        EventId.random(), "ISLAND_RECYCLED", islandId.value().toString(), payload)
                 : null;
 
         islandStoragePort.deleteIsland(islandId, outboxEvent);

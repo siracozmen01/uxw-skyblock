@@ -24,7 +24,6 @@ import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import org.jspecify.annotations.Nullable;
 
@@ -61,8 +60,8 @@ public final class IslandResetConfirmationMenu {
 
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
         if (optIslandId.isEmpty()) {
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize("<red>You do not have an active island to reset.</red>"));
+            player.sendMessage(
+                    MiniMessage.miniMessage().deserialize("<red>You do not have an active island to reset.</red>"));
             return;
         }
 
@@ -111,19 +110,24 @@ public final class IslandResetConfirmationMenu {
                 RecycleResult result = recycleService.executeReset(profileId, islandId, verificationCode, false);
                 switch (result) {
                     case RecycleResult.Success s -> {
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize("<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
+                        player.sendMessage(
+                                MiniMessage.miniMessage()
+                                        .deserialize(
+                                                "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
                         player.sendMessage(MiniMessage.miniMessage()
                                 .deserialize("<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
                     }
-                    case RecycleResult.NotOwner no -> player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize("<red>Only the island owner can reset this island!</red>"));
-                    case RecycleResult.InvalidChallenge ic -> player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize("<red>Reset confirmation failed: " + ic.reason() + "</red>"));
-                    case RecycleResult.IslandNotFound nf -> player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize("<red>Island not found.</red>"));
-                    case RecycleResult.Failure f -> player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize("<red>Reset failed: " + f.reason() + "</red>"));
+                    case RecycleResult.NotOwner no ->
+                        player.sendMessage(MiniMessage.miniMessage()
+                                .deserialize("<red>Only the island owner can reset this island!</red>"));
+                    case RecycleResult.InvalidChallenge ic ->
+                        player.sendMessage(MiniMessage.miniMessage()
+                                .deserialize("<red>Reset confirmation failed: " + ic.reason() + "</red>"));
+                    case RecycleResult.IslandNotFound nf ->
+                        player.sendMessage(MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
+                    case RecycleResult.Failure f ->
+                        player.sendMessage(
+                                MiniMessage.miniMessage().deserialize("<red>Reset failed: " + f.reason() + "</red>"));
                 }
             });
         }));
@@ -139,8 +143,7 @@ public final class IslandResetConfirmationMenu {
         gui.set(15, GuiItem.button(cancelItem, event -> {
             player.closeInventory();
             recycleService.cancelResetChallenge(profileId);
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize("<yellow>Island reset cancelled.</yellow>"));
+            player.sendMessage(MiniMessage.miniMessage().deserialize("<yellow>Island reset cancelled.</yellow>"));
         }));
 
         return gui;

@@ -131,11 +131,11 @@ class IslandBoundaryServiceTest {
     @Test
     @DisplayName("null arguments throw NullPointerException")
     void testNullGuards() {
-        assertThatThrownBy(() -> boundaryService.togglePerimeter(null))
-                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> boundaryService.togglePerimeter(null)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> boundaryService.isSpillover(null, 0, 0, 0, 0))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> boundaryService.handlePlayerEnterIsland(null, IslandBounds.fromCenterAndRadius(0, 0, 10)))
+        assertThatThrownBy(
+                        () -> boundaryService.handlePlayerEnterIsland(null, IslandBounds.fromCenterAndRadius(0, 0, 10)))
                 .isInstanceOf(NullPointerException.class);
     }
 }

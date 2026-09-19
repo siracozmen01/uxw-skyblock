@@ -14,15 +14,16 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
+import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
+import com.uxplima.uxmskyblock.bukkit.boundary.WorldBorderPacketAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
-import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
-import com.uxplima.uxmskyblock.bukkit.boundary.WorldBorderPacketAdapter;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
@@ -60,9 +61,6 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.MissionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RecycleFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RewardInboxFeatureModule;
-import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
-import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
-import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ShopFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
@@ -70,10 +68,15 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.TemporaryAccessFeatureModul
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.VaultFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.WarpFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.WorthFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
+import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
+import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.worth.FoliaIslandChunkScanner;
+import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
@@ -92,6 +95,7 @@ import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
+import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.reward.RewardClaimCoordinator;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
@@ -103,8 +107,10 @@ import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
+import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
+import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -187,6 +193,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final IslandResetConfirmationMenu resetConfirmationMenu;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
+    private final LevelConfiguration levelConfig;
+    private final FoliaIslandChunkScanner chunkScanner;
+    private final IslandWorthService worthService;
+    private final IslandWorthListener worthListener;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -206,6 +216,46 @@ public final class SkyblockBootstrap implements AutoCloseable {
             ChatConfiguration chatConfig,
             InactivityConfiguration inactivityConfig,
             MissionConfiguration missionConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                LevelConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -225,6 +275,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.chatConfig = Objects.requireNonNull(chatConfig, "chatConfig must not be null");
         this.inactivityConfig = Objects.requireNonNull(inactivityConfig, "inactivityConfig must not be null");
         this.missionConfig = Objects.requireNonNull(missionConfig, "missionConfig must not be null");
+        this.levelConfig = Objects.requireNonNull(levelConfig, "levelConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -416,15 +467,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.missionService = new IslandMissionService(persistenceBootstrap.islandMissionStoragePort());
         this.missionService.registerMissions(missionConfig.missions());
         this.missionsMenu = new IslandMissionsMenu(
-                missionService,
-                persistenceBootstrap.islandStoragePort(),
-                sessionCoordinator,
-                scheduler);
+                missionService, persistenceBootstrap.islandStoragePort(), sessionCoordinator, scheduler);
         this.missionListener = new IslandMissionListener(
-                missionService,
-                persistenceBootstrap.islandStoragePort(),
-                sessionCoordinator,
-                scheduler);
+                missionService, persistenceBootstrap.islandStoragePort(), sessionCoordinator, scheduler);
 
         this.worldBorderAdapter = new WorldBorderPacketAdapter(scheduler);
         this.boundaryService = new IslandBoundaryService(worldBorderAdapter);
@@ -440,10 +485,26 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 islandBackupAdapter,
                 persistenceBootstrap.outboxPort());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
-                recycleService,
-                persistenceBootstrap.islandStoragePort(),
-                sessionCoordinator,
-                scheduler);
+                recycleService, persistenceBootstrap.islandStoragePort(), sessionCoordinator, scheduler);
+
+        this.chunkScanner = new FoliaIslandChunkScanner(
+                this.scheduler,
+                this.levelConfig.blockWeights().keySet(),
+                this.levelConfig.spawnerWeights().keySet());
+        MaterialValuationIndex valuationIndex = new MaterialValuationIndex();
+        this.levelConfig.blockWeights().forEach(valuationIndex::setWeight);
+        this.levelConfig.basePricesMinorUnits().forEach(valuationIndex::setPrice);
+        this.worthService = new IslandWorthService(
+                valuationIndex,
+                this.levelConfig.spawnerWeights(),
+                this.levelConfig.defaultSpawnerWeight(),
+                this.levelConfig.questWeight(),
+                this.levelConfig.pointsPerLevel(),
+                this.levelConfig.bankMinorUnitsPerPoint(),
+                this.levelConfig.dampingFactor(),
+                persistenceBootstrap.islandLeaderboardPort(),
+                this.chunkScanner);
+        this.worthListener = new IslandWorthListener(this.worthService, this.protectionListener);
 
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
@@ -467,7 +528,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 missionsMenu,
                 boundaryService,
                 recycleService,
-                resetConfirmationMenu);
+                resetConfirmationMenu,
+                worthService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -580,6 +642,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new MissionFeatureModule(missionService, missionConfig));
         this.moduleRegistry.register(new BoundaryFeatureModule(boundaryService, boundaryListener, scheduler));
         this.moduleRegistry.register(new RecycleFeatureModule(recycleService));
+        this.moduleRegistry.register(new WorthFeatureModule(worthService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1299,6 +1362,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             missionConfig = MissionConfiguration.defaultConfiguration();
         }
 
+        Path levelsFile = dataDir.resolve("levels.conf");
+        if (!java.nio.file.Files.exists(levelsFile)) {
+            try (java.io.InputStream in = plugin.getResource("levels.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, levelsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if levels.conf cannot be extracted
+            }
+        }
+
+        LevelConfiguration levelConfig;
+        if (java.nio.file.Files.exists(levelsFile)) {
+            try {
+                CommentedConfigurationNode levelRoot = HoconConfigurationLoader.builder()
+                        .path(levelsFile)
+                        .build()
+                        .load();
+                levelConfig = LevelConfiguration.load(levelRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load levels configuration from: " + levelsFile, e);
+            }
+        } else {
+            levelConfig = LevelConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1316,7 +1405,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 vaultConfig,
                 chatConfig,
                 inactivityConfig,
-                missionConfig);
+                missionConfig,
+                levelConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1362,6 +1452,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(chatListener, plugin);
         pm.registerEvents(missionListener, plugin);
         pm.registerEvents(boundaryListener, plugin);
+        pm.registerEvents(worthListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1582,6 +1673,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public NbtIslandBackupAdapter islandBackupAdapter() {
         return islandBackupAdapter;
+    }
+
+    public LevelConfiguration levelConfiguration() {
+        return levelConfig;
+    }
+
+    public IslandWorthService worthService() {
+        return worthService;
+    }
+
+    public FoliaIslandChunkScanner chunkScanner() {
+        return chunkScanner;
+    }
+
+    public IslandWorthListener worthListener() {
+        return worthListener;
     }
 
     @Override

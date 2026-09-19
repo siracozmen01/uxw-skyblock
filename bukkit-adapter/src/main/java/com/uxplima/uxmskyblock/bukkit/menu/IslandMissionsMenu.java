@@ -9,6 +9,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
@@ -20,16 +28,9 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.mission.MissionBranch;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionProgress;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionTriggerType;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.Material;
-import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -112,15 +113,17 @@ public final class IslandMissionsMenu {
             lore.add(Component.empty());
             lore.add(Component.text("Branch: ", NamedTextColor.WHITE)
                     .append(Component.text(def.branch().name(), NamedTextColor.AQUA)));
-            lore.add(Component.text("Progress: ", NamedTextColor.WHITE)
-                    .append(Component.text(statusText, statusColor)));
+            lore.add(
+                    Component.text("Progress: ", NamedTextColor.WHITE).append(Component.text(statusText, statusColor)));
             lore.add(Component.empty());
             lore.add(Component.text("Rewards:", NamedTextColor.GOLD));
             if (def.reward().crystals() > 0) {
                 lore.add(Component.text(" + " + def.reward().crystals() + " Crystals", NamedTextColor.LIGHT_PURPLE));
             }
             if (def.reward().currencyMinorUnits() > 0) {
-                lore.add(Component.text(" + $" + String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0), NamedTextColor.GREEN));
+                lore.add(Component.text(
+                        " + $" + String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0),
+                        NamedTextColor.GREEN));
             }
             if (def.reward().islandExp() > 0) {
                 lore.add(Component.text(" + " + def.reward().islandExp() + " Island Exp", NamedTextColor.AQUA));
@@ -151,10 +154,7 @@ public final class IslandMissionsMenu {
     }
 
     private void handleManualItemSubmission(
-            Player player,
-            IslandId islandId,
-            ProfileId profileId,
-            MissionDefinition def) {
+            Player player, IslandId islandId, ProfileId profileId, MissionDefinition def) {
         String filter = def.targetFilter();
         Material requiredMat = Material.matchMaterial(filter);
         if (requiredMat == null) {
@@ -170,7 +170,8 @@ public final class IslandMissionsMenu {
         }
 
         if (count <= 0) {
-            player.sendMessage(Component.text("You do not have any " + requiredMat.name() + " in your inventory!", NamedTextColor.RED));
+            player.sendMessage(Component.text(
+                    "You do not have any " + requiredMat.name() + " in your inventory!", NamedTextColor.RED));
             return;
         }
 
@@ -206,7 +207,8 @@ public final class IslandMissionsMenu {
         schedulerPort.async(() -> {
             missionService.submitManualItem(islandId, profileId, def.id(), taken, Instant.now());
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                player.sendMessage(Component.text("Submitted " + taken + "x " + requiredMat.name() + "!", NamedTextColor.GREEN));
+                player.sendMessage(
+                        Component.text("Submitted " + taken + "x " + requiredMat.name() + "!", NamedTextColor.GREEN));
                 open(player);
             });
         });

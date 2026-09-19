@@ -46,16 +46,19 @@ public final class BoundaryFeatureModule extends AbstractFeatureModule {
     @Override
     protected void onEnable(ModuleContext context) {
         context.registerService(IslandBoundaryService.class, boundaryService);
-        this.particleTask = schedulerPort.repeatGlobal(() -> {
-            for (PlayerUuid uuid : boundaryService.activePerimeterViewers()) {
-                schedulerPort.onEntity(uuid, () -> {
-                    Player player = Bukkit.getPlayer(uuid.value());
-                    if (player != null && player.isOnline()) {
-                        boundaryListener.renderPerimeterForPlayer(player);
+        this.particleTask = schedulerPort.repeatGlobal(
+                () -> {
+                    for (PlayerUuid uuid : boundaryService.activePerimeterViewers()) {
+                        schedulerPort.onEntity(uuid, () -> {
+                            Player player = Bukkit.getPlayer(uuid.value());
+                            if (player != null && player.isOnline()) {
+                                boundaryListener.renderPerimeterForPlayer(player);
+                            }
+                        });
                     }
-                });
-            }
-        }, Duration.ofSeconds(1), Duration.ofSeconds(1));
+                },
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(1));
     }
 
     @Override

@@ -17,8 +17,8 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionId;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionProgress;
-import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
+import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,8 +45,8 @@ class PlayerIslandMissionSqliteTest {
         // Seed island to satisfy foreign keys
         UUID accountUuid = UUID.randomUUID();
         try (Connection conn = database.connection()) {
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
+            try (PreparedStatement stmt =
+                    conn.prepareStatement("INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
                 stmt.setString(1, accountUuid.toString());
                 stmt.executeUpdate();
             }

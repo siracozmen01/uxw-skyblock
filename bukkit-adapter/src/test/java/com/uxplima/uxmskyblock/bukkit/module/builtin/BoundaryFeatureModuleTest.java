@@ -32,7 +32,8 @@ class BoundaryFeatureModuleTest {
         BoundaryFeatureModule module = new BoundaryFeatureModule(boundaryService, boundaryListener, schedulerPort);
 
         assertThat(module.descriptor().id()).isEqualTo("boundary");
-        assertThat(module.descriptor().provides()).contains("island-boundary", "boundary-shield", "virtual-worldborder");
+        assertThat(module.descriptor().provides())
+                .contains("island-boundary", "boundary-shield", "virtual-worldborder");
         assertThat(module.boundaryService()).isSameAs(boundaryService);
 
         BukkitModuleContext context = mock(BukkitModuleContext.class);

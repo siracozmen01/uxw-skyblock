@@ -42,7 +42,8 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
             CandidateSlot slot = candidate.get();
             boolean claimed = tryAtomicClaim(slot.slotIndex());
             if (claimed) {
-                return Optional.of(new RecycledSlot(slot.slotIndex(), slot.worldName(), slot.gridX(), slot.gridZ(), true, null));
+                return Optional.of(
+                        new RecycledSlot(slot.slotIndex(), slot.worldName(), slot.gridX(), slot.gridZ(), true, null));
             }
             // Another thread/node claimed this slot concurrently, retry with short exponential backoff
             backoff(attempt);

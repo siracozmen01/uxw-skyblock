@@ -29,6 +29,11 @@ public final class IslandLocationService {
         return islandStoragePort.findIslandIdByProfileId(profileId);
     }
 
+    public Optional<IslandLocation> findLocation(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return islandStoragePort.findLocationByIslandId(islandId);
+    }
+
     public boolean updateSpawn(
             ProfileId profileId, String worldName, double x, double y, double z, float yaw, float pitch) {
         Objects.requireNonNull(profileId, "profileId must not be null");

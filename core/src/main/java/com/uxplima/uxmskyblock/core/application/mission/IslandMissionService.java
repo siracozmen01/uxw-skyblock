@@ -31,9 +31,7 @@ public final class IslandMissionService {
     private final Map<MissionId, MissionDefinition> missionCatalog = new ConcurrentHashMap<>();
     private final Map<String, Map<MissionId, MissionProgress>> progressCache = new ConcurrentHashMap<>();
 
-    public IslandMissionService(
-            IslandMissionStoragePort storagePort,
-            @Nullable IslandMissionRewardPort rewardPort) {
+    public IslandMissionService(IslandMissionStoragePort storagePort, @Nullable IslandMissionRewardPort rewardPort) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
         this.rewardPort = rewardPort;
     }
@@ -147,11 +145,7 @@ public final class IslandMissionService {
     }
 
     public Optional<MissionProgress> submitManualItem(
-            IslandId islandId,
-            ProfileId profileId,
-            MissionId missionId,
-            long amount,
-            Instant now) {
+            IslandId islandId, ProfileId profileId, MissionId missionId, long amount, Instant now) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(profileId, "profileId must not be null");
         Objects.requireNonNull(missionId, "missionId must not be null");
