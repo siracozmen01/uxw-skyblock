@@ -28,3 +28,7 @@ The project is structured following clean architecture / hexagonal principles:
 ```bash
 ./gradlew test
 ```
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
