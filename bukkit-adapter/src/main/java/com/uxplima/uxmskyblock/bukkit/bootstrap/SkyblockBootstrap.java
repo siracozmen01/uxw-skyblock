@@ -25,6 +25,7 @@ import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.LimitConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
@@ -42,6 +43,7 @@ import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
+import com.uxplima.uxmskyblock.bukkit.limit.IslandLimitListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
@@ -60,6 +62,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.DimensionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.FreezeFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.LimitFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.MissionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RecycleFeatureModule;
@@ -95,6 +98,7 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
@@ -204,6 +208,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final DimensionConfiguration dimensionConfig;
     private final IslandDimensionService dimensionService;
     private final IslandDimensionListener dimensionListener;
+    private final LimitConfiguration limitConfig;
+    private final IslandLimitService limitService;
+    private final IslandLimitListener limitListener;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -282,7 +289,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 inactivityConfig,
                 missionConfig,
                 levelConfig,
-                DimensionConfiguration.defaultConfiguration());
+                DimensionConfiguration.defaultConfiguration(),
+                LimitConfiguration.defaultConfiguration());
     }
 
     public SkyblockBootstrap(
@@ -305,6 +313,50 @@ public final class SkyblockBootstrap implements AutoCloseable {
             MissionConfiguration missionConfig,
             LevelConfiguration levelConfig,
             DimensionConfiguration dimensionConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                levelConfig,
+                dimensionConfig,
+                LimitConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig,
+            DimensionConfiguration dimensionConfig,
+            LimitConfiguration limitConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -326,6 +378,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.missionConfig = Objects.requireNonNull(missionConfig, "missionConfig must not be null");
         this.levelConfig = Objects.requireNonNull(levelConfig, "levelConfig must not be null");
         this.dimensionConfig = Objects.requireNonNull(dimensionConfig, "dimensionConfig must not be null");
+        this.limitConfig = Objects.requireNonNull(limitConfig, "limitConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -566,6 +619,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 p -> sessionCoordinator.activeProfile(p.getUniqueId()),
                 nodeConfiguration.worldName());
 
+        this.limitService =
+                new IslandLimitService(persistenceBootstrap.islandUpgradeStoragePort(), this.limitConfig.quotas());
+        this.limitListener = new IslandLimitListener(
+                this.limitService, this.protectionListener, this.limitConfig.bypassPermission());
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -590,7 +648,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 recycleService,
                 resetConfirmationMenu,
                 worthService,
-                dimensionListener);
+                dimensionListener,
+                limitService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -705,6 +764,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new RecycleFeatureModule(recycleService));
         this.moduleRegistry.register(new WorthFeatureModule(worthService));
         this.moduleRegistry.register(new DimensionFeatureModule(dimensionService));
+        this.moduleRegistry.register(new LimitFeatureModule(limitService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1476,6 +1536,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             dimensionConfig = DimensionConfiguration.defaultConfiguration();
         }
 
+        Path limitsFile = dataDir.resolve("limits.conf");
+        if (!java.nio.file.Files.exists(limitsFile)) {
+            try (java.io.InputStream in = plugin.getResource("limits.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, limitsFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if limits.conf cannot be extracted
+            }
+        }
+
+        LimitConfiguration limitConfig;
+        if (java.nio.file.Files.exists(limitsFile)) {
+            try {
+                CommentedConfigurationNode limitRoot = HoconConfigurationLoader.builder()
+                        .path(limitsFile)
+                        .build()
+                        .load();
+                limitConfig = LimitConfiguration.load(limitRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load limits configuration from: " + limitsFile, e);
+            }
+        } else {
+            limitConfig = LimitConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1495,7 +1581,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 inactivityConfig,
                 missionConfig,
                 levelConfig,
-                dimensionConfig);
+                dimensionConfig,
+                limitConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1543,6 +1630,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(boundaryListener, plugin);
         pm.registerEvents(worthListener, plugin);
         pm.registerEvents(dimensionListener, plugin);
+        pm.registerEvents(limitListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1791,6 +1879,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandDimensionListener dimensionListener() {
         return dimensionListener;
+    }
+
+    public LimitConfiguration limitConfiguration() {
+        return limitConfig;
+    }
+
+    public IslandLimitService limitService() {
+        return limitService;
+    }
+
+    public IslandLimitListener limitListener() {
+        return limitListener;
     }
 
     @Override

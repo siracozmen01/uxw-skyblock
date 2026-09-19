@@ -45,6 +45,7 @@ import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityServi
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
@@ -66,6 +67,8 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+import com.uxplima.uxmskyblock.core.domain.limit.LimitCategory;
+import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.worth.IslandScoreBreakdown;
@@ -105,6 +108,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandResetConfirmationMenu resetMenu;
     private final @Nullable IslandWorthService worthService;
     private final @Nullable IslandDimensionListener dimensionListener;
+    private final @Nullable IslandLimitService limitService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -509,6 +513,60 @@ public final class IslandCommandTree {
             @Nullable IslandResetConfirmationMenu resetMenu,
             @Nullable IslandWorthService worthService,
             @Nullable IslandDimensionListener dimensionListener) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                boundaryService,
+                recycleService,
+                resetMenu,
+                worthService,
+                dimensionListener,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService,
+            @Nullable IslandRecycleService recycleService,
+            @Nullable IslandResetConfirmationMenu resetMenu,
+            @Nullable IslandWorthService worthService,
+            @Nullable IslandDimensionListener dimensionListener,
+            @Nullable IslandLimitService limitService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -536,6 +594,7 @@ public final class IslandCommandTree {
         this.resetMenu = resetMenu;
         this.worthService = worthService;
         this.dimensionListener = dimensionListener;
+        this.limitService = limitService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -548,6 +607,10 @@ public final class IslandCommandTree {
 
     public @Nullable IslandDimensionListener dimensionListener() {
         return dimensionListener;
+    }
+
+    public @Nullable IslandLimitService limitService() {
+        return limitService;
     }
 
     public void register(JavaPlugin plugin) {
@@ -583,6 +646,7 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("go").executes(this::executeHome))
                 .then(Cmd.literal("nether").executes(this::executeNether))
                 .then(Cmd.literal("end").executes(this::executeEnd))
+                .then(Cmd.literal("limits").executes(this::executeLimits))
                 .then(Cmd.literal("setspawn").executes(this::executeSetSpawn))
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
@@ -694,6 +758,7 @@ public final class IslandCommandTree {
         send(src.getSender(), Component.text("/is home - Teleport to your island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is nether - Teleport to your Nether island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is end - Teleport to your End island", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is limits - View hardware & tile entity quotas", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
@@ -1815,6 +1880,77 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         dimensionListener.executeDimensionTeleport(player, IslandDimensionType.THE_END);
+        return Cmd.OK;
+    }
+
+    private int executeLimits(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can view island limits.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        if (limitService == null) {
+            send(player, Component.text("Island limits subsystem is not currently enabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You must have an active profile to view island limits.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        ProfileId profileId = optProfile.get();
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
+            if (optIslandId.isEmpty()) {
+                send(player, Component.text("You do not belong to an active island.", NamedTextColor.RED));
+                return;
+            }
+
+            IslandId islandId = optIslandId.get();
+            java.util.Map<LimitType, Integer> counts = limitService.getCounts(islandId);
+            java.util.Map<LimitType, Integer> limits = limitService.getLimits(islandId);
+
+            send(
+                    player,
+                    MiniMessage.miniMessage()
+                            .deserialize(
+                                    "<gradient:#00e5ff:#0077ff><bold>--- Island Hardware & Anti-Lag Limits ---</bold></gradient>"));
+            send(
+                    player,
+                    MiniMessage.miniMessage().deserialize("<yellow><bold>Tile Entities & Redstone:</bold></yellow>"));
+            for (LimitType type : LimitType.values()) {
+                if (type.category() == LimitCategory.TILE_ENTITY && limits.containsKey(type)) {
+                    int c = counts.getOrDefault(type, 0);
+                    int m = limits.get(type);
+                    String color = c >= m ? "<red>" : (c >= m * 0.8 ? "<gold>" : "<aqua>");
+                    send(
+                            player,
+                            MiniMessage.miniMessage()
+                                    .deserialize(" <gray>•</gray> <white>" + type.name() + "</white>: " + color + c
+                                            + "</color><gray> / </gray><green>" + m + "</green>"));
+                }
+            }
+
+            send(
+                    player,
+                    MiniMessage.miniMessage().deserialize("<yellow><bold>Living Entities & Vehicles:</bold></yellow>"));
+            for (LimitType type : LimitType.values()) {
+                if (type.category() == LimitCategory.ENTITY && limits.containsKey(type)) {
+                    int c = counts.getOrDefault(type, 0);
+                    int m = limits.get(type);
+                    String color = c >= m ? "<red>" : (c >= m * 0.8 ? "<gold>" : "<aqua>");
+                    send(
+                            player,
+                            MiniMessage.miniMessage()
+                                    .deserialize(" <gray>•</gray> <white>" + type.name() + "</white>: " + color + c
+                                            + "</color><gray> / </gray><green>" + m + "</green>"));
+                }
+            }
+        });
+
         return Cmd.OK;
     }
 }
