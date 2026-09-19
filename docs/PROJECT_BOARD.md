@@ -7,39 +7,45 @@
 
 ## Current Sprint Overview
 
-* **Phase:** Phase 4 COMPLETE — V1 Production Release Ready
+* **Phase:** Phase 5 COMPLETE — Production V1 Specification 100% Implemented & Verified
 * **Architecture Board State:** FROZEN (Architecture Frozen by Product Owner: YES — 2026-09-13)
 * **Implementation Started:** YES
 * **Phase 1 Started:** YES (Phase 1 COMPLETE — 7 / 7 completed)
 * **Phase 2 Started:** YES (Phase 2 COMPLETE — 38 / 38 completed)
 * **Phase 3 Started:** YES (Phase 3 COMPLETE — 14 / 14 P0 Correctness completed)
 * **Phase 4 Started:** YES (Phase 4 COMPLETE — 14 / 14 P1 Advanced Subsystems completed)
-* **Current Active Task:** All Canonical V1 Scope Completed
+* **Phase 5 Started:** YES (Phase 5 COMPLETE — 4 / 4 Enterprise Subsystem Groups completed)
+* **Current Active Task:** All Canonical V1 & Enterprise Subsystems 100% Completed
 * **Target Release:** v0.1.0-SNAPSHOT (Production V1 Complete)
 * **Platform:** Paper 26.2+ & Folia on Java 25+
-* **Overall Card Completion:** 100.0% (73 / 73 cards completed)
+* **Overall Card Completion:** 100.0% (77 / 77 cards completed)
 * **Phase 1 Tasks Completed:** 7 / 7 completed
 * **Phase 2 Tasks Completed:** 38 / 38 completed
 * **Phase 3 Tasks Completed:** 14 / 14 completed
 * **Phase 4 Tasks Completed:** 14 / 14 completed
+* **Phase 5 Tasks Completed:** 4 / 4 completed
 
 ---
 
 ## Kanban Columns
 
 ### 📋 Backlog (Future Milestones & Post-V1 Enhancements)
-* *All 73 canonical sprint items completed.*
+* *All 77 canonical sprint items completed.*
 
 ### 📌 To Do
-* *All 73 canonical sprint items completed.*
+* *All 77 canonical sprint items completed.*
 
 ### 🔄 In Progress
-* *All 73 canonical sprint items completed.*
+* *All 77 canonical sprint items completed.*
 
 ### 🔍 In Review
 * *No active items currently in review.*
 
 ### ✅ Done (Completed)
+* [x] **[ENT-001]** Subsystem Group D: Enterprise Snapshots, BackupSet & Multi-Home / Activity / Notification / WebMap Engine (`RootRelationalSnapshotPort`, `WorldDimensionSnapshotPort`, `SqlDatabaseBackupAdapter` disaster recovery, `HomeService` / `SqlHomeStorageAdapter`, `ActivityFeedService` / `SqlActivityFeedAdapter`, `NotificationService` / `SqlNotificationAdapter`, `CompositeWebMapAdapter` with Dynmap, BlueMap, Pl3xMap, V26 migration, 100% verified) — COMPLETED (commits `de9eb89`, `8b02f35`)
+* [x] **[BDR-001]** Subsystem Group C: Bedrock Forms Engine & GameMode Hierarchy (`BedrockFormService`, `BedrockMenuBridge`, Floodgate detection, `GameModeHierarchyService`, `SqlGameModeHierarchyAdapter`, V25 migration, 100% verified) — COMPLETED (commit `07181f7`)
+* [x] **[RST-001]** Subsystem Group B: Enterprise REST Adapter & Zero-Hardcoding Localization (`RestServer`, Javalin 6.x, Bearer token auth, 5 endpoints, `MessageProvider`, `ResourceBundleMessageProvider`, UTF-8 property bundles `messages_en.properties`, `messages_es.properties`, 100% verified) — COMPLETED (commit `67dc864`)
+* [x] **[DST-001]** Subsystem Group A: Distributed Multi-Server Routing & Redis Streams Bus (`IslandNetworkRouter`, `VelocityBridgePort`, `BukkitVelocityBridge`, `RedisStreamsEventTransportAdapter`, `ClusterRoutingDirectoryPort`, zero-DB network routing, 100% verified) — COMPLETED (commit `eb12a03`)
 * [x] **[FRZ-001]** 4-Dimensional Administrative Quarantine & Freeze Subsystem (`IslandAdminFreezeService`, 4-dimensional orthogonal state model `IslandLifecycle`, `ResidencyState`, `EconomicState`, `AdministrativeState`, visitor eviction to spawn on entity thread, staff inspection tools `/is admin freeze|unfreeze|inspect`, `FreezeFeatureModule`) — COMPLETED (commit `eb30cbb`)
 * [x] **[INA-001]** Leader Inactivity & Succession Lifecycle (`IslandInactivityService`, configurable scan interval, 3-tier candidate hierarchy, fallback abandonment pruning, and `InactivityFeatureModule`) — COMPLETED (commit `9264d32`)
 * [x] **[CHT-001]** Island Private Chat Subsystem (`IslandChatService`, dual dispatch modes, staff spy oversight `/is chat spy`, token-bucket rate limiter, and `ChatFeatureModule`) — COMPLETED (commit `a7280fd`)
