@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 
 import org.bukkit.Bukkit;
@@ -60,6 +61,12 @@ import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordA
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.limit.IslandLimitListener;
+import com.uxplima.uxmskyblock.bukkit.network.BukkitVelocityBridge;
+import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
+import com.uxplima.uxmskyblock.core.application.event.LocalEventTransport;
+import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
+import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
+import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
@@ -270,6 +277,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final KineticWardListener kineticWardListener;
     private final IslandRedstoneOptimizationListener redstoneOptimizationListener;
     private final AsyncStructureSuppressionListener structureSuppressionListener;
+    private final DurableEventTransportPort eventTransport;
+    private final VelocityBridgePort velocityBridge;
+    private final ClusterRoutingDirectoryPort clusterRoutingDirectory;
+    private final IslandNetworkRouter networkRouter;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -845,6 +856,35 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistenceBootstrap.outboxPort(), scheduler, serverNodeId.value() + "-outbox");
+        this.eventTransport = new LocalEventTransport();
+        this.outboxDispatcher.registerConsumer(event -> {
+            this.eventTransport.publish("uxmskyblock:stream:domain_events", event);
+        });
+
+        this.velocityBridge = new BukkitVelocityBridge(plugin);
+        this.clusterRoutingDirectory = new ClusterRoutingDirectoryPort() {
+            private final java.util.Map<IslandId, ServerNodeId> cache = new java.util.concurrent.ConcurrentHashMap<>();
+
+            @Override
+            public Optional<ServerNodeId> findAuthoritativeNode(IslandId islandId) {
+                return Optional.ofNullable(cache.get(islandId));
+            }
+
+            @Override
+            public void cacheRoute(IslandId islandId, ServerNodeId nodeId, long epoch, Duration ttl) {
+                cache.put(islandId, nodeId);
+            }
+
+            @Override
+            public void invalidateRoute(IslandId islandId) {
+                cache.remove(islandId);
+            }
+        };
+        this.networkRouter = new IslandNetworkRouter(
+                serverNodeId,
+                persistenceBootstrap.islandAuthorityPort(),
+                velocityBridge,
+                clusterRoutingDirectory);
 
         this.missionService = new IslandMissionService(persistenceBootstrap.islandMissionStoragePort());
         this.missionService.registerMissions(missionConfig.missions());
@@ -988,6 +1028,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 this.accessService,
                 persistenceBootstrap.outboxPort());
         this.commandTree.setNameService(this.islandNameService);
+        this.commandTree.setNetworkRouter(this.networkRouter);
 
         this.backpressureController = new AdaptiveBackpressureController(
                 () -> {
@@ -2618,11 +2659,24 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return structureSuppressionListener;
     }
 
+    public DurableEventTransportPort eventTransport() {
+        return eventTransport;
+    }
+
+    public VelocityBridgePort velocityBridge() {
+        return velocityBridge;
+    }
+
+    public IslandNetworkRouter networkRouter() {
+        return networkRouter;
+    }
+
     @Override
     public void close() {
         moduleRegistry.disableModules();
         discordService.close();
         outboxDispatcher.close();
+        eventTransport.close();
         if (Guis.isInstalled()) {
             Guis.uninstall();
         }
