@@ -2,8 +2,8 @@ package com.uxplima.uxmskyblock.bukkit.freeze;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -17,17 +17,19 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Bukkit/Folia platform implementation of {@link IslandVisitorEvictionPort} for administrative quarantine.
- * Scans online players currently positioned within a quarantined island's spatial bounds and teleports
- * non-staff occupants to the server spawn safely on their owning entity region thread.
+ * Pipeline: async persistence location query -> immutable EvictionPlan -> onGlobal player enumeration -> onEntity per-player bounding box check & Folia-safe teleport.
  */
 public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEvictionPort {
 
     private final Plugin plugin;
     private final IslandStoragePort islandStoragePort;
     private final SchedulerPort schedulerPort;
+
+    public record EvictionPlan(IslandId islandId, String worldName, IslandBounds bounds, @Nullable String reason) {}
 
     public BukkitIslandVisitorEvictionAdapter(
             Plugin plugin, IslandStoragePort islandStoragePort, SchedulerPort schedulerPort) {
@@ -37,38 +39,42 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     }
 
     @Override
-    public void evictNonStaffVisitors(IslandId islandId, String reason) {
+    public void evictNonStaffVisitors(IslandId islandId, @Nullable String reason) {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(islandId);
-        if (optLocation.isEmpty()) {
-            return;
-        }
+        schedulerPort.async(() -> {
+            Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(islandId);
+            if (optLocation.isEmpty()) {
+                return;
+            }
 
-        IslandLocation location = optLocation.get();
-        IslandBounds bounds = location.bounds();
-        String worldName = location.worldName();
+            IslandLocation location = optLocation.get();
+            EvictionPlan plan = new EvictionPlan(islandId, location.worldName(), location.bounds(), reason);
+            schedulerPort.onGlobal(() -> executeEvictionPlan(plan));
+        });
+    }
 
-        World spawnWorld = Bukkit.getWorld("world");
-        Location spawnLocation = spawnWorld != null ? spawnWorld.getSpawnLocation() : null;
+    private void executeEvictionPlan(EvictionPlan plan) {
+        World defaultWorld = plugin.getServer().getWorlds().isEmpty() ? null : plugin.getServer().getWorlds().get(0);
+        Location spawnLocation = defaultWorld != null ? defaultWorld.getSpawnLocation() : null;
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             if (isStaffOrBypass(player)) {
                 continue;
             }
 
-            final Location finalSpawn = spawnLocation;
-            schedulerPort.onEntity(player.getUniqueId(), () -> {
+            UUID playerUuid = player.getUniqueId();
+            schedulerPort.onEntity(playerUuid, () -> {
                 if (!player.isOnline()) {
                     return;
                 }
 
                 Location cur = player.getLocation();
                 if (cur.getWorld() != null
-                        && cur.getWorld().getName().equals(worldName)
-                        && bounds.contains(cur.getBlockX(), cur.getBlockZ())) {
-                    if (finalSpawn != null) {
-                        var unused = player.teleportAsync(finalSpawn).thenAccept(teleported -> {
+                        && cur.getWorld().getName().equals(plan.worldName())
+                        && plan.bounds().contains(cur.getBlockX(), cur.getBlockZ())) {
+                    if (spawnLocation != null) {
+                        var unused = player.teleportAsync(spawnLocation).thenAccept(teleported -> {
                             if (Boolean.TRUE.equals(teleported)) {
                                 player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                                 player.setFallDistance(0.0f);
@@ -79,7 +85,7 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
                             .deserialize(
                                     "<red><bold>QUARANTINE:</bold> This island has been placed under administrative freeze. "
                                             + "Reason: <yellow>"
-                                            + (reason != null ? reason : "Administrative quarantine")
+                                            + (plan.reason() != null ? plan.reason() : "Administrative quarantine")
                                             + "</yellow></red>"));
                 }
             });

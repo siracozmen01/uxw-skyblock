@@ -64,13 +64,6 @@ public final class IslandAdminFreezeService {
                                 islandId.value(), reason, actor, Instant.now()))
                 : null;
         freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.FROZEN, reason, freezeOutboxEvent);
-        if (outboxPort != null && freezeOutboxEvent != null) {
-            outboxPort.stageEvent(
-                    freezeOutboxEvent.id(),
-                    freezeOutboxEvent.eventType(),
-                    freezeOutboxEvent.aggregateId(),
-                    freezeOutboxEvent.payload());
-        }
 
         IslandLocation location =
                 islandStoragePort.findLocationByIslandId(islandId).orElse(null);
@@ -108,13 +101,6 @@ public final class IslandAdminFreezeService {
                                 islandId.value(), actor, Instant.now()))
                 : null;
         freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.NORMAL, null, unfreezeOutboxEvent);
-        if (outboxPort != null && unfreezeOutboxEvent != null) {
-            outboxPort.stageEvent(
-                    unfreezeOutboxEvent.id(),
-                    unfreezeOutboxEvent.eventType(),
-                    unfreezeOutboxEvent.aggregateId(),
-                    unfreezeOutboxEvent.payload());
-        }
 
         IslandLocation location =
                 islandStoragePort.findLocationByIslandId(islandId).orElse(null);
@@ -159,24 +145,21 @@ public final class IslandAdminFreezeService {
         }
 
         Island updated = island.withEconomicState(targetState);
-        freezeStoragePort.updateEconomicState(islandId, targetState);
+        StagedOutboxEvent economicOutboxEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_ECONOMIC_STATE_CHANGED",
+                        islandId.value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"previousState\":\"%s\",\"newState\":\"%s\",\"timestamp\":\"%s\"}",
+                                islandId.value(), island.economicState(), targetState, Instant.now()))
+                : null;
+        freezeStoragePort.updateEconomicState(islandId, targetState, economicOutboxEvent);
 
         IslandLocation location =
                 islandStoragePort.findLocationByIslandId(islandId).orElse(null);
         if (location != null) {
             islandStoragePort.saveIsland(updated, location);
-        }
-
-        if (outboxPort != null) {
-            IslandEconomicStateChangedEvent event = IslandEconomicStateChangedEvent.create(
-                    islandId, island.economicState(), targetState, Instant.now());
-            outboxPort.stageEvent(
-                    event.eventId(),
-                    "ISLAND_ECONOMIC_STATE_CHANGED",
-                    islandId.value().toString(),
-                    String.format(
-                            "{\"islandId\":\"%s\",\"previousState\":\"%s\",\"newState\":\"%s\",\"timestamp\":\"%s\"}",
-                            islandId.value(), island.economicState(), targetState, event.timestamp()));
         }
     }
 

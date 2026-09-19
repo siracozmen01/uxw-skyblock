@@ -11,6 +11,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.uxplima.uxmskyblock.core.domain.discord.DiscordEmbed;
 import com.uxplima.uxmskyblock.core.domain.discord.DiscordTopic;
@@ -37,6 +38,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
     private final double rateLimitPerSecond;
 
     private final BlockingQueue<WebhookTask> queue = new LinkedBlockingQueue<>(1000);
+    private final AtomicInteger inFlight = new AtomicInteger(0);
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final Thread workerThread;
 
@@ -91,7 +93,10 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
         DiscordWebhookPayload enriched =
                 new DiscordWebhookPayload(username, avatar, payload.content(), payload.embeds());
 
-        queue.offer(new WebhookTask(url, enriched));
+        inFlight.incrementAndGet();
+        if (!queue.offer(new WebhookTask(url, enriched))) {
+            inFlight.decrementAndGet();
+        }
     }
 
     public void notifyMilestone(
@@ -204,13 +209,13 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
     }
 
     public int queueSize() {
-        return queue.size();
+        return queue.size() + inFlight.get();
     }
 
     public void flushAndDrain(Duration timeout) throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
-        while (!queue.isEmpty() && System.nanoTime() < deadline) {
-            Thread.sleep(20);
+        while ((!queue.isEmpty() || inFlight.get() > 0) && System.nanoTime() < deadline) {
+            Thread.sleep(10);
         }
     }
 
@@ -239,6 +244,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
                 } catch (Exception expected) {
                     // Suppress network failures in worker thread to maintain system stability
                 } finally {
+                    inFlight.decrementAndGet();
                     lastDispatchNanos = System.nanoTime();
                 }
             } catch (InterruptedException e) {

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.HashSet;
+import java.util.Optional;
 
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -30,9 +31,9 @@ class IslandChatListenerTest extends MockBukkitHarness {
     @BeforeEach
     void setUp() {
         chatService = mock(IslandChatService.class);
-        listener = new IslandChatListener(chatService);
         player = createPlayer("TestPlayer");
         profileId = ProfileId.of(player.getUniqueId());
+        listener = new IslandChatListener(chatService, uuid -> Optional.of(profileId));
     }
 
     @Test

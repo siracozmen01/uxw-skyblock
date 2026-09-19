@@ -17,6 +17,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxClaim;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -49,9 +50,9 @@ class IslandAdminFreezeServiceTest {
     @BeforeEach
     void setUp() {
         islandStoragePort = new InMemoryIslandStoragePort();
-        freezeStoragePort = new InMemoryFreezePort();
-        visitorEvictionPort = new TestVisitorEvictionPort();
         outboxPort = new InMemoryOutboxPort();
+        freezeStoragePort = new InMemoryFreezePort(outboxPort);
+        visitorEvictionPort = new TestVisitorEvictionPort();
 
         service = new IslandAdminFreezeService(islandStoragePort, freezeStoragePort, visitorEvictionPort, outboxPort);
 
@@ -211,16 +212,55 @@ class IslandAdminFreezeServiceTest {
 
     private static class InMemoryFreezePort implements IslandAdminFreezePort {
         private final Map<IslandId, IslandFreezeRecord> freezeRecords = new HashMap<>();
+        private final @Nullable InMemoryOutboxPort outboxPort;
+
+        InMemoryFreezePort(@Nullable InMemoryOutboxPort outboxPort) {
+            this.outboxPort = outboxPort;
+        }
+
+        InMemoryFreezePort() {
+            this(null);
+        }
 
         @Override
         public void updateAdministrativeState(
                 IslandId islandId, AdministrativeState state, @Nullable String freezeReason) {
+            updateAdministrativeState(islandId, state, freezeReason, null);
+        }
+
+        @Override
+        public void updateAdministrativeState(
+                IslandId islandId,
+                AdministrativeState state,
+                @Nullable String freezeReason,
+                @Nullable StagedOutboxEvent outboxEvent) {
             freezeRecords.put(islandId, new IslandFreezeRecord(islandId, state, freezeReason, "test", Instant.now()));
+            if (outboxPort != null && outboxEvent != null) {
+                outboxPort.stageEvent(
+                        outboxEvent.id(),
+                        outboxEvent.eventType(),
+                        outboxEvent.aggregateId(),
+                        outboxEvent.payload());
+            }
         }
 
         @Override
         public void updateEconomicState(IslandId islandId, EconomicState state) {
-            // No-op for in-memory double
+            updateEconomicState(islandId, state, null);
+        }
+
+        @Override
+        public void updateEconomicState(
+                IslandId islandId,
+                EconomicState state,
+                @Nullable StagedOutboxEvent outboxEvent) {
+            if (outboxPort != null && outboxEvent != null) {
+                outboxPort.stageEvent(
+                        outboxEvent.id(),
+                        outboxEvent.eventType(),
+                        outboxEvent.aggregateId(),
+                        outboxEvent.payload());
+            }
         }
 
         @Override

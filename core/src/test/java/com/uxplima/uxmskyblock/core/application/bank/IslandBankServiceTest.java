@@ -98,9 +98,57 @@ class IslandBankServiceTest {
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
     }
 
+    @Test
+    @DisplayName("returns AuthorityRejected when local node does not hold authority")
+    void returnsRejectedWhenWrongNode() {
+        ServerNodeId wrongNode = ServerNodeId.of("wrong-node");
+        BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 1000L, wrongNode);
+
+        assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason()).contains("does not hold authority");
+    }
+
+    @Test
+    @DisplayName("returns AuthorityRejected when authority lease is expired")
+    void returnsRejectedWhenLeaseExpired() {
+        authorityPort.authorities.put(
+                islandId,
+                new IslandAuthorityRecord(islandId, nodeId, 1L, Instant.now().minusSeconds(10), Instant.now().minusSeconds(3600)));
+
+        BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 1000L, nodeId);
+
+        assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason()).contains("Authority lease expired");
+    }
+
+    @Test
+    @DisplayName("returns AuthorityRejected when no authority record exists")
+    void returnsRejectedWhenNoAuthorityRecord() {
+        authorityPort.authorities.remove(islandId);
+
+        BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 1000L, nodeId);
+
+        assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason()).contains("No authority record found");
+    }
+
+    @Test
+    @DisplayName("uses legitimate authority epoch from existing authority record")
+    void usesLegitimateEpochFromRecord() {
+        authorityPort.authorities.put(
+                islandId,
+                new IslandAuthorityRecord(islandId, nodeId, 42L, Instant.now().plusSeconds(3600), Instant.now()));
+
+        BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 2000L, nodeId);
+
+        assertThat(outcome).isInstanceOf(BankTransactionOutcome.Success.class);
+        assertThat(bankPort.lastEpoch).isEqualTo(42L);
+    }
+
     private static class FakeBankPort implements IslandBankPort {
         final Map<IslandId, IslandBank> banks = new HashMap<>();
         long lastDelta;
+        long lastEpoch;
 
         @Override
         public Optional<IslandBank> findBankByIslandId(IslandId islandId) {
@@ -128,6 +176,7 @@ class IslandBankServiceTest {
                 UUID operationId,
                 String idempotencyKey) {
             this.lastDelta = deltaAmountMinorUnits;
+            this.lastEpoch = expectedEpoch;
             IslandBank bank =
                     new IslandBank(islandId, 5000 + deltaAmountMinorUnits, 0L, 0L, expectedVersion + 1, Instant.now());
             BankTransaction tx = new BankTransaction(

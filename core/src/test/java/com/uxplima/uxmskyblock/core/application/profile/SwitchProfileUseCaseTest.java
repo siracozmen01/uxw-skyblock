@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckp
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxClaim;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
@@ -24,6 +25,7 @@ import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchOperation;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -97,6 +99,7 @@ class SwitchProfileUseCaseTest {
     @DisplayName("completeSwitch stages PROFILE_SWITCHED outbox event when outboxPort is configured")
     void completeSwitchStagesOutboxEvent() {
         FakeOutboxPort outbox = new FakeOutboxPort();
+        switchPort.outboxPort = outbox;
         SwitchProfileUseCase outboxUseCase = new SwitchProfileUseCase(switchPort, checkpointPort, outbox);
 
         UUID opId = UUID.randomUUID();
@@ -176,6 +179,8 @@ class SwitchProfileUseCaseTest {
                     operationId, playerUuid, profileA, profileB, java.time.Instant.now()));
         }
 
+        @Nullable OutboxPort outboxPort;
+
         @Override
         public Result<ProfileSwitchOperation.Committed, String> commitSwitch(
                 UUID operationId,
@@ -183,7 +188,22 @@ class SwitchProfileUseCaseTest {
                 ProfileId toProfileId,
                 ServerNodeId currentNode,
                 long expectedEpoch) {
+            return commitSwitch(operationId, playerId, toProfileId, currentNode, expectedEpoch, null);
+        }
+
+        @Override
+        public Result<ProfileSwitchOperation.Committed, String> commitSwitch(
+                UUID operationId,
+                PlayerUuid playerId,
+                ProfileId toProfileId,
+                ServerNodeId currentNode,
+                long expectedEpoch,
+                @Nullable StagedOutboxEvent outboxEvent) {
             committed.add(operationId);
+            if (outboxPort != null && outboxEvent != null) {
+                outboxPort.stageEvent(
+                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
+            }
             return Result.ok(new ProfileSwitchOperation.Committed(
                     operationId, playerId, profileA, toProfileId, java.time.Instant.now(), java.time.Instant.now()));
         }

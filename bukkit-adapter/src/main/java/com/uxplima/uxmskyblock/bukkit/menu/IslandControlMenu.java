@@ -5,6 +5,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Function;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -49,7 +51,24 @@ public final class IslandControlMenu {
     private final IslandLocationService locationService;
     private final SchedulerPort schedulerPort;
     private final String worldName;
-    private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
+
+    public IslandControlMenu(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandUpgradeStoragePort upgradeStoragePort,
+            IslandLocationService locationService,
+            SchedulerPort schedulerPort,
+            String worldName,
+            Function<UUID, Optional<ProfileId>> activeProfileProvider) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
+        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
+        this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+    }
 
     public IslandControlMenu(
             IslandStoragePort islandStoragePort,
@@ -59,13 +78,14 @@ public final class IslandControlMenu {
             SchedulerPort schedulerPort,
             String worldName,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
-        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
-        this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
-        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
-        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
-        this.sessionCoordinator = sessionCoordinator;
+        this(
+                islandStoragePort,
+                islandBankPort,
+                upgradeStoragePort,
+                locationService,
+                schedulerPort,
+                worldName,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
     }
 
     public IslandControlMenu(
@@ -75,29 +95,24 @@ public final class IslandControlMenu {
             IslandLocationService locationService,
             SchedulerPort schedulerPort,
             String worldName) {
-        this(islandStoragePort, islandBankPort, upgradeStoragePort, locationService, schedulerPort, worldName, null);
+        this(islandStoragePort, islandBankPort, upgradeStoragePort, locationService, schedulerPort, worldName, (PlayerSessionCoordinator) null);
     }
 
     public void open(Player player) {
         Objects.requireNonNull(player, "player must not be null");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        ProfileId profileId;
-        if (sessionCoordinator != null) {
-            Optional<ProfileId> activeOpt = sessionCoordinator.activeProfile(player.getUniqueId());
-            if (activeOpt.isEmpty()) {
-                schedulerPort.onEntity(playerUuid, () -> {
-                    if (player.isOnline()) {
-                        player.sendMessage(Component.text(
-                                "Your profile session is not active or still loading. Please wait.",
-                                NamedTextColor.RED));
-                    }
-                });
-                return;
-            }
-            profileId = activeOpt.get();
-        } else {
-            profileId = new ProfileId(player.getUniqueId());
+        Optional<ProfileId> activeOpt = activeProfileProvider.apply(player.getUniqueId());
+        if (activeOpt.isEmpty()) {
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (player.isOnline()) {
+                    player.sendMessage(Component.text(
+                            "Your profile session is not active or still loading. Please wait.",
+                            NamedTextColor.RED));
+                }
+            });
+            return;
         }
+        ProfileId profileId = activeOpt.get();
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);

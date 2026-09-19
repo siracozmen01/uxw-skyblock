@@ -1,11 +1,11 @@
 package com.uxplima.uxmskyblock.bukkit.api;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import com.uxplima.uxmskyblock.api.IslandBankBalance;
 import com.uxplima.uxmskyblock.api.IslandLeaderboardEntry;
@@ -17,18 +17,16 @@ import com.uxplima.uxmskyblock.api.UxmSkyblockApiProvider;
 import com.uxplima.uxmskyblock.api.UxmSkyblockQuery;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
-import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
-import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
-import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
-import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.jspecify.annotations.Nullable;
@@ -41,28 +39,31 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     private final IslandStoragePort islandStoragePort;
     private final IslandBankPort islandBankPort;
     private final IslandLeaderboardPort islandLeaderboardPort;
-    private final IslandAuthorityPort islandAuthorityPort;
+    private final IslandBankService islandBankService;
+    private final CreateIslandUseCase createIslandUseCase;
     private final ServerNodeId serverNodeId;
-    private final @Nullable CreateIslandUseCase createIslandUseCase;
-    private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private final SchedulerPort schedulerPort;
+    private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final String defaultWorldName;
 
     public BukkitSkyblockApiBridge(
             IslandStoragePort islandStoragePort,
             IslandBankPort islandBankPort,
             IslandLeaderboardPort islandLeaderboardPort,
-            IslandAuthorityPort islandAuthorityPort,
+            IslandBankService islandBankService,
+            CreateIslandUseCase createIslandUseCase,
             ServerNodeId serverNodeId,
-            @Nullable CreateIslandUseCase createIslandUseCase,
-            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            Function<UUID, Optional<ProfileId>> activeProfileProvider,
             String defaultWorldName) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
         this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort");
         this.islandLeaderboardPort = Objects.requireNonNull(islandLeaderboardPort, "islandLeaderboardPort");
-        this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort");
+        this.islandBankService = Objects.requireNonNull(islandBankService, "islandBankService");
+        this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase");
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId");
-        this.createIslandUseCase = createIslandUseCase;
-        this.sessionCoordinator = sessionCoordinator;
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort");
+        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider");
         this.defaultWorldName = Objects.requireNonNull(defaultWorldName, "defaultWorldName");
     }
 
@@ -70,30 +71,22 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             IslandStoragePort islandStoragePort,
             IslandBankPort islandBankPort,
             IslandLeaderboardPort islandLeaderboardPort,
-            IslandAuthorityPort islandAuthorityPort,
-            ServerNodeId serverNodeId) {
+            IslandBankService islandBankService,
+            CreateIslandUseCase createIslandUseCase,
+            ServerNodeId serverNodeId,
+            SchedulerPort schedulerPort,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            String defaultWorldName) {
         this(
                 islandStoragePort,
                 islandBankPort,
                 islandLeaderboardPort,
-                islandAuthorityPort,
+                islandBankService,
+                createIslandUseCase,
                 serverNodeId,
-                null,
-                null,
-                "skyblock_world");
-    }
-
-    public BukkitSkyblockApiBridge(
-            IslandStoragePort islandStoragePort,
-            IslandBankPort islandBankPort,
-            IslandLeaderboardPort islandLeaderboardPort,
-            IslandAuthorityPort islandAuthorityPort) {
-        this(
-                islandStoragePort,
-                islandBankPort,
-                islandLeaderboardPort,
-                islandAuthorityPort,
-                ServerNodeId.of("skyblock-node-default"));
+                schedulerPort,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
+                defaultWorldName);
     }
 
     public void register() {
@@ -117,95 +110,112 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     @Override
     public CompletableFuture<Optional<IslandSnapshot>> getIsland(UUID islandId) {
         Objects.requireNonNull(islandId, "islandId");
-        return CompletableFuture.supplyAsync(
-                () -> islandStoragePort.findIslandById(IslandId.of(islandId)).map(this::toSnapshot));
+        CompletableFuture<Optional<IslandSnapshot>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                future.complete(islandStoragePort.findIslandById(IslandId.of(islandId)).map(this::toSnapshot));
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        return future;
     }
 
     @Override
     public CompletableFuture<Optional<IslandSnapshot>> getPlayerIsland(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
-        return CompletableFuture.supplyAsync(() -> {
-            if (sessionCoordinator == null) {
-                return Optional.empty();
+        CompletableFuture<Optional<IslandSnapshot>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                Optional<ProfileId> optProfile = activeProfileProvider.apply(playerId);
+                if (optProfile.isEmpty()) {
+                    future.complete(Optional.empty());
+                    return;
+                }
+                ProfileId profileId = optProfile.get();
+                Optional<IslandSnapshot> snapshot = islandStoragePort
+                        .findIslandIdByProfileId(profileId)
+                        .flatMap(islandStoragePort::findIslandById)
+                        .map(this::toSnapshot);
+                future.complete(snapshot);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            Optional<ProfileId> optProfile = sessionCoordinator.activeProfile(playerId);
-            if (optProfile.isEmpty()) {
-                return Optional.empty();
-            }
-            ProfileId profileId = optProfile.get();
-            return islandStoragePort
-                    .findIslandIdByProfileId(profileId)
-                    .flatMap(islandStoragePort::findIslandById)
-                    .map(this::toSnapshot);
         });
+        return future;
     }
 
     @Override
     public CompletableFuture<List<IslandLeaderboardEntry>> getTopIslands(int limit) {
-        return CompletableFuture.supplyAsync(
-                () -> islandLeaderboardPort.fetchTopIslands(LeaderboardCategory.LEVEL, limit).stream()
+        CompletableFuture<List<IslandLeaderboardEntry>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                List<IslandLeaderboardEntry> entries = islandLeaderboardPort.fetchTopIslands(LeaderboardCategory.LEVEL, limit).stream()
                         .map(entry -> new IslandLeaderboardEntry(
                                 entry.rank(),
                                 entry.islandId().value(),
                                 entry.islandName(),
                                 entry.score(),
                                 entry.formattedScore()))
-                        .toList());
+                        .toList();
+                future.complete(entries);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        return future;
     }
 
     @Override
     public CompletableFuture<Optional<IslandBankBalance>> getBankBalance(UUID islandId) {
         Objects.requireNonNull(islandId, "islandId");
-        return CompletableFuture.supplyAsync(() -> islandBankPort
-                .findBankByIslandId(IslandId.of(islandId))
-                .map(bank -> new IslandBankBalance(islandId, bank.primaryBalanceMinorUnits())));
+        CompletableFuture<Optional<IslandBankBalance>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                Optional<IslandBankBalance> balance = islandBankPort
+                        .findBankByIslandId(IslandId.of(islandId))
+                        .map(bank -> new IslandBankBalance(islandId, bank.primaryBalanceMinorUnits()));
+                future.complete(balance);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        return future;
     }
 
     @Override
     public CompletableFuture<IslandResult<IslandSnapshot>> createIsland(UUID ownerId, String presetId) {
         Objects.requireNonNull(ownerId, "ownerId");
         Objects.requireNonNull(presetId, "presetId");
-        return CompletableFuture.supplyAsync(() -> {
-            if (sessionCoordinator == null) {
-                return IslandResult.failure("Session coordinator is unavailable");
-            }
-            Optional<ProfileId> optProfile = sessionCoordinator.activeProfile(ownerId);
-            if (optProfile.isEmpty()) {
-                return IslandResult.failure("Active profile not found or session not loaded for player: " + ownerId);
-            }
-            ProfileId profileId = optProfile.get();
-            PlayerUuid playerUuid = new PlayerUuid(ownerId);
+        CompletableFuture<IslandResult<IslandSnapshot>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                Optional<ProfileId> optProfile = activeProfileProvider.apply(ownerId);
+                if (optProfile.isEmpty()) {
+                    future.complete(IslandResult.failure("Active profile not found or session not loaded for player: " + ownerId));
+                    return;
+                }
+                ProfileId profileId = optProfile.get();
+                PlayerUuid playerUuid = new PlayerUuid(ownerId);
 
-            if (createIslandUseCase != null) {
                 CreateIslandUseCase.CreateIslandResult result =
                         createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, defaultWorldName);
                 if (result instanceof CreateIslandUseCase.CreateIslandResult.Success succ) {
-                    return IslandResult.success(toSnapshot(succ.island()));
+                    future.complete(IslandResult.success(toSnapshot(succ.island())));
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
-                    return IslandResult.failure("Player already belongs to an island");
+                    future.complete(IslandResult.failure("Player already belongs to an island"));
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.UnknownPreset unk) {
-                    return IslandResult.failure("Unknown preset '" + unk.presetId() + "'");
+                    future.complete(IslandResult.failure("Unknown preset '" + unk.presetId() + "'"));
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.Failure fail) {
-                    return IslandResult.failure("Failed to create island: " + fail.reason());
+                    future.complete(IslandResult.failure("Failed to create island: " + fail.reason()));
+                } else {
+                    future.complete(IslandResult.failure("Unexpected island creation outcome"));
                 }
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-
-            if (islandStoragePort.findIslandIdByProfileId(profileId).isPresent()) {
-                return IslandResult.failure("Player already belongs to an island");
-            }
-
-            IslandId islandId = IslandId.of(UUID.randomUUID());
-            IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 50);
-            Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
-            IslandLocation location =
-                    new IslandLocation(islandId, defaultWorldName, bounds, 0.5, 100.0, 0.5, 0.0f, 0.0f);
-
-            islandStoragePort.saveIsland(island, location);
-            islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
-            islandBankPort.createBank(islandId);
-
-            return IslandResult.success(toSnapshot(island));
         });
+        return future;
     }
 
     @Override
@@ -213,31 +223,30 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             UUID islandId, UUID actorId, long amountMinorUnits) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(actorId, "actorId");
-        return CompletableFuture.supplyAsync(() -> {
-            IslandId id = IslandId.of(islandId);
-            Optional<IslandBank> optBank = islandBankPort.findBankByIslandId(id);
-            IslandBank bank = optBank.orElseGet(() -> islandBankPort.createBank(id));
+        CompletableFuture<IslandResult<IslandBankBalance>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                BankTransactionOutcome outcome = islandBankService.depositToIsland(
+                        IslandId.of(islandId),
+                        new PlayerUuid(actorId),
+                        amountMinorUnits,
+                        serverNodeId);
 
-            UUID opId = UUID.randomUUID();
-            BankTransactionOutcome outcome = islandBankPort.executeTransaction(
-                    id,
-                    actorId,
-                    "PRIMARY",
-                    2,
-                    amountMinorUnits,
-                    "API deposit",
-                    serverNodeId.value(),
-                    1L,
-                    bank.version(),
-                    opId,
-                    "api-dep-" + opId);
-
-            if (outcome instanceof BankTransactionOutcome.Success success) {
-                return IslandResult.success(
-                        new IslandBankBalance(islandId, success.updatedBank().primaryBalanceMinorUnits()));
+                if (outcome instanceof BankTransactionOutcome.Success success) {
+                    future.complete(IslandResult.success(
+                            new IslandBankBalance(islandId, success.updatedBank().primaryBalanceMinorUnits())));
+                } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rejected) {
+                    future.complete(IslandResult.failure("Authority rejected: " + rejected.reason()));
+                } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                    future.complete(IslandResult.failure("Insufficient funds"));
+                } else {
+                    future.complete(IslandResult.failure("Bank deposit failed: " + outcome));
+                }
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            return IslandResult.failure("Bank deposit failed: " + outcome);
         });
+        return future;
     }
 
     @Override
@@ -245,36 +254,30 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             UUID islandId, UUID actorId, long amountMinorUnits) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(actorId, "actorId");
-        return CompletableFuture.supplyAsync(() -> {
-            IslandId id = IslandId.of(islandId);
-            Optional<IslandBank> optBank = islandBankPort.findBankByIslandId(id);
-            if (optBank.isEmpty()) {
-                return IslandResult.failure("Bank not found");
-            }
-            IslandBank bank = optBank.get();
+        CompletableFuture<IslandResult<IslandBankBalance>> future = new CompletableFuture<>();
+        schedulerPort.async(() -> {
+            try {
+                BankTransactionOutcome outcome = islandBankService.withdrawFromIsland(
+                        IslandId.of(islandId),
+                        new PlayerUuid(actorId),
+                        amountMinorUnits,
+                        serverNodeId);
 
-            UUID opId = UUID.randomUUID();
-            BankTransactionOutcome outcome = islandBankPort.executeTransaction(
-                    id,
-                    actorId,
-                    "PRIMARY",
-                    2,
-                    -amountMinorUnits,
-                    "API withdrawal",
-                    serverNodeId.value(),
-                    1L,
-                    bank.version(),
-                    opId,
-                    "api-wth-" + opId);
-
-            if (outcome instanceof BankTransactionOutcome.Success success) {
-                return IslandResult.success(
-                        new IslandBankBalance(islandId, success.updatedBank().primaryBalanceMinorUnits()));
-            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                return IslandResult.failure("Insufficient funds");
+                if (outcome instanceof BankTransactionOutcome.Success success) {
+                    future.complete(IslandResult.success(
+                            new IslandBankBalance(islandId, success.updatedBank().primaryBalanceMinorUnits())));
+                } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rejected) {
+                    future.complete(IslandResult.failure("Authority rejected: " + rejected.reason()));
+                } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                    future.complete(IslandResult.failure("Insufficient funds"));
+                } else {
+                    future.complete(IslandResult.failure("Bank withdrawal failed: " + outcome));
+                }
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
-            return IslandResult.failure("Bank withdrawal failed: " + outcome);
         });
+        return future;
     }
 
     private IslandSnapshot toSnapshot(Island island) {

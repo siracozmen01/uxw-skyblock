@@ -6,6 +6,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.PluginManager;
@@ -648,15 +653,21 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
+        AtomicReference<PlayerSessionCoordinator> sessionCoordinatorRef = new AtomicReference<>();
+        Function<UUID, Optional<ProfileId>> activeProfileProvider =
+                uuid -> {
+                    PlayerSessionCoordinator coord = sessionCoordinatorRef.get();
+                    return coord != null ? coord.activeProfile(uuid) : Optional.empty();
+                };
         BukkitIslandOnlineMemberProvider chatMemberProvider =
-                new BukkitIslandOnlineMemberProvider(persistenceBootstrap.islandStoragePort());
+                new BukkitIslandOnlineMemberProvider(persistenceBootstrap.islandStoragePort(), activeProfileProvider);
         this.chatService = new IslandChatService(
                 persistenceBootstrap.islandStoragePort(),
                 chatTransport,
                 chatDelivery,
                 chatMemberProvider,
                 chatConfig.rateLimitMessagesPerSecond());
-        this.chatListener = new IslandChatListener(chatService);
+        this.chatListener = new IslandChatListener(chatService, activeProfileProvider);
 
         BukkitPlayerActivityProvider activityProvider = new BukkitPlayerActivityProvider();
         this.inactivityService = new IslandInactivityService(
@@ -776,6 +787,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 Duration.ofSeconds(5),
                 playerStateConfig.ambientCheckpointInterval());
         this.sessionListener = new PlayerSessionListener(sessionCoordinator);
+        sessionCoordinatorRef.set(this.sessionCoordinator);
 
         this.nodeProcessIdentity =
                 CurrentNodeProcessIdentity.create(nodeConfiguration.nodeId().value());
@@ -804,9 +816,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandStoragePort(),
                 persistenceBootstrap.islandBankPort(),
                 persistenceBootstrap.islandLeaderboardPort(),
-                persistenceBootstrap.islandAuthorityPort(),
-                serverNodeId,
+                bankService,
                 createIslandUseCase,
+                serverNodeId,
+                scheduler,
                 sessionCoordinator,
                 worldName);
 
@@ -911,12 +924,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandStoragePort(),
                 this.boosterService,
                 this.boosterConfig,
-                this.sessionCoordinator);
+                this.sessionCoordinator,
+                this.scheduler);
         this.boosterMenu = new IslandBoosterMenu(
                 persistenceBootstrap.islandStoragePort(),
                 this.boosterService,
                 this.boosterConfig,
-                this.sessionCoordinator);
+                this.sessionCoordinator,
+                this.scheduler);
 
         this.bankruptcyService = new IslandBankruptcyService(
                 persistenceBootstrap.islandBankruptcyStoragePort(),
@@ -924,7 +939,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceBootstrap.islandAuthorityPort(),
                 this.bankConfig::upkeepPolicy);
         this.bankruptcyListener = new IslandBankruptcyListener(
-                this.bankruptcyService, this.protectionListener, persistenceBootstrap.islandStoragePort());
+                this.bankruptcyService,
+                this.protectionListener,
+                persistenceBootstrap.islandStoragePort(),
+                this.sessionCoordinator,
+                this.scheduler);
         this.bankUpkeepFeatureModule = new BankUpkeepFeatureModule(
                 this.bankruptcyService,
                 this.bankConfig,

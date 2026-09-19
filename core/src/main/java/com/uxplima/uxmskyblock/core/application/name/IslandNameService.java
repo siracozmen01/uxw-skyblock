@@ -12,6 +12,7 @@ import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
@@ -101,17 +102,17 @@ public final class IslandNameService {
             throw new IllegalStateException("Island name '" + islandName.value() + "' is already taken");
         }
 
-        nameStoragePort.updateCustomName(islandId, islandName);
+        StagedOutboxEvent renameEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_RENAMED",
+                        islandId.value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"callerProfile\":\"%s\",\"newName\":\"%s\",\"timestamp\":\"%s\"}",
+                                islandId.value(), callerProfile.value(), islandName.value(), Instant.now()))
+                : null;
 
-        if (outboxPort != null) {
-            outboxPort.stageEvent(
-                    EventId.random(),
-                    "ISLAND_RENAMED",
-                    islandId.value().toString(),
-                    String.format(
-                            "{\"islandId\":\"%s\",\"callerProfile\":\"%s\",\"newName\":\"%s\",\"timestamp\":\"%s\"}",
-                            islandId.value(), callerProfile.value(), islandName.value(), Instant.now()));
-        }
+        nameStoragePort.updateCustomName(islandId, islandName, renameEvent);
 
         return islandName;
     }
@@ -132,17 +133,17 @@ public final class IslandNameService {
                     "Profile " + callerProfile + " lacks permission to reset island name " + islandId);
         }
 
-        nameStoragePort.updateCustomName(islandId, null);
+        StagedOutboxEvent resetEvent = (outboxPort != null)
+                ? new StagedOutboxEvent(
+                        EventId.random(),
+                        "ISLAND_NAME_RESET",
+                        islandId.value().toString(),
+                        String.format(
+                                "{\"islandId\":\"%s\",\"callerProfile\":\"%s\",\"timestamp\":\"%s\"}",
+                                islandId.value(), callerProfile.value(), Instant.now()))
+                : null;
 
-        if (outboxPort != null) {
-            outboxPort.stageEvent(
-                    EventId.random(),
-                    "ISLAND_NAME_RESET",
-                    islandId.value().toString(),
-                    String.format(
-                            "{\"islandId\":\"%s\",\"callerProfile\":\"%s\",\"timestamp\":\"%s\"}",
-                            islandId.value(), callerProfile.value(), Instant.now()));
-        }
+        nameStoragePort.updateCustomName(islandId, null, resetEvent);
     }
 
     public Optional<IslandName> getIslandName(IslandId islandId) {

@@ -182,6 +182,14 @@ public final class PlayerSessionCoordinator {
         return activeProfile(new PlayerUuid(rawUuid));
     }
 
+    public Optional<ProfileId> findDurableActiveProfile(UUID playerUuid) {
+        ActiveSession session = activeSessions.get(playerUuid);
+        if (session != null && !session.isFenced()) {
+            return Optional.of(session.activeProfileId());
+        }
+        return sessionAuthorityPort.findSession(new PlayerUuid(playerUuid)).map(PlayerSessionRecord::activeProfileId);
+    }
+
     /**
      * Executes runtime self-fencing when lease renewal fails or is rejected:
      * transitions session to LOCAL_FENCED, cancels timers, and disconnects player fail-closed.
@@ -504,21 +512,43 @@ public final class PlayerSessionCoordinator {
             }
             session.closeTasks();
             try {
+                AtomicReference<byte[]> invBytesRef = new AtomicReference<>(new byte[0]);
                 Player player = Bukkit.getPlayer(session.playerUuid().value());
-                byte[] invBytes = new byte[0];
                 if (player != null && player.isOnline()) {
-                    invBytes = BukkitInventorySerializer.serializeItemStacks(
-                            player.getInventory().getContents());
+                    schedulerPort.onEntity(session.playerUuid(), () -> {
+                        if (player.isOnline()) {
+                            invBytesRef.set(BukkitInventorySerializer.serializeItemStacks(
+                                    player.getInventory().getContents()));
+                        }
+                    });
                 }
-                sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
-                handoffFinalizationPort.finalizeHandoffFlush(
+                byte[] invBytes = invBytesRef.get();
+
+                SessionAuthorityOutcome drainOutcome =
+                        sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
+                if (!drainOutcome.isSuccess()) {
+                    LOGGER.log(Level.SEVERE, "Failed to drain session during shutdown for {0}: {1}", new Object[] {
+                            session.playerUuid(), drainOutcome
+                    });
+                    continue;
+                }
+
+                ProfileInventoryMutationOutcome outcome = handoffFinalizationPort.finalizeHandoffFlush(
                         session.playerUuid(),
                         session.activeProfileId(),
                         nodeId,
                         session.sessionEpoch(),
                         session.lastDurableVersion(),
                         invBytes);
-                sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
+
+                if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
+                    session.setLastDurableVersion(succ.newVersion());
+                    sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
+                } else {
+                    LOGGER.log(Level.SEVERE, "Handoff finalization flush failed during shutdown for {0}: {1}", new Object[] {
+                            session.playerUuid(), outcome
+                    });
+                }
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error draining session during shutdown for " + session.playerUuid(), e);
             }

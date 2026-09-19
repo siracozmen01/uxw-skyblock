@@ -211,11 +211,6 @@ public final class SwitchProfileUseCase {
             return Result.err(commitRes.errorOrThrow());
         }
 
-        if (outboxPort != null && outboxEvent != null) {
-            outboxPort.stageEvent(
-                    outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
-        }
-
         return Result.ok(Unit.INSTANCE);
     }
 
@@ -254,7 +249,7 @@ public final class SwitchProfileUseCase {
                 || op instanceof ProfileSwitchOperation.SourceSnapshotted
                 || op instanceof ProfileSwitchOperation.TargetLoaded) {
             Result<Unit, String> abortRes = profileSwitchPort.abortSwitch(
-                    op.operationId(), playerId, "Startup crash recovery: rolling back incomplete switch");
+                op.operationId(), playerId, "Startup crash recovery: rolling back incomplete switch");
             if (abortRes.isErr()) {
                 return Result.err("Failed to abort incomplete switch during recovery: " + abortRes.errorOrThrow());
             }
@@ -277,10 +272,6 @@ public final class SwitchProfileUseCase {
                     op.operationId(), playerId, op.toProfileId(), currentNode, expectedEpoch, outboxEvent);
             if (commitRes.isErr()) {
                 return Result.err("Failed to commit roll-forward switch during recovery: " + commitRes.errorOrThrow());
-            }
-            if (outboxPort != null && outboxEvent != null) {
-                outboxPort.stageEvent(
-                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
             }
             return Result.ok(Optional.of(op.toProfileId()));
         }

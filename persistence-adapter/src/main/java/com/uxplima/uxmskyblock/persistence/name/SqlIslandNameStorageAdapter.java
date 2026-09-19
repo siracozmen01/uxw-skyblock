@@ -12,6 +12,7 @@ import java.util.UUID;
 import javax.sql.DataSource;
 
 import com.uxplima.uxmskyblock.core.application.name.IslandNameStoragePort;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.name.IslandName;
 import org.jspecify.annotations.Nullable;
@@ -29,6 +30,14 @@ public final class SqlIslandNameStorageAdapter implements IslandNameStoragePort 
 
     @Override
     public void updateCustomName(IslandId islandId, @Nullable IslandName name) {
+        updateCustomName(islandId, name, null);
+    }
+
+    @Override
+    public void updateCustomName(
+            IslandId islandId,
+            @Nullable IslandName name,
+            @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         String sql = """
@@ -37,15 +46,37 @@ public final class SqlIslandNameStorageAdapter implements IslandNameStoragePort 
                 WHERE id = ?
                 """;
 
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(sql)) {
-            if (name != null) {
-                stmt.setString(1, name.value());
-            } else {
-                stmt.setNull(1, java.sql.Types.VARCHAR);
+        try (Connection conn = dataSource.getConnection()) {
+            boolean prevAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    if (name != null) {
+                        stmt.setString(1, name.value());
+                    } else {
+                        stmt.setNull(1, java.sql.Types.VARCHAR);
+                    }
+                    stmt.setString(2, islandId.value().toString());
+                    stmt.executeUpdate();
+                }
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(conn, outboxEvent);
+                }
+                conn.commit();
+            } catch (Exception e) {
+                try {
+                    conn.rollback();
+                } catch (SQLException expected) {
+                    // best-effort cleanup
+                }
+                throw new RuntimeException("Failed to update custom name for island " + islandId, e);
+            } finally {
+                try {
+                    conn.setAutoCommit(prevAutoCommit);
+                } catch (SQLException expected) {
+                    // best-effort cleanup
+                }
             }
-            stmt.setString(2, islandId.value().toString());
-            stmt.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to update custom name for island " + islandId, e);
         }

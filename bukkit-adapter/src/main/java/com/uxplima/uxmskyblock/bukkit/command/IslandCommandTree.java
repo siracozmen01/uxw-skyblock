@@ -1032,11 +1032,15 @@ public final class IslandCommandTree {
                     }
                 }
             }
-            @SuppressWarnings("deprecation")
-            OfflinePlayer offline = Bukkit.getOfflinePlayer(target);
-            if (offline.hasPlayedBefore() || offline.isOnline()) {
-                ProfileId profileId = new ProfileId(offline.getUniqueId());
-                return islandLocationService.findIslandId(profileId);
+            if (sessionCoordinator != null) {
+                @SuppressWarnings("deprecation")
+                OfflinePlayer offline = Bukkit.getOfflinePlayer(target);
+                if (offline.hasPlayedBefore() || offline.isOnline()) {
+                    Optional<ProfileId> optProfile = sessionCoordinator.findDurableActiveProfile(offline.getUniqueId());
+                    if (optProfile.isPresent()) {
+                        return islandLocationService.findIslandId(optProfile.get());
+                    }
+                }
             }
             return Optional.empty();
         }
@@ -1207,7 +1211,7 @@ public final class IslandCommandTree {
 
     private Optional<ProfileId> activeProfile(Player player) {
         if (sessionCoordinator == null) {
-            return Optional.of(new ProfileId(player.getUniqueId()));
+            return Optional.empty();
         }
         return sessionCoordinator.activeProfile(player.getUniqueId());
     }
@@ -2141,19 +2145,19 @@ public final class IslandCommandTree {
         }
 
         String target = StringArgumentType.getString(ctx, "target");
-        Optional<IslandId> optIsland = resolveIslandId(target);
-        if (optIsland.isEmpty()) {
-            send(src.getSender(), Component.text("Could not find island for target: " + target, NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
-        send(
-                src.getSender(),
-                Component.text(
-                        "Initiating administrative deletion of island " + islandId.value() + "...",
-                        NamedTextColor.YELLOW));
         schedulerPort.async(() -> {
+            Optional<IslandId> optIsland = resolveIslandId(target);
+            if (optIsland.isEmpty()) {
+                send(src.getSender(), Component.text("Could not find island for target: " + target, NamedTextColor.RED));
+                return;
+            }
+
+            IslandId islandId = optIsland.get();
+            send(
+                    src.getSender(),
+                    Component.text(
+                            "Initiating administrative deletion of island " + islandId.value() + "...",
+                            NamedTextColor.YELLOW));
             RecycleResult result = recycleService.executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true);
             schedulerPort.onGlobal(() -> {
                 if (result instanceof RecycleResult.Success) {

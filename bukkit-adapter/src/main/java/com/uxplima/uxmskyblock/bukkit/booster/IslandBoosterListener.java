@@ -1,9 +1,11 @@
 package com.uxplima.uxmskyblock.bukkit.booster;
 
 import java.time.Clock;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -18,6 +20,7 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -34,14 +37,23 @@ public final class IslandBoosterListener implements Listener {
     private final IslandBoosterService boosterService;
     private final BoosterConfiguration configuration;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private final @Nullable SchedulerPort schedulerPort;
     private final Clock clock;
+    private final Map<UUID, IslandId> playerIslandCache = new ConcurrentHashMap<>();
 
     public IslandBoosterListener(
             IslandStoragePort islandStoragePort,
             IslandBoosterService boosterService,
             BoosterConfiguration configuration,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this(islandStoragePort, boosterService, configuration, sessionCoordinator, Clock.systemUTC());
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            @Nullable SchedulerPort schedulerPort,
+            Clock clock) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.boosterService = Objects.requireNonNull(boosterService, "boosterService must not be null");
+        this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
+        this.sessionCoordinator = sessionCoordinator;
+        this.schedulerPort = schedulerPort;
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
     public IslandBoosterListener(
@@ -50,11 +62,24 @@ public final class IslandBoosterListener implements Listener {
             BoosterConfiguration configuration,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             Clock clock) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.boosterService = Objects.requireNonNull(boosterService, "boosterService must not be null");
-        this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
-        this.sessionCoordinator = sessionCoordinator;
-        this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null, clock);
+    }
+
+    public IslandBoosterListener(
+            IslandStoragePort islandStoragePort,
+            IslandBoosterService boosterService,
+            BoosterConfiguration configuration,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            @Nullable SchedulerPort schedulerPort) {
+        this(islandStoragePort, boosterService, configuration, sessionCoordinator, schedulerPort, Clock.systemUTC());
+    }
+
+    public IslandBoosterListener(
+            IslandStoragePort islandStoragePort,
+            IslandBoosterService boosterService,
+            BoosterConfiguration configuration,
+            @Nullable PlayerSessionCoordinator sessionCoordinator) {
+        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null, Clock.systemUTC());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -64,13 +89,22 @@ public final class IslandBoosterListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        findIslandIdForPlayer(player.getUniqueId()).ifPresent(islandId -> {
-            int onlineMembers = countOnlineIslandMembers(islandId, null);
-            if (onlineMembers == 1) {
-                // First member joined: unfreeze boosters
-                boosterService.resumeBoosters(islandId, clock.instant());
-            }
-        });
+        UUID playerUuid = player.getUniqueId();
+        Runnable task = () -> {
+            findIslandIdForPlayer(playerUuid).ifPresent(islandId -> {
+                playerIslandCache.put(playerUuid, islandId);
+                int onlineMembers = countOnlineIslandMembers(islandId, null);
+                if (onlineMembers == 1) {
+                    boosterService.resumeBoosters(islandId, clock.instant());
+                }
+            });
+        };
+
+        if (schedulerPort != null) {
+            schedulerPort.async(task);
+        } else {
+            task.run();
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -80,13 +114,25 @@ public final class IslandBoosterListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        findIslandIdForPlayer(player.getUniqueId()).ifPresent(islandId -> {
-            int remainingOnline = countOnlineIslandMembers(islandId, player.getUniqueId());
-            if (remainingOnline == 0) {
-                // Last member left: freeze boosters
-                boosterService.pauseBoosters(islandId, clock.instant());
+        UUID playerUuid = player.getUniqueId();
+        Runnable task = () -> {
+            IslandId islandId = playerIslandCache.remove(playerUuid);
+            if (islandId == null) {
+                islandId = findIslandIdForPlayer(playerUuid).orElse(null);
             }
-        });
+            if (islandId != null) {
+                int remainingOnline = countOnlineIslandMembers(islandId, playerUuid);
+                if (remainingOnline == 0) {
+                    boosterService.pauseBoosters(islandId, clock.instant());
+                }
+            }
+        };
+
+        if (schedulerPort != null) {
+            schedulerPort.async(task);
+        } else {
+            task.run();
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -105,7 +151,14 @@ public final class IslandBoosterListener implements Listener {
             return;
         }
 
-        findIslandIdForPlayer(killer.getUniqueId()).ifPresent(islandId -> {
+        IslandId islandId = playerIslandCache.get(killer.getUniqueId());
+        if (islandId == null) {
+            islandId = findIslandIdForPlayer(killer.getUniqueId()).orElse(null);
+            if (islandId != null) {
+                playerIslandCache.put(killer.getUniqueId(), islandId);
+            }
+        }
+        if (islandId != null) {
             double multiplier =
                     boosterService.getEffectiveMultiplier(islandId, BoosterCategory.MOB_EXP, clock.instant());
             if (multiplier > 1.0) {
@@ -113,17 +166,18 @@ public final class IslandBoosterListener implements Listener {
                 int boostedExp = (int) Math.round(originalExp * multiplier);
                 event.setDroppedExp(boostedExp);
             }
-        });
+        }
     }
 
     public Optional<IslandId> findIslandIdForPlayer(UUID playerUuid) {
-        ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator.activeProfile(playerUuid).orElse(null)
-                : new ProfileId(playerUuid);
-        if (profileId == null) {
+        if (sessionCoordinator == null) {
             return Optional.empty();
         }
-        return islandStoragePort.findIslandIdByProfileId(profileId);
+        Optional<ProfileId> optProfile = sessionCoordinator.activeProfile(playerUuid);
+        if (optProfile.isEmpty()) {
+            return Optional.empty();
+        }
+        return islandStoragePort.findIslandIdByProfileId(optProfile.get());
     }
 
     public int countOnlineIslandMembers(IslandId islandId, @Nullable UUID excludingPlayerUuid) {

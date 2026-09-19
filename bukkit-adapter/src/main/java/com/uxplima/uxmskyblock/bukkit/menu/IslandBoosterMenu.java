@@ -24,10 +24,12 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
 import com.uxplima.uxmskyblock.core.domain.booster.CategoryBoosterPolicy;
 import com.uxplima.uxmskyblock.core.domain.booster.IslandBooster;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import org.jspecify.annotations.Nullable;
 
@@ -41,42 +43,81 @@ public final class IslandBoosterMenu {
     private final IslandBoosterService boosterService;
     private final BoosterConfiguration configuration;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private final @Nullable SchedulerPort schedulerPort;
+
+    public IslandBoosterMenu(
+            IslandStoragePort islandStoragePort,
+            IslandBoosterService boosterService,
+            BoosterConfiguration configuration,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            @Nullable SchedulerPort schedulerPort) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.boosterService = Objects.requireNonNull(boosterService, "boosterService must not be null");
+        this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
+        this.sessionCoordinator = sessionCoordinator;
+        this.schedulerPort = schedulerPort;
+    }
 
     public IslandBoosterMenu(
             IslandStoragePort islandStoragePort,
             IslandBoosterService boosterService,
             BoosterConfiguration configuration,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.boosterService = Objects.requireNonNull(boosterService, "boosterService must not be null");
-        this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
-        this.sessionCoordinator = sessionCoordinator;
+        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null);
     }
 
     public void open(Player player) {
-        UUID playerUuid = player.getUniqueId();
-        ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator.activeProfile(playerUuid).orElse(null)
-                : new ProfileId(playerUuid);
+        UUID rawUuid = player.getUniqueId();
+        PlayerUuid playerUuid = new PlayerUuid(rawUuid);
+        Optional<ProfileId> activeOpt = sessionCoordinator != null
+                ? sessionCoordinator.activeProfile(rawUuid)
+                : Optional.empty();
 
-        if (profileId == null) {
+        if (activeOpt.isEmpty()) {
             player.sendMessage(Component.text(
                             "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED)
                     .decoration(TextDecoration.ITALIC, false));
             return;
         }
 
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            player.sendMessage(Component.text(
-                            "You do not belong to an island! Create one first via /is create.", NamedTextColor.RED)
-                    .decoration(TextDecoration.ITALIC, false));
-            return;
-        }
+        ProfileId profileId = activeOpt.get();
+        Runnable asyncTask = () -> {
+            Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (optIslandId.isEmpty()) {
+                Runnable notify = () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(Component.text(
+                                        "You do not belong to an island! Create one first via /is create.", NamedTextColor.RED)
+                                .decoration(TextDecoration.ITALIC, false));
+                    }
+                };
+                if (schedulerPort != null) {
+                    schedulerPort.onEntity(playerUuid, notify);
+                } else {
+                    notify.run();
+                }
+                return;
+            }
 
-        IslandId islandId = optIslandId.get();
-        SimpleGui gui = buildGui(player, islandId, Instant.now());
-        gui.open(player);
+            IslandId islandId = optIslandId.get();
+            Runnable show = () -> {
+                if (player.isOnline()) {
+                    SimpleGui gui = buildGui(player, islandId, Instant.now());
+                    gui.open(player);
+                }
+            };
+            if (schedulerPort != null) {
+                schedulerPort.onEntity(playerUuid, show);
+            } else {
+                show.run();
+            }
+        };
+
+        if (schedulerPort != null) {
+            schedulerPort.async(asyncTask);
+        } else {
+            asyncTask.run();
+        }
     }
 
     public SimpleGui buildGui(Player player, IslandId islandId, Instant now) {

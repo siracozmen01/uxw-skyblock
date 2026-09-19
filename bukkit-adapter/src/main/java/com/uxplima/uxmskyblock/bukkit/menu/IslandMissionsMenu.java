@@ -56,27 +56,54 @@ public final class IslandMissionsMenu {
     }
 
     public void open(Player player) {
-        UUID playerUuid = player.getUniqueId();
-        ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator.activeProfile(playerUuid).orElse(null)
-                : new ProfileId(playerUuid);
+        UUID rawUuid = player.getUniqueId();
+        PlayerUuid playerUuid = new PlayerUuid(rawUuid);
+        Optional<ProfileId> activeOpt = sessionCoordinator != null
+                ? sessionCoordinator.activeProfile(rawUuid)
+                : Optional.empty();
 
-        if (profileId == null) {
+        if (activeOpt.isEmpty()) {
             player.sendMessage(Component.text(
                             "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED)
                     .decoration(TextDecoration.ITALIC, false));
             return;
         }
 
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            player.sendMessage(Component.text(
-                            "You do not belong to an island! Create one first via /is create.", NamedTextColor.RED)
-                    .decoration(TextDecoration.ITALIC, false));
-            return;
-        }
+        ProfileId profileId = activeOpt.get();
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (optIslandId.isEmpty()) {
+                schedulerPort.onEntity(playerUuid, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(Component.text(
+                                        "You do not belong to an island! Create one first via /is create.", NamedTextColor.RED)
+                                .decoration(TextDecoration.ITALIC, false));
+                    }
+                });
+                return;
+            }
 
-        IslandId islandId = optIslandId.get();
+            IslandId islandId = optIslandId.get();
+            Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap =
+                    missionService.findAllProgress(islandId, profileId);
+            List<MissionDefinition> all = missionService.allMissions();
+
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (!player.isOnline()) {
+                    return;
+                }
+                SimpleGui gui = buildGui(player, islandId, profileId, progressMap, all);
+                gui.open(player);
+            });
+        });
+    }
+
+    public SimpleGui buildGui(
+            Player player,
+            IslandId islandId,
+            ProfileId profileId,
+            Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap,
+            List<MissionDefinition> all) {
         SimpleGui gui = Guis.gui()
                 .title(Component.text("Island Missions & Challenges", NamedTextColor.GOLD))
                 .rows(6)
@@ -87,10 +114,6 @@ public final class IslandMissionsMenu {
                 .name(Component.empty())
                 .build();
         gui.filler().fillBorder(GuiItem.display(filler));
-
-        Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap =
-                missionService.findAllProgress(islandId, profileId);
-        List<MissionDefinition> all = missionService.allMissions();
 
         int slot = 10;
         for (MissionDefinition def : all) {
@@ -150,7 +173,7 @@ public final class IslandMissionsMenu {
             gui.set(slot++, guiItem);
         }
 
-        gui.open(player);
+        return gui;
     }
 
     private void handleManualItemSubmission(

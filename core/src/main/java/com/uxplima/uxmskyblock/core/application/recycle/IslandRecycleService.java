@@ -224,11 +224,6 @@ public final class IslandRecycleService {
 
         islandStoragePort.deleteIsland(islandId, outboxEvent);
 
-        if (outboxPort != null && outboxEvent != null) {
-            outboxPort.stageEvent(
-                    outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
-        }
-
         return new RecycleResult.Success(islandId, slotIndex, worldName, gridX, gridZ);
     }
 }

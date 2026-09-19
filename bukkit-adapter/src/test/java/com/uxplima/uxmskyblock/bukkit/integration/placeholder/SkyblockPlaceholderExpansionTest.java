@@ -54,13 +54,15 @@ class SkyblockPlaceholderExpansionTest {
         mockLeaderboard = mock(IslandLeaderboardPort.class);
         scheduler = new DirectSchedulerPort();
 
-        expansion = new SkyblockPlaceholderExpansion(mockStorage, mockBank, mockUpgrades, mockLeaderboard, scheduler);
-
         playerUuid = UUID.randomUUID();
-        mockPlayer = mock(OfflinePlayer.class);
-        when(mockPlayer.getUniqueId()).thenReturn(playerUuid);
         profileId = new ProfileId(playerUuid);
         islandId = new IslandId(UUID.randomUUID());
+
+        expansion = new SkyblockPlaceholderExpansion(
+                mockStorage, mockBank, mockUpgrades, mockLeaderboard, scheduler, uuid -> Optional.of(profileId));
+
+        mockPlayer = mock(OfflinePlayer.class);
+        when(mockPlayer.getUniqueId()).thenReturn(playerUuid);
     }
 
     @Test
@@ -122,15 +124,59 @@ class SkyblockPlaceholderExpansionTest {
     }
 
     @Test
-    @DisplayName("resolves global leaderboard placeholders without player")
+    @DisplayName("resolves global leaderboard placeholders without player from cached data")
     void resolvesGlobalLeaderboardPlaceholders() {
         LeaderboardEntry entry = new LeaderboardEntry(1, islandId, "Island-1", 9999L, "9999");
-        when(mockLeaderboard.fetchTopIslands(eq(LeaderboardCategory.LEVEL), eq(1)))
+        when(mockLeaderboard.fetchTopIslands(eq(LeaderboardCategory.LEVEL), eq(100)))
                 .thenReturn(List.of(entry));
+
+        expansion.refreshLeaderboardsSync();
 
         assertThat(expansion.onRequest(null, "leaderboard_top_level_1_score")).isEqualTo("9999");
         assertThat(expansion.onRequest(null, "leaderboard_top_level_1_id"))
                 .isEqualTo(islandId.value().toString());
+    }
+
+    @Test
+    @DisplayName("PAPI-001: onRequest performs ZERO persistence I/O on cache miss and throws if persistence is queried inside onRequest")
+    void onRequestZeroPersistenceIoOnCacheMiss() {
+        IslandLeaderboardPort throwingLeaderboard = mock(IslandLeaderboardPort.class);
+        org.mockito.Mockito.doAnswer(
+                        invocation -> {
+                            throw new AssertionError("Zero-DB violation: persistence queried inside onRequest!");
+                        })
+                .when(throwingLeaderboard)
+                .fetchTopIslands(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt());
+
+        SkyblockPlaceholderExpansion noIoExpansion = new SkyblockPlaceholderExpansion(
+                mockStorage,
+                mockBank,
+                mockUpgrades,
+                throwingLeaderboard,
+                new SchedulerPort() {
+                    @Override
+                    public void onGlobal(Runnable task) {}
+
+                    @Override
+                    public void onRegion(String worldName, int chunkX, int chunkZ, Runnable task) {}
+
+                    @Override
+                    public void onEntity(PlayerUuid playerUuid, Runnable task) {}
+
+                    @Override
+                    public void async(Runnable task) {
+                        // Background task scheduled asynchronously, never run inline inside onRequest
+                    }
+
+                    @Override
+                    public void asyncAfter(Duration delay, Runnable task) {}
+                },
+                uuid -> Optional.of(profileId));
+
+        // When requesting leaderboard top on empty cache, it returns default N/A without querying persistence
+        assertThat(noIoExpansion.onRequest(null, "leaderboard_top_level_1_score")).isEqualTo("N/A");
+        assertThat(noIoExpansion.onRequest(null, "leaderboard_top_level_1_id")).isEqualTo("N/A");
+        assertThat(noIoExpansion.onRequest(mockPlayer, "island_leaderboard_rank")).isEqualTo("N/A");
     }
 
     @Test

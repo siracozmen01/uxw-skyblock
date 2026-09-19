@@ -16,7 +16,9 @@ import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxClaim;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
+import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import org.jspecify.annotations.Nullable;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inactivity.AbandonmentAction;
@@ -51,6 +53,7 @@ class IslandInactivityServiceTest {
         archivalPort = new InMemoryArchivalPort();
         recyclePort = new InMemoryRecyclePort();
         outboxPort = new InMemoryOutboxPort();
+        islandStorage.outboxPort = outboxPort;
     }
 
     private Island createSampleIsland(PlayerUuid ownerUuid, ProfileId ownerProfileId, Instant createdAt) {
@@ -437,11 +440,24 @@ class IslandInactivityServiceTest {
     private static class InMemoryIslandStorage implements IslandStoragePort {
         private final Map<IslandId, Island> islands = new ConcurrentHashMap<>();
         private final Map<IslandId, IslandLocation> locations = new ConcurrentHashMap<>();
+        @Nullable InMemoryOutboxPort outboxPort;
 
         @Override
         public void saveIsland(Island island, IslandLocation location) {
+            saveIsland(island, location, null);
+        }
+
+        @Override
+        public void saveIsland(Island island, IslandLocation location, @Nullable StagedOutboxEvent outboxEvent) {
             islands.put(island.id(), island);
             locations.put(island.id(), location);
+            if (outboxPort != null && outboxEvent != null) {
+                outboxPort.stageEvent(
+                        outboxEvent.id(),
+                        outboxEvent.eventType(),
+                        outboxEvent.aggregateId(),
+                        outboxEvent.payload());
+            }
         }
 
         @Override
@@ -466,8 +482,20 @@ class IslandInactivityServiceTest {
 
         @Override
         public void deleteIsland(IslandId id) {
+            deleteIsland(id, null);
+        }
+
+        @Override
+        public void deleteIsland(IslandId id, @Nullable StagedOutboxEvent outboxEvent) {
             islands.remove(id);
             locations.remove(id);
+            if (outboxPort != null && outboxEvent != null) {
+                outboxPort.stageEvent(
+                        outboxEvent.id(),
+                        outboxEvent.eventType(),
+                        outboxEvent.aggregateId(),
+                        outboxEvent.payload());
+            }
         }
 
         @Override

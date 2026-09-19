@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 
 import org.bukkit.Location;
@@ -23,10 +24,13 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import org.jspecify.annotations.Nullable;
@@ -38,7 +42,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>Suppresses natural crop growth on locked islands.</li>
  *   <li>Restricts visitors from entering locked islands.</li>
  *   <li>Restricts member block and item interactions while locked, preserving bank deposit remediation.</li>
- *   <li>Warns members upon login of pending grace expiration or active lockout.</li>
+ *   <li>Warns members upon login of pending grace expiration or active lockout asynchronously.</li>
  * </ul>
  */
 public final class IslandBankruptcyListener implements Listener {
@@ -46,17 +50,30 @@ public final class IslandBankruptcyListener implements Listener {
     private final IslandBankruptcyService bankruptcyService;
     private final Function<Location, Optional<Island>> islandLookup;
     private final @Nullable IslandStoragePort islandStoragePort;
+    private final @Nullable SchedulerPort schedulerPort;
+    private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final Clock clock;
 
     public IslandBankruptcyListener(
             IslandBankruptcyService bankruptcyService,
             IslandProtectionListener protectionListener,
-            @Nullable IslandStoragePort islandStoragePort) {
+            @Nullable IslandStoragePort islandStoragePort,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            @Nullable SchedulerPort schedulerPort) {
         this(
                 bankruptcyService,
                 Objects.requireNonNull(protectionListener, "protectionListener must not be null")::findIslandAt,
                 islandStoragePort,
+                schedulerPort,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
                 Clock.systemUTC());
+    }
+
+    public IslandBankruptcyListener(
+            IslandBankruptcyService bankruptcyService,
+            IslandProtectionListener protectionListener,
+            @Nullable IslandStoragePort islandStoragePort) {
+        this(bankruptcyService, protectionListener, islandStoragePort, null, null);
     }
 
     public IslandBankruptcyListener(
@@ -64,9 +81,21 @@ public final class IslandBankruptcyListener implements Listener {
             Function<Location, Optional<Island>> islandLookup,
             @Nullable IslandStoragePort islandStoragePort,
             Clock clock) {
+        this(bankruptcyService, islandLookup, islandStoragePort, null, uuid -> Optional.empty(), clock);
+    }
+
+    public IslandBankruptcyListener(
+            IslandBankruptcyService bankruptcyService,
+            Function<Location, Optional<Island>> islandLookup,
+            @Nullable IslandStoragePort islandStoragePort,
+            @Nullable SchedulerPort schedulerPort,
+            Function<UUID, Optional<ProfileId>> activeProfileProvider,
+            Clock clock) {
         this.bankruptcyService = Objects.requireNonNull(bankruptcyService, "bankruptcyService must not be null");
         this.islandLookup = Objects.requireNonNull(islandLookup, "islandLookup must not be null");
         this.islandStoragePort = islandStoragePort;
+        this.schedulerPort = schedulerPort;
+        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -226,27 +255,51 @@ public final class IslandBankruptcyListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        ProfileId profileId = new ProfileId(player.getUniqueId());
-
-        islandStoragePort.findIslandIdByProfileId(profileId).ifPresent(islandId -> {
-            Instant now = Instant.now(clock);
-            IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
-
-            if (record.status() == BankruptcyStatus.GRACE) {
-                double debt = record.debtMinorUnits() / 100.0;
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize("<yellow>[Warning] Your island is in bankruptcy grace! Outstanding debt: $"
-                                + String.format("%.2f", debt)
-                                + ". Settle debt via <gold>/is bank paydebt</gold> before grace expires.</yellow>"));
-            } else if (record.status() == BankruptcyStatus.LOCKED) {
-                double debt = record.debtMinorUnits() / 100.0;
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize(
-                                "<red>[Alert] Your island is locked due to bankruptcy! Spawners and crops are disabled. Pay off debt ($"
-                                        + String.format("%.2f", debt)
-                                        + ") via <gold>/is bank paydebt</gold> to restore operations.</red>"));
+        UUID playerUuid = player.getUniqueId();
+        Runnable checkTask = () -> {
+            Optional<ProfileId> optProfile = activeProfileProvider.apply(playerUuid);
+            if (optProfile.isEmpty()) {
+                return;
             }
-        });
+            ProfileId profileId = optProfile.get();
+
+            islandStoragePort.findIslandIdByProfileId(profileId).ifPresent(islandId -> {
+                Instant now = Instant.now(clock);
+                IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
+
+                Runnable messageTask = () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (record.status() == BankruptcyStatus.GRACE) {
+                        double debt = record.debtMinorUnits() / 100.0;
+                        player.sendMessage(MiniMessage.miniMessage()
+                                .deserialize("<yellow>[Warning] Your island is in bankruptcy grace! Outstanding debt: $"
+                                        + String.format("%.2f", debt)
+                                        + ". Settle debt via <gold>/is bank paydebt</gold> before grace expires.</yellow>"));
+                    } else if (record.status() == BankruptcyStatus.LOCKED) {
+                        double debt = record.debtMinorUnits() / 100.0;
+                        player.sendMessage(MiniMessage.miniMessage()
+                                .deserialize(
+                                        "<red>[Alert] Your island is locked due to bankruptcy! Spawners and crops are disabled. Pay off debt ($"
+                                                + String.format("%.2f", debt)
+                                                + ") via <gold>/is bank paydebt</gold> to restore operations.</red>"));
+                    }
+                };
+
+                if (schedulerPort != null) {
+                    schedulerPort.onEntity(new PlayerUuid(playerUuid), messageTask);
+                } else {
+                    messageTask.run();
+                }
+            });
+        };
+
+        if (schedulerPort != null) {
+            schedulerPort.async(checkTask);
+        } else {
+            checkTask.run();
+        }
     }
 
     private boolean isMember(Island island, Player player) {

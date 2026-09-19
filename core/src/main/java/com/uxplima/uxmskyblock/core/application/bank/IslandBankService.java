@@ -61,47 +61,71 @@ public final class IslandBankService {
         return islandStoragePort.findIslandIdByProfileId(profileId);
     }
 
+    public BankTransactionOutcome depositToIsland(
+            IslandId islandId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return execute(islandId, playerUuid, amountMinorUnits, "Bank deposit", serverNodeId);
+    }
+
+    public BankTransactionOutcome withdrawFromIsland(
+            IslandId islandId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return execute(islandId, playerUuid, -amountMinorUnits, "Bank withdrawal", serverNodeId);
+    }
+
     public BankTransactionOutcome deposit(
             ProfileId profileId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
-        return execute(profileId, playerUuid, amountMinorUnits, "Player deposit", serverNodeId);
-    }
-
-    public BankTransactionOutcome withdraw(
-            ProfileId profileId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
-        return execute(profileId, playerUuid, -amountMinorUnits, "Player withdrawal", serverNodeId);
-    }
-
-    private BankTransactionOutcome execute(
-            ProfileId profileId,
-            PlayerUuid playerUuid,
-            long deltaMinorUnits,
-            String reason,
-            ServerNodeId serverNodeId) {
         Objects.requireNonNull(profileId, "profileId must not be null");
-        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
-        Objects.requireNonNull(reason, "reason must not be null");
-        Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
-
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
         if (optIslandId.isEmpty()) {
             return new BankTransactionOutcome.AuthorityRejected("No island associated with profile " + profileId);
         }
+        return execute(optIslandId.get(), playerUuid, amountMinorUnits, "Player deposit", serverNodeId);
+    }
 
-        IslandId islandId = optIslandId.get();
+    public BankTransactionOutcome withdraw(
+            ProfileId profileId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
+        if (optIslandId.isEmpty()) {
+            return new BankTransactionOutcome.AuthorityRejected("No island associated with profile " + profileId);
+        }
+        return execute(optIslandId.get(), playerUuid, -amountMinorUnits, "Player withdrawal", serverNodeId);
+    }
+
+    private BankTransactionOutcome execute(
+            IslandId islandId,
+            PlayerUuid playerUuid,
+            long deltaMinorUnits,
+            String reason,
+            ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        Objects.requireNonNull(reason, "reason must not be null");
+        Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
+
         Optional<IslandBank> optBank = islandBankPort.findBankByIslandId(islandId);
         IslandBank bank = optBank.orElseGet(() -> islandBankPort.createBank(islandId));
 
         Optional<IslandAuthorityRecord> optAuth = islandAuthorityPort.findAuthority(islandId);
-        long epoch = 1L;
-        if (optAuth.isPresent()) {
-            IslandAuthorityRecord auth = optAuth.get();
-            epoch = auth.authorityEpoch();
-        } else {
-            IslandAuthorityOutcome outcome = islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
-            if (outcome instanceof IslandAuthorityOutcome.Success s) {
-                epoch = s.epoch();
-            }
+        if (optAuth.isEmpty()) {
+            return new BankTransactionOutcome.AuthorityRejected(
+                    "No authority record found for island " + islandId);
         }
+
+        IslandAuthorityRecord auth = optAuth.get();
+        if (!auth.authoritativeNode().equals(serverNodeId)) {
+            return new BankTransactionOutcome.AuthorityRejected(
+                    "Local node " + serverNodeId + " does not hold authority for island " + islandId
+                            + " (held by " + auth.authoritativeNode() + ")");
+        }
+
+        if (auth.leaseExpiresAt().isBefore(java.time.Instant.now())) {
+            return new BankTransactionOutcome.AuthorityRejected(
+                    "Authority lease expired at " + auth.leaseExpiresAt() + " for island " + islandId);
+        }
+
+        long epoch = auth.authorityEpoch();
 
         UUID operationId = UUID.randomUUID();
         String idempotencyKey = "tx-" + operationId;

@@ -70,7 +70,7 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     private final IslandUpgradeStoragePort upgradeStoragePort;
     private final IslandLeaderboardPort leaderboardPort;
     private final SchedulerPort schedulerPort;
-    private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private final java.util.function.Function<UUID, Optional<ProfileId>> activeProfileProvider;
 
     private final PlaceholderRegistry registry;
     private final Map<UUID, CachedPlayerIsland> playerCache = new ConcurrentHashMap<>();
@@ -87,13 +87,13 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
             IslandUpgradeStoragePort upgradeStoragePort,
             IslandLeaderboardPort leaderboardPort,
             SchedulerPort schedulerPort,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
+            java.util.function.Function<UUID, Optional<ProfileId>> activeProfileProvider) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
         this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
         this.leaderboardPort = Objects.requireNonNull(leaderboardPort, "leaderboardPort must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
-        this.sessionCoordinator = sessionCoordinator;
+        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
 
         this.registry = new PlaceholderRegistry();
         this.registry.fallback(this);
@@ -104,8 +104,24 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
             IslandBankPort islandBankPort,
             IslandUpgradeStoragePort upgradeStoragePort,
             IslandLeaderboardPort leaderboardPort,
+            SchedulerPort schedulerPort,
+            @Nullable PlayerSessionCoordinator sessionCoordinator) {
+        this(
+                islandStoragePort,
+                islandBankPort,
+                upgradeStoragePort,
+                leaderboardPort,
+                schedulerPort,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
+    }
+
+    public SkyblockPlaceholderExpansion(
+            IslandStoragePort islandStoragePort,
+            IslandBankPort islandBankPort,
+            IslandUpgradeStoragePort upgradeStoragePort,
+            IslandLeaderboardPort leaderboardPort,
             SchedulerPort schedulerPort) {
-        this(islandStoragePort, islandBankPort, upgradeStoragePort, leaderboardPort, schedulerPort, null);
+        this(islandStoragePort, islandBankPort, upgradeStoragePort, leaderboardPort, schedulerPort, uuid -> Optional.empty());
     }
 
     public PlaceholderRegistry registry() {
@@ -130,9 +146,7 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
 
     public CachedPlayerIsland refreshPlayerDataSync(UUID playerUuid) {
         Objects.requireNonNull(playerUuid, "playerUuid");
-        ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator.activeProfile(playerUuid).orElse(null)
-                : new ProfileId(playerUuid);
+        ProfileId profileId = activeProfileProvider.apply(playerUuid).orElse(null);
         if (profileId == null) {
             CachedPlayerIsland empty = CachedPlayerIsland.empty();
             playerCache.put(playerUuid, empty);
@@ -293,22 +307,6 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
         }
         checkLeaderboardRefresh();
         Integer rank = cachedPlayerRanks.get(islandId);
-        if (rank != null) {
-            return String.valueOf(rank);
-        }
-        try {
-            List<LeaderboardEntry> top = leaderboardPort.fetchTopIslands(LeaderboardCategory.LEVEL, 100);
-            if (top != null) {
-                for (int i = 0; i < top.size(); i++) {
-                    cachedPlayerRanks.put(top.get(i).islandId().value(), i + 1);
-                    if (top.get(i).islandId().value().equals(islandId)) {
-                        rank = i + 1;
-                    }
-                }
-            }
-        } catch (Exception ex) {
-            LOGGER.log(java.util.logging.Level.FINEST, "Failed to resolve player rank", ex);
-        }
         return rank != null ? String.valueOf(rank) : "N/A";
     }
 
@@ -344,17 +342,6 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
 
         checkLeaderboardRefresh();
         List<LeaderboardEntry> top = cachedLeaderboards.get(category);
-        if (top == null || top.size() < rank) {
-            try {
-                top = leaderboardPort.fetchTopIslands(category, rank);
-                if (top != null) {
-                    cachedLeaderboards.put(category, top);
-                }
-            } catch (Exception ex) {
-                LOGGER.log(java.util.logging.Level.FINEST, "Failed to resolve leaderboard top", ex);
-            }
-        }
-
         String field = parts.get(2);
         if (top != null && top.size() >= rank) {
             LeaderboardEntry entry = top.get(rank - 1);

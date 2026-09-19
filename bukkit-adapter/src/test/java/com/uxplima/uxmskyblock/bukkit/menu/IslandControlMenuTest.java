@@ -57,7 +57,14 @@ class IslandControlMenuTest extends MockBukkitHarness {
         mockLocations = mock(IslandLocationService.class);
         scheduler = new DirectSchedulerPort();
 
-        menu = new IslandControlMenu(mockStorage, mockBank, mockUpgrades, mockLocations, scheduler, "skyblock_world");
+        menu = new IslandControlMenu(
+                mockStorage,
+                mockBank,
+                mockUpgrades,
+                mockLocations,
+                scheduler,
+                "skyblock_world",
+                uuid -> Optional.of(new ProfileId(uuid)));
 
         player = createPlayer("TestPlayer");
         islandId = new IslandId(UUID.randomUUID());

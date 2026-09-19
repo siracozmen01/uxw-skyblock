@@ -71,9 +71,10 @@ class IslandNameServiceTest {
         IslandName result = nameService.renameIsland(islandId, ownerProfileId, "SkyCitadel");
 
         assertThat(result.value()).isEqualTo("SkyCitadel");
-        verify(mockStorage).updateCustomName(islandId, result);
-        verify(mockOutbox)
-                .stageEvent(any(), eq("ISLAND_RENAMED"), eq(islandId.value().toString()), any());
+        verify(mockStorage).updateCustomName(
+                eq(islandId),
+                eq(result),
+                org.mockito.ArgumentMatchers.argThat(event -> event != null && "ISLAND_RENAMED".equals(event.eventType())));
     }
 
     @Test
@@ -140,8 +141,9 @@ class IslandNameServiceTest {
     void resetIslandNameSuccess() {
         nameService.resetIslandName(islandId, ownerProfileId);
 
-        verify(mockStorage).updateCustomName(islandId, null);
-        verify(mockOutbox)
-                .stageEvent(any(), eq("ISLAND_NAME_RESET"), eq(islandId.value().toString()), any());
+        verify(mockStorage).updateCustomName(
+                eq(islandId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.argThat(event -> event != null && "ISLAND_NAME_RESET".equals(event.eventType())));
     }
 }

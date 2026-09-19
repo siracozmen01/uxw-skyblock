@@ -168,9 +168,9 @@ class IslandRecycleServiceTest {
         verify(backupPort).createPreDeletionBackup(eq(island), eq(location));
         verify(spiralSlotPoolPort).releaseSlot(eq(42L), eq("skyblock_world"), eq(100), eq(200));
         verify(voidingPort).voidIslandChunks(eq(islandId), eq("skyblock_world"), eq(island.bounds()));
-        verify(islandStoragePort).deleteIsland(eq(islandId), any());
-        verify(outboxPort)
-                .stageEvent(any(), eq("ISLAND_RECYCLED"), eq(islandId.value().toString()), any());
+        verify(islandStoragePort).deleteIsland(
+                eq(islandId),
+                org.mockito.ArgumentMatchers.argThat(event -> event != null && "ISLAND_RECYCLED".equals(event.eventType())));
 
         // Challenge should be consumed
         assertThat(service.verifyResetChallenge(ownerProfileId, challenge.code()))

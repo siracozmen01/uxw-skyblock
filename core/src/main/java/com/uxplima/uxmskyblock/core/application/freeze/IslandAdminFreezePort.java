@@ -49,6 +49,20 @@ public interface IslandAdminFreezePort {
     void updateEconomicState(IslandId islandId, EconomicState state);
 
     /**
+     * Updates an island's economic solvency state and stages an outbox event atomically.
+     *
+     * @param islandId target island
+     * @param state new economic state
+     * @param outboxEvent optional event to stage atomically in the same transaction
+     */
+    default void updateEconomicState(
+            IslandId islandId,
+            EconomicState state,
+            @Nullable StagedOutboxEvent outboxEvent) {
+        updateEconomicState(islandId, state);
+    }
+
+    /**
      * Updates an island's lifecycle disposal status.
      *
      * @param islandId target island

@@ -927,14 +927,36 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
 
     @Override
     public void updateEconomicState(IslandId islandId, EconomicState state) {
+        updateEconomicState(islandId, state, null);
+    }
+
+    @Override
+    public void updateEconomicState(
+            IslandId islandId,
+            EconomicState state,
+            @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(state, "state");
         String sql = "UPDATE islands SET economic_state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-        try (Connection conn = database.connection();
-                PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, state.name());
-            stmt.setString(2, islandId.value().toString());
-            stmt.executeUpdate();
+        try (Connection conn = database.connection()) {
+            boolean prevAutoCommit = conn.getAutoCommit();
+            beginTransaction(conn);
+            try {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, state.name());
+                    stmt.setString(2, islandId.value().toString());
+                    stmt.executeUpdate();
+                }
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(conn, outboxEvent);
+                }
+                commitTransaction(conn);
+            } catch (Exception e) {
+                rollbackTransaction(conn);
+                throw new IslandPersistenceException("Failed to update economic state for island: " + islandId, e);
+            } finally {
+                resetAutoCommitQuietly(conn, prevAutoCommit);
+            }
         } catch (SQLException e) {
             throw new IslandPersistenceException("Failed to update economic state for island: " + islandId, e);
         }

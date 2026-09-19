@@ -24,6 +24,7 @@ import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import org.jspecify.annotations.Nullable;
 
@@ -49,25 +50,41 @@ public final class IslandResetConfirmationMenu {
     }
 
     public void open(Player player, String verificationCode) {
-        UUID playerUuid = player.getUniqueId();
-        ProfileId profileId = (sessionCoordinator != null)
-                ? sessionCoordinator.activeProfile(playerUuid).orElse(null)
-                : null;
+        UUID rawUuid = player.getUniqueId();
+        PlayerUuid playerUuid = new PlayerUuid(rawUuid);
+        Optional<ProfileId> activeOpt = sessionCoordinator != null
+                ? sessionCoordinator.activeProfile(rawUuid)
+                : Optional.empty();
 
-        if (profileId == null) {
-            profileId = new ProfileId(playerUuid);
-        }
-
-        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
-        if (optIslandId.isEmpty()) {
-            player.sendMessage(
-                    MiniMessage.miniMessage().deserialize("<red>You do not have an active island to reset.</red>"));
+        if (activeOpt.isEmpty()) {
+            player.sendMessage(Component.text(
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED)
+                    .decoration(TextDecoration.ITALIC, false));
             return;
         }
 
-        IslandId islandId = optIslandId.get();
-        SimpleGui gui = buildGui(player, profileId, islandId, verificationCode);
-        gui.open(player);
+        ProfileId profileId = activeOpt.get();
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (optIslandId.isEmpty()) {
+                schedulerPort.onEntity(playerUuid, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(
+                                MiniMessage.miniMessage().deserialize("<red>You do not have an active island to reset.</red>"));
+                    }
+                });
+                return;
+            }
+
+            IslandId islandId = optIslandId.get();
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (!player.isOnline()) {
+                    return;
+                }
+                SimpleGui gui = buildGui(player, profileId, islandId, verificationCode);
+                gui.open(player);
+            });
+        });
     }
 
     public SimpleGui buildGui(Player player, ProfileId profileId, IslandId islandId, String verificationCode) {

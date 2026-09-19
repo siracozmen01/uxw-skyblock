@@ -162,19 +162,12 @@ public final class IslandInactivityService {
                         ? new StagedOutboxEvent(
                                 EventId.random(),
                                 "ISLAND_ARCHIVED",
-                                island.id().value().toString(),
+                                 island.id().value().toString(),
                                 String.format(
                                         "{\"islandId\":\"%s\",\"reason\":\"Total team inactivity exceeded %s\"}",
                                         island.id().value(), policy.allMembersInactivityDuration()))
                         : null;
                 islandStoragePort.saveIsland(updated, location, outboxEvent);
-                if (outboxPort != null && outboxEvent != null) {
-                    outboxPort.stageEvent(
-                            outboxEvent.id(),
-                            outboxEvent.eventType(),
-                            outboxEvent.aggregateId(),
-                            outboxEvent.payload());
-                }
 
                 return new IslandSuccessionRecord(
                         island.id(),
@@ -197,13 +190,6 @@ public final class IslandInactivityService {
                                         island.id().value(), policy.allMembersInactivityDuration()))
                         : null;
                 islandStoragePort.deleteIsland(island.id(), outboxEvent);
-                if (outboxPort != null && outboxEvent != null) {
-                    outboxPort.stageEvent(
-                            outboxEvent.id(),
-                            outboxEvent.eventType(),
-                            outboxEvent.aggregateId(),
-                            outboxEvent.payload());
-                }
 
                 return new IslandSuccessionRecord(
                         island.id(),
@@ -290,10 +276,6 @@ public final class IslandInactivityService {
                                 policy.formerOwnerAction()))
                 : null;
         islandStoragePort.saveIsland(updatedIsland, location, outboxEvent);
-        if (outboxPort != null && outboxEvent != null) {
-            outboxPort.stageEvent(
-                    outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
-        }
 
         return new IslandSuccessionRecord(
                 island.id(),
