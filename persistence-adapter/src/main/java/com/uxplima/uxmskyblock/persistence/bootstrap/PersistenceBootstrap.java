@@ -27,6 +27,7 @@ import com.uxplima.uxmskyblock.core.application.social.IslandSocialStoragePort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultStoragePort;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpStoragePort;
+import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -52,6 +53,7 @@ import com.uxplima.uxmskyblock.persistence.upgrade.PlayerIslandUpgradeAdapter;
 import com.uxplima.uxmskyblock.persistence.vault.SqlIslandVaultStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.warp.SqlIslandWarpStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.world.PlayerWorldGridAllocationAdapter;
+import com.uxplima.uxmskyblock.persistence.world.SqlSpiralSlotPoolAdapter;
 
 /**
  * Encapsulated persistence composition root establishing database migrations and
@@ -72,6 +74,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerInventoryMutationJournalAdapter mutationJournalAdapter;
     private final PlayerProfileHandoffFinalizationAdapter handoffFinalizationAdapter;
     private final PlayerProfileSwitchAdapter profileSwitchAdapter;
+    private final SqlSpiralSlotPoolAdapter spiralSlotPoolAdapter;
     private final PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
     private final PlayerEconomySagaAdapter economySagaAdapter;
     private final PlayerIslandSeasonAdapter islandSeasonAdapter;
@@ -102,7 +105,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.mutationJournalAdapter = new PlayerInventoryMutationJournalAdapter(database);
         this.handoffFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(database);
         this.profileSwitchAdapter = new PlayerProfileSwitchAdapter(database);
-        this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(database);
+        this.spiralSlotPoolAdapter = new SqlSpiralSlotPoolAdapter(database);
+        this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(database, spiralSlotPoolAdapter);
         this.economySagaAdapter = new PlayerEconomySagaAdapter(database);
         this.islandSeasonAdapter = new PlayerIslandSeasonAdapter(database);
         this.islandSocialAdapter = new PlayerIslandSocialAdapter(database);
@@ -195,6 +199,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ProfileSwitchPort profileSwitchPort() {
         return profileSwitchAdapter;
+    }
+
+    public SpiralSlotPoolPort spiralSlotPoolPort() {
+        return spiralSlotPoolAdapter;
     }
 
     public WorldGridAllocationPort worldGridAllocationPort() {

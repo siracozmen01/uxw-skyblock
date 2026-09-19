@@ -18,6 +18,7 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import com.mojang.brigadier.arguments.LongArgumentType;
@@ -30,6 +31,7 @@ import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -43,6 +45,8 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
+import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
+import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -59,6 +63,7 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.jspecify.annotations.Nullable;
 
@@ -92,6 +97,8 @@ public final class IslandCommandTree {
     private final @Nullable IslandAdminFreezeService freezeService;
     private final @Nullable IslandMissionsMenu missionsMenu;
     private final @Nullable IslandBoundaryService boundaryService;
+    private final @Nullable IslandRecycleService recycleService;
+    private final @Nullable IslandResetConfirmationMenu resetMenu;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -346,6 +353,54 @@ public final class IslandCommandTree {
             @Nullable IslandAdminFreezeService freezeService,
             @Nullable IslandMissionsMenu missionsMenu,
             @Nullable IslandBoundaryService boundaryService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                boundaryService,
+                null,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService,
+            @Nullable IslandRecycleService recycleService,
+            @Nullable IslandResetConfirmationMenu resetMenu) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -369,6 +424,8 @@ public final class IslandCommandTree {
         this.freezeService = freezeService;
         this.missionsMenu = missionsMenu;
         this.boundaryService = boundaryService;
+        this.recycleService = recycleService;
+        this.resetMenu = resetMenu;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -384,6 +441,16 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("challenges").executes(this::executeMissions))
                 .then(Cmd.literal("border").executes(this::executeBorder))
                 .then(Cmd.literal("bounds").executes(this::executeBorder))
+                .then(Cmd.literal("reset")
+                        .executes(this::executeReset)
+                        .then(Cmd.literal("confirm")
+                                .then(Cmd.argument("code", StringArgumentType.word())
+                                        .executes(this::executeResetConfirm))))
+                .then(Cmd.literal("delete")
+                        .executes(this::executeReset)
+                        .then(Cmd.literal("confirm")
+                                .then(Cmd.argument("code", StringArgumentType.word())
+                                        .executes(this::executeResetConfirm))))
                 .then(Cmd.literal("create")
                         .executes(ctx ->
                                 executeCreate(ctx, presetCatalog.defaultPreset().id()))
@@ -445,7 +512,12 @@ public final class IslandCommandTree {
                                         || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
                                         || src.getSender().isOp())
                                 .then(Cmd.argument("target", StringArgumentType.word())
-                                        .executes(this::executeAdminInspect))));
+                                        .executes(this::executeAdminInspect)))
+                        .then(Cmd.literal("delete")
+                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                                        || src.getSender().isOp())
+                                .then(Cmd.argument("target", StringArgumentType.word())
+                                        .executes(this::executeAdminDelete))));
 
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
@@ -505,6 +577,7 @@ public final class IslandCommandTree {
                 src.getSender(),
                 Component.text("/is profile switch <uuid> - Switch active profile", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is chat - Toggle island team chat", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is reset - Reset and recycle your island", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
                 Component.text(
@@ -1281,6 +1354,122 @@ public final class IslandCommandTree {
         } else {
             send(player, Component.text("Perimeter particle projection disabled.", NamedTextColor.YELLOW));
         }
+        return Cmd.OK;
+    }
+
+    private int executeReset(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can reset islands.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (recycleService == null) {
+            send(player, Component.text("Island recycle service is disabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        ProfileId profileId = optProfile.get();
+        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+        if (optIsland.isEmpty()) {
+            send(player, Component.text("You do not have an active island to reset.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        ResetChallenge challenge = recycleService.generateResetChallenge(profileId, islandId);
+
+        send(player, Component.text("WARNING: ISLAND RESET CANNOT BE UNDONE!", NamedTextColor.DARK_RED, TextDecoration.BOLD));
+        send(player, Component.text("All island blocks, chests, items, and bank balance will be permanently wiped.", NamedTextColor.GRAY));
+        send(player, Component.text("To confirm in chat, type: ", NamedTextColor.YELLOW)
+                .append(Component.text("/is reset confirm " + challenge.code(), NamedTextColor.GOLD, TextDecoration.BOLD)));
+
+        if (resetMenu != null) {
+            resetMenu.open(player, challenge.code());
+        }
+        return Cmd.OK;
+    }
+
+    private int executeResetConfirm(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can confirm island resets.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (recycleService == null) {
+            send(player, Component.text("Island recycle service is disabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        String code = StringArgumentType.getString(ctx, "code");
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        ProfileId profileId = optProfile.get();
+        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+        if (optIsland.isEmpty()) {
+            send(player, Component.text("You do not have an active island to reset.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        schedulerPort.async(() -> {
+            RecycleResult result = recycleService.executeReset(profileId, islandId, code, false);
+            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                switch (result) {
+                    case RecycleResult.Success s -> {
+                        player.teleport(player.getWorld().getSpawnLocation());
+                        send(player, Component.text("Your island has been reset and recycled successfully!", NamedTextColor.GREEN, TextDecoration.BOLD));
+                        send(player, Component.text("Create a new island with /is create.", NamedTextColor.GRAY));
+                    }
+                    case RecycleResult.NotOwner no ->
+                        send(player, Component.text("Only the island owner can reset this island!", NamedTextColor.RED));
+                    case RecycleResult.InvalidChallenge ic ->
+                        send(player, Component.text("Reset confirmation failed: " + ic.reason(), NamedTextColor.RED));
+                    case RecycleResult.IslandNotFound nf ->
+                        send(player, Component.text("Island not found.", NamedTextColor.RED));
+                    case RecycleResult.Failure f ->
+                        send(player, Component.text("Reset failed: " + f.reason(), NamedTextColor.RED));
+                }
+            });
+        });
+        return Cmd.OK;
+    }
+
+    private int executeAdminDelete(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        if (recycleService == null) {
+            send(src.getSender(), Component.text("Island recycle service is disabled.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        String target = StringArgumentType.getString(ctx, "target");
+        Optional<IslandId> optIsland = resolveIslandId(target);
+        if (optIsland.isEmpty()) {
+            send(src.getSender(), Component.text("Could not find island for target: " + target, NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        send(src.getSender(), Component.text("Initiating administrative deletion of island " + islandId.value() + "...", NamedTextColor.YELLOW));
+        schedulerPort.async(() -> {
+            RecycleResult result = recycleService.executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true);
+            schedulerPort.onGlobal(() -> {
+                if (result instanceof RecycleResult.Success) {
+                    send(src.getSender(), Component.text("Island " + islandId.value() + " was deleted and recycled successfully.", NamedTextColor.GREEN));
+                } else {
+                    send(src.getSender(), Component.text("Administrative deletion failed for island " + islandId.value(), NamedTextColor.RED));
+                }
+            });
+        });
         return Cmd.OK;
     }
 }

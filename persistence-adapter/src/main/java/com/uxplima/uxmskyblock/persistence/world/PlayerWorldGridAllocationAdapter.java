@@ -12,9 +12,11 @@ import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
+import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.IslandCoordinates;
+import com.uxplima.uxmskyblock.core.domain.world.RecycledSlot;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
 import org.jspecify.annotations.Nullable;
@@ -31,14 +33,27 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
 
     private final Database database;
     private final SpiralGridCoordinateAllocator allocator;
+    private final @Nullable SpiralSlotPoolPort spiralSlotPool;
 
-    public PlayerWorldGridAllocationAdapter(Database database, SpiralGridCoordinateAllocator allocator) {
+    public PlayerWorldGridAllocationAdapter(
+            Database database,
+            SpiralGridCoordinateAllocator allocator,
+            @Nullable SpiralSlotPoolPort spiralSlotPool) {
         this.database = Objects.requireNonNull(database, "database must not be null");
         this.allocator = Objects.requireNonNull(allocator, "allocator must not be null");
+        this.spiralSlotPool = spiralSlotPool;
+    }
+
+    public PlayerWorldGridAllocationAdapter(Database database, SpiralGridCoordinateAllocator allocator) {
+        this(database, allocator, null);
+    }
+
+    public PlayerWorldGridAllocationAdapter(Database database, @Nullable SpiralSlotPoolPort spiralSlotPool) {
+        this(database, new SpiralGridCoordinateAllocator(), spiralSlotPool);
     }
 
     public PlayerWorldGridAllocationAdapter(Database database) {
-        this(database, new SpiralGridCoordinateAllocator());
+        this(database, new SpiralGridCoordinateAllocator(), null);
     }
 
     @Override
@@ -75,30 +90,59 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
         Objects.requireNonNull(nodeId, "nodeId must not be null");
         Objects.requireNonNull(worldName, "worldName must not be null");
 
+        if (spiralSlotPool != null) {
+            Optional<RecycledSlot> recycled = spiralSlotPool.claimNextAvailableSlot(worldName);
+            if (recycled.isPresent()) {
+                RecycledSlot slot = recycled.get();
+                Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+                try (Connection conn = database.connection()) {
+                    boolean bound = tryUpsertAllocation(
+                            conn, slot.slotIndex(), worldName, slot.gridX(), slot.gridZ(), islandId, nodeId, now);
+                    if (bound) {
+                        return new WorldGridAllocation(
+                                slot.slotIndex(),
+                                worldName,
+                                slot.gridX(),
+                                slot.gridZ(),
+                                Optional.ofNullable(islandId),
+                                nodeId,
+                                now);
+                    }
+                } catch (SQLException e) {
+                    // Fall back to new candidate sequence if upsert fails
+                }
+            }
+        }
+
         for (int attempt = 1; attempt <= MAX_RESERVATION_ATTEMPTS; attempt++) {
             long candidateSeq = queryNextCandidateSequence();
             IslandCoordinates coords = allocator.coordinatesForIndex(candidateSeq);
             Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
 
+            boolean inserted;
             try (Connection conn = database.connection()) {
-                boolean inserted = tryInsertAllocation(
+                inserted = tryInsertAllocation(
                         conn, candidateSeq, worldName, coords.x(), coords.z(), islandId, nodeId, now);
-                if (inserted) {
-                    return new WorldGridAllocation(
-                            candidateSeq,
-                            worldName,
-                            coords.x(),
-                            coords.z(),
-                            Optional.ofNullable(islandId),
-                            nodeId,
-                            now);
-                }
             } catch (SQLException e) {
                 if (isUniqueViolation(e)) {
                     backoff(attempt);
                     continue;
                 }
                 throw new IllegalStateException("Failed to allocate world grid slot at seq=" + candidateSeq, e);
+            }
+
+            if (inserted) {
+                if (spiralSlotPool != null) {
+                    spiralSlotPool.recordAllocatedSlot(candidateSeq, worldName, coords.x(), coords.z());
+                }
+                return new WorldGridAllocation(
+                        candidateSeq,
+                        worldName,
+                        coords.x(),
+                        coords.z(),
+                        Optional.ofNullable(islandId),
+                        nodeId,
+                        now);
             }
             backoff(attempt);
         }
@@ -231,6 +275,37 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to query max world grid sequence index", e);
         }
+    }
+
+    private boolean tryUpsertAllocation(
+            Connection conn,
+            long sequenceIndex,
+            String worldName,
+            int centerX,
+            int centerZ,
+            @Nullable IslandId islandId,
+            ServerNodeId nodeId,
+            Instant allocatedAt)
+            throws SQLException {
+        String updateSql = """
+                UPDATE world_grid_allocations
+                SET island_id = ?, allocated_by_node = ?, allocated_at = ?
+                WHERE sequence_index = ?
+                """;
+        try (PreparedStatement stmt = conn.prepareStatement(updateSql)) {
+            if (islandId != null) {
+                stmt.setString(1, islandId.value().toString());
+            } else {
+                stmt.setNull(1, java.sql.Types.VARCHAR);
+            }
+            stmt.setString(2, nodeId.value());
+            stmt.setTimestamp(3, Timestamp.from(allocatedAt));
+            stmt.setLong(4, sequenceIndex);
+            if (stmt.executeUpdate() > 0) {
+                return true;
+            }
+        }
+        return tryInsertAllocation(conn, sequenceIndex, worldName, centerX, centerZ, islandId, nodeId, allocatedAt);
     }
 
     private boolean tryInsertAllocation(

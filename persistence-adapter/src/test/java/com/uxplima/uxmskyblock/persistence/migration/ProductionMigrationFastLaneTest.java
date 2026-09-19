@@ -124,6 +124,7 @@ class ProductionMigrationFastLaneTest {
                                 "vault_escrow_transfers",
                                 "vault_audit_logs",
                                 "island_missions",
+                                "spiral_slot_pool",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -2176,7 +2177,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(19);
 
             // 2. Upgrade by applying V20
-            int v20Applied = runner.apply(allMigrations);
+            int v20Applied = runner.apply(allMigrations.subList(0, 20));
             assertThat(v20Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(20);
 
@@ -2237,9 +2238,50 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 20));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(20);
+        }
+    }
+
+    @Test
+    @DisplayName("24. Step-by-step upgrade from V20 to V21 creates spiral slot pool table")
+    void stepByStepUpgradeFromV20ToV21CreatesSpiralSlotPoolTable() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V20
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v20Applied = runner.apply(allMigrations.subList(0, 20));
+            assertThat(v20Applied).isEqualTo(20);
+            assertThat(runner.currentVersion()).isEqualTo(20);
+
+            // 2. Upgrade by applying V21
+            int v21Applied = runner.apply(allMigrations);
+            assertThat(v21Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(21);
+
+            // 3. Verify spiral_slot_pool table accepts rows and records states
+            try (Connection conn = db.connection()) {
+                execute(conn, """
+                        INSERT INTO spiral_slot_pool (
+                            slot_index, world_name, grid_x, grid_z, is_allocated, vacated_at
+                        ) VALUES (
+                            42, 'skyblock_world', 500, 500, 0, CURRENT_TIMESTAMP
+                        );
+                        """);
+
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM spiral_slot_pool WHERE slot_index = 42 AND is_allocated = 0"))
+                        .isEqualTo(1);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(21);
         }
     }
 

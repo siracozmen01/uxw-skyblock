@@ -1,0 +1,132 @@
+package com.uxplima.uxmskyblock.bukkit.menu;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Duration;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+
+import com.uxplima.uxmlib.gui.Guis;
+import com.uxplima.uxmlib.gui.SimpleGui;
+import com.uxplima.uxmlib.gui.item.GuiItem;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
+import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.MockBukkit;
+
+class IslandResetConfirmationMenuTest extends MockBukkitHarness {
+
+    private IslandRecycleService mockRecycleService;
+    private IslandStoragePort mockStorage;
+    private PlayerSessionCoordinator mockSessionCoordinator;
+    private DirectSchedulerPort scheduler;
+
+    private IslandResetConfirmationMenu menu;
+    private Player player;
+    private IslandId islandId;
+    private ProfileId profileId;
+
+    @BeforeEach
+    void setUp() {
+        Guis.install(MockBukkit.createMockPlugin());
+
+        mockRecycleService = mock(IslandRecycleService.class);
+        mockStorage = mock(IslandStoragePort.class);
+        mockSessionCoordinator = mock(PlayerSessionCoordinator.class);
+        scheduler = new DirectSchedulerPort();
+
+        menu = new IslandResetConfirmationMenu(mockRecycleService, mockStorage, mockSessionCoordinator, scheduler);
+
+        player = createPlayer("TestResetPlayer");
+        islandId = new IslandId(UUID.randomUUID());
+        profileId = new ProfileId(player.getUniqueId());
+    }
+
+    @Test
+    @DisplayName("buildGui sets confirm, cancel and info items in expected slots")
+    void buildGuiSetsExpectedSlots() {
+        SimpleGui gui = menu.buildGui(player, profileId, islandId, "1234");
+
+        assertThat(gui.size()).isEqualTo(27);
+        assertThat(gui.getItem(11)).isInstanceOf(GuiItem.Static.class);
+        assertThat(((GuiItem.Static) gui.getItem(11)).item().getType()).isEqualTo(Material.RED_CONCRETE);
+
+        assertThat(gui.getItem(13)).isInstanceOf(GuiItem.Static.class);
+        assertThat(((GuiItem.Static) gui.getItem(13)).item().getType()).isEqualTo(Material.BARRIER);
+
+        assertThat(gui.getItem(15)).isInstanceOf(GuiItem.Static.class);
+        assertThat(((GuiItem.Static) gui.getItem(15)).item().getType()).isEqualTo(Material.GREEN_CONCRETE);
+
+        // Fillers
+        assertThat(gui.getItem(0)).isInstanceOf(GuiItem.Static.class);
+        assertThat(((GuiItem.Static) gui.getItem(0)).item().getType()).isEqualTo(Material.GRAY_STAINED_GLASS_PANE);
+        assertThat(gui.getItem(26)).isInstanceOf(GuiItem.Static.class);
+        assertThat(((GuiItem.Static) gui.getItem(26)).item().getType()).isEqualTo(Material.GRAY_STAINED_GLASS_PANE);
+    }
+
+    @Test
+    @DisplayName("open warns player when no island exists")
+    void openWarnsPlayerWithoutIsland() {
+        when(mockSessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(profileId));
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.empty());
+
+        menu.open(player, "1234");
+
+        if (player.getOpenInventory() != null && player.getOpenInventory().getTopInventory() != null) {
+            assertThat(player.getOpenInventory().getTopInventory().getSize()).isNotEqualTo(27);
+        }
+    }
+
+    @Test
+    @DisplayName("open displays confirmation gui when player has island")
+    void openDisplaysConfirmationGuiWhenIslandPresent() {
+        when(mockSessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(profileId));
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+
+        menu.open(player, "4321");
+
+        assertThat(player.getOpenInventory().getTopInventory().getSize()).isEqualTo(27);
+    }
+
+    private static class DirectSchedulerPort implements SchedulerPort {
+        @Override
+        public void onGlobal(Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void onRegion(String worldName, int chunkX, int chunkZ, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void onEntity(PlayerUuid playerUuid, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void async(Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void asyncAfter(Duration delay, Runnable task) {
+            task.run();
+        }
+    }
+}

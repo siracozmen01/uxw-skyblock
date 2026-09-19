@@ -44,6 +44,7 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.mission.IslandMissionListener;
 import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
@@ -57,7 +58,11 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.FreezeFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.MissionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.RecycleFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.RewardInboxFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
+import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
+import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SeasonFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.ShopFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.SocialFeatureModule;
@@ -176,6 +181,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final WorldBorderPacketAdapter worldBorderAdapter;
     private final IslandBoundaryService boundaryService;
     private final IslandBoundaryListener boundaryListener;
+    private final FoliaIslandVoidingAdapter voidingAdapter;
+    private final NbtIslandBackupAdapter islandBackupAdapter;
+    private final IslandRecycleService recycleService;
+    private final IslandResetConfirmationMenu resetConfirmationMenu;
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
 
@@ -421,6 +430,21 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.boundaryService = new IslandBoundaryService(worldBorderAdapter);
         this.boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, scheduler);
 
+        this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler);
+        this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder());
+        this.recycleService = new IslandRecycleService(
+                persistenceBootstrap.islandStoragePort(),
+                persistenceBootstrap.worldGridAllocationPort(),
+                persistenceBootstrap.spiralSlotPoolPort(),
+                voidingAdapter,
+                islandBackupAdapter,
+                persistenceBootstrap.outboxPort());
+        this.resetConfirmationMenu = new IslandResetConfirmationMenu(
+                recycleService,
+                persistenceBootstrap.islandStoragePort(),
+                sessionCoordinator,
+                scheduler);
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -441,7 +465,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 inactivityService,
                 freezeService,
                 missionsMenu,
-                boundaryService);
+                boundaryService,
+                recycleService,
+                resetConfirmationMenu);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -553,6 +579,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new FreezeFeatureModule(freezeService));
         this.moduleRegistry.register(new MissionFeatureModule(missionService, missionConfig));
         this.moduleRegistry.register(new BoundaryFeatureModule(boundaryService, boundaryListener, scheduler));
+        this.moduleRegistry.register(new RecycleFeatureModule(recycleService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1539,6 +1566,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public WorldBorderPacketAdapter worldBorderAdapter() {
         return worldBorderAdapter;
+    }
+
+    public IslandRecycleService recycleService() {
+        return recycleService;
+    }
+
+    public IslandResetConfirmationMenu resetConfirmationMenu() {
+        return resetConfirmationMenu;
+    }
+
+    public FoliaIslandVoidingAdapter voidingAdapter() {
+        return voidingAdapter;
+    }
+
+    public NbtIslandBackupAdapter islandBackupAdapter() {
+        return islandBackupAdapter;
     }
 
     @Override

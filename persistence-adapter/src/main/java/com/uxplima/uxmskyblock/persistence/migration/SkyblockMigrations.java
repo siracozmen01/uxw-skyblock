@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 20;
+    public static final int LATEST_VERSION = 21;
+
+    /** Human-readable description of migration V21. */
+    public static final String V21_DESCRIPTION = "create spiral slot pool for coordinate recycling";
 
     /** Human-readable description of migration V20. */
     public static final String V20_DESCRIPTION = "create island missions and quest progress";
@@ -120,7 +123,8 @@ public final class SkyblockMigrations {
                 v17Migration(dialect),
                 v18Migration(dialect),
                 v19Migration(dialect),
-                v20Migration(dialect));
+                v20Migration(dialect),
+                v21Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -517,6 +521,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(20, V20_DESCRIPTION, SQLITE_V20_DDL);
             case MYSQL -> new Migration(20, V20_DESCRIPTION, MYSQL_V20_DDL);
             case POSTGRES -> new Migration(20, V20_DESCRIPTION, POSTGRES_V20_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v21Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(21, V21_DESCRIPTION, SQLITE_V21_DDL);
+            case MYSQL -> new Migration(21, V21_DESCRIPTION, MYSQL_V21_DDL);
+            case POSTGRES -> new Migration(21, V21_DESCRIPTION, POSTGRES_V21_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2436,5 +2452,43 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX IF NOT EXISTS idx_island_missions_island_profile ON island_missions (island_id, profile_id);
+            """;
+
+    private static final String SQLITE_V21_DDL = """
+            CREATE TABLE IF NOT EXISTS spiral_slot_pool (
+                slot_index INTEGER NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                grid_x INTEGER NOT NULL,
+                grid_z INTEGER NOT NULL,
+                is_allocated SMALLINT NOT NULL DEFAULT 1,
+                vacated_at TIMESTAMP NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_spiral_slot_pool_free ON spiral_slot_pool (is_allocated, slot_index ASC);
+            """;
+
+    private static final String MYSQL_V21_DDL = """
+            CREATE TABLE IF NOT EXISTS spiral_slot_pool (
+                slot_index BIGINT NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                grid_x INT NOT NULL,
+                grid_z INT NOT NULL,
+                is_allocated BOOLEAN NOT NULL DEFAULT TRUE,
+                vacated_at TIMESTAMP NULL,
+                INDEX idx_spiral_slot_pool_free (is_allocated, slot_index ASC)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V21_DDL = """
+            CREATE TABLE IF NOT EXISTS spiral_slot_pool (
+                slot_index BIGINT NOT NULL PRIMARY KEY,
+                world_name VARCHAR(64) NOT NULL,
+                grid_x INT NOT NULL,
+                grid_z INT NOT NULL,
+                is_allocated BOOLEAN NOT NULL DEFAULT TRUE,
+                vacated_at TIMESTAMP WITH TIME ZONE NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_spiral_slot_pool_free ON spiral_slot_pool (is_allocated, slot_index ASC);
             """;
 }

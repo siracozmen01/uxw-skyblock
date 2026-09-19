@@ -1,0 +1,87 @@
+package com.uxplima.uxmskyblock.bukkit.recycle;
+
+import java.util.Objects;
+
+import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
+
+import com.uxplima.uxmskyblock.core.application.recycle.IslandVoidingPort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+
+/**
+ * Platform adapter executing asynchronous Folia-native chunk voiding, entity evacuation,
+ * and block clearing across island bounds.
+ */
+public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
+
+    private final SchedulerPort schedulerPort;
+
+    public FoliaIslandVoidingAdapter(SchedulerPort schedulerPort) {
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+    }
+
+    @Override
+    public void voidIslandChunks(IslandId islandId, String worldName, IslandBounds bounds) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(worldName, "worldName must not be null");
+        Objects.requireNonNull(bounds, "bounds must not be null");
+
+        int minChunkX = bounds.minX() >> 4;
+        int maxChunkX = bounds.maxX() >> 4;
+        int minChunkZ = bounds.minZ() >> 4;
+        int maxChunkZ = bounds.maxZ() >> 4;
+
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                final int chunkX = cx;
+                final int chunkZ = cz;
+                schedulerPort.onRegion(worldName, chunkX, chunkZ, () -> {
+                    World world = Bukkit.getWorld(worldName);
+                    if (world == null) {
+                        return;
+                    }
+                    Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+                    Location spawn = world.getSpawnLocation();
+
+                    // 1. Evacuate online players from this chunk
+                    for (Entity entity : chunk.getEntities()) {
+                        if (entity instanceof Player player) {
+                            if (player.isOnline()) {
+                                player.teleport(spawn);
+                            }
+                        } else {
+                            entity.remove();
+                        }
+                    }
+
+                    // 2. Clear blocks within island bounds in this chunk
+                    int startX = Math.max(chunkX << 4, bounds.minX());
+                    int endX = Math.min((chunkX << 4) + 15, bounds.maxX());
+                    int startZ = Math.max(chunkZ << 4, bounds.minZ());
+                    int endZ = Math.min((chunkZ << 4) + 15, bounds.maxZ());
+                    int minY = world.getMinHeight();
+                    int maxY = Math.min(world.getMaxHeight(), 256);
+
+                    for (int x = startX; x <= endX; x++) {
+                        for (int z = startZ; z <= endZ; z++) {
+                            for (int y = minY; y <= maxY; y++) {
+                                Block block = world.getBlockAt(x, y, z);
+                                if (!block.isEmpty()) {
+                                    block.setType(Material.AIR, false);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+}
