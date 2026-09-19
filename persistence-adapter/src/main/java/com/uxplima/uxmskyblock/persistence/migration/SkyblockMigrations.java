@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 25;
+    public static final int LATEST_VERSION = 26;
+
+    /** Human-readable description of migration V26. */
+    public static final String V26_DESCRIPTION = "create enterprise activity events notifications and island homes tables";
 
     /** Human-readable description of migration V25. */
     public static final String V25_DESCRIPTION = "create game mode instances and canonical gameplay root references";
@@ -140,7 +143,8 @@ public final class SkyblockMigrations {
                 v22Migration(dialect),
                 v23Migration(dialect),
                 v24Migration(dialect),
-                v25Migration(dialect));
+                v25Migration(dialect),
+                v26Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -597,6 +601,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(25, V25_DESCRIPTION, SQLITE_V25_DDL);
             case MYSQL -> new Migration(25, V25_DESCRIPTION, MYSQL_V25_DDL);
             case POSTGRES -> new Migration(25, V25_DESCRIPTION, POSTGRES_V25_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v26Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(26, V26_DESCRIPTION, SQLITE_V26_DDL);
+            case MYSQL -> new Migration(26, V26_DESCRIPTION, MYSQL_V26_DDL);
+            case POSTGRES -> new Migration(26, V26_DESCRIPTION, POSTGRES_V26_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2790,4 +2806,176 @@ public final class SkyblockMigrations {
 
             CREATE INDEX IF NOT EXISTS idx_gameplay_roots_lookup ON primary_gameplay_roots (root_id, root_type);
             """;
+
+    private static final String SQLITE_V26_DDL = """
+            CREATE TABLE IF NOT EXISTS activity_events (
+                event_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                instance_id VARCHAR(64) NOT NULL,
+                actor_profile_id VARCHAR(36) NULL,
+                event_type VARCHAR(32) NOT NULL,
+                visibility VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_activity_events_instance_created ON activity_events (instance_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_activity_events_visibility ON activity_events (instance_id, visibility, created_at);
+
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                recipient_profile_id VARCHAR(36) NOT NULL,
+                category VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                is_read BOOLEAN NOT NULL DEFAULT 0,
+                read_at TIMESTAMP NULL,
+                expires_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_notifications_recipient FOREIGN KEY (recipient_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications (recipient_profile_id, is_read, created_at);
+
+            CREATE TABLE IF NOT EXISTS island_homes (
+                home_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_profile_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                home_name VARCHAR(64) NOT NULL,
+                home_scope VARCHAR(32) NOT NULL,
+                world_name VARCHAR(64) NOT NULL,
+                x DOUBLE NOT NULL,
+                y DOUBLE NOT NULL,
+                z DOUBLE NOT NULL,
+                yaw FLOAT NOT NULL DEFAULT 0.0,
+                pitch FLOAT NOT NULL DEFAULT 0.0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_homes_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE,
+                CONSTRAINT fk_island_homes_owner FOREIGN KEY (owner_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE,
+                CONSTRAINT uq_island_homes_owner_name UNIQUE (owner_profile_id, home_name)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_homes_island ON island_homes (island_id, home_scope);
+            CREATE INDEX IF NOT EXISTS idx_island_homes_owner ON island_homes (owner_profile_id);
+            """;
+
+    private static final String MYSQL_V26_DDL = """
+            CREATE TABLE IF NOT EXISTS activity_events (
+                event_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                instance_id VARCHAR(64) NOT NULL,
+                actor_profile_id VARCHAR(36) NULL,
+                event_type VARCHAR(32) NOT NULL,
+                visibility VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_activity_events_instance_created (instance_id, created_at),
+                INDEX idx_activity_events_visibility (instance_id, visibility, created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                recipient_profile_id VARCHAR(36) NOT NULL,
+                category VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                read_at TIMESTAMP NULL,
+                expires_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_notifications_recipient (recipient_profile_id, is_read, created_at),
+                CONSTRAINT fk_notifications_recipient FOREIGN KEY (recipient_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+            CREATE TABLE IF NOT EXISTS island_homes (
+                home_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_profile_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                home_name VARCHAR(64) NOT NULL,
+                home_scope VARCHAR(32) NOT NULL,
+                world_name VARCHAR(64) NOT NULL,
+                x DOUBLE NOT NULL,
+                y DOUBLE NOT NULL,
+                z DOUBLE NOT NULL,
+                yaw FLOAT NOT NULL DEFAULT 0.0,
+                pitch FLOAT NOT NULL DEFAULT 0.0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT uq_island_homes_owner_name UNIQUE (owner_profile_id, home_name),
+                INDEX idx_island_homes_island (island_id, home_scope),
+                INDEX idx_island_homes_owner (owner_profile_id),
+                CONSTRAINT fk_island_homes_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE,
+                CONSTRAINT fk_island_homes_owner FOREIGN KEY (owner_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V26_DDL = """
+            CREATE TABLE IF NOT EXISTS activity_events (
+                event_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                instance_id VARCHAR(64) NOT NULL,
+                actor_profile_id VARCHAR(36) NULL,
+                event_type VARCHAR(32) NOT NULL,
+                visibility VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_activity_events_instance_created ON activity_events (instance_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_activity_events_visibility ON activity_events (instance_id, visibility, created_at);
+
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                recipient_profile_id VARCHAR(36) NOT NULL,
+                category VARCHAR(32) NOT NULL,
+                payload_type_id VARCHAR(64) NOT NULL,
+                payload_schema_version INT NOT NULL DEFAULT 1,
+                payload_data TEXT NOT NULL,
+                is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                read_at TIMESTAMP WITH TIME ZONE NULL,
+                expires_at TIMESTAMP WITH TIME ZONE NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_notifications_recipient FOREIGN KEY (recipient_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications (recipient_profile_id, is_read, created_at);
+
+            CREATE TABLE IF NOT EXISTS island_homes (
+                home_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_profile_id VARCHAR(36) NOT NULL,
+                island_id VARCHAR(36) NOT NULL,
+                home_name VARCHAR(64) NOT NULL,
+                home_scope VARCHAR(32) NOT NULL,
+                world_name VARCHAR(64) NOT NULL,
+                x DOUBLE PRECISION NOT NULL,
+                y DOUBLE PRECISION NOT NULL,
+                z DOUBLE PRECISION NOT NULL,
+                yaw REAL NOT NULL DEFAULT 0.0,
+                pitch REAL NOT NULL DEFAULT 0.0,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_homes_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE,
+                CONSTRAINT fk_island_homes_owner FOREIGN KEY (owner_profile_id)
+                    REFERENCES player_profiles (profile_id) ON DELETE CASCADE,
+                CONSTRAINT uq_island_homes_owner_name UNIQUE (owner_profile_id, home_name)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_homes_island ON island_homes (island_id, home_scope);
+            CREATE INDEX IF NOT EXISTS idx_island_homes_owner ON island_homes (owner_profile_id);
+            """;
 }
+

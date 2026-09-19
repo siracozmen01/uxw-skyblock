@@ -19,4 +19,12 @@ public record GameModeInstanceId(UUID value) {
     public static GameModeInstanceId of(UUID value) {
         return new GameModeInstanceId(value);
     }
+
+    public static GameModeInstanceId fromString(String str) {
+        try {
+            return new GameModeInstanceId(UUID.fromString(str));
+        } catch (IllegalArgumentException e) {
+            return new GameModeInstanceId(UUID.nameUUIDFromBytes(str.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        }
+    }
 }

@@ -70,6 +70,12 @@ import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
 import com.uxplima.uxmlib.bedrock.BedrockDetector;
 import com.uxplima.uxmlib.bedrock.BedrockScreen;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
+import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
@@ -289,6 +295,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final ClusterRoutingDirectoryPort clusterRoutingDirectory;
     private final IslandNetworkRouter networkRouter;
     private final MessageProvider messageProvider;
+    private final WorldDimensionSnapshotAdapter worldDimensionSnapshotAdapter;
+    private final CompositeWebMapAdapter webMapAdapter;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -848,6 +856,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.bedrockDetector = BedrockDetector.forServer(plugin.getServer());
         this.bedrockScreen = BedrockScreen.forServer(plugin.getServer());
         this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen);
+        this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin);
+        this.webMapAdapter = new CompositeWebMapAdapter(List.of(
+                new DynmapAdapter(plugin),
+                new BlueMapAdapter(plugin),
+                new Pl3xMapAdapter(plugin)));
 
         this.controlMenu = new IslandControlMenu(
                 persistenceBootstrap.islandStoragePort(),
@@ -2540,6 +2553,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public BedrockFormService bedrockFormService() {
         return bedrockFormService;
+    }
+
+    public WorldDimensionSnapshotAdapter worldDimensionSnapshotAdapter() {
+        return worldDimensionSnapshotAdapter;
+    }
+
+    public WebMapAdapter webMapAdapter() {
+        return webMapAdapter;
     }
 
     public FoliaIslandVoidingAdapter voidingAdapter() {

@@ -7,6 +7,7 @@ dependencies {
     api(project(":api"))
 
     implementation(libs.uxmlib.storage)
+    implementation(libs.gson)
 
     // Network JDBC drivers for runtime database backends; SQLite is bundled transitively by uxmlib-storage
     runtimeOnly(libs.mariadb.jdbc)

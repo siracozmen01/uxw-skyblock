@@ -6,25 +6,30 @@ import java.util.Objects;
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessStoragePort;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedStoragePort;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceStoragePort;
 import com.uxplima.uxmskyblock.core.application.antiabuse.AntiAbuseStoragePort;
 import com.uxplima.uxmskyblock.core.application.backup.BackupCatalogPort;
+import com.uxplima.uxmskyblock.core.application.backup.DatabaseBackupPort;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
 import com.uxplima.uxmskyblock.core.application.event.ConsumerInboxPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezePort;
 import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyStoragePort;
+import com.uxplima.uxmskyblock.core.application.home.HomeStoragePort;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinalizationPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
+import com.uxplima.uxmskyblock.core.application.notification.NotificationStoragePort;
 import com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort;
 import com.uxplima.uxmskyblock.core.application.reward.RewardStoragePort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonStoragePort;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
+import com.uxplima.uxmskyblock.core.application.snapshot.RootRelationalSnapshotPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialStoragePort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultStoragePort;
@@ -34,24 +39,29 @@ import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.persistence.access.SqlTemporaryAccessAdapter;
+import com.uxplima.uxmskyblock.persistence.activity.SqlActivityFeedAdapter;
 import com.uxplima.uxmskyblock.persistence.alliance.PlayerIslandAllianceAdapter;
 import com.uxplima.uxmskyblock.persistence.antiabuse.SqlAntiAbuseStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.backup.PlayerBackupCatalogAdapter;
+import com.uxplima.uxmskyblock.persistence.backup.SqlDatabaseBackupAdapter;
 import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
 import com.uxplima.uxmskyblock.persistence.economy.PlayerEconomySagaAdapter;
 import com.uxplima.uxmskyblock.persistence.event.ConsumerInboxAdapter;
 import com.uxplima.uxmskyblock.persistence.event.TransactionalOutboxAdapter;
 import com.uxplima.uxmskyblock.persistence.gamemode.SqlGameModeHierarchyAdapter;
+import com.uxplima.uxmskyblock.persistence.home.SqlHomeStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerInventoryMutationJournalAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerProfileHandoffFinalizationAdapter;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerProfileInventoryAdapter;
 import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.leaderboard.PlayerIslandLeaderboardAdapter;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
+import com.uxplima.uxmskyblock.persistence.notification.SqlNotificationAdapter;
 import com.uxplima.uxmskyblock.persistence.profile.PlayerProfileSwitchAdapter;
 import com.uxplima.uxmskyblock.persistence.reward.SqlRewardStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.season.PlayerIslandSeasonAdapter;
 import com.uxplima.uxmskyblock.persistence.session.PlayerSessionAuthorityAdapter;
+import com.uxplima.uxmskyblock.persistence.snapshot.SqlRootRelationalSnapshotAdapter;
 import com.uxplima.uxmskyblock.persistence.social.PlayerIslandSocialAdapter;
 import com.uxplima.uxmskyblock.persistence.upgrade.PlayerIslandUpgradeAdapter;
 import com.uxplima.uxmskyblock.persistence.vault.SqlIslandVaultStorageAdapter;
@@ -96,6 +106,12 @@ public final class PersistenceBootstrap implements AutoCloseable {
             islandBankruptcyStorageAdapter;
     private final com.uxplima.uxmskyblock.persistence.name.SqlIslandNameStorageAdapter islandNameStorageAdapter;
     private final SqlGameModeHierarchyAdapter gameModeHierarchyAdapter;
+    private final SqlDatabaseBackupAdapter databaseBackupAdapter;
+    private final SqlRootRelationalSnapshotAdapter rootRelationalSnapshotAdapter;
+    private final SqlHomeStorageAdapter homeStorageAdapter;
+    private final SqlActivityFeedAdapter activityFeedAdapter;
+    private final SqlNotificationAdapter notificationAdapter;
+
 
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -136,6 +152,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.islandNameStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.name.SqlIslandNameStorageAdapter(database.dataSource());
         this.gameModeHierarchyAdapter = new SqlGameModeHierarchyAdapter(database.dataSource());
+        this.databaseBackupAdapter = new SqlDatabaseBackupAdapter(database);
+        this.rootRelationalSnapshotAdapter = new SqlRootRelationalSnapshotAdapter(database.dataSource());
+        this.homeStorageAdapter = new SqlHomeStorageAdapter(database.dataSource());
+        this.activityFeedAdapter = new SqlActivityFeedAdapter(database.dataSource());
+        this.notificationAdapter = new SqlNotificationAdapter(database.dataSource());
     }
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
@@ -283,6 +304,26 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public GameModeHierarchyStoragePort gameModeHierarchyStoragePort() {
         return gameModeHierarchyAdapter;
+    }
+
+    public DatabaseBackupPort databaseBackupPort() {
+        return databaseBackupAdapter;
+    }
+
+    public RootRelationalSnapshotPort rootRelationalSnapshotPort() {
+        return rootRelationalSnapshotAdapter;
+    }
+
+    public HomeStoragePort homeStoragePort() {
+        return homeStorageAdapter;
+    }
+
+    public ActivityFeedStoragePort activityFeedStoragePort() {
+        return activityFeedAdapter;
+    }
+
+    public NotificationStoragePort notificationStoragePort() {
+        return notificationAdapter;
     }
 
     public void registerProfile(PlayerUuid playerUuid, ProfileId profileId) {

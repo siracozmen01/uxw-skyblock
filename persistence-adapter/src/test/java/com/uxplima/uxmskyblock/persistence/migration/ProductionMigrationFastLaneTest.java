@@ -131,6 +131,9 @@ class ProductionMigrationFastLaneTest {
                                 "island_bankruptcies",
                                 "game_mode_instances",
                                 "primary_gameplay_roots",
+                                "activity_events",
+                                "notifications",
+                                "island_homes",
                                 "uxmlib_schema_history");
 
                 // Future / deferred tables that MUST NOT exist
@@ -688,6 +691,51 @@ class ProductionMigrationFastLaneTest {
                 assertThat(rootCols)
                         .containsExactlyInAnyOrder(
                                 "game_mode_instance_id", "root_id", "root_type", "bound_at");
+
+                // activity_events, notifications, and island_homes columns (V26)
+                Set<String> activityCols = getColumnNames(meta, "activity_events");
+                assertThat(activityCols)
+                        .containsExactlyInAnyOrder(
+                                "event_id",
+                                "instance_id",
+                                "actor_profile_id",
+                                "event_type",
+                                "visibility",
+                                "payload_type_id",
+                                "payload_schema_version",
+                                "payload_data",
+                                "created_at");
+
+                Set<String> notificationCols = getColumnNames(meta, "notifications");
+                assertThat(notificationCols)
+                        .containsExactlyInAnyOrder(
+                                "notification_id",
+                                "recipient_profile_id",
+                                "category",
+                                "payload_type_id",
+                                "payload_schema_version",
+                                "payload_data",
+                                "is_read",
+                                "read_at",
+                                "expires_at",
+                                "created_at");
+
+                Set<String> homeCols = getColumnNames(meta, "island_homes");
+                assertThat(homeCols)
+                        .containsExactlyInAnyOrder(
+                                "home_id",
+                                "owner_profile_id",
+                                "island_id",
+                                "home_name",
+                                "home_scope",
+                                "world_name",
+                                "x",
+                                "y",
+                                "z",
+                                "yaw",
+                                "pitch",
+                                "created_at",
+                                "updated_at");
             }
         }
     }
@@ -2548,7 +2596,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(24);
 
             // 2. Upgrade by applying V25
-            int v25Applied = runner.apply(allMigrations);
+            int v25Applied = runner.apply(allMigrations.subList(0, 25));
             assertThat(v25Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(25);
 
@@ -2584,9 +2632,79 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 25));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(25);
+        }
+    }
+
+    @Test
+    @DisplayName("29. Step-by-step upgrade from V25 to V26 creates enterprise activity events, notifications, and island homes tables")
+    void stepByStepUpgradeFromV25ToV26CreatesEnterpriseTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V25
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v25Applied = runner.apply(allMigrations.subList(0, 25));
+            assertThat(v25Applied).isEqualTo(25);
+            assertThat(runner.currentVersion()).isEqualTo(25);
+
+            // 2. Upgrade by applying V26
+            int v26Applied = runner.apply(allMigrations);
+            assertThat(v26Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(26);
+
+            // 3. Verify activity_events, notifications, and island_homes accept rows
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(
+                        conn,
+                        "INSERT INTO islands (id, owner_profile_id, owner_account_uuid) VALUES ('11111111-2222-3333-4444-555555555555', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001');");
+
+                execute(
+                        conn,
+                        "INSERT INTO activity_events (event_id, instance_id, actor_profile_id, event_type, visibility, payload_type_id, payload_schema_version, payload_data) "
+                                + "VALUES ('evt-1', '11111111-2222-3333-4444-555555555555', '00000000-0000-0000-0000-000000000002', 'ISLAND_LEVEL_UP', 'PUBLIC', 'LEVEL_UP', 1, '{}');");
+
+                execute(
+                        conn,
+                        "INSERT INTO notifications (notification_id, recipient_profile_id, category, payload_type_id, payload_schema_version, payload_data, is_read) "
+                                + "VALUES ('notif-1', '00000000-0000-0000-0000-000000000002', 'SYSTEM', 'ANNOUNCEMENT', 1, '{}', 0);");
+
+                execute(
+                        conn,
+                        "INSERT INTO island_homes (home_id, owner_profile_id, island_id, home_name, home_scope, world_name, x, y, z, yaw, pitch) "
+                                + "VALUES ('home-1', '00000000-0000-0000-0000-000000000002', '11111111-2222-3333-4444-555555555555', 'default', 'ISLAND', 'skyblock_world', 10.5, 65.0, 20.5, 90.0, 0.0);");
+
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM activity_events;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM notifications;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+                try (Statement stmt = conn.createStatement();
+                        ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM island_homes;")) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getInt(1)).isEqualTo(1);
+                }
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(26);
         }
     }
 
