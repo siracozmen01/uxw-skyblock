@@ -8,13 +8,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 import org.bukkit.plugin.Plugin;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 
 import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 class WorldDimensionSnapshotAdapterTest {
 
@@ -31,11 +31,7 @@ class WorldDimensionSnapshotAdapterTest {
     @DisplayName("Captures and restores world dimension snapshot payload round-trip")
     void testCaptureAndRestoreRoundTrip() {
         PrimaryGameplayRootRef rootRef = new PrimaryGameplayRootRef(
-                GameModeInstanceId.of(UUID.randomUUID()),
-                "island-test-123",
-                "ISLAND",
-                Instant.now()
-        );
+                GameModeInstanceId.of(UUID.randomUUID()), "island-test-123", "ISLAND", Instant.now());
 
         byte[] payload = adapter.captureWorldDimension(rootRef, DimensionId.OVERWORLD);
         assertThat(payload).isNotEmpty();
@@ -48,17 +44,9 @@ class WorldDimensionSnapshotAdapterTest {
     @DisplayName("Restoring snapshot with mismatched rootId throws IllegalArgumentException")
     void testRestoreRootIdMismatch() {
         PrimaryGameplayRootRef rootRef1 = new PrimaryGameplayRootRef(
-                GameModeInstanceId.of(UUID.randomUUID()),
-                "island-test-123",
-                "ISLAND",
-                Instant.now()
-        );
+                GameModeInstanceId.of(UUID.randomUUID()), "island-test-123", "ISLAND", Instant.now());
         PrimaryGameplayRootRef rootRef2 = new PrimaryGameplayRootRef(
-                GameModeInstanceId.of(UUID.randomUUID()),
-                "island-test-456",
-                "ISLAND",
-                Instant.now()
-        );
+                GameModeInstanceId.of(UUID.randomUUID()), "island-test-456", "ISLAND", Instant.now());
 
         byte[] payload = adapter.captureWorldDimension(rootRef1, DimensionId.OVERWORLD);
 
@@ -71,11 +59,7 @@ class WorldDimensionSnapshotAdapterTest {
     @DisplayName("Restoring snapshot with mismatched dimensionId throws IllegalArgumentException")
     void testRestoreDimensionMismatch() {
         PrimaryGameplayRootRef rootRef = new PrimaryGameplayRootRef(
-                GameModeInstanceId.of(UUID.randomUUID()),
-                "island-test-123",
-                "ISLAND",
-                Instant.now()
-        );
+                GameModeInstanceId.of(UUID.randomUUID()), "island-test-123", "ISLAND", Instant.now());
 
         byte[] payload = adapter.captureWorldDimension(rootRef, DimensionId.OVERWORLD);
 

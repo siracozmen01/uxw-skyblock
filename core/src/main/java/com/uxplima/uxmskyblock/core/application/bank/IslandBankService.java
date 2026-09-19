@@ -14,7 +14,6 @@ import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.jspecify.annotations.Nullable;
@@ -100,11 +99,7 @@ public final class IslandBankService {
     }
 
     private BankTransactionOutcome execute(
-            IslandId islandId,
-            PlayerUuid playerUuid,
-            long deltaMinorUnits,
-            String reason,
-            ServerNodeId serverNodeId) {
+            IslandId islandId, PlayerUuid playerUuid, long deltaMinorUnits, String reason, ServerNodeId serverNodeId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
@@ -115,15 +110,14 @@ public final class IslandBankService {
 
         Optional<IslandAuthorityRecord> optAuth = islandAuthorityPort.findAuthority(islandId);
         if (optAuth.isEmpty()) {
-            return new BankTransactionOutcome.AuthorityRejected(
-                    "No authority record found for island " + islandId);
+            return new BankTransactionOutcome.AuthorityRejected("No authority record found for island " + islandId);
         }
 
         IslandAuthorityRecord auth = optAuth.get();
         if (!auth.authoritativeNode().equals(serverNodeId)) {
             return new BankTransactionOutcome.AuthorityRejected(
-                    "Local node " + serverNodeId + " does not hold authority for island " + islandId
-                            + " (held by " + auth.authoritativeNode() + ")");
+                    "Local node " + serverNodeId + " does not hold authority for island " + islandId + " (held by "
+                            + auth.authoritativeNode() + ")");
         }
 
         if (auth.leaseExpiresAt().isBefore(java.time.Instant.now())) {

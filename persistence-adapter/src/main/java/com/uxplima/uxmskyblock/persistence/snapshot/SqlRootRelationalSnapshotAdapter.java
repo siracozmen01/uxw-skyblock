@@ -9,7 +9,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,8 +46,7 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
             new TableSpec("island_warps", "island_id"),
             new TableSpec("island_boosters", "island_id"),
             new TableSpec("island_bankruptcies", "island_id"),
-            new TableSpec("island_homes", "island_id")
-    );
+            new TableSpec("island_homes", "island_id"));
 
     private record TableSpec(String tableName, String rootColumn) {}
 
@@ -200,7 +198,8 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
                 }
             }
 
-            StringBuilder sql = new StringBuilder("INSERT INTO ").append(tableName).append(" (");
+            StringBuilder sql =
+                    new StringBuilder("INSERT INTO ").append(tableName).append(" (");
             StringBuilder placeholders = new StringBuilder(" VALUES (");
             for (int i = 0; i < cols.size(); i++) {
                 sql.append(cols.get(i));

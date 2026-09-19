@@ -66,7 +66,8 @@ public final class SqlGameModeHierarchyAdapter implements GameModeHierarchyStora
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed saving game mode instance: " + instance.id().value(), e);
+            throw new RuntimeException(
+                    "Failed saving game mode instance: " + instance.id().value(), e);
         }
     }
 
@@ -81,7 +82,7 @@ public final class SqlGameModeHierarchyAdapter implements GameModeHierarchyStora
                 """;
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, id.value().toString());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -105,7 +106,7 @@ public final class SqlGameModeHierarchyAdapter implements GameModeHierarchyStora
                 """;
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, profileId.value().toString());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -155,7 +156,10 @@ public final class SqlGameModeHierarchyAdapter implements GameModeHierarchyStora
                 conn.setAutoCommit(prevAutoCommit);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed saving primary gameplay root ref: " + rootRef.gameModeInstanceId().value(), e);
+            throw new RuntimeException(
+                    "Failed saving primary gameplay root ref: "
+                            + rootRef.gameModeInstanceId().value(),
+                    e);
         }
     }
 
@@ -170,7 +174,7 @@ public final class SqlGameModeHierarchyAdapter implements GameModeHierarchyStora
                 """;
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, instanceId.value().toString());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -195,7 +199,7 @@ public final class SqlGameModeHierarchyAdapter implements GameModeHierarchyStora
                 """;
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, rootId);
             stmt.setString(2, rootType);
             try (ResultSet rs = stmt.executeQuery()) {

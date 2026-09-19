@@ -3,9 +3,9 @@ package com.uxplima.uxmskyblock.core.domain.activity;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
-import org.jspecify.annotations.Nullable;
 
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Domain entity representing a user-facing activity feed event (Section 2.19 & 2.42).

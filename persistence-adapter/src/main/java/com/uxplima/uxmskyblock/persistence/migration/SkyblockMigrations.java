@@ -24,7 +24,8 @@ public final class SkyblockMigrations {
     public static final int LATEST_VERSION = 26;
 
     /** Human-readable description of migration V26. */
-    public static final String V26_DESCRIPTION = "create enterprise activity events notifications and island homes tables";
+    public static final String V26_DESCRIPTION =
+            "create enterprise activity events notifications and island homes tables";
 
     /** Human-readable description of migration V25. */
     public static final String V25_DESCRIPTION = "create game mode instances and canonical gameplay root references";
@@ -2978,4 +2979,3 @@ public final class SkyblockMigrations {
             CREATE INDEX IF NOT EXISTS idx_island_homes_owner ON island_homes (owner_profile_id);
             """;
 }
-

@@ -5,7 +5,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -72,7 +71,8 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
     }
 
     @Override
-    public void restoreWorldDimension(PrimaryGameplayRootRef rootRef, DimensionId dimensionId, byte[] dimensionPayload) {
+    public void restoreWorldDimension(
+            PrimaryGameplayRootRef rootRef, DimensionId dimensionId, byte[] dimensionPayload) {
         Objects.requireNonNull(rootRef, "rootRef must not be null");
         Objects.requireNonNull(dimensionId, "dimensionId must not be null");
         Objects.requireNonNull(dimensionPayload, "dimensionPayload must not be null");
@@ -93,10 +93,12 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
             dis.readLong(); // timestamp
 
             if (!rootId.equalsIgnoreCase(rootRef.rootId())) {
-                throw new IllegalArgumentException("Dimension snapshot rootId mismatch: expected " + rootRef.rootId() + " but found " + rootId);
+                throw new IllegalArgumentException(
+                        "Dimension snapshot rootId mismatch: expected " + rootRef.rootId() + " but found " + rootId);
             }
             if (!recordedDim.equalsIgnoreCase(dimensionId.value())) {
-                throw new IllegalArgumentException("Dimension snapshot dimensionId mismatch: expected " + dimensionId.value() + " but found " + recordedDim);
+                throw new IllegalArgumentException("Dimension snapshot dimensionId mismatch: expected "
+                        + dimensionId.value() + " but found " + recordedDim);
             }
 
             boolean hasWorld = dis.readBoolean();
@@ -106,7 +108,8 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                 // In production, blocks and tiles are restored onto the target world's Folia region thread
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to deserialize world dimension snapshot for root " + rootRef.rootId(), e);
+            throw new RuntimeException(
+                    "Failed to deserialize world dimension snapshot for root " + rootRef.rootId(), e);
         }
     }
 
@@ -117,9 +120,16 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
             }
             String val = dimensionId.value();
             return switch (val) {
-                case "overworld" -> Bukkit.getWorld("world") != null ? Bukkit.getWorld("world") : Bukkit.getWorld("skyblock_world");
-                case "the_nether", "nether" -> Bukkit.getWorld("world_nether") != null ? Bukkit.getWorld("world_nether") : Bukkit.getWorld("skyblock_world_nether");
-                case "the_end", "end" -> Bukkit.getWorld("world_the_end") != null ? Bukkit.getWorld("world_the_end") : Bukkit.getWorld("skyblock_world_the_end");
+                case "overworld" ->
+                    Bukkit.getWorld("world") != null ? Bukkit.getWorld("world") : Bukkit.getWorld("skyblock_world");
+                case "the_nether", "nether" ->
+                    Bukkit.getWorld("world_nether") != null
+                            ? Bukkit.getWorld("world_nether")
+                            : Bukkit.getWorld("skyblock_world_nether");
+                case "the_end", "end" ->
+                    Bukkit.getWorld("world_the_end") != null
+                            ? Bukkit.getWorld("world_the_end")
+                            : Bukkit.getWorld("skyblock_world_the_end");
                 default -> Bukkit.getWorld(val);
             };
         } catch (Exception e) {

@@ -1,8 +1,9 @@
 package com.uxplima.uxmskyblock.core.application.network;
 
+import java.util.Objects;
+
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
-import java.util.Objects;
 
 /**
  * Sealed outcome of network routing resolution for an island visit or action.

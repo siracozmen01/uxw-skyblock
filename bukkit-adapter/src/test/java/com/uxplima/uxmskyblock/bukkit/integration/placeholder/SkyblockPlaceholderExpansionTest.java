@@ -138,13 +138,13 @@ class SkyblockPlaceholderExpansionTest {
     }
 
     @Test
-    @DisplayName("PAPI-001: onRequest performs ZERO persistence I/O on cache miss and throws if persistence is queried inside onRequest")
+    @DisplayName(
+            "PAPI-001: onRequest performs ZERO persistence I/O on cache miss and throws if persistence is queried inside onRequest")
     void onRequestZeroPersistenceIoOnCacheMiss() {
         IslandLeaderboardPort throwingLeaderboard = mock(IslandLeaderboardPort.class);
-        org.mockito.Mockito.doAnswer(
-                        invocation -> {
-                            throw new AssertionError("Zero-DB violation: persistence queried inside onRequest!");
-                        })
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    throw new AssertionError("Zero-DB violation: persistence queried inside onRequest!");
+                })
                 .when(throwingLeaderboard)
                 .fetchTopIslands(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt());
 
@@ -174,9 +174,11 @@ class SkyblockPlaceholderExpansionTest {
                 uuid -> Optional.of(profileId));
 
         // When requesting leaderboard top on empty cache, it returns default N/A without querying persistence
-        assertThat(noIoExpansion.onRequest(null, "leaderboard_top_level_1_score")).isEqualTo("N/A");
+        assertThat(noIoExpansion.onRequest(null, "leaderboard_top_level_1_score"))
+                .isEqualTo("N/A");
         assertThat(noIoExpansion.onRequest(null, "leaderboard_top_level_1_id")).isEqualTo("N/A");
-        assertThat(noIoExpansion.onRequest(mockPlayer, "island_leaderboard_rank")).isEqualTo("N/A");
+        assertThat(noIoExpansion.onRequest(mockPlayer, "island_leaderboard_rank"))
+                .isEqualTo("N/A");
     }
 
     @Test

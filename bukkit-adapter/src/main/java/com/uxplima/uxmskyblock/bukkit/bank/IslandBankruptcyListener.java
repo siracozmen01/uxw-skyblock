@@ -95,7 +95,8 @@ public final class IslandBankruptcyListener implements Listener {
         this.islandLookup = Objects.requireNonNull(islandLookup, "islandLookup must not be null");
         this.islandStoragePort = islandStoragePort;
         this.schedulerPort = schedulerPort;
-        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.activeProfileProvider =
+                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -273,10 +274,12 @@ public final class IslandBankruptcyListener implements Listener {
                     }
                     if (record.status() == BankruptcyStatus.GRACE) {
                         double debt = record.debtMinorUnits() / 100.0;
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize("<yellow>[Warning] Your island is in bankruptcy grace! Outstanding debt: $"
-                                        + String.format("%.2f", debt)
-                                        + ". Settle debt via <gold>/is bank paydebt</gold> before grace expires.</yellow>"));
+                        player.sendMessage(
+                                MiniMessage.miniMessage()
+                                        .deserialize(
+                                                "<yellow>[Warning] Your island is in bankruptcy grace! Outstanding debt: $"
+                                                        + String.format("%.2f", debt)
+                                                        + ". Settle debt via <gold>/is bank paydebt</gold> before grace expires.</yellow>"));
                     } else if (record.status() == BankruptcyStatus.LOCKED) {
                         double debt = record.debtMinorUnits() / 100.0;
                         player.sendMessage(MiniMessage.miniMessage()

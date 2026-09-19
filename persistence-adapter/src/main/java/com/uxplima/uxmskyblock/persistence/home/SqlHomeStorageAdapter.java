@@ -85,7 +85,8 @@ public final class SqlHomeStorageAdapter implements HomeStoragePort {
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to save home " + home.name() + " for profile " + home.ownerProfileId(), e);
+            throw new RuntimeException(
+                    "Failed to save home " + home.name() + " for profile " + home.ownerProfileId(), e);
         }
     }
 
@@ -228,9 +229,12 @@ public final class SqlHomeStorageAdapter implements HomeStoragePort {
                 homeName,
                 scope,
                 worldName,
-                x, y, z, yaw, pitch,
+                x,
+                y,
+                z,
+                yaw,
+                pitch,
                 createdAt,
-                updatedAt
-        );
+                updatedAt);
     }
 }

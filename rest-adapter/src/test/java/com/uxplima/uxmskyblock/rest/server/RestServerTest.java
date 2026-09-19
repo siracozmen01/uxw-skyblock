@@ -12,7 +12,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,9 +29,6 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
-import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
-import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
-import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -144,8 +140,10 @@ class RestServerTest {
         assertThat(response.statusCode()).isEqualTo(200);
 
         JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
-        assertThat(json.get("islandId").getAsString()).isEqualTo(testIslandId.value().toString());
-        assertThat(json.get("ownerProfileId").getAsString()).isEqualTo(ownerProfileId.value().toString());
+        assertThat(json.get("islandId").getAsString())
+                .isEqualTo(testIslandId.value().toString());
+        assertThat(json.get("ownerProfileId").getAsString())
+                .isEqualTo(ownerProfileId.value().toString());
         assertThat(json.get("memberCount").getAsInt()).isEqualTo(1);
     }
 
@@ -173,7 +171,8 @@ class RestServerTest {
         JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
         assertThat(arr.size()).isEqualTo(1);
         JsonObject member = arr.get(0).getAsJsonObject();
-        assertThat(member.get("profileId").getAsString()).isEqualTo(ownerProfileId.value().toString());
+        assertThat(member.get("profileId").getAsString())
+                .isEqualTo(ownerProfileId.value().toString());
         assertThat(member.get("role").getAsString()).isEqualTo("OWNER");
     }
 
@@ -196,7 +195,8 @@ class RestServerTest {
         assertThat(arr.size()).isEqualTo(1);
         JsonObject item = arr.get(0).getAsJsonObject();
         assertThat(item.get("rank").getAsInt()).isEqualTo(1);
-        assertThat(item.get("islandId").getAsString()).isEqualTo(testIslandId.value().toString());
+        assertThat(item.get("islandId").getAsString())
+                .isEqualTo(testIslandId.value().toString());
         assertThat(item.get("islandName").getAsString()).isEqualTo("Genesis");
         assertThat(item.get("score").getAsLong()).isEqualTo(9999L);
         assertThat(item.get("formattedScore").getAsString()).isEqualTo("9,999");
@@ -217,8 +217,7 @@ class RestServerTest {
                 5000L,
                 5000L,
                 "tebex_package_42",
-                Instant.now()
-        );
+                Instant.now());
         when(bankService.depositToIsland(eq(testIslandId), any(), eq(5000L), eq("tebex_package_42"), eq(NODE_ID)))
                 .thenReturn(new BankTransactionOutcome.Success(bank, tx));
 

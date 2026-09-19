@@ -27,16 +27,17 @@ public final class BukkitIslandOnlineMemberProvider implements IslandOnlineMembe
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
 
     public BukkitIslandOnlineMemberProvider(
-            IslandStoragePort islandStoragePort,
-            Function<UUID, Optional<ProfileId>> activeProfileProvider) {
+            IslandStoragePort islandStoragePort, Function<UUID, Optional<ProfileId>> activeProfileProvider) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
-        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.activeProfileProvider =
+                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
     }
 
     public BukkitIslandOnlineMemberProvider(
-            IslandStoragePort islandStoragePort,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this(islandStoragePort, sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
+            IslandStoragePort islandStoragePort, @Nullable PlayerSessionCoordinator sessionCoordinator) {
+        this(
+                islandStoragePort,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
     }
 
     public BukkitIslandOnlineMemberProvider(IslandStoragePort islandStoragePort) {

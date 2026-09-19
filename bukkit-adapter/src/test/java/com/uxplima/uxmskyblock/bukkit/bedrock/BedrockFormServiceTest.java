@@ -8,13 +8,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+
+import org.bukkit.entity.Player;
 
 import com.uxplima.uxmlib.bedrock.BedrockDetector;
 import com.uxplima.uxmlib.bedrock.BedrockScreen;
@@ -24,10 +25,6 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
-import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
-import com.uxplima.uxmskyblock.core.domain.warp.WarpCategory;
-import com.uxplima.uxmskyblock.core.domain.warp.WarpName;
-import org.bukkit.entity.Player;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -70,19 +67,10 @@ class BedrockFormServiceTest {
                 IslandBounds.fromCenterAndRadius(0, 0, 100),
                 PlayerUuid.of(UUID.randomUUID()),
                 new ProfileId(UUID.randomUUID()),
-                Instant.now()
-        );
+                Instant.now());
 
         AtomicBoolean homeClicked = new AtomicBoolean(false);
-        service.openIslandControlForm(
-                player,
-                island,
-                () -> homeClicked.set(true),
-                null,
-                null,
-                null,
-                null
-        );
+        service.openIslandControlForm(player, island, () -> homeClicked.set(true), null, null, null, null);
 
         ArgumentCaptor<IntConsumer> consumerCaptor = ArgumentCaptor.forClass(IntConsumer.class);
         verify(screen).sendSimpleForm(eq(player), eq("Island Control Panel"), any(), any(), consumerCaptor.capture());
@@ -96,25 +84,18 @@ class BedrockFormServiceTest {
     void testConfirmationModal() {
         AtomicBoolean confirmed = new AtomicBoolean(false);
         service.openConfirmationModal(
-                player,
-                "Reset Island?",
-                "Are you sure?",
-                "Yes",
-                "No",
-                () -> confirmed.set(true),
-                () -> {}
-        );
+                player, "Reset Island?", "Are you sure?", "Yes", "No", () -> confirmed.set(true), () -> {});
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-        verify(screen).sendModalForm(
-                eq(player),
-                eq("Reset Island?"),
-                eq("Are you sure?"),
-                eq("Yes"),
-                eq("No"),
-                runnableCaptor.capture(),
-                any()
-        );
+        verify(screen)
+                .sendModalForm(
+                        eq(player),
+                        eq("Reset Island?"),
+                        eq("Are you sure?"),
+                        eq("Yes"),
+                        eq("No"),
+                        runnableCaptor.capture(),
+                        any());
 
         runnableCaptor.getValue().run();
         assertThat(confirmed.get()).isTrue();
@@ -127,28 +108,17 @@ class BedrockFormServiceTest {
         assertThat(original.isEnabled(IslandFlags.PVP)).isFalse();
 
         AtomicReference<IslandFlags> savedFlags = new AtomicReference<>();
-        service.openIslandSettingsForm(
-                player,
-                original,
-                savedFlags::set,
-                () -> {}
-        );
+        service.openIslandSettingsForm(player, original, savedFlags::set, () -> {});
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Consumer<Map<String, String>>> consumerCaptor = ArgumentCaptor.forClass(Consumer.class);
-        verify(screen).sendCustomForm(
-                eq(player),
-                eq("Island Settings"),
-                any(),
-                any(),
-                consumerCaptor.capture(),
-                any()
-        );
+        verify(screen).sendCustomForm(eq(player), eq("Island Settings"), any(), any(), consumerCaptor.capture(), any());
 
-        consumerCaptor.getValue().accept(Map.of(
-                "PVP", "true",
-                "FIRE_SPREAD", "true"
-        ));
+        consumerCaptor
+                .getValue()
+                .accept(Map.of(
+                        "PVP", "true",
+                        "FIRE_SPREAD", "true"));
 
         assertThat(savedFlags.get()).isNotNull();
         assertThat(savedFlags.get().isEnabled(IslandFlags.PVP)).isTrue();

@@ -10,11 +10,7 @@ import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 public sealed interface CreationAction {
 
     record PasteSchematic(
-            DimensionId dimensionId,
-            String schematicAssetPath,
-            int relativeX,
-            int relativeY,
-            int relativeZ)
+            DimensionId dimensionId, String schematicAssetPath, int relativeX, int relativeY, int relativeZ)
             implements CreationAction {
         public PasteSchematic {
             Objects.requireNonNull(dimensionId, "dimensionId must not be null");
@@ -22,24 +18,14 @@ public sealed interface CreationAction {
         }
     }
 
-    record SetSpawn(
-            DimensionId dimensionId,
-            double x,
-            double y,
-            double z,
-            float yaw,
-            float pitch)
+    record SetSpawn(DimensionId dimensionId, double x, double y, double z, float yaw, float pitch)
             implements CreationAction {
         public SetSpawn {
             Objects.requireNonNull(dimensionId, "dimensionId must not be null");
         }
     }
 
-    record GeneratePlatform(
-            DimensionId dimensionId,
-            String materialName,
-            int radius)
-            implements CreationAction {
+    record GeneratePlatform(DimensionId dimensionId, String materialName, int radius) implements CreationAction {
         public GeneratePlatform {
             Objects.requireNonNull(dimensionId, "dimensionId must not be null");
             Objects.requireNonNull(materialName, "materialName must not be null");

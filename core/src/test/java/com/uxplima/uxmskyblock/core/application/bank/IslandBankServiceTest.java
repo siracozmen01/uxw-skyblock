@@ -105,7 +105,8 @@ class IslandBankServiceTest {
         BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 1000L, wrongNode);
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
-        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason()).contains("does not hold authority");
+        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason())
+                .contains("does not hold authority");
     }
 
     @Test
@@ -113,12 +114,18 @@ class IslandBankServiceTest {
     void returnsRejectedWhenLeaseExpired() {
         authorityPort.authorities.put(
                 islandId,
-                new IslandAuthorityRecord(islandId, nodeId, 1L, Instant.now().minusSeconds(10), Instant.now().minusSeconds(3600)));
+                new IslandAuthorityRecord(
+                        islandId,
+                        nodeId,
+                        1L,
+                        Instant.now().minusSeconds(10),
+                        Instant.now().minusSeconds(3600)));
 
         BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 1000L, nodeId);
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
-        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason()).contains("Authority lease expired");
+        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason())
+                .contains("Authority lease expired");
     }
 
     @Test
@@ -129,7 +136,8 @@ class IslandBankServiceTest {
         BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 1000L, nodeId);
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
-        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason()).contains("No authority record found");
+        assertThat(((BankTransactionOutcome.AuthorityRejected) outcome).reason())
+                .contains("No authority record found");
     }
 
     @Test

@@ -56,8 +56,8 @@ class SqlGameModeHierarchyAdapterTest {
 
         // Setup parent foreign key rows
         try (java.sql.Connection conn = database.connection()) {
-            try (java.sql.PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
+            try (java.sql.PreparedStatement ps =
+                    conn.prepareStatement("INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
                 ps.setString(1, playerUuid.value().toString());
                 ps.executeUpdate();
             }

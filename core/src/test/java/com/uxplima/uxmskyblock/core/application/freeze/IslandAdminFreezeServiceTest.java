@@ -237,10 +237,7 @@ class IslandAdminFreezeServiceTest {
             freezeRecords.put(islandId, new IslandFreezeRecord(islandId, state, freezeReason, "test", Instant.now()));
             if (outboxPort != null && outboxEvent != null) {
                 outboxPort.stageEvent(
-                        outboxEvent.id(),
-                        outboxEvent.eventType(),
-                        outboxEvent.aggregateId(),
-                        outboxEvent.payload());
+                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
             }
         }
 
@@ -251,15 +248,10 @@ class IslandAdminFreezeServiceTest {
 
         @Override
         public void updateEconomicState(
-                IslandId islandId,
-                EconomicState state,
-                @Nullable StagedOutboxEvent outboxEvent) {
+                IslandId islandId, EconomicState state, @Nullable StagedOutboxEvent outboxEvent) {
             if (outboxPort != null && outboxEvent != null) {
                 outboxPort.stageEvent(
-                        outboxEvent.id(),
-                        outboxEvent.eventType(),
-                        outboxEvent.aggregateId(),
-                        outboxEvent.payload());
+                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
             }
         }
 

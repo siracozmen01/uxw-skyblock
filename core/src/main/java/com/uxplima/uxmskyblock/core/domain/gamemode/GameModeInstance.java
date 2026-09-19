@@ -26,11 +26,7 @@ public record GameModeInstance(
     }
 
     public static GameModeInstance create(
-            GameModeInstanceId id,
-            ProfileId profileId,
-            GameModeType gameModeType,
-            String rulesetConfig,
-            Instant now) {
+            GameModeInstanceId id, ProfileId profileId, GameModeType gameModeType, String rulesetConfig, Instant now) {
         return new GameModeInstance(id, profileId, gameModeType, rulesetConfig, now, now);
     }
 }

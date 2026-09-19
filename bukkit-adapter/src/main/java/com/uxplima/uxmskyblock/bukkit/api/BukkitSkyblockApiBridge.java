@@ -113,7 +113,8 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
         CompletableFuture<Optional<IslandSnapshot>> future = new CompletableFuture<>();
         schedulerPort.async(() -> {
             try {
-                future.complete(islandStoragePort.findIslandById(IslandId.of(islandId)).map(this::toSnapshot));
+                future.complete(
+                        islandStoragePort.findIslandById(IslandId.of(islandId)).map(this::toSnapshot));
             } catch (Throwable t) {
                 future.completeExceptionally(t);
             }
@@ -150,14 +151,15 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
         CompletableFuture<List<IslandLeaderboardEntry>> future = new CompletableFuture<>();
         schedulerPort.async(() -> {
             try {
-                List<IslandLeaderboardEntry> entries = islandLeaderboardPort.fetchTopIslands(LeaderboardCategory.LEVEL, limit).stream()
-                        .map(entry -> new IslandLeaderboardEntry(
-                                entry.rank(),
-                                entry.islandId().value(),
-                                entry.islandName(),
-                                entry.score(),
-                                entry.formattedScore()))
-                        .toList();
+                List<IslandLeaderboardEntry> entries =
+                        islandLeaderboardPort.fetchTopIslands(LeaderboardCategory.LEVEL, limit).stream()
+                                .map(entry -> new IslandLeaderboardEntry(
+                                        entry.rank(),
+                                        entry.islandId().value(),
+                                        entry.islandName(),
+                                        entry.score(),
+                                        entry.formattedScore()))
+                                .toList();
                 future.complete(entries);
             } catch (Throwable t) {
                 future.completeExceptionally(t);
@@ -192,7 +194,8 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
             try {
                 Optional<ProfileId> optProfile = activeProfileProvider.apply(ownerId);
                 if (optProfile.isEmpty()) {
-                    future.complete(IslandResult.failure("Active profile not found or session not loaded for player: " + ownerId));
+                    future.complete(IslandResult.failure(
+                            "Active profile not found or session not loaded for player: " + ownerId));
                     return;
                 }
                 ProfileId profileId = optProfile.get();
@@ -227,14 +230,11 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
         schedulerPort.async(() -> {
             try {
                 BankTransactionOutcome outcome = islandBankService.depositToIsland(
-                        IslandId.of(islandId),
-                        new PlayerUuid(actorId),
-                        amountMinorUnits,
-                        serverNodeId);
+                        IslandId.of(islandId), new PlayerUuid(actorId), amountMinorUnits, serverNodeId);
 
                 if (outcome instanceof BankTransactionOutcome.Success success) {
-                    future.complete(IslandResult.success(
-                            new IslandBankBalance(islandId, success.updatedBank().primaryBalanceMinorUnits())));
+                    future.complete(IslandResult.success(new IslandBankBalance(
+                            islandId, success.updatedBank().primaryBalanceMinorUnits())));
                 } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rejected) {
                     future.complete(IslandResult.failure("Authority rejected: " + rejected.reason()));
                 } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
@@ -258,14 +258,11 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
         schedulerPort.async(() -> {
             try {
                 BankTransactionOutcome outcome = islandBankService.withdrawFromIsland(
-                        IslandId.of(islandId),
-                        new PlayerUuid(actorId),
-                        amountMinorUnits,
-                        serverNodeId);
+                        IslandId.of(islandId), new PlayerUuid(actorId), amountMinorUnits, serverNodeId);
 
                 if (outcome instanceof BankTransactionOutcome.Success success) {
-                    future.complete(IslandResult.success(
-                            new IslandBankBalance(islandId, success.updatedBank().primaryBalanceMinorUnits())));
+                    future.complete(IslandResult.success(new IslandBankBalance(
+                            islandId, success.updatedBank().primaryBalanceMinorUnits())));
                 } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rejected) {
                     future.complete(IslandResult.failure("Authority rejected: " + rejected.reason()));
                 } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {

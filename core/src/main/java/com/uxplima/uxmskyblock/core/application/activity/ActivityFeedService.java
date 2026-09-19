@@ -4,12 +4,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.jspecify.annotations.Nullable;
 
 import com.uxplima.uxmskyblock.core.domain.activity.ActivityEvent;
 import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.activity.ActivityVisibility;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Domain application service recording and reading user-facing activity digests (Section 2.19 & 2.42).
@@ -46,8 +46,7 @@ public final class ActivityFeedService {
                 payloadTypeId,
                 payloadSchemaVersion,
                 payloadData,
-                Instant.now()
-        );
+                Instant.now());
 
         storagePort.appendEvent(event);
         return event;

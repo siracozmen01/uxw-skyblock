@@ -28,9 +28,7 @@ public interface IslandNameStoragePort {
      * @param outboxEvent optional event to stage atomically in the same transaction
      */
     default void updateCustomName(
-            IslandId islandId,
-            @Nullable IslandName name,
-            @Nullable StagedOutboxEvent outboxEvent) {
+            IslandId islandId, @Nullable IslandName name, @Nullable StagedOutboxEvent outboxEvent) {
         updateCustomName(islandId, name);
     }
 

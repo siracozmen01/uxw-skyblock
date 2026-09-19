@@ -19,6 +19,5 @@ public interface VelocityBridgePort {
      * @param targetIslandId the island ID being visited
      * @return CompletableFuture completing with true if dispatch succeeded, or false if failed
      */
-    CompletableFuture<Boolean> routePlayer(
-            PlayerUuid playerUuid, ServerNodeId targetNode, IslandId targetIslandId);
+    CompletableFuture<Boolean> routePlayer(PlayerUuid playerUuid, ServerNodeId targetNode, IslandId targetIslandId);
 }

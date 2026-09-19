@@ -93,7 +93,8 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
         this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
         this.leaderboardPort = Objects.requireNonNull(leaderboardPort, "leaderboardPort must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
-        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.activeProfileProvider =
+                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
 
         this.registry = new PlaceholderRegistry();
         this.registry.fallback(this);
@@ -121,7 +122,13 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
             IslandUpgradeStoragePort upgradeStoragePort,
             IslandLeaderboardPort leaderboardPort,
             SchedulerPort schedulerPort) {
-        this(islandStoragePort, islandBankPort, upgradeStoragePort, leaderboardPort, schedulerPort, uuid -> Optional.empty());
+        this(
+                islandStoragePort,
+                islandBankPort,
+                upgradeStoragePort,
+                leaderboardPort,
+                schedulerPort,
+                uuid -> Optional.empty());
     }
 
     public PlaceholderRegistry registry() {

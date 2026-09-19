@@ -162,7 +162,6 @@ public final class SqlNotificationAdapter implements NotificationStoragePort {
                 isRead,
                 readAt,
                 expiresAt,
-                createdAt
-        );
+                createdAt);
     }
 }

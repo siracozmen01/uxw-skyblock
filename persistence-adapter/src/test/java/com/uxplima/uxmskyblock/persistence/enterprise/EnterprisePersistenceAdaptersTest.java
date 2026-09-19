@@ -71,8 +71,8 @@ class EnterprisePersistenceAdaptersTest {
         islandId = IslandId.of(UUID.randomUUID());
 
         try (java.sql.Connection conn = database.connection()) {
-            try (java.sql.PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
+            try (java.sql.PreparedStatement ps =
+                    conn.prepareStatement("INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
                 ps.setString(1, playerUuid.value().toString());
                 ps.executeUpdate();
             }
@@ -104,11 +104,33 @@ class EnterprisePersistenceAdaptersTest {
     void testHomeStorageOperations() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         Home home1 = new Home(
-                HomeId.random(), profileId, islandId, "main", HomeScope.PERSONAL,
-                "world", 10.0, 64.0, 10.0, 0.0f, 0.0f, now, now);
+                HomeId.random(),
+                profileId,
+                islandId,
+                "main",
+                HomeScope.PERSONAL,
+                "world",
+                10.0,
+                64.0,
+                10.0,
+                0.0f,
+                0.0f,
+                now,
+                now);
         Home home2 = new Home(
-                HomeId.random(), profileId, islandId, "farm", HomeScope.CO_OP,
-                "world", 20.0, 65.0, 20.0, 90.0f, 0.0f, now, now);
+                HomeId.random(),
+                profileId,
+                islandId,
+                "farm",
+                HomeScope.CO_OP,
+                "world",
+                20.0,
+                65.0,
+                20.0,
+                90.0f,
+                0.0f,
+                now,
+                now);
 
         homeAdapter.saveHome(home1);
         homeAdapter.saveHome(home2);
@@ -128,8 +150,19 @@ class EnterprisePersistenceAdaptersTest {
 
         // Update home1 coordinates
         Home updatedHome1 = new Home(
-                home1.id(), profileId, islandId, "main", HomeScope.PERSONAL,
-                "world_nether", 100.0, 70.0, 100.0, 180.0f, 0.0f, now, now.plusSeconds(60));
+                home1.id(),
+                profileId,
+                islandId,
+                "main",
+                HomeScope.PERSONAL,
+                "world_nether",
+                100.0,
+                70.0,
+                100.0,
+                180.0f,
+                0.0f,
+                now,
+                now.plusSeconds(60));
         homeAdapter.saveHome(updatedHome1);
 
         Optional<Home> updatedFound = homeAdapter.findHome(profileId, "main");
@@ -149,18 +182,31 @@ class EnterprisePersistenceAdaptersTest {
     void testActivityFeedOperations() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         ActivityEvent event1 = new ActivityEvent(
-                UUID.randomUUID(), islandId.value().toString(), profileId,
-                ActivityEventType.MEMBER_JOINED, ActivityVisibility.PUBLIC,
-                "MEMBER_JOINED", 1, "{\"player\": \"Alice\"}", now);
+                UUID.randomUUID(),
+                islandId.value().toString(),
+                profileId,
+                ActivityEventType.MEMBER_JOINED,
+                ActivityVisibility.PUBLIC,
+                "MEMBER_JOINED",
+                1,
+                "{\"player\": \"Alice\"}",
+                now);
         ActivityEvent event2 = new ActivityEvent(
-                UUID.randomUUID(), islandId.value().toString(), profileId,
-                ActivityEventType.BANK_DEPOSIT, ActivityVisibility.MEMBERS_ONLY,
-                "DEPOSIT", 1, "{\"amount\": 5000}", now.plusSeconds(10));
+                UUID.randomUUID(),
+                islandId.value().toString(),
+                profileId,
+                ActivityEventType.BANK_DEPOSIT,
+                ActivityVisibility.MEMBERS_ONLY,
+                "DEPOSIT",
+                1,
+                "{\"amount\": 5000}",
+                now.plusSeconds(10));
 
         activityAdapter.appendEvent(event1);
         activityAdapter.appendEvent(event2);
 
-        List<ActivityEvent> events = activityAdapter.findEventsByInstanceId(islandId.value().toString(), 10);
+        List<ActivityEvent> events =
+                activityAdapter.findEventsByInstanceId(islandId.value().toString(), 10);
         assertThat(events).hasSize(2);
         // Latest first
         assertThat(events.get(0).eventType()).isEqualTo(ActivityEventType.BANK_DEPOSIT);
@@ -172,11 +218,27 @@ class EnterprisePersistenceAdaptersTest {
     void testNotificationOperations() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         Notification notif1 = new Notification(
-                UUID.randomUUID(), profileId, NotificationCategory.SYSTEM,
-                "ALERT", 1, "{\"msg\": \"Welcome!\"}", false, null, now.plusSeconds(3600), now);
+                UUID.randomUUID(),
+                profileId,
+                NotificationCategory.SYSTEM,
+                "ALERT",
+                1,
+                "{\"msg\": \"Welcome!\"}",
+                false,
+                null,
+                now.plusSeconds(3600),
+                now);
         Notification notif2 = new Notification(
-                UUID.randomUUID(), profileId, NotificationCategory.BANK_ACTIVITY,
-                "PAYOUT", 1, "{\"coins\": 100}", false, null, now.plusSeconds(3600), now);
+                UUID.randomUUID(),
+                profileId,
+                NotificationCategory.BANK_ACTIVITY,
+                "PAYOUT",
+                1,
+                "{\"coins\": 100}",
+                false,
+                null,
+                now.plusSeconds(3600),
+                now);
 
         notificationAdapter.saveNotification(notif1);
         notificationAdapter.saveNotification(notif2);
@@ -216,15 +278,23 @@ class EnterprisePersistenceAdaptersTest {
     void testRootRelationalSnapshotOperations() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         Home home = new Home(
-                HomeId.random(), profileId, islandId, "spawn", HomeScope.CO_OP,
-                "world", 5.0, 64.0, 5.0, 0.0f, 0.0f, now, now);
+                HomeId.random(),
+                profileId,
+                islandId,
+                "spawn",
+                HomeScope.CO_OP,
+                "world",
+                5.0,
+                64.0,
+                5.0,
+                0.0f,
+                0.0f,
+                now,
+                now);
         homeAdapter.saveHome(home);
 
         PrimaryGameplayRootRef rootRef = new PrimaryGameplayRootRef(
-                GameModeInstanceId.of(UUID.randomUUID()),
-                islandId.value().toString(),
-                "ISLAND",
-                now);
+                GameModeInstanceId.of(UUID.randomUUID()), islandId.value().toString(), "ISLAND", now);
 
         byte[] snapshot = snapshotAdapter.captureRelationalSnapshot(rootRef, 1);
         assertThat(snapshot).isNotEmpty();

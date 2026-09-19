@@ -2,7 +2,6 @@ package com.uxplima.uxmskyblock.core.application.network;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -27,7 +26,8 @@ public interface PlacementStrategy {
     static PlacementStrategy roundRobin() {
         AtomicInteger counter = new AtomicInteger();
         return (rootRef, candidates) -> {
-            List<NodeHealth> active = candidates.stream().filter(NodeHealth::active).toList();
+            List<NodeHealth> active =
+                    candidates.stream().filter(NodeHealth::active).toList();
             if (active.isEmpty()) {
                 return Optional.empty();
             }
@@ -53,7 +53,9 @@ public interface PlacementStrategy {
         return (rootRef, candidates) -> candidates.stream()
                 .filter(n -> n.active() && n.averageMspt() <= 45.0)
                 .min(Comparator.comparingDouble(NodeHealth::averageMspt))
-                .or(() -> candidates.stream().filter(NodeHealth::active).min(Comparator.comparingDouble(NodeHealth::averageMspt)))
+                .or(() -> candidates.stream()
+                        .filter(NodeHealth::active)
+                        .min(Comparator.comparingDouble(NodeHealth::averageMspt)))
                 .map(NodeHealth::nodeId);
     }
 

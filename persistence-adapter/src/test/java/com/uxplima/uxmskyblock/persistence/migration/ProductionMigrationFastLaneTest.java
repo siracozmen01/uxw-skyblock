@@ -689,8 +689,7 @@ class ProductionMigrationFastLaneTest {
 
                 Set<String> rootCols = getColumnNames(meta, "primary_gameplay_roots");
                 assertThat(rootCols)
-                        .containsExactlyInAnyOrder(
-                                "game_mode_instance_id", "root_id", "root_type", "bound_at");
+                        .containsExactlyInAnyOrder("game_mode_instance_id", "root_id", "root_type", "bound_at");
 
                 // activity_events, notifications, and island_homes columns (V26)
                 Set<String> activityCols = getColumnNames(meta, "activity_events");
@@ -2569,11 +2568,13 @@ class ProductionMigrationFastLaneTest {
                             'GRACE', 50000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         );""");
 
-                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_bankruptcies;")).isEqualTo(1);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_bankruptcies;"))
+                        .isEqualTo(1);
 
                 // Cascade delete when island is deleted
                 execute(conn, "DELETE FROM islands WHERE id = '99999999-8888-7777-6666-555555555555';");
-                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_bankruptcies;")).isEqualTo(0);
+                assertThat(queryCount(conn, "SELECT COUNT(*) FROM island_bankruptcies;"))
+                        .isEqualTo(0);
             }
 
             // 4. Rerun and assert zero migrations applied
@@ -2639,7 +2640,8 @@ class ProductionMigrationFastLaneTest {
     }
 
     @Test
-    @DisplayName("29. Step-by-step upgrade from V25 to V26 creates enterprise activity events, notifications, and island homes tables")
+    @DisplayName(
+            "29. Step-by-step upgrade from V25 to V26 creates enterprise activity events, notifications, and island homes tables")
     void stepByStepUpgradeFromV25ToV26CreatesEnterpriseTables() throws Exception {
         try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
             MigrationRunner runner = new MigrationRunner(db);

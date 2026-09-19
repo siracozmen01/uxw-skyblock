@@ -26,22 +26,21 @@ public final class GameModeHierarchyService {
         Objects.requireNonNull(profileId, "profileId must not be null");
         Objects.requireNonNull(rulesetConfig, "rulesetConfig must not be null");
 
-        return storagePort.findInstanceByProfileId(profileId)
-                .orElseGet(() -> {
-                    Instant now = Instant.now();
-                    GameModeInstance instance = GameModeInstance.create(
-                            GameModeInstanceId.random(), profileId, GameModeType.SKYBLOCK, rulesetConfig, now);
-                    storagePort.saveGameModeInstance(instance);
-                    return instance;
-                });
+        return storagePort.findInstanceByProfileId(profileId).orElseGet(() -> {
+            Instant now = Instant.now();
+            GameModeInstance instance = GameModeInstance.create(
+                    GameModeInstanceId.random(), profileId, GameModeType.SKYBLOCK, rulesetConfig, now);
+            storagePort.saveGameModeInstance(instance);
+            return instance;
+        });
     }
 
     public void bindIsland(GameModeInstanceId instanceId, IslandId islandId) {
         Objects.requireNonNull(instanceId, "instanceId must not be null");
         Objects.requireNonNull(islandId, "islandId must not be null");
 
-        PrimaryGameplayRootRef ref = PrimaryGameplayRootRef.forIsland(
-                instanceId, islandId.value().toString(), Instant.now());
+        PrimaryGameplayRootRef ref =
+                PrimaryGameplayRootRef.forIsland(instanceId, islandId.value().toString(), Instant.now());
         storagePort.savePrimaryGameplayRootRef(ref);
     }
 

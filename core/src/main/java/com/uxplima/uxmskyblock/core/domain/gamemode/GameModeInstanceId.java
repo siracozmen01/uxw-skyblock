@@ -24,7 +24,8 @@ public record GameModeInstanceId(UUID value) {
         try {
             return new GameModeInstanceId(UUID.fromString(str));
         } catch (IllegalArgumentException e) {
-            return new GameModeInstanceId(UUID.nameUUIDFromBytes(str.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return new GameModeInstanceId(
+                    UUID.nameUUIDFromBytes(str.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         }
     }
 }

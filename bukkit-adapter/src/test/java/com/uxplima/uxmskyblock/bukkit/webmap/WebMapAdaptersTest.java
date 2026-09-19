@@ -10,11 +10,11 @@ import java.util.List;
 import java.util.UUID;
 
 import org.bukkit.plugin.Plugin;
+
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 
 class WebMapAdaptersTest {
 

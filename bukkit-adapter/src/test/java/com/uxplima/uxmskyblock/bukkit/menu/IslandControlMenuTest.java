@@ -149,14 +149,15 @@ class IslandControlMenuTest extends MockBukkitHarness {
 
         bedrockMenu.open(player);
 
-        org.mockito.Mockito.verify(mockBedrock).openIslandControlForm(
-                eq(player),
-                eq(sampleIsland),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(mockBedrock)
+                .openIslandControlForm(
+                        eq(player),
+                        eq(sampleIsland),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     private static class DirectSchedulerPort implements SchedulerPort {

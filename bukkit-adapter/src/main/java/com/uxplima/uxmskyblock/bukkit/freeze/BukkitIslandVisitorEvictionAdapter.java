@@ -29,7 +29,11 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     private final IslandStoragePort islandStoragePort;
     private final SchedulerPort schedulerPort;
 
-    public record EvictionPlan(IslandId islandId, String worldName, IslandBounds bounds, @Nullable String reason) {}
+    public record EvictionPlan(
+            IslandId islandId,
+            String worldName,
+            IslandBounds bounds,
+            @Nullable String reason) {}
 
     public BukkitIslandVisitorEvictionAdapter(
             Plugin plugin, IslandStoragePort islandStoragePort, SchedulerPort schedulerPort) {
@@ -55,7 +59,9 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     }
 
     private void executeEvictionPlan(EvictionPlan plan) {
-        World defaultWorld = plugin.getServer().getWorlds().isEmpty() ? null : plugin.getServer().getWorlds().get(0);
+        World defaultWorld = plugin.getServer().getWorlds().isEmpty()
+                ? null
+                : plugin.getServer().getWorlds().get(0);
         Location spawnLocation = defaultWorld != null ? defaultWorld.getSpawnLocation() : null;
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {

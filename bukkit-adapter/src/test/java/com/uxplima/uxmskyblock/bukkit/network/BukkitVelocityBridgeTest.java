@@ -4,16 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.UUID;
 
+import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
-
-import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
-import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
-import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 
 class BukkitVelocityBridgeTest extends MockBukkitHarness {
 
@@ -32,7 +31,8 @@ class BukkitVelocityBridgeTest extends MockBukkitHarness {
         ServerNodeId targetNode = ServerNodeId.of("skyblock-02");
         IslandId islandId = IslandId.of(UUID.randomUUID());
 
-        boolean result = velocityBridge.routePlayer(playerUuid, targetNode, islandId).join();
+        boolean result =
+                velocityBridge.routePlayer(playerUuid, targetNode, islandId).join();
 
         assertThat(result).isTrue();
     }
@@ -44,7 +44,8 @@ class BukkitVelocityBridgeTest extends MockBukkitHarness {
         ServerNodeId targetNode = ServerNodeId.of("skyblock-02");
         IslandId islandId = IslandId.of(UUID.randomUUID());
 
-        boolean result = velocityBridge.routePlayer(playerUuid, targetNode, islandId).join();
+        boolean result =
+                velocityBridge.routePlayer(playerUuid, targetNode, islandId).join();
 
         assertThat(result).isFalse();
     }

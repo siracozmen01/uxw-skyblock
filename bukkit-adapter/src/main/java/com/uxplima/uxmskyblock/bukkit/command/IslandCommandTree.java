@@ -54,11 +54,11 @@ import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
+import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
+import com.uxplima.uxmskyblock.core.application.network.RouteOutcome;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
-import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
-import com.uxplima.uxmskyblock.core.application.network.RouteOutcome;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
@@ -815,8 +815,7 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("home").executes(this::executeHome))
                 .then(Cmd.literal("go").executes(this::executeHome))
                 .then(Cmd.literal("visit")
-                        .then(Cmd.argument("target", StringArgumentType.word())
-                                .executes(this::executeVisit)))
+                        .then(Cmd.argument("target", StringArgumentType.word()).executes(this::executeVisit)))
                 .then(Cmd.literal("nether").executes(this::executeNether))
                 .then(Cmd.literal("end").executes(this::executeEnd))
                 .then(Cmd.literal("limits").executes(this::executeLimits))
@@ -1380,8 +1379,8 @@ public final class IslandCommandTree {
     private void teleportToIslandLocation(Player player, IslandLocation loc, String successMsg) {
         World world = Bukkit.getWorld(loc.worldName());
         if (world != null) {
-            Location destination = new Location(
-                    world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
+            Location destination =
+                    new Location(world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
             var unused = player.teleportAsync(destination).thenAccept(teleported -> {
                 if (Boolean.TRUE.equals(teleported)) {
                     player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
@@ -1429,16 +1428,25 @@ public final class IslandCommandTree {
                         case RouteOutcome.Local local -> {
                             Optional<IslandLocation> optLoc = islandLocationService.findLocation(local.islandId());
                             if (optLoc.isEmpty()) {
-                                send(player, Component.text("Target island has no valid location.", NamedTextColor.RED));
+                                send(
+                                        player,
+                                        Component.text("Target island has no valid location.", NamedTextColor.RED));
                                 return;
                             }
                             teleportToIslandLocation(player, optLoc.get(), "Teleported to island " + target + "!");
                         }
                         case RouteOutcome.CrossServer cross -> {
-                            send(player, Component.text("Connecting to " + cross.targetNode().value() + "...", NamedTextColor.YELLOW));
+                            send(
+                                    player,
+                                    Component.text(
+                                            "Connecting to "
+                                                    + cross.targetNode().value() + "...",
+                                            NamedTextColor.YELLOW));
                         }
                         case RouteOutcome.Unavailable unavail -> {
-                            send(player, Component.text("Cannot visit island: " + unavail.reasonCode(), NamedTextColor.RED));
+                            send(
+                                    player,
+                                    Component.text("Cannot visit island: " + unavail.reasonCode(), NamedTextColor.RED));
                         }
                     }
                 });
@@ -2232,7 +2240,9 @@ public final class IslandCommandTree {
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = resolveIslandId(target);
             if (optIsland.isEmpty()) {
-                send(src.getSender(), Component.text("Could not find island for target: " + target, NamedTextColor.RED));
+                send(
+                        src.getSender(),
+                        Component.text("Could not find island for target: " + target, NamedTextColor.RED));
                 return;
             }
 

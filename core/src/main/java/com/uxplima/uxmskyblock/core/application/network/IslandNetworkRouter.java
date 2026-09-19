@@ -80,8 +80,7 @@ public final class IslandNetworkRouter {
         IslandAuthorityRecord authority = optAuthority.get();
         ServerNodeId targetNode = authority.authoritativeNode();
         // Update routing directory cache
-        clusterRoutingDirectoryPort.cacheRoute(
-                targetIslandId, targetNode, authority.authorityEpoch(), ROUTE_CACHE_TTL);
+        clusterRoutingDirectoryPort.cacheRoute(targetIslandId, targetNode, authority.authorityEpoch(), ROUTE_CACHE_TTL);
 
         if (targetNode.equals(localNodeId)) {
             return CompletableFuture.completedFuture(new RouteOutcome.Local(targetIslandId));

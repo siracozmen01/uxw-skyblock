@@ -18,7 +18,6 @@ import com.uxplima.uxmskyblock.core.domain.event.OutboxClaim;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import org.jspecify.annotations.Nullable;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inactivity.AbandonmentAction;
@@ -32,6 +31,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -440,6 +440,7 @@ class IslandInactivityServiceTest {
     private static class InMemoryIslandStorage implements IslandStoragePort {
         private final Map<IslandId, Island> islands = new ConcurrentHashMap<>();
         private final Map<IslandId, IslandLocation> locations = new ConcurrentHashMap<>();
+
         @Nullable InMemoryOutboxPort outboxPort;
 
         @Override
@@ -453,10 +454,7 @@ class IslandInactivityServiceTest {
             locations.put(island.id(), location);
             if (outboxPort != null && outboxEvent != null) {
                 outboxPort.stageEvent(
-                        outboxEvent.id(),
-                        outboxEvent.eventType(),
-                        outboxEvent.aggregateId(),
-                        outboxEvent.payload());
+                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
             }
         }
 
@@ -491,10 +489,7 @@ class IslandInactivityServiceTest {
             locations.remove(id);
             if (outboxPort != null && outboxEvent != null) {
                 outboxPort.stageEvent(
-                        outboxEvent.id(),
-                        outboxEvent.eventType(),
-                        outboxEvent.aggregateId(),
-                        outboxEvent.payload());
+                        outboxEvent.id(), outboxEvent.eventType(), outboxEvent.aggregateId(), outboxEvent.payload());
             }
         }
 

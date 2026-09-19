@@ -1,6 +1,5 @@
 package com.uxplima.uxmskyblock.core.application.snapshot;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -18,7 +17,6 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
 import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
-import com.uxplima.uxmskyblock.core.domain.storage.StorageObjectMetadata;
 
 /**
  * Safety-critical restore engine coordinating fail-closed backup restore pipelines (Section 2.29).
@@ -32,6 +30,7 @@ public final class IslandRestoreService {
 
     public sealed interface RestoreOutcome {
         record Success(BackupSetId backupSetId, int artifactsRestored) implements RestoreOutcome {}
+
         record Failure(String reason) implements RestoreOutcome {}
     }
 
@@ -42,15 +41,14 @@ public final class IslandRestoreService {
             WorldDimensionSnapshotPort worldDimensionSnapshotPort) {
         this.catalogPort = Objects.requireNonNull(catalogPort, "catalogPort must not be null");
         this.objectStoragePort = Objects.requireNonNull(objectStoragePort, "objectStoragePort must not be null");
-        this.relationalSnapshotPort = Objects.requireNonNull(relationalSnapshotPort, "relationalSnapshotPort must not be null");
-        this.worldDimensionSnapshotPort = Objects.requireNonNull(worldDimensionSnapshotPort, "worldDimensionSnapshotPort must not be null");
+        this.relationalSnapshotPort =
+                Objects.requireNonNull(relationalSnapshotPort, "relationalSnapshotPort must not be null");
+        this.worldDimensionSnapshotPort =
+                Objects.requireNonNull(worldDimensionSnapshotPort, "worldDimensionSnapshotPort must not be null");
     }
 
     public RestoreOutcome executeRestore(
-            BackupManifest manifest,
-            StorageBucket bucket,
-            String rootPrefix,
-            boolean disasterRecoveryConfirmed) {
+            BackupManifest manifest, StorageBucket bucket, String rootPrefix, boolean disasterRecoveryConfirmed) {
 
         Objects.requireNonNull(manifest, "manifest must not be null");
         Objects.requireNonNull(bucket, "bucket must not be null");
@@ -62,7 +60,8 @@ public final class IslandRestoreService {
                     "Database disaster backup restore requires explicit disaster recovery confirmation");
         }
 
-        String normalizedPrefix = rootPrefix.endsWith("/") ? rootPrefix.substring(0, rootPrefix.length() - 1) : rootPrefix;
+        String normalizedPrefix =
+                rootPrefix.endsWith("/") ? rootPrefix.substring(0, rootPrefix.length() - 1) : rootPrefix;
 
         // 2. Discoverability & availability check
         String markerKey = normalizedPrefix + "/" + BackupService.AVAILABILITY_MARKER_FILE_NAME;
@@ -74,11 +73,14 @@ public final class IslandRestoreService {
         int restoredCount = 0;
         PrimaryGameplayRootRef rootRef = new PrimaryGameplayRootRef(
                 com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId.fromString(
-                        manifest.rootKey() != null ? manifest.rootKey() : manifest.backupSetId().toString()),
-                manifest.rootKey() != null ? manifest.rootKey() : manifest.backupSetId().toString(),
+                        manifest.rootKey() != null
+                                ? manifest.rootKey()
+                                : manifest.backupSetId().toString()),
+                manifest.rootKey() != null
+                        ? manifest.rootKey()
+                        : manifest.backupSetId().toString(),
                 manifest.rootTypeId() != null ? manifest.rootTypeId() : "ISLAND",
-                manifest.createdAt() != null ? manifest.createdAt() : java.time.Instant.now()
-        );
+                manifest.createdAt() != null ? manifest.createdAt() : java.time.Instant.now());
 
         for (Map.Entry<String, BackupArtifact> entry : manifest.artifacts().entrySet()) {
             String filename = entry.getKey();

@@ -22,7 +22,6 @@ import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.rest.config.RestConfiguration;
-
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
@@ -103,11 +102,11 @@ public final class RestServer implements AutoCloseable {
     }
 
     private void handleHealth(Context ctx) {
-        ctx.status(HttpStatus.OK).json(Map.of(
-                "status", "UP",
-                "nodeId", serverNodeId.value(),
-                "timestamp", Instant.now().toString()
-        ));
+        ctx.status(HttpStatus.OK)
+                .json(Map.of(
+                        "status", "UP",
+                        "nodeId", serverNodeId.value(),
+                        "timestamp", Instant.now().toString()));
     }
 
     private void handleGetIsland(Context ctx) {
@@ -127,12 +126,12 @@ public final class RestServer implements AutoCloseable {
         }
 
         Island island = optIsland.get();
-        ctx.status(HttpStatus.OK).json(Map.of(
-                "islandId", island.id().value().toString(),
-                "ownerProfileId", island.ownerProfileId().value().toString(),
-                "memberCount", island.members().size(),
-                "createdAt", island.createdAt().toString()
-        ));
+        ctx.status(HttpStatus.OK)
+                .json(Map.of(
+                        "islandId", island.id().value().toString(),
+                        "ownerProfileId", island.ownerProfileId().value().toString(),
+                        "memberCount", island.members().size(),
+                        "createdAt", island.createdAt().toString()));
     }
 
     private void handleGetMembers(Context ctx) {
@@ -156,8 +155,7 @@ public final class RestServer implements AutoCloseable {
                 .map(entry -> Map.<String, Object>of(
                         "profileId", entry.getKey().value().toString(),
                         "role", entry.getValue().role().id(),
-                        "joinedAt", entry.getValue().joinedAt().toString()
-                ))
+                        "joinedAt", entry.getValue().joinedAt().toString()))
                 .toList();
 
         ctx.status(HttpStatus.OK).json(memberList);
@@ -181,8 +179,7 @@ public final class RestServer implements AutoCloseable {
                         "islandId", entry.islandId().value().toString(),
                         "islandName", entry.islandName(),
                         "score", entry.score(),
-                        "formattedScore", entry.formattedScore()
-                ))
+                        "formattedScore", entry.formattedScore()))
                 .toList();
 
         ctx.status(HttpStatus.OK).json(response);
@@ -220,20 +217,22 @@ public final class RestServer implements AutoCloseable {
         String reason = body.has("reason") ? body.get("reason").getAsString() : "web_store_deposit";
 
         PlayerUuid systemActor = PlayerUuid.of(new UUID(0L, 0L));
-        BankTransactionOutcome outcome = bankService.depositToIsland(islandId, systemActor, amount, reason, serverNodeId);
+        BankTransactionOutcome outcome =
+                bankService.depositToIsland(islandId, systemActor, amount, reason, serverNodeId);
         if (outcome instanceof BankTransactionOutcome.Success success) {
-            ctx.status(HttpStatus.OK).json(Map.of(
-                    "status", "SUCCESS",
-                    "islandId", islandId.value().toString(),
-                    "newBalanceMinorUnits", success.updatedBank().primaryBalanceMinorUnits(),
-                    "transactionId", success.transaction().transactionId().toString()
-            ));
+            ctx.status(HttpStatus.OK)
+                    .json(Map.of(
+                            "status", "SUCCESS",
+                            "islandId", islandId.value().toString(),
+                            "newBalanceMinorUnits", success.updatedBank().primaryBalanceMinorUnits(),
+                            "transactionId",
+                                    success.transaction().transactionId().toString()));
         } else {
-            ctx.status(HttpStatus.UNPROCESSABLE_CONTENT).json(Map.of(
-                    "status", "FAILED",
-                    "islandId", islandId.value().toString(),
-                    "error", outcome.toString()
-            ));
+            ctx.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                    .json(Map.of(
+                            "status", "FAILED",
+                            "islandId", islandId.value().toString(),
+                            "error", outcome.toString()));
         }
     }
 

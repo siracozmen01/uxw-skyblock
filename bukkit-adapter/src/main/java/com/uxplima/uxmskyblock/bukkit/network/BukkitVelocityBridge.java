@@ -63,7 +63,8 @@ public final class BukkitVelocityBridge implements VelocityBridgePort {
             out.writeUTF(targetNode.value());
 
             player.sendPluginMessage(plugin, BUNGEE_CHANNEL, bytes.toByteArray());
-            LOGGER.info(() -> "Dispatched routing request for player " + player.getName() + " to server " + targetNode.value());
+            LOGGER.info(() ->
+                    "Dispatched routing request for player " + player.getName() + " to server " + targetNode.value());
             future.complete(true);
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to encode Velocity routing packet for player " + playerUuid.value(), e);

@@ -112,7 +112,6 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final SqlActivityFeedAdapter activityFeedAdapter;
     private final SqlNotificationAdapter notificationAdapter;
 
-
     public PersistenceBootstrap(Database database) {
         this.database = Objects.requireNonNull(database, "database");
 

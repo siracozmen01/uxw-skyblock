@@ -2,18 +2,12 @@ package com.uxplima.uxmskyblock.core.application.event;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
 
 /**
@@ -38,15 +32,21 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
 
     public interface StreamDriver {
         void xadd(String streamKey, OutboxEventRecord record);
+
         List<StreamMessage> xreadgroup(String streamKey, String group, String consumer, int count, Duration block);
+
         void xack(String streamKey, String group, String messageId);
-        List<StreamMessage> xautoclaim(String streamKey, String group, String consumer, Duration minIdleTime, int count);
+
+        List<StreamMessage> xautoclaim(
+                String streamKey, String group, String consumer, Duration minIdleTime, int count);
+
         default boolean isHealthy() {
             return true;
         }
     }
 
-    public record StreamMessage(String messageId, OutboxEventRecord record, int deliveryCount, Instant firstDeliveredAt) {
+    public record StreamMessage(
+            String messageId, OutboxEventRecord record, int deliveryCount, Instant firstDeliveredAt) {
         public StreamMessage {
             Objects.requireNonNull(messageId, "messageId");
             Objects.requireNonNull(record, "record");
@@ -61,10 +61,7 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
     private final AtomicBoolean running = new AtomicBoolean(true);
 
     public RedisStreamsEventTransportAdapter(
-            StreamDriver driver,
-            String deadLetterStreamKey,
-            int maxRetries,
-            Duration pendingTimeout) {
+            StreamDriver driver, String deadLetterStreamKey, int maxRetries, Duration pendingTimeout) {
         this.driver = Objects.requireNonNull(driver, "driver must not be null");
         this.deadLetterStreamKey = Objects.requireNonNull(deadLetterStreamKey, "deadLetterStreamKey must not be null");
         this.maxRetries = maxRetries > 0 ? maxRetries : DEFAULT_MAX_RETRIES;
@@ -96,33 +93,40 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
         Objects.requireNonNull(handler, "handler must not be null");
 
         AtomicBoolean active = new AtomicBoolean(true);
-        Thread workerThread = new Thread(() -> {
-            while (active.get() && running.get()) {
-                try {
-                    // 1. Check for stale messages via XAUTOCLAIM
-                    List<StreamMessage> claimed = driver.xautoclaim(streamKey, consumerGroup, consumerName, pendingTimeout, 10);
-                    for (StreamMessage msg : claimed) {
-                        processMessage(streamKey, consumerGroup, msg, handler);
-                    }
-
-                    // 2. Read new messages via XREADGROUP
-                    List<StreamMessage> messages = driver.xreadgroup(streamKey, consumerGroup, consumerName, 50, Duration.ofSeconds(1));
-                    for (StreamMessage msg : messages) {
-                        processMessage(streamKey, consumerGroup, msg, handler);
-                    }
-                } catch (Exception e) {
-                    if (active.get() && running.get()) {
-                        LOGGER.log(Level.WARNING, "Error in stream poll loop for " + streamKey + " / " + consumerGroup, e);
+        Thread workerThread = new Thread(
+                () -> {
+                    while (active.get() && running.get()) {
                         try {
-                            Thread.sleep(500);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            break;
+                            // 1. Check for stale messages via XAUTOCLAIM
+                            List<StreamMessage> claimed =
+                                    driver.xautoclaim(streamKey, consumerGroup, consumerName, pendingTimeout, 10);
+                            for (StreamMessage msg : claimed) {
+                                processMessage(streamKey, consumerGroup, msg, handler);
+                            }
+
+                            // 2. Read new messages via XREADGROUP
+                            List<StreamMessage> messages = driver.xreadgroup(
+                                    streamKey, consumerGroup, consumerName, 50, Duration.ofSeconds(1));
+                            for (StreamMessage msg : messages) {
+                                processMessage(streamKey, consumerGroup, msg, handler);
+                            }
+                        } catch (Exception e) {
+                            if (active.get() && running.get()) {
+                                LOGGER.log(
+                                        Level.WARNING,
+                                        "Error in stream poll loop for " + streamKey + " / " + consumerGroup,
+                                        e);
+                                try {
+                                    Thread.sleep(500);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }, "RedisStreamsConsumer-" + consumerGroup + "-" + consumerName);
+                },
+                "RedisStreamsConsumer-" + consumerGroup + "-" + consumerName);
 
         workerThread.setDaemon(true);
         workerThread.start();
@@ -133,11 +137,10 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
         };
     }
 
-    public void processMessage(
-            String streamKey, String consumerGroup, StreamMessage msg, StreamEventHandler handler) {
+    public void processMessage(String streamKey, String consumerGroup, StreamMessage msg, StreamEventHandler handler) {
         if (msg.deliveryCount() > maxRetries) {
-            LOGGER.warning(() -> "Event " + msg.record().eventId() + " exceeded max retries ("
-                    + msg.deliveryCount() + " > " + maxRetries + "). Routing to dead-letter stream " + deadLetterStreamKey);
+            LOGGER.warning(() -> "Event " + msg.record().eventId() + " exceeded max retries (" + msg.deliveryCount()
+                    + " > " + maxRetries + "). Routing to dead-letter stream " + deadLetterStreamKey);
             try {
                 driver.xadd(deadLetterStreamKey, msg.record());
                 driver.xack(streamKey, consumerGroup, msg.messageId());
@@ -150,7 +153,10 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
         try {
             handler.onEvent(msg.record(), () -> driver.xack(streamKey, consumerGroup, msg.messageId()));
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Consumer failed to process message " + msg.messageId() + ", skipping XACK for retry", e);
+            LOGGER.log(
+                    Level.WARNING,
+                    "Consumer failed to process message " + msg.messageId() + ", skipping XACK for retry",
+                    e);
         }
     }
 

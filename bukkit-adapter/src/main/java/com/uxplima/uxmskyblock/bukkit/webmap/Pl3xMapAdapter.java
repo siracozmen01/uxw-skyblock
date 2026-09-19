@@ -29,19 +29,23 @@ public final class Pl3xMapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void registerIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void registerIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         if (!isAvailable()) {
             return;
         }
         try {
-            LOGGER.log(Level.FINE, () -> "Registering Pl3xMap marker for island " + islandId + " at (" + x + "," + y + "," + z + ")");
+            LOGGER.log(
+                    Level.FINE,
+                    () -> "Registering Pl3xMap marker for island " + islandId + " at (" + x + "," + y + "," + z + ")");
         } catch (Exception e) {
             LOGGER.log(Level.FINE, "Failed to register Pl3xMap marker for island " + islandId, e);
         }
     }
 
     @Override
-    public void updateIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void updateIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         if (!isAvailable()) {
             return;
         }

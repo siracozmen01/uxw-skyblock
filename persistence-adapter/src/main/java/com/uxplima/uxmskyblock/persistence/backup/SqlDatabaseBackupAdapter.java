@@ -75,7 +75,8 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
     }
 
     @Override
-    public void restoreDatabaseBackup(byte[] backupArtifact, DatabaseBackupDialect dialect, boolean disasterRecoveryConfirmed) {
+    public void restoreDatabaseBackup(
+            byte[] backupArtifact, DatabaseBackupDialect dialect, boolean disasterRecoveryConfirmed) {
         if (!disasterRecoveryConfirmed) {
             throw new IllegalArgumentException("Disaster recovery requires explicit administrator confirmation.");
         }
@@ -92,7 +93,8 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
         String header = sqlDump.substring(0, headerEnd).trim();
         String embeddedDialect = header.substring(BACKUP_HEADER_PREFIX.length()).trim();
         if (!embeddedDialect.equalsIgnoreCase(dialect.name())) {
-            throw new IllegalArgumentException("Backup artifact dialect mismatch: expected " + dialect.name() + " but found " + embeddedDialect);
+            throw new IllegalArgumentException(
+                    "Backup artifact dialect mismatch: expected " + dialect.name() + " but found " + embeddedDialect);
         }
 
         try (Connection conn = database.connection()) {
@@ -110,7 +112,8 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
                 try (ResultSet tablesRs = meta.getTables(null, null, "%", new String[] {"TABLE"})) {
                     while (tablesRs.next()) {
                         String name = tablesRs.getString("TABLE_NAME");
-                        if (!name.equalsIgnoreCase("sqlite_sequence") && !name.toLowerCase(Locale.ROOT).startsWith("sqlite_")) {
+                        if (!name.equalsIgnoreCase("sqlite_sequence")
+                                && !name.toLowerCase(Locale.ROOT).startsWith("sqlite_")) {
                             tablesToClear.add(name);
                         }
                     }
@@ -159,11 +162,12 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
 
     private void checkDialectMatch(DatabaseBackupDialect requestedDialect) {
         Dialect dbDialect = database.dialect();
-        boolean matches = switch (requestedDialect) {
-            case SQLITE -> dbDialect == Dialect.SQLITE;
-            case MARIADB -> dbDialect == Dialect.MYSQL;
-            case POSTGRESQL -> dbDialect == Dialect.POSTGRES;
-        };
+        boolean matches =
+                switch (requestedDialect) {
+                    case SQLITE -> dbDialect == Dialect.SQLITE;
+                    case MARIADB -> dbDialect == Dialect.MYSQL;
+                    case POSTGRESQL -> dbDialect == Dialect.POSTGRES;
+                };
         if (!matches) {
             throw new IllegalArgumentException(
                     "Requested backup dialect " + requestedDialect + " does not match database dialect " + dbDialect);

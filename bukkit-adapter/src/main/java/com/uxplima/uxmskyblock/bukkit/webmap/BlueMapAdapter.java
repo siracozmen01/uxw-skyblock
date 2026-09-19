@@ -29,12 +29,15 @@ public final class BlueMapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void registerIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void registerIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         if (!isAvailable()) {
             return;
         }
         try {
-            LOGGER.log(Level.FINE, () -> "Registering BlueMap marker for island " + islandId + " at (" + x + "," + y + "," + z + ")");
+            LOGGER.log(
+                    Level.FINE,
+                    () -> "Registering BlueMap marker for island " + islandId + " at (" + x + "," + y + "," + z + ")");
             // BlueMap API interaction via reflection when BlueMapAPI is initialized
         } catch (Exception e) {
             LOGGER.log(Level.FINE, "Failed to register BlueMap marker for island " + islandId, e);
@@ -42,7 +45,8 @@ public final class BlueMapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void updateIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void updateIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         if (!isAvailable()) {
             return;
         }

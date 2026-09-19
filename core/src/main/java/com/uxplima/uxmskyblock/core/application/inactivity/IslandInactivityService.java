@@ -162,7 +162,7 @@ public final class IslandInactivityService {
                         ? new StagedOutboxEvent(
                                 EventId.random(),
                                 "ISLAND_ARCHIVED",
-                                 island.id().value().toString(),
+                                island.id().value().toString(),
                                 String.format(
                                         "{\"islandId\":\"%s\",\"reason\":\"Total team inactivity exceeded %s\"}",
                                         island.id().value(), policy.allMembersInactivityDuration()))

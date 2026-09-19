@@ -249,7 +249,7 @@ public final class SwitchProfileUseCase {
                 || op instanceof ProfileSwitchOperation.SourceSnapshotted
                 || op instanceof ProfileSwitchOperation.TargetLoaded) {
             Result<Unit, String> abortRes = profileSwitchPort.abortSwitch(
-                op.operationId(), playerId, "Startup crash recovery: rolling back incomplete switch");
+                    op.operationId(), playerId, "Startup crash recovery: rolling back incomplete switch");
             if (abortRes.isErr()) {
                 return Result.err("Failed to abort incomplete switch during recovery: " + abortRes.errorOrThrow());
             }

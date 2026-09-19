@@ -7,6 +7,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+import org.bukkit.entity.Player;
+
 import com.uxplima.uxmlib.bedrock.BedrockButton;
 import com.uxplima.uxmlib.bedrock.BedrockDetector;
 import com.uxplima.uxmlib.bedrock.BedrockScreen;
@@ -14,7 +16,6 @@ import com.uxplima.uxmlib.bedrock.BedrockWidget;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
-import org.bukkit.entity.Player;
 
 /**
  * Enterprise service presenting native Bedrock Forms (SimpleForm, ModalForm, CustomForm)
@@ -57,15 +58,10 @@ public final class BedrockFormService {
                 new BedrockButton("§bWarps", null),
                 new BedrockButton("§6Bank Treasury", null),
                 new BedrockButton("§dMembers & Roles", null),
-                new BedrockButton("§eSettings", null)
-        );
+                new BedrockButton("§eSettings", null));
 
         screen.sendSimpleForm(
-                player,
-                "Island Control Panel",
-                "Manage your island settings, treasury, and warps.",
-                buttons,
-                index -> {
+                player, "Island Control Panel", "Manage your island settings, treasury, and warps.", buttons, index -> {
                     switch (index) {
                         case 0 -> {
                             if (onHome != null) {
@@ -96,36 +92,27 @@ public final class BedrockFormService {
                             // unknown index
                         }
                     }
-                }
-        );
+                });
     }
 
     /**
      * Sends a SimpleForm displaying available Island Warps.
      */
-    public void openWarpDirectoryForm(
-            Player player,
-            List<IslandWarp> warps,
-            Consumer<IslandWarp> onSelect) {
+    public void openWarpDirectoryForm(Player player, List<IslandWarp> warps, Consumer<IslandWarp> onSelect) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(warps, "warps must not be null");
 
         List<BedrockButton> buttons = new ArrayList<>();
         for (IslandWarp warp : warps) {
-            buttons.add(new BedrockButton("§b" + warp.name().value() + " §7[" + warp.category().name() + "]", null));
+            buttons.add(new BedrockButton(
+                    "§b" + warp.name().value() + " §7[" + warp.category().name() + "]", null));
         }
 
-        screen.sendSimpleForm(
-                player,
-                "Island Warps",
-                "Select a warp destination to teleport:",
-                buttons,
-                index -> {
-                    if (index >= 0 && index < warps.size() && onSelect != null) {
-                        onSelect.accept(warps.get(index));
-                    }
-                }
-        );
+        screen.sendSimpleForm(player, "Island Warps", "Select a warp destination to teleport:", buttons, index -> {
+            if (index >= 0 && index < warps.size() && onSelect != null) {
+                onSelect.accept(warps.get(index));
+            }
+        });
     }
 
     /**
@@ -149,18 +136,14 @@ public final class BedrockFormService {
                 confirmButton != null ? confirmButton : "§aConfirm",
                 cancelButton != null ? cancelButton : "§cCancel",
                 onConfirm != null ? onConfirm : () -> {},
-                onCancel != null ? onCancel : () -> {}
-        );
+                onCancel != null ? onCancel : () -> {});
     }
 
     /**
      * Sends a CustomForm for Island Settings with toggles.
      */
     public void openIslandSettingsForm(
-            Player player,
-            IslandFlags currentFlags,
-            Consumer<IslandFlags> onSave,
-            Runnable onClose) {
+            Player player, IslandFlags currentFlags, Consumer<IslandFlags> onSave, Runnable onClose) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(currentFlags, "currentFlags must not be null");
 
@@ -168,11 +151,14 @@ public final class BedrockFormService {
                 new BedrockWidget.Label("Configure island protection and environmental policies:"),
                 new BedrockWidget.Toggle("PVP", "PvP Combat", currentFlags.isEnabled(IslandFlags.PVP)),
                 new BedrockWidget.Toggle("FIRE_SPREAD", "Fire Spread", currentFlags.isEnabled(IslandFlags.FIRE_SPREAD)),
-                new BedrockWidget.Toggle("MONSTER_SPAWN", "Monster Spawning", currentFlags.isEnabled(IslandFlags.MONSTER_SPAWN)),
-                new BedrockWidget.Toggle("ANIMAL_SPAWN", "Animal Spawning", currentFlags.isEnabled(IslandFlags.ANIMAL_SPAWN)),
-                new BedrockWidget.Toggle("VISITOR_ACCESS", "Visitor Access", currentFlags.isEnabled(IslandFlags.VISITOR_ACCESS)),
-                new BedrockWidget.Toggle("EXPLOSION_DAMAGE", "Explosion Damage", currentFlags.isEnabled(IslandFlags.EXPLOSION_DAMAGE))
-        );
+                new BedrockWidget.Toggle(
+                        "MONSTER_SPAWN", "Monster Spawning", currentFlags.isEnabled(IslandFlags.MONSTER_SPAWN)),
+                new BedrockWidget.Toggle(
+                        "ANIMAL_SPAWN", "Animal Spawning", currentFlags.isEnabled(IslandFlags.ANIMAL_SPAWN)),
+                new BedrockWidget.Toggle(
+                        "VISITOR_ACCESS", "Visitor Access", currentFlags.isEnabled(IslandFlags.VISITOR_ACCESS)),
+                new BedrockWidget.Toggle(
+                        "EXPLOSION_DAMAGE", "Explosion Damage", currentFlags.isEnabled(IslandFlags.EXPLOSION_DAMAGE)));
 
         screen.sendCustomForm(
                 player,
@@ -188,8 +174,7 @@ public final class BedrockFormService {
                         onSave.accept(updated);
                     }
                 },
-                onClose != null ? onClose : () -> {}
-        );
+                onClose != null ? onClose : () -> {});
     }
 
     public BedrockDetector detector() {

@@ -31,7 +31,8 @@ public final class DynmapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void registerIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void registerIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         if (!isAvailable()) {
             return;
         }
@@ -40,11 +41,19 @@ public final class DynmapAdapter implements WebMapAdapter {
             if (markerSet != null) {
                 String markerId = "island_" + islandId.value();
                 // markerSet.createMarker(id, label, world, x, y, z, icon, isPersistent)
-                markerSet.getClass().getMethod(
-                        "createMarker", String.class, String.class, String.class,
-                        double.class, double.class, double.class,
-                        Class.forName("org.dynmap.markers.MarkerIcon"), boolean.class
-                ).invoke(markerSet, markerId, islandName, worldName, x, y, z, null, false);
+                markerSet
+                        .getClass()
+                        .getMethod(
+                                "createMarker",
+                                String.class,
+                                String.class,
+                                String.class,
+                                double.class,
+                                double.class,
+                                double.class,
+                                Class.forName("org.dynmap.markers.MarkerIcon"),
+                                boolean.class)
+                        .invoke(markerSet, markerId, islandName, worldName, x, y, z, null, false);
             }
         } catch (Exception e) {
             LOGGER.log(Level.FINE, "Failed to register Dynmap marker for island " + islandId, e);
@@ -52,7 +61,8 @@ public final class DynmapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void updateIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void updateIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         if (!isAvailable()) {
             return;
         }
@@ -69,7 +79,10 @@ public final class DynmapAdapter implements WebMapAdapter {
             Object markerSet = getOrCreateMarkerSet();
             if (markerSet != null) {
                 String markerId = "island_" + islandId.value();
-                Object marker = markerSet.getClass().getMethod("findMarker", String.class).invoke(markerSet, markerId);
+                Object marker = markerSet
+                        .getClass()
+                        .getMethod("findMarker", String.class)
+                        .invoke(markerSet, markerId);
                 if (marker != null) {
                     marker.getClass().getMethod("deleteMarker").invoke(marker);
                 }
@@ -107,9 +120,12 @@ public final class DynmapAdapter implements WebMapAdapter {
             if (markerApi == null) {
                 return null;
             }
-            Object set = markerApi.getClass().getMethod("getMarkerSet", String.class).invoke(markerApi, MARKER_SET_ID);
+            Object set =
+                    markerApi.getClass().getMethod("getMarkerSet", String.class).invoke(markerApi, MARKER_SET_ID);
             if (set == null) {
-                set = markerApi.getClass().getMethod("createMarkerSet", String.class, String.class, java.util.Set.class, boolean.class)
+                set = markerApi
+                        .getClass()
+                        .getMethod("createMarkerSet", String.class, String.class, java.util.Set.class, boolean.class)
                         .invoke(markerApi, MARKER_SET_ID, MARKER_SET_LABEL, null, false);
             }
             return set;

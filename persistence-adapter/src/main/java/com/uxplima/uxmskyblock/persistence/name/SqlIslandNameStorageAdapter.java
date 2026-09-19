@@ -35,9 +35,7 @@ public final class SqlIslandNameStorageAdapter implements IslandNameStoragePort 
 
     @Override
     public void updateCustomName(
-            IslandId islandId,
-            @Nullable IslandName name,
-            @Nullable StagedOutboxEvent outboxEvent) {
+            IslandId islandId, @Nullable IslandName name, @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         String sql = """

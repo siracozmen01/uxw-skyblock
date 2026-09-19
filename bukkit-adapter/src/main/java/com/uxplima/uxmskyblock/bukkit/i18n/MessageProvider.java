@@ -20,6 +20,7 @@ import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+
 import org.spongepowered.configurate.CommentedConfigurationNode;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
@@ -97,7 +98,7 @@ public final class MessageProvider {
      */
     public void loadBundledDefaults(ClassLoader classLoader) {
         Objects.requireNonNull(classLoader, "classLoader must not be null");
-        for (String lang : new String[]{"en", "tr"}) {
+        for (String lang : new String[] {"en", "tr"}) {
             String resourcePath = "messages/messages_" + lang + ".conf";
             try (InputStream in = classLoader.getResourceAsStream(resourcePath)) {
                 if (in != null) {
@@ -123,7 +124,8 @@ public final class MessageProvider {
 
     private void flattenNode(String currentPath, ConfigurationNode node, Map<String, String> out) {
         if (node.isMap()) {
-            for (Map.Entry<Object, ? extends ConfigurationNode> entry : node.childrenMap().entrySet()) {
+            for (Map.Entry<Object, ? extends ConfigurationNode> entry :
+                    node.childrenMap().entrySet()) {
                 String key = String.valueOf(entry.getKey());
                 String nextPath = currentPath.isEmpty() ? key : currentPath + "." + key;
                 flattenNode(nextPath, entry.getValue(), out);
@@ -145,9 +147,7 @@ public final class MessageProvider {
      */
     public String getRaw(String key, String locale) {
         Objects.requireNonNull(key, "key must not be null");
-        String targetLocale = (locale != null && !locale.isBlank())
-                ? locale.toLowerCase(Locale.ROOT)
-                : defaultLocale;
+        String targetLocale = (locale != null && !locale.isBlank()) ? locale.toLowerCase(Locale.ROOT) : defaultLocale;
 
         Map<String, String> catalog = localeCatalogs.get(targetLocale);
         if (catalog != null && catalog.containsKey(key)) {
@@ -175,9 +175,7 @@ public final class MessageProvider {
      */
     public Component getComponent(String key, String locale, TagResolver... resolvers) {
         String template = getRaw(key, locale);
-        String targetLocale = (locale != null && !locale.isBlank())
-                ? locale.toLowerCase(Locale.ROOT)
-                : defaultLocale;
+        String targetLocale = (locale != null && !locale.isBlank()) ? locale.toLowerCase(Locale.ROOT) : defaultLocale;
 
         String prefix = prefixes.getOrDefault(targetLocale, prefixes.getOrDefault(defaultLocale, ""));
         String fullMessage = template.equals(key) ? template : prefix + template;

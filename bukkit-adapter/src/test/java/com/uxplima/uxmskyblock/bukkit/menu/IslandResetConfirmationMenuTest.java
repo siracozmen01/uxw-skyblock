@@ -117,14 +117,15 @@ class IslandResetConfirmationMenuTest extends MockBukkitHarness {
 
         bedrockMenu.open(player, "9999");
 
-        org.mockito.Mockito.verify(mockBedrock).openConfirmationModal(
-                eq(player),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(mockBedrock)
+                .openConfirmationModal(
+                        eq(player),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     private static class DirectSchedulerPort implements SchedulerPort {

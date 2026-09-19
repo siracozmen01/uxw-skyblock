@@ -4,11 +4,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.jspecify.annotations.Nullable;
 
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.notification.Notification;
 import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Domain application service handling offline notifications and delivery (Section 2.18 & 2.42).
@@ -44,8 +44,7 @@ public final class NotificationService {
                 false,
                 null,
                 expiresAt,
-                Instant.now()
-        );
+                Instant.now());
 
         storagePort.saveNotification(notification);
         return notification;

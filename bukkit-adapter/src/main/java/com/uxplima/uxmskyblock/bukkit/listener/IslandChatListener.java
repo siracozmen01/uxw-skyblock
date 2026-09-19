@@ -37,15 +37,13 @@ public final class IslandChatListener implements Listener {
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
 
     public IslandChatListener(
-            IslandChatService chatService,
-            Function<UUID, Optional<ProfileId>> activeProfileProvider) {
+            IslandChatService chatService, Function<UUID, Optional<ProfileId>> activeProfileProvider) {
         this.chatService = Objects.requireNonNull(chatService, "chatService must not be null");
-        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.activeProfileProvider =
+                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
     }
 
-    public IslandChatListener(
-            IslandChatService chatService,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
+    public IslandChatListener(IslandChatService chatService, @Nullable PlayerSessionCoordinator sessionCoordinator) {
         this(chatService, sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
     }
 

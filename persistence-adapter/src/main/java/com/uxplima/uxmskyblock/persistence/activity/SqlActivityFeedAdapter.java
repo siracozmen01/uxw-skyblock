@@ -46,7 +46,11 @@ public final class SqlActivityFeedAdapter implements ActivityFeedStoragePort {
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, event.eventId().toString());
             stmt.setString(2, event.instanceId());
-            stmt.setString(3, event.actorProfileId() != null ? event.actorProfileId().value().toString() : null);
+            stmt.setString(
+                    3,
+                    event.actorProfileId() != null
+                            ? event.actorProfileId().value().toString()
+                            : null);
             stmt.setString(4, event.eventType().name());
             stmt.setString(5, event.visibility().name());
             stmt.setString(6, event.payloadTypeId());
@@ -112,7 +116,6 @@ public final class SqlActivityFeedAdapter implements ActivityFeedStoragePort {
                 payloadTypeId,
                 payloadSchemaVersion,
                 payloadData,
-                createdAt
-        );
+                createdAt);
     }
 }

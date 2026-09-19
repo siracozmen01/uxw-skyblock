@@ -3,9 +3,9 @@ package com.uxplima.uxmskyblock.core.domain.notification;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
-import org.jspecify.annotations.Nullable;
 
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Domain entity representing a durable offline notification (Section 2.18 & 2.42).

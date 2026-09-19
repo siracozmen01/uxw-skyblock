@@ -1,10 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.webmap;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 
@@ -22,7 +19,8 @@ public final class CompositeWebMapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void registerIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void registerIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         for (WebMapAdapter delegate : delegates) {
             if (delegate.isAvailable()) {
                 delegate.registerIslandMarker(islandId, islandName, worldName, x, y, z);
@@ -31,7 +29,8 @@ public final class CompositeWebMapAdapter implements WebMapAdapter {
     }
 
     @Override
-    public void updateIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void updateIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         for (WebMapAdapter delegate : delegates) {
             if (delegate.isAvailable()) {
                 delegate.updateIslandMarker(islandId, islandName, worldName, x, y, z);

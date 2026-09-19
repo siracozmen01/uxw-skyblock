@@ -1,9 +1,13 @@
 package com.uxplima.uxmskyblock.bukkit.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,7 +20,6 @@ import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
-import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransaction;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -29,15 +32,11 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class BukkitSkyblockApiBridgeTest {
 
@@ -91,7 +90,8 @@ class BukkitSkyblockApiBridgeTest {
                 Instant.now());
         when(storagePort.findIslandById(islandId)).thenReturn(Optional.of(island));
 
-        Optional<IslandSnapshot> snapshot = apiBridge.query().getIsland(islandId.value()).join();
+        Optional<IslandSnapshot> snapshot =
+                apiBridge.query().getIsland(islandId.value()).join();
 
         assertThat(snapshot).isPresent();
         assertThat(snapshot.get().islandId()).isEqualTo(islandId.value());
@@ -110,7 +110,8 @@ class BukkitSkyblockApiBridgeTest {
         when(storagePort.findIslandIdByProfileId(profileId)).thenReturn(Optional.of(islandId));
         when(storagePort.findIslandById(islandId)).thenReturn(Optional.of(island));
 
-        Optional<IslandSnapshot> snapshot = apiBridge.query().getPlayerIsland(playerUuid).join();
+        Optional<IslandSnapshot> snapshot =
+                apiBridge.query().getPlayerIsland(playerUuid).join();
 
         assertThat(snapshot).isPresent();
         assertThat(snapshot.get().islandId()).isEqualTo(islandId.value());
@@ -135,7 +136,8 @@ class BukkitSkyblockApiBridgeTest {
         IslandBank bank = new IslandBank(islandId, 25000L, 0L, 0L, 1L, Instant.now());
         when(bankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
 
-        Optional<IslandBankBalance> bal = apiBridge.query().getBankBalance(islandId.value()).join();
+        Optional<IslandBankBalance> bal =
+                apiBridge.query().getBankBalance(islandId.value()).join();
 
         assertThat(bal).isPresent();
         assertThat(bal.get().balanceMinorUnits()).isEqualTo(25000L);
@@ -150,15 +152,8 @@ class BukkitSkyblockApiBridgeTest {
                 new PlayerUuid(playerUuid),
                 profileId,
                 Instant.now());
-        IslandLocation location = new IslandLocation(
-                islandId,
-                "skyblock_world",
-                island.bounds(),
-                100.5,
-                100.0,
-                100.5,
-                0.0f,
-                0.0f);
+        IslandLocation location =
+                new IslandLocation(islandId, "skyblock_world", island.bounds(), 100.5, 100.0, 100.5, 0.0f, 0.0f);
         StarterPreset preset = new StarterPreset(
                 "classic",
                 "Classic Island",
@@ -166,14 +161,11 @@ class BukkitSkyblockApiBridgeTest {
                 "schematics/classic.schem",
                 com.uxplima.uxmskyblock.core.domain.biome.IslandBiome.PLAINS);
         when(createIslandUseCase.execute(
-                eq(new PlayerUuid(playerUuid)),
-                eq(profileId),
-                eq("classic"),
-                eq(nodeId),
-                eq("skyblock_world")))
+                        eq(new PlayerUuid(playerUuid)), eq(profileId), eq("classic"), eq(nodeId), eq("skyblock_world")))
                 .thenReturn(new CreateIslandUseCase.CreateIslandResult.Success(island, location, preset));
 
-        IslandResult<IslandSnapshot> result = apiBridge.actions().createIsland(playerUuid, "classic").join();
+        IslandResult<IslandSnapshot> result =
+                apiBridge.actions().createIsland(playerUuid, "classic").join();
 
         assertThat(result).isInstanceOf(IslandResult.Success.class);
         IslandResult.Success<IslandSnapshot> success = (IslandResult.Success<IslandSnapshot>) result;
@@ -195,14 +187,13 @@ class BukkitSkyblockApiBridgeTest {
                 75000L,
                 "API deposit",
                 Instant.now());
-        when(bankService.depositToIsland(
-                eq(islandId),
-                eq(new PlayerUuid(playerUuid)),
-                eq(50000L),
-                eq(nodeId)))
+        when(bankService.depositToIsland(eq(islandId), eq(new PlayerUuid(playerUuid)), eq(50000L), eq(nodeId)))
                 .thenReturn(new BankTransactionOutcome.Success(updatedBank, tx));
 
-        IslandResult<IslandBankBalance> result = apiBridge.actions().depositBank(islandId.value(), playerUuid, 50000L).join();
+        IslandResult<IslandBankBalance> result = apiBridge
+                .actions()
+                .depositBank(islandId.value(), playerUuid, 50000L)
+                .join();
 
         assertThat(result).isInstanceOf(IslandResult.Success.class);
         IslandResult.Success<IslandBankBalance> success = (IslandResult.Success<IslandBankBalance>) result;
@@ -212,14 +203,13 @@ class BukkitSkyblockApiBridgeTest {
     @Test
     @DisplayName("withdrawBank returns failure when IslandBankService rejects authority")
     void withdrawBankHandlesAuthorityRejection() {
-        when(bankService.withdrawFromIsland(
-                eq(islandId),
-                eq(new PlayerUuid(playerUuid)),
-                eq(50000L),
-                eq(nodeId)))
+        when(bankService.withdrawFromIsland(eq(islandId), eq(new PlayerUuid(playerUuid)), eq(50000L), eq(nodeId)))
                 .thenReturn(new BankTransactionOutcome.AuthorityRejected("Node mismatch"));
 
-        IslandResult<IslandBankBalance> result = apiBridge.actions().withdrawBank(islandId.value(), playerUuid, 50000L).join();
+        IslandResult<IslandBankBalance> result = apiBridge
+                .actions()
+                .withdrawBank(islandId.value(), playerUuid, 50000L)
+                .join();
 
         assertThat(result).isInstanceOf(IslandResult.Failure.class);
         IslandResult.Failure<IslandBankBalance> failure = (IslandResult.Failure<IslandBankBalance>) result;

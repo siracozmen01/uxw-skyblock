@@ -10,17 +10,17 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
-import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import com.uxplima.uxmlib.bedrock.BedrockDetector;
+import com.uxplima.uxmlib.bedrock.BedrockScreen;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.antiabuse.IslandAntiAbuseListener;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.bank.IslandBankruptcyListener;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.booster.IslandBoosterListener;
 import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
@@ -56,26 +56,12 @@ import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
+import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.limit.IslandLimitListener;
-import com.uxplima.uxmskyblock.bukkit.network.BukkitVelocityBridge;
-import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
-import com.uxplima.uxmskyblock.core.application.event.LocalEventTransport;
-import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
-import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
-import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
-import com.uxplima.uxmlib.bedrock.BedrockDetector;
-import com.uxplima.uxmlib.bedrock.BedrockScreen;
-import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
-import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
-import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
-import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
-import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
-import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
-import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
@@ -111,6 +97,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.VaultFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.WarpFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.WorthFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.network.BukkitVelocityBridge;
 import com.uxplima.uxmskyblock.bukkit.performance.IslandRedstoneOptimizationListener;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.protection.CategoricalInteractablesListener;
@@ -121,7 +108,13 @@ import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
 import com.uxplima.uxmskyblock.bukkit.ward.KineticWardListener;
+import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.world.AsyncStructureSuppressionListener;
 import com.uxplima.uxmskyblock.bukkit.worth.FoliaIslandChunkScanner;
 import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
@@ -136,6 +129,8 @@ import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
+import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
+import com.uxplima.uxmskyblock.core.application.event.LocalEventTransport;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
@@ -147,6 +142,9 @@ import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
+import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
+import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
+import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
@@ -167,13 +165,14 @@ import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
-import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -681,11 +680,10 @@ public final class SkyblockBootstrap implements AutoCloseable {
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
         AtomicReference<PlayerSessionCoordinator> sessionCoordinatorRef = new AtomicReference<>();
-        Function<UUID, Optional<ProfileId>> activeProfileProvider =
-                uuid -> {
-                    PlayerSessionCoordinator coord = sessionCoordinatorRef.get();
-                    return coord != null ? coord.activeProfile(uuid) : Optional.empty();
-                };
+        Function<UUID, Optional<ProfileId>> activeProfileProvider = uuid -> {
+            PlayerSessionCoordinator coord = sessionCoordinatorRef.get();
+            return coord != null ? coord.activeProfile(uuid) : Optional.empty();
+        };
         BukkitIslandOnlineMemberProvider chatMemberProvider =
                 new BukkitIslandOnlineMemberProvider(persistenceBootstrap.islandStoragePort(), activeProfileProvider);
         this.chatService = new IslandChatService(
@@ -857,10 +855,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.bedrockScreen = BedrockScreen.forServer(plugin.getServer());
         this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen);
         this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin);
-        this.webMapAdapter = new CompositeWebMapAdapter(List.of(
-                new DynmapAdapter(plugin),
-                new BlueMapAdapter(plugin),
-                new Pl3xMapAdapter(plugin)));
+        this.webMapAdapter = new CompositeWebMapAdapter(
+                List.of(new DynmapAdapter(plugin), new BlueMapAdapter(plugin), new Pl3xMapAdapter(plugin)));
 
         this.controlMenu = new IslandControlMenu(
                 persistenceBootstrap.islandStoragePort(),
@@ -907,16 +903,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
             }
         };
         this.networkRouter = new IslandNetworkRouter(
-                serverNodeId,
-                persistenceBootstrap.islandAuthorityPort(),
-                velocityBridge,
-                clusterRoutingDirectory);
+                serverNodeId, persistenceBootstrap.islandAuthorityPort(), velocityBridge, clusterRoutingDirectory);
 
         this.messageProvider = new MessageProvider("en");
         this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
         java.io.File messagesDir = new java.io.File(plugin.getDataFolder(), "messages");
         if (messagesDir.exists() && messagesDir.isDirectory()) {
-            java.io.File[] files = messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
+            java.io.File[] files =
+                    messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
             if (files != null) {
                 for (java.io.File file : files) {
                     String name = file.getName();
@@ -924,7 +918,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                     try {
                         this.messageProvider.loadFromFile(locale, file.toPath());
                     } catch (Exception e) {
-                        plugin.getLogger().warning("Failed loading custom message file " + file + ": " + e.getMessage());
+                        plugin.getLogger()
+                                .warning("Failed loading custom message file " + file + ": " + e.getMessage());
                     }
                 }
             }
@@ -952,7 +947,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 islandBackupAdapter,
                 persistenceBootstrap.outboxPort());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
-                recycleService, persistenceBootstrap.islandStoragePort(), sessionCoordinator, scheduler, bedrockFormService);
+                recycleService,
+                persistenceBootstrap.islandStoragePort(),
+                sessionCoordinator,
+                scheduler,
+                bedrockFormService);
 
         this.chunkScanner = new FoliaIslandChunkScanner(
                 this.scheduler,

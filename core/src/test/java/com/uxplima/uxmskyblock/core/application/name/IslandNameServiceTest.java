@@ -2,7 +2,6 @@ package com.uxplima.uxmskyblock.core.application.name;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -71,10 +70,12 @@ class IslandNameServiceTest {
         IslandName result = nameService.renameIsland(islandId, ownerProfileId, "SkyCitadel");
 
         assertThat(result.value()).isEqualTo("SkyCitadel");
-        verify(mockStorage).updateCustomName(
-                eq(islandId),
-                eq(result),
-                org.mockito.ArgumentMatchers.argThat(event -> event != null && "ISLAND_RENAMED".equals(event.eventType())));
+        verify(mockStorage)
+                .updateCustomName(
+                        eq(islandId),
+                        eq(result),
+                        org.mockito.ArgumentMatchers.argThat(
+                                event -> event != null && "ISLAND_RENAMED".equals(event.eventType())));
     }
 
     @Test
@@ -141,9 +142,11 @@ class IslandNameServiceTest {
     void resetIslandNameSuccess() {
         nameService.resetIslandName(islandId, ownerProfileId);
 
-        verify(mockStorage).updateCustomName(
-                eq(islandId),
-                org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.argThat(event -> event != null && "ISLAND_NAME_RESET".equals(event.eventType())));
+        verify(mockStorage)
+                .updateCustomName(
+                        eq(islandId),
+                        org.mockito.ArgumentMatchers.isNull(),
+                        org.mockito.ArgumentMatchers.argThat(
+                                event -> event != null && "ISLAND_NAME_RESET".equals(event.eventType())));
     }
 }

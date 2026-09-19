@@ -55,10 +55,7 @@ public interface IslandAdminFreezePort {
      * @param state new economic state
      * @param outboxEvent optional event to stage atomically in the same transaction
      */
-    default void updateEconomicState(
-            IslandId islandId,
-            EconomicState state,
-            @Nullable StagedOutboxEvent outboxEvent) {
+    default void updateEconomicState(IslandId islandId, EconomicState state, @Nullable StagedOutboxEvent outboxEvent) {
         updateEconomicState(islandId, state);
     }
 

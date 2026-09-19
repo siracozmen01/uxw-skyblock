@@ -12,12 +12,14 @@ public final class NoOpWebMapAdapter implements WebMapAdapter {
     private NoOpWebMapAdapter() {}
 
     @Override
-    public void registerIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void registerIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         // No-op
     }
 
     @Override
-    public void updateIslandMarker(IslandId islandId, String islandName, String worldName, double x, double y, double z) {
+    public void updateIslandMarker(
+            IslandId islandId, String islandName, String worldName, double x, double y, double z) {
         // No-op
     }
 

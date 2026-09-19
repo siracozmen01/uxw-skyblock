@@ -16,17 +16,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedStoragePort;
 import com.uxplima.uxmskyblock.core.application.backup.BackupCatalogPort;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.home.HomeService;
 import com.uxplima.uxmskyblock.core.application.home.HomeStoragePort;
-import com.uxplima.uxmskyblock.core.domain.home.HomeLimitPolicy;
-import com.uxplima.uxmskyblock.core.application.leaderboard.LeaderboardMetricProvider;
 import com.uxplima.uxmskyblock.core.application.network.PlacementStrategy;
 import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.notification.NotificationStoragePort;
@@ -44,17 +39,19 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
 import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
 import com.uxplima.uxmskyblock.core.domain.home.Home;
+import com.uxplima.uxmskyblock.core.domain.home.HomeLimitPolicy;
 import com.uxplima.uxmskyblock.core.domain.home.HomeScope;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.network.NodeHealth;
-import com.uxplima.uxmskyblock.core.domain.network.RoutingState;
-import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.notification.Notification;
 import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.template.CreationAction;
 import com.uxplima.uxmskyblock.core.domain.template.StartTemplateBundle;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 class EnterpriseCompetitiveCapabilitiesTest {
 
@@ -71,8 +68,8 @@ class EnterpriseCompetitiveCapabilitiesTest {
     @Test
     @DisplayName("StartTemplateBundle resolves assets and actions across dimensions")
     void startTemplateBundleResolves() {
-        CreationAction paste = new CreationAction.PasteSchematic(
-                DimensionId.OVERWORLD, "templates/default.schem", 0, 64, 0);
+        CreationAction paste =
+                new CreationAction.PasteSchematic(DimensionId.OVERWORLD, "templates/default.schem", 0, 64, 0);
         CreationAction spawn = new CreationAction.SetSpawn(DimensionId.OVERWORLD, 0.5, 65.0, 0.5, 0f, 0f);
 
         StartTemplateBundle bundle = new StartTemplateBundle(
@@ -97,13 +94,10 @@ class EnterpriseCompetitiveCapabilitiesTest {
                 com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId.fromString("inst-123"),
                 "island-123",
                 "ISLAND",
-                Instant.now()
-        );
+                Instant.now());
 
-        List<NodeHealth> nodes = List.of(
-                new NodeHealth(nodeA, true, 10, 100, 20.0),
-                new NodeHealth(nodeB, true, 50, 100, 15.0)
-        );
+        List<NodeHealth> nodes =
+                List.of(new NodeHealth(nodeA, true, 10, 100, 20.0), new NodeHealth(nodeB, true, 50, 100, 15.0));
 
         // Least loaded picks nodeA (10/100 vs 50/100)
         PlacementStrategy leastLoaded = PlacementStrategy.leastLoaded();
@@ -166,14 +160,17 @@ class EnterpriseCompetitiveCapabilitiesTest {
         ProfileId profileId = new ProfileId(UUID.randomUUID());
         IslandId islandId = new IslandId(UUID.randomUUID());
 
-        var res1 = service.setHome(profileId, islandId, "main", HomeScope.PERSONAL, "skyblock_world", 0, 70, 0, 0, 0, 0);
+        var res1 =
+                service.setHome(profileId, islandId, "main", HomeScope.PERSONAL, "skyblock_world", 0, 70, 0, 0, 0, 0);
         assertThat(res1).isInstanceOf(HomeService.SetHomeResult.Success.class);
 
-        var res2 = service.setHome(profileId, islandId, "farm", HomeScope.PERSONAL, "skyblock_world", 10, 70, 10, 0, 0, 0);
+        var res2 =
+                service.setHome(profileId, islandId, "farm", HomeScope.PERSONAL, "skyblock_world", 10, 70, 10, 0, 0, 0);
         assertThat(res2).isInstanceOf(HomeService.SetHomeResult.Success.class);
 
         // Third home exceeds limit of 2
-        var res3 = service.setHome(profileId, islandId, "shop", HomeScope.PERSONAL, "skyblock_world", 20, 70, 20, 0, 0, 0);
+        var res3 =
+                service.setHome(profileId, islandId, "shop", HomeScope.PERSONAL, "skyblock_world", 20, 70, 20, 0, 0, 0);
         assertThat(res3).isInstanceOf(HomeService.SetHomeResult.LimitExceeded.class);
 
         assertThat(service.listHomes(profileId)).hasSize(2);
@@ -193,7 +190,10 @@ class EnterpriseCompetitiveCapabilitiesTest {
 
             @Override
             public List<ActivityEvent> findEventsByInstanceId(String instanceId, int limit) {
-                return events.stream().filter(e -> e.instanceId().equals(instanceId)).limit(limit).toList();
+                return events.stream()
+                        .filter(e -> e.instanceId().equals(instanceId))
+                        .limit(limit)
+                        .toList();
             }
         };
 
@@ -247,12 +247,7 @@ class EnterpriseCompetitiveCapabilitiesTest {
         ProfileId recipient = new ProfileId(UUID.randomUUID());
 
         service.dispatchNotification(
-                recipient,
-                NotificationCategory.INVITE,
-                "uxm:island_invite",
-                1,
-                "{\"inviter\":\"Leader\"}",
-                null);
+                recipient, NotificationCategory.INVITE, "uxm:island_invite", 1, "{\"inviter\":\"Leader\"}", null);
 
         assertThat(service.getUnreadCount(recipient)).isEqualTo(1);
         List<Notification> drained = service.drainPendingNotifications(recipient);
@@ -268,8 +263,8 @@ class EnterpriseCompetitiveCapabilitiesTest {
         RootRelationalSnapshotPort mockRelational = mock(RootRelationalSnapshotPort.class);
         WorldDimensionSnapshotPort mockWorld = mock(WorldDimensionSnapshotPort.class);
 
-        IslandRestoreService restoreService = new IslandRestoreService(
-                mockCatalog, mockStorage, mockRelational, mockWorld);
+        IslandRestoreService restoreService =
+                new IslandRestoreService(mockCatalog, mockStorage, mockRelational, mockWorld);
 
         StorageBucket bucket = new StorageBucket("backups");
         String prefix = "islands/test-island";
@@ -283,18 +278,22 @@ class EnterpriseCompetitiveCapabilitiesTest {
                 "ISLAND",
                 "test-island",
                 Instant.now(),
-                1L, 1L, 1, "1.0",
+                1L,
+                1L,
+                1,
+                "1.0",
                 Map.of("relational.json", new BackupArtifact("relational.json", payload.length, correctSha)),
-                "FULL_RESTORE_CONSISTENT"
-        );
+                "FULL_RESTORE_CONSISTENT");
 
         // 1. Missing marker fails closed
-        when(mockStorage.exists(eq(bucket), eq("islands/test-island/AVAILABLE.marker"))).thenReturn(false);
+        when(mockStorage.exists(eq(bucket), eq("islands/test-island/AVAILABLE.marker")))
+                .thenReturn(false);
         var result1 = restoreService.executeRestore(manifest, bucket, prefix, false);
         assertThat(result1).isInstanceOf(IslandRestoreService.RestoreOutcome.Failure.class);
 
         // 2. Corrupted data fails closed
-        when(mockStorage.exists(eq(bucket), eq("islands/test-island/AVAILABLE.marker"))).thenReturn(true);
+        when(mockStorage.exists(eq(bucket), eq("islands/test-island/AVAILABLE.marker")))
+                .thenReturn(true);
         byte[] corruptedPayload = "corrupted-content".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         when(mockStorage.getObject(eq(bucket), eq("islands/test-island/relational.json")))
                 .thenReturn(Optional.of(corruptedPayload));

@@ -70,7 +70,8 @@ public final class IslandControlMenu {
         this.locationService = Objects.requireNonNull(locationService, "locationService must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
-        this.activeProfileProvider = Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.activeProfileProvider =
+                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
         this.bedrockFormService = bedrockFormService;
     }
 
@@ -139,7 +140,14 @@ public final class IslandControlMenu {
             IslandLocationService locationService,
             SchedulerPort schedulerPort,
             String worldName) {
-        this(islandStoragePort, islandBankPort, upgradeStoragePort, locationService, schedulerPort, worldName, (PlayerSessionCoordinator) null);
+        this(
+                islandStoragePort,
+                islandBankPort,
+                upgradeStoragePort,
+                locationService,
+                schedulerPort,
+                worldName,
+                (PlayerSessionCoordinator) null);
     }
 
     public void open(Player player) {
@@ -150,8 +158,7 @@ public final class IslandControlMenu {
             schedulerPort.onEntity(playerUuid, () -> {
                 if (player.isOnline()) {
                     player.sendMessage(Component.text(
-                            "Your profile session is not active or still loading. Please wait.",
-                            NamedTextColor.RED));
+                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
                 }
             });
             return;
@@ -195,21 +202,34 @@ public final class IslandControlMenu {
                                     World world = Bukkit.getWorld(worldName);
                                     if (world != null) {
                                         Location target = new Location(
-                                                world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
+                                                world,
+                                                loc.spawnX(),
+                                                loc.spawnY(),
+                                                loc.spawnZ(),
+                                                loc.spawnYaw(),
+                                                loc.spawnPitch());
                                         var unused = player.teleportAsync(target);
-                                        player.sendMessage(Component.text("Teleported to island home!", NamedTextColor.GREEN));
+                                        player.sendMessage(
+                                                Component.text("Teleported to island home!", NamedTextColor.GREEN));
                                     } else {
-                                        player.sendMessage(Component.text("Island world is unloaded.", NamedTextColor.RED));
+                                        player.sendMessage(
+                                                Component.text("Island world is unloaded.", NamedTextColor.RED));
                                     }
                                 } else {
-                                    player.sendMessage(Component.text("Island home location not found.", NamedTextColor.RED));
+                                    player.sendMessage(
+                                            Component.text("Island home location not found.", NamedTextColor.RED));
                                 }
                             },
-                            () -> player.sendMessage(Component.text("Warps: Use /is warps to browse destinations.", NamedTextColor.AQUA)),
-                            () -> player.sendMessage(Component.text("Bank: Use /is bank deposit <amount> or /is bank withdraw <amount>", NamedTextColor.GOLD)),
-                            () -> player.sendMessage(Component.text("Members: Use /is invite <player> or /is kick <player>", NamedTextColor.YELLOW)),
-                            () -> player.sendMessage(Component.text("Settings: Use /is lock or /is unlock to control visitor access.", NamedTextColor.RED))
-                    );
+                            () -> player.sendMessage(Component.text(
+                                    "Warps: Use /is warps to browse destinations.", NamedTextColor.AQUA)),
+                            () -> player.sendMessage(Component.text(
+                                    "Bank: Use /is bank deposit <amount> or /is bank withdraw <amount>",
+                                    NamedTextColor.GOLD)),
+                            () -> player.sendMessage(Component.text(
+                                    "Members: Use /is invite <player> or /is kick <player>", NamedTextColor.YELLOW)),
+                            () -> player.sendMessage(Component.text(
+                                    "Settings: Use /is lock or /is unlock to control visitor access.",
+                                    NamedTextColor.RED)));
                     return;
                 }
                 SimpleGui gui = buildGui(player, island, bank, upgrades, optLoc);

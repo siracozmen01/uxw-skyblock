@@ -69,9 +69,8 @@ public final class IslandBoosterMenu {
     public void open(Player player) {
         UUID rawUuid = player.getUniqueId();
         PlayerUuid playerUuid = new PlayerUuid(rawUuid);
-        Optional<ProfileId> activeOpt = sessionCoordinator != null
-                ? sessionCoordinator.activeProfile(rawUuid)
-                : Optional.empty();
+        Optional<ProfileId> activeOpt =
+                sessionCoordinator != null ? sessionCoordinator.activeProfile(rawUuid) : Optional.empty();
 
         if (activeOpt.isEmpty()) {
             player.sendMessage(Component.text(
@@ -87,7 +86,8 @@ public final class IslandBoosterMenu {
                 Runnable notify = () -> {
                     if (player.isOnline()) {
                         player.sendMessage(Component.text(
-                                        "You do not belong to an island! Create one first via /is create.", NamedTextColor.RED)
+                                        "You do not belong to an island! Create one first via /is create.",
+                                        NamedTextColor.RED)
                                 .decoration(TextDecoration.ITALIC, false));
                     }
                 };

@@ -22,6 +22,7 @@ public final class HomeService {
 
     public sealed interface SetHomeResult {
         record Success(Home home) implements SetHomeResult {}
+
         record LimitExceeded(int currentCount, int maxAllowed) implements SetHomeResult {}
     }
 
@@ -72,10 +73,13 @@ public final class HomeService {
                 normalizedName,
                 scope,
                 worldName,
-                x, y, z, yaw, pitch,
+                x,
+                y,
+                z,
+                yaw,
+                pitch,
                 existing.map(Home::createdAt).orElse(now),
-                now
-        );
+                now);
 
         homeStoragePort.saveHome(home);
         return new SetHomeResult.Success(home);

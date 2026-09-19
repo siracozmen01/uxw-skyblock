@@ -64,9 +64,8 @@ public final class IslandResetConfirmationMenu {
     public void open(Player player, String verificationCode) {
         UUID rawUuid = player.getUniqueId();
         PlayerUuid playerUuid = new PlayerUuid(rawUuid);
-        Optional<ProfileId> activeOpt = sessionCoordinator != null
-                ? sessionCoordinator.activeProfile(rawUuid)
-                : Optional.empty();
+        Optional<ProfileId> activeOpt =
+                sessionCoordinator != null ? sessionCoordinator.activeProfile(rawUuid) : Optional.empty();
 
         if (activeOpt.isEmpty()) {
             player.sendMessage(Component.text(
@@ -81,8 +80,8 @@ public final class IslandResetConfirmationMenu {
             if (optIslandId.isEmpty()) {
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (player.isOnline()) {
-                        player.sendMessage(
-                                MiniMessage.miniMessage().deserialize("<red>You do not have an active island to reset.</red>"));
+                        player.sendMessage(MiniMessage.miniMessage()
+                                .deserialize("<red>You do not have an active island to reset.</red>"));
                     }
                 });
                 return;
@@ -97,38 +96,45 @@ public final class IslandResetConfirmationMenu {
                     bedrockFormService.openConfirmationModal(
                             player,
                             "Confirm Island Reset",
-                            "WARNING: This action CANNOT BE UNDONE!\nConfirmation Code: " + verificationCode + "\nAll island blocks, items, and bank funds will be wiped.",
+                            "WARNING: This action CANNOT BE UNDONE!\nConfirmation Code: " + verificationCode
+                                    + "\nAll island blocks, items, and bank funds will be wiped.",
                             "§cCONFIRM RESET",
                             "§aCANCEL",
                             () -> schedulerPort.onEntity(playerUuid, () -> {
-                                RecycleResult result = recycleService.executeReset(profileId, islandId, verificationCode, false);
+                                RecycleResult result =
+                                        recycleService.executeReset(profileId, islandId, verificationCode, false);
                                 switch (result) {
                                     case RecycleResult.Success s -> {
                                         player.sendMessage(
                                                 MiniMessage.miniMessage()
                                                         .deserialize(
                                                                 "<green><bold>Your island has been reset and recycled successfully!</bold></green>"));
-                                        player.sendMessage(MiniMessage.miniMessage()
-                                                .deserialize("<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
+                                        player.sendMessage(
+                                                MiniMessage.miniMessage()
+                                                        .deserialize(
+                                                                "<gray>Create a new island with <yellow>/is create</yellow>.</gray>"));
                                     }
                                     case RecycleResult.NotOwner no ->
                                         player.sendMessage(MiniMessage.miniMessage()
-                                                .deserialize("<red>Only the island owner can reset this island!</red>"));
+                                                .deserialize(
+                                                        "<red>Only the island owner can reset this island!</red>"));
                                     case RecycleResult.InvalidChallenge ic ->
                                         player.sendMessage(MiniMessage.miniMessage()
-                                                .deserialize("<red>Reset confirmation failed: " + ic.reason() + "</red>"));
+                                                .deserialize(
+                                                        "<red>Reset confirmation failed: " + ic.reason() + "</red>"));
                                     case RecycleResult.IslandNotFound nf ->
-                                        player.sendMessage(MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
-                                    case RecycleResult.Failure f ->
                                         player.sendMessage(
-                                                MiniMessage.miniMessage().deserialize("<red>Reset failed: " + f.reason() + "</red>"));
+                                                MiniMessage.miniMessage().deserialize("<red>Island not found.</red>"));
+                                    case RecycleResult.Failure f ->
+                                        player.sendMessage(MiniMessage.miniMessage()
+                                                .deserialize("<red>Reset failed: " + f.reason() + "</red>"));
                                 }
                             }),
                             () -> {
                                 recycleService.cancelResetChallenge(profileId);
-                                player.sendMessage(MiniMessage.miniMessage().deserialize("<yellow>Island reset cancelled.</yellow>"));
-                            }
-                    );
+                                player.sendMessage(MiniMessage.miniMessage()
+                                        .deserialize("<yellow>Island reset cancelled.</yellow>"));
+                            });
                     return;
                 }
                 SimpleGui gui = buildGui(player, profileId, islandId, verificationCode);

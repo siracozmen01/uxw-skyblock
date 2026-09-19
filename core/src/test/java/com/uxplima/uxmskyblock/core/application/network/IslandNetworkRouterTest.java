@@ -103,8 +103,8 @@ class IslandNetworkRouterTest {
     @DisplayName("When cluster directory is unavailable, local valid lease still succeeds locally")
     void clusterUnavailableLocalLeaseSucceeds() {
         when(directoryPort.isAvailable()).thenReturn(false);
-        IslandAuthorityRecord record = new IslandAuthorityRecord(
-                islandId, localNode, 5L, Instant.now().plusSeconds(60), Instant.now());
+        IslandAuthorityRecord record =
+                new IslandAuthorityRecord(islandId, localNode, 5L, Instant.now().plusSeconds(60), Instant.now());
         when(authorityPort.findAuthority(islandId)).thenReturn(Optional.of(record));
 
         RouteOutcome outcome = router.routeVisit(playerUuid, islandId).join();

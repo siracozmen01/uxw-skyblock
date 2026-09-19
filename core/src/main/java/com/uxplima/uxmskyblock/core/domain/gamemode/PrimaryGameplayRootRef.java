@@ -7,10 +7,7 @@ import java.util.Objects;
  * Canonical linkage connecting a GameModeInstance to its primary gameplay aggregate root (e.g. IslandId for Skyblock).
  */
 public record PrimaryGameplayRootRef(
-        GameModeInstanceId gameModeInstanceId,
-        String rootId,
-        String rootType,
-        Instant boundAt) {
+        GameModeInstanceId gameModeInstanceId, String rootId, String rootType, Instant boundAt) {
 
     public PrimaryGameplayRootRef {
         Objects.requireNonNull(gameModeInstanceId, "gameModeInstanceId must not be null");

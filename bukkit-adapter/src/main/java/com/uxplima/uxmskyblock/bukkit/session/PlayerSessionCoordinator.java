@@ -528,7 +528,7 @@ public final class PlayerSessionCoordinator {
                         sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
                 if (!drainOutcome.isSuccess()) {
                     LOGGER.log(Level.SEVERE, "Failed to drain session during shutdown for {0}: {1}", new Object[] {
-                            session.playerUuid(), drainOutcome
+                        session.playerUuid(), drainOutcome
                     });
                     continue;
                 }
@@ -545,9 +545,10 @@ public final class PlayerSessionCoordinator {
                     session.setLastDurableVersion(succ.newVersion());
                     sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
                 } else {
-                    LOGGER.log(Level.SEVERE, "Handoff finalization flush failed during shutdown for {0}: {1}", new Object[] {
-                            session.playerUuid(), outcome
-                    });
+                    LOGGER.log(
+                            Level.SEVERE,
+                            "Handoff finalization flush failed during shutdown for {0}: {1}",
+                            new Object[] {session.playerUuid(), outcome});
                 }
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error draining session during shutdown for " + session.playerUuid(), e);

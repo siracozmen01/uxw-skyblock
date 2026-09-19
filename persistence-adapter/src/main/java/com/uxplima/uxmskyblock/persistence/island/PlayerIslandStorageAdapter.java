@@ -931,10 +931,7 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
     }
 
     @Override
-    public void updateEconomicState(
-            IslandId islandId,
-            EconomicState state,
-            @Nullable StagedOutboxEvent outboxEvent) {
+    public void updateEconomicState(IslandId islandId, EconomicState state, @Nullable StagedOutboxEvent outboxEvent) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(state, "state");
         String sql = "UPDATE islands SET economic_state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
