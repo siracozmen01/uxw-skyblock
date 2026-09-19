@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
@@ -36,6 +37,7 @@ import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
@@ -52,6 +54,7 @@ import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.Rec
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
+import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
@@ -109,6 +112,7 @@ public final class IslandCommandTree {
     private final @Nullable IslandWorthService worthService;
     private final @Nullable IslandDimensionListener dimensionListener;
     private final @Nullable IslandLimitService limitService;
+    private final @Nullable IslandAntiAbuseService antiAbuseService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -567,6 +571,62 @@ public final class IslandCommandTree {
             @Nullable IslandWorthService worthService,
             @Nullable IslandDimensionListener dimensionListener,
             @Nullable IslandLimitService limitService) {
+        this(
+                createIslandUseCase,
+                islandLocationService,
+                islandBankService,
+                islandUpgradePort,
+                islandLeaderboardService,
+                biomeModificationPort,
+                presetCatalog,
+                schematicEngine,
+                protectionListener,
+                sessionCoordinator,
+                schedulerPort,
+                serverNodeId,
+                worldName,
+                economyBridge,
+                controlMenu,
+                chatService,
+                inactivityService,
+                freezeService,
+                missionsMenu,
+                boundaryService,
+                recycleService,
+                resetMenu,
+                worthService,
+                dimensionListener,
+                limitService,
+                null);
+    }
+
+    public IslandCommandTree(
+            CreateIslandUseCase createIslandUseCase,
+            IslandLocationService islandLocationService,
+            IslandBankService islandBankService,
+            IslandUpgradeStoragePort islandUpgradePort,
+            IslandLeaderboardService islandLeaderboardService,
+            BiomeModificationPort biomeModificationPort,
+            StarterPresetCatalog presetCatalog,
+            StarterSchematicEngine schematicEngine,
+            IslandProtectionListener protectionListener,
+            PlayerSessionCoordinator sessionCoordinator,
+            SchedulerPort schedulerPort,
+            ServerNodeId serverNodeId,
+            String worldName,
+            SkyblockEconomyBridge economyBridge,
+            @Nullable IslandControlMenu controlMenu,
+            @Nullable IslandChatService chatService,
+            @Nullable IslandInactivityService inactivityService,
+            @Nullable IslandAdminFreezeService freezeService,
+            @Nullable IslandMissionsMenu missionsMenu,
+            @Nullable IslandBoundaryService boundaryService,
+            @Nullable IslandRecycleService recycleService,
+            @Nullable IslandResetConfirmationMenu resetMenu,
+            @Nullable IslandWorthService worthService,
+            @Nullable IslandDimensionListener dimensionListener,
+            @Nullable IslandLimitService limitService,
+            @Nullable IslandAntiAbuseService antiAbuseService) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -595,6 +655,7 @@ public final class IslandCommandTree {
         this.worthService = worthService;
         this.dimensionListener = dimensionListener;
         this.limitService = limitService;
+        this.antiAbuseService = antiAbuseService;
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -611,6 +672,10 @@ public final class IslandCommandTree {
 
     public @Nullable IslandLimitService limitService() {
         return limitService;
+    }
+
+    public @Nullable IslandAntiAbuseService antiAbuseService() {
+        return antiAbuseService;
     }
 
     public void register(JavaPlugin plugin) {
@@ -647,6 +712,7 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("nether").executes(this::executeNether))
                 .then(Cmd.literal("end").executes(this::executeEnd))
                 .then(Cmd.literal("limits").executes(this::executeLimits))
+                .then(Cmd.literal("quarantine").executes(this::executeQuarantine))
                 .then(Cmd.literal("setspawn").executes(this::executeSetSpawn))
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
@@ -759,6 +825,7 @@ public final class IslandCommandTree {
         send(src.getSender(), Component.text("/is nether - Teleport to your Nether island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is end - Teleport to your End island", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is limits - View hardware & tile entity quotas", NamedTextColor.YELLOW));
+        send(src.getSender(), Component.text("/is quarantine - View island quarantine status", NamedTextColor.YELLOW));
         send(src.getSender(), Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
         send(
                 src.getSender(),
@@ -1056,6 +1123,9 @@ public final class IslandCommandTree {
             schedulerPort.onEntity(playerUuid, () -> {
                 if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
                     protectionListener.cacheIsland(success.island());
+                    if (antiAbuseService != null) {
+                        antiAbuseService.quarantineNewIsland(success.island().id(), Instant.now());
+                    }
 
                     World resolvedWorld = Bukkit.getWorld(worldName);
                     if (resolvedWorld != null) {
@@ -1588,6 +1658,27 @@ public final class IslandCommandTree {
         }
 
         IslandId islandId = optIsland.get();
+        if (antiAbuseService != null) {
+            boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
+            ResetCheckResult check = antiAbuseService.checkResetAllowed(new PlayerUuid(player.getUniqueId()), bypass);
+            if (check instanceof ResetCheckResult.CooldownActive cd) {
+                send(
+                        player,
+                        Component.text(
+                                "Island reset is on cooldown. Remaining: " + formatDuration(cd.remaining()),
+                                NamedTextColor.RED));
+                return Cmd.OK;
+            } else if (check instanceof ResetCheckResult.DailyLimitExceeded dl) {
+                send(
+                        player,
+                        Component.text(
+                                "You have reached the daily limit of " + dl.maxDailyResets()
+                                        + " island resets. Available in: " + formatDuration(dl.remaining()),
+                                NamedTextColor.RED));
+                return Cmd.OK;
+            }
+        }
+
         ResetChallenge challenge = recycleService.generateResetChallenge(profileId, islandId);
 
         send(
@@ -1637,11 +1728,44 @@ public final class IslandCommandTree {
         }
 
         IslandId islandId = optIsland.get();
+        if (antiAbuseService != null) {
+            boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
+            ResetCheckResult check = antiAbuseService.checkResetAllowed(new PlayerUuid(player.getUniqueId()), bypass);
+            if (check instanceof ResetCheckResult.CooldownActive cd) {
+                send(
+                        player,
+                        Component.text(
+                                "Island reset is on cooldown. Remaining: " + formatDuration(cd.remaining()),
+                                NamedTextColor.RED));
+                return Cmd.OK;
+            } else if (check instanceof ResetCheckResult.DailyLimitExceeded dl) {
+                send(
+                        player,
+                        Component.text(
+                                "You have reached the daily limit of " + dl.maxDailyResets()
+                                        + " island resets. Available in: " + formatDuration(dl.remaining()),
+                                NamedTextColor.RED));
+                return Cmd.OK;
+            }
+        }
+
         schedulerPort.async(() -> {
             RecycleResult result = recycleService.executeReset(profileId, islandId, code, false);
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                 switch (result) {
                     case RecycleResult.Success s -> {
+                        if (antiAbuseService != null) {
+                            antiAbuseService.recordReset(new PlayerUuid(player.getUniqueId()), Instant.now());
+                            if (antiAbuseService.purgeInventoryOnReset()) {
+                                player.getInventory().clear();
+                                player.getInventory().setArmorContents(null);
+                                player.getInventory().setItemInOffHand(null);
+                                player.getEnderChest().clear();
+                                player.setExp(0.0f);
+                                player.setLevel(0);
+                                player.setTotalExperience(0);
+                            }
+                        }
                         player.teleport(player.getWorld().getSpawnLocation());
                         send(
                                 player,
@@ -1952,5 +2076,73 @@ public final class IslandCommandTree {
         });
 
         return Cmd.OK;
+    }
+
+    private int executeQuarantine(CommandContext<CommandSourceStack> ctx) {
+        Audience sender = ctx.getSource().getSender();
+        if (!(sender instanceof Player player)) {
+            send(sender, Component.text("Only in-game players can check quarantine status.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+        if (antiAbuseService == null) {
+            send(player, Component.text("Starter quarantine protection is disabled on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        ProfileId profileId = optProfile.get();
+        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+        if (optIsland.isEmpty()) {
+            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        IslandId islandId = optIsland.get();
+        schedulerPort.async(() -> {
+            Optional<Duration> optRemaining = antiAbuseService.getQuarantineRemaining(islandId, Instant.now());
+            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                if (optRemaining.isPresent()) {
+                    Duration remaining = optRemaining.get();
+                    send(
+                            player,
+                            MiniMessage.miniMessage()
+                                    .deserialize(
+                                            "<gold>Island Starter Quarantine:</gold> <yellow><bold>ACTIVE</bold></yellow> "
+                                                    + "(<white>" + formatDuration(remaining)
+                                                    + "</white> remaining)<newline>"
+                                                    + "<gray>Visitor access and dropping starter items are prohibited during quarantine.</gray>"));
+                } else {
+                    send(
+                            player,
+                            MiniMessage.miniMessage()
+                                    .deserialize(
+                                            "<gold>Island Starter Quarantine:</gold> <green><bold>INACTIVE</bold></green> "
+                                                    + "<gray>(Full visitor access and trade enabled)</gray>"));
+                }
+            });
+        });
+        return Cmd.OK;
+    }
+
+    private static String formatDuration(Duration duration) {
+        if (duration.isNegative() || duration.isZero()) {
+            return "0s";
+        }
+        long seconds = duration.toSeconds();
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs = seconds % 60;
+        if (hours > 0) {
+            return String.format("%dh %dm %ds", hours, minutes, secs);
+        }
+        if (minutes > 0) {
+            return String.format("%dm %ds", minutes, secs);
+        }
+        return String.format("%ds", secs);
     }
 }

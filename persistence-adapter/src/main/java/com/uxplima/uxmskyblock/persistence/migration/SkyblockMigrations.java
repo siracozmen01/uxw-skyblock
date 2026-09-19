@@ -21,7 +21,10 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 21;
+    public static final int LATEST_VERSION = 22;
+
+    /** Human-readable description of migration V22. */
+    public static final String V22_DESCRIPTION = "create player anti abuse records and island quarantines";
 
     /** Human-readable description of migration V21. */
     public static final String V21_DESCRIPTION = "create spiral slot pool for coordinate recycling";
@@ -124,7 +127,8 @@ public final class SkyblockMigrations {
                 v18Migration(dialect),
                 v19Migration(dialect),
                 v20Migration(dialect),
-                v21Migration(dialect));
+                v21Migration(dialect),
+                v22Migration(dialect));
     }
 
     private static Migration v1Migration(Dialect dialect) {
@@ -533,6 +537,18 @@ public final class SkyblockMigrations {
             case SQLITE -> new Migration(21, V21_DESCRIPTION, SQLITE_V21_DDL);
             case MYSQL -> new Migration(21, V21_DESCRIPTION, MYSQL_V21_DDL);
             case POSTGRES -> new Migration(21, V21_DESCRIPTION, POSTGRES_V21_DDL);
+            case H2, GENERIC ->
+                throw new IllegalArgumentException(
+                        "Unsupported SQL dialect: " + dialect
+                                + ". Skyblock V1 production persistence supports SQLite, MariaDB (upstream MYSQL identifier), and PostgreSQL.");
+        };
+    }
+
+    private static Migration v22Migration(Dialect dialect) {
+        return switch (dialect) {
+            case SQLITE -> new Migration(22, V22_DESCRIPTION, SQLITE_V22_DDL);
+            case MYSQL -> new Migration(22, V22_DESCRIPTION, MYSQL_V22_DDL);
+            case POSTGRES -> new Migration(22, V22_DESCRIPTION, POSTGRES_V22_DDL);
             case H2, GENERIC ->
                 throw new IllegalArgumentException(
                         "Unsupported SQL dialect: " + dialect
@@ -2490,5 +2506,70 @@ public final class SkyblockMigrations {
             );
 
             CREATE INDEX IF NOT EXISTS idx_spiral_slot_pool_free ON spiral_slot_pool (is_allocated, slot_index ASC);
+            """;
+
+    private static final String SQLITE_V22_DDL = """
+            CREATE TABLE IF NOT EXISTS player_anti_abuse_records (
+                player_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                last_island_reset_at TIMESTAMP NULL,
+                resets_today_count INTEGER NOT NULL DEFAULT 0,
+                reset_window_start TIMESTAMP NULL,
+                coop_cooldown_expires_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS island_quarantines (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                quarantined_until TIMESTAMP NOT NULL,
+                quarantine_reason VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_quarantines_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_quarantines_until ON island_quarantines (quarantined_until);
+            """;
+
+    private static final String MYSQL_V22_DDL = """
+            CREATE TABLE IF NOT EXISTS player_anti_abuse_records (
+                player_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                last_island_reset_at TIMESTAMP NULL,
+                resets_today_count INT NOT NULL DEFAULT 0,
+                reset_window_start TIMESTAMP NULL,
+                coop_cooldown_expires_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+            CREATE TABLE IF NOT EXISTS island_quarantines (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                quarantined_until TIMESTAMP NOT NULL,
+                quarantine_reason VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_island_quarantines_until (quarantined_until),
+                CONSTRAINT fk_island_quarantines_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """;
+
+    private static final String POSTGRES_V22_DDL = """
+            CREATE TABLE IF NOT EXISTS player_anti_abuse_records (
+                player_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                last_island_reset_at TIMESTAMP WITH TIME ZONE NULL,
+                resets_today_count INT NOT NULL DEFAULT 0,
+                reset_window_start TIMESTAMP WITH TIME ZONE NULL,
+                coop_cooldown_expires_at TIMESTAMP WITH TIME ZONE NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS island_quarantines (
+                island_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                quarantined_until TIMESTAMP WITH TIME ZONE NOT NULL,
+                quarantine_reason VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_island_quarantines_island FOREIGN KEY (island_id)
+                    REFERENCES islands (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_island_quarantines_until ON island_quarantines (quarantined_until);
             """;
 }

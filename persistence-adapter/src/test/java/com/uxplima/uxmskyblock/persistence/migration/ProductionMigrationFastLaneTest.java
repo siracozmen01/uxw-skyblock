@@ -2257,7 +2257,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(20);
 
             // 2. Upgrade by applying V21
-            int v21Applied = runner.apply(allMigrations);
+            int v21Applied = runner.apply(allMigrations.subList(0, 21));
             assertThat(v21Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(21);
 
@@ -2278,9 +2278,93 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 21));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(21);
+        }
+    }
+
+    @Test
+    @DisplayName("25. Step-by-step upgrade from V21 to V22 creates player anti abuse records and island quarantines")
+    void stepByStepUpgradeFromV21ToV22CreatesAntiAbuseTables() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+
+            // 1. Migrate up to V21
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            int v21Applied = runner.apply(allMigrations.subList(0, 21));
+            assertThat(v21Applied).isEqualTo(21);
+            assertThat(runner.currentVersion()).isEqualTo(21);
+
+            // 2. Upgrade by applying V22
+            int v22Applied = runner.apply(allMigrations);
+            assertThat(v22Applied).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(22);
+
+            // 3. Verify player_anti_abuse_records and island_quarantines accept rows
+            try (Connection conn = db.connection()) {
+                enableForeignKeys(conn);
+                execute(conn, """
+                        INSERT INTO player_anti_abuse_records (
+                            player_uuid, last_island_reset_at, resets_today_count, reset_window_start,
+                            coop_cooldown_expires_at, updated_at
+                        ) VALUES (
+                            '11111111-1111-1111-1111-111111111111', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP
+                        );
+                        """);
+
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM player_anti_abuse_records WHERE player_uuid = '11111111-1111-1111-1111-111111111111'"))
+                        .isEqualTo(1);
+
+                // Insert dummy island to test island_quarantines foreign key
+                execute(
+                        conn,
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-000000000001');");
+                execute(
+                        conn,
+                        "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'CLASSIC');");
+                execute(conn, """
+                        INSERT INTO islands (
+                            id, owner_profile_id, owner_account_uuid, custom_name,
+                            lifecycle, economic_state, administrative_state, version
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999',
+                            '00000000-0000-0000-0000-000000000002',
+                            '00000000-0000-0000-0000-000000000001',
+                            'Quarantine Island', 'ACTIVE', 'NORMAL', 'NORMAL', 1
+                        );
+                        """);
+
+                execute(conn, """
+                        INSERT INTO island_quarantines (
+                            island_id, quarantined_until, quarantine_reason, created_at
+                        ) VALUES (
+                            '99999999-9999-9999-9999-999999999999', CURRENT_TIMESTAMP, 'NEW_ISLAND_CREATION', CURRENT_TIMESTAMP
+                        );
+                        """);
+
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_quarantines WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(1);
+
+                // Delete island and verify cascade deletes island_quarantines
+                execute(conn, "DELETE FROM islands WHERE id = '99999999-9999-9999-9999-999999999999'");
+                assertThat(
+                                queryCount(
+                                        conn,
+                                        "SELECT COUNT(*) FROM island_quarantines WHERE island_id = '99999999-9999-9999-9999-999999999999'"))
+                        .isEqualTo(0);
+            }
+
+            // 4. Rerun and assert zero migrations applied
+            int rerun = runner.apply(allMigrations);
+            assertThat(rerun).isEqualTo(0);
+            assertThat(runner.currentVersion()).isEqualTo(22);
         }
     }
 

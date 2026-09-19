@@ -12,6 +12,7 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.uxplima.uxmlib.gui.Guis;
+import com.uxplima.uxmskyblock.bukkit.antiabuse.IslandAntiAbuseListener;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
@@ -20,6 +21,7 @@ import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
@@ -53,6 +55,7 @@ import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.mission.IslandMissionListener;
 import com.uxplima.uxmskyblock.bukkit.module.BukkitModuleContext;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.AllianceFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.AntiAbuseFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BankModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BiomesModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.BoundaryFeatureModule;
@@ -85,6 +88,7 @@ import com.uxplima.uxmskyblock.bukkit.worth.FoliaIslandChunkScanner;
 import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
+import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
@@ -211,6 +215,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final LimitConfiguration limitConfig;
     private final IslandLimitService limitService;
     private final IslandLimitListener limitListener;
+    private final AntiAbuseConfiguration antiAbuseConfig;
+    private final IslandAntiAbuseService antiAbuseService;
+    private final IslandAntiAbuseListener antiAbuseListener;
 
     public SkyblockBootstrap(
             JavaPlugin plugin,
@@ -357,6 +364,52 @@ public final class SkyblockBootstrap implements AutoCloseable {
             LevelConfiguration levelConfig,
             DimensionConfiguration dimensionConfig,
             LimitConfiguration limitConfig) {
+        this(
+                plugin,
+                persistenceBootstrap,
+                nodeConfiguration,
+                playerStateConfig,
+                moduleSettings,
+                seasonConfig,
+                socialConfig,
+                discordConfig,
+                allianceConfig,
+                shopConfig,
+                temporaryAccessConfig,
+                rewardConfig,
+                warpConfig,
+                vaultConfig,
+                chatConfig,
+                inactivityConfig,
+                missionConfig,
+                levelConfig,
+                dimensionConfig,
+                limitConfig,
+                AntiAbuseConfiguration.defaultConfiguration());
+    }
+
+    public SkyblockBootstrap(
+            JavaPlugin plugin,
+            PersistenceBootstrap persistenceBootstrap,
+            ServerNodeConfiguration nodeConfiguration,
+            PlayerStateDurabilityConfig playerStateConfig,
+            ModuleSettingsConfiguration moduleSettings,
+            SeasonConfiguration seasonConfig,
+            SocialConfiguration socialConfig,
+            DiscordConfiguration discordConfig,
+            AllianceConfiguration allianceConfig,
+            ShopConfiguration shopConfig,
+            TemporaryAccessConfiguration temporaryAccessConfig,
+            RewardInboxConfiguration rewardConfig,
+            WarpConfiguration warpConfig,
+            VaultConfiguration vaultConfig,
+            ChatConfiguration chatConfig,
+            InactivityConfiguration inactivityConfig,
+            MissionConfiguration missionConfig,
+            LevelConfiguration levelConfig,
+            DimensionConfiguration dimensionConfig,
+            LimitConfiguration limitConfig,
+            AntiAbuseConfiguration antiAbuseConfig) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -379,6 +432,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.levelConfig = Objects.requireNonNull(levelConfig, "levelConfig must not be null");
         this.dimensionConfig = Objects.requireNonNull(dimensionConfig, "dimensionConfig must not be null");
         this.limitConfig = Objects.requireNonNull(limitConfig, "limitConfig must not be null");
+        this.antiAbuseConfig = Objects.requireNonNull(antiAbuseConfig, "antiAbuseConfig must not be null");
 
         LocalIslandChatTransportAdapter chatTransport = new LocalIslandChatTransportAdapter();
         BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(chatConfig);
@@ -624,6 +678,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.limitListener = new IslandLimitListener(
                 this.limitService, this.protectionListener, this.limitConfig.bypassPermission());
 
+        this.antiAbuseService = new IslandAntiAbuseService(
+                persistenceBootstrap.antiAbuseStoragePort(),
+                this.antiAbuseConfig.purgeInventoryOnReset(),
+                this.antiAbuseConfig.quarantineDuration(),
+                this.antiAbuseConfig.resetCooldown(),
+                this.antiAbuseConfig.maxResetsPerDay(),
+                this.antiAbuseConfig.resetWindowDuration(),
+                this.antiAbuseConfig.coopJoinCooldown(),
+                java.time.Clock.systemUTC());
+        this.antiAbuseListener = new IslandAntiAbuseListener(
+                persistenceBootstrap.islandStoragePort(), this.antiAbuseService, this.antiAbuseConfig);
+
         this.commandTree = new IslandCommandTree(
                 createIslandUseCase,
                 locationService,
@@ -649,7 +715,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 resetConfirmationMenu,
                 worthService,
                 dimensionListener,
-                limitService);
+                limitService,
+                antiAbuseService);
 
         RewardDeliveryHandler itemDeliveryHandler = new RewardDeliveryHandler() {
             @Override
@@ -765,6 +832,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this.moduleRegistry.register(new WorthFeatureModule(worthService));
         this.moduleRegistry.register(new DimensionFeatureModule(dimensionService));
         this.moduleRegistry.register(new LimitFeatureModule(limitService));
+        this.moduleRegistry.register(new AntiAbuseFeatureModule(antiAbuseService));
         this.moduleRegistry.configure(moduleSettings.moduleToggles(), moduleSettings.selectedProviders());
     }
 
@@ -1562,6 +1630,32 @@ public final class SkyblockBootstrap implements AutoCloseable {
             limitConfig = LimitConfiguration.defaultConfiguration();
         }
 
+        Path antiAbuseFile = dataDir.resolve("anti_abuse.conf");
+        if (!java.nio.file.Files.exists(antiAbuseFile)) {
+            try (java.io.InputStream in = plugin.getResource("anti_abuse.conf")) {
+                if (in != null) {
+                    java.nio.file.Files.copy(in, antiAbuseFile);
+                }
+            } catch (Exception expected) {
+                // Ignore failure if anti_abuse.conf cannot be extracted
+            }
+        }
+
+        AntiAbuseConfiguration antiAbuseConfig;
+        if (java.nio.file.Files.exists(antiAbuseFile)) {
+            try {
+                CommentedConfigurationNode antiAbuseRoot = HoconConfigurationLoader.builder()
+                        .path(antiAbuseFile)
+                        .build()
+                        .load();
+                antiAbuseConfig = AntiAbuseConfiguration.load(antiAbuseRoot);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load anti abuse configuration from: " + antiAbuseFile, e);
+            }
+        } else {
+            antiAbuseConfig = AntiAbuseConfiguration.defaultConfiguration();
+        }
+
         return new SkyblockBootstrap(
                 plugin,
                 persistence,
@@ -1582,7 +1676,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 missionConfig,
                 levelConfig,
                 dimensionConfig,
-                limitConfig);
+                limitConfig,
+                antiAbuseConfig);
     }
 
     private static PersistenceBootstrap resolvePersistence(@Nullable CommentedConfigurationNode root, Path dataDir) {
@@ -1631,6 +1726,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         pm.registerEvents(worthListener, plugin);
         pm.registerEvents(dimensionListener, plugin);
         pm.registerEvents(limitListener, plugin);
+        pm.registerEvents(antiAbuseListener, plugin);
 
         commandTree.register(plugin);
         apiBridge.register();
@@ -1891,6 +1987,18 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public IslandLimitListener limitListener() {
         return limitListener;
+    }
+
+    public AntiAbuseConfiguration antiAbuseConfiguration() {
+        return antiAbuseConfig;
+    }
+
+    public IslandAntiAbuseService antiAbuseService() {
+        return antiAbuseService;
+    }
+
+    public IslandAntiAbuseListener antiAbuseListener() {
+        return antiAbuseListener;
     }
 
     @Override
