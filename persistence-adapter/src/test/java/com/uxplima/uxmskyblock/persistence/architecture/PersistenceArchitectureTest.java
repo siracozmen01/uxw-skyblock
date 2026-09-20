@@ -197,4 +197,83 @@ class PersistenceArchitectureTest {
                 .as("Packages in :persistence-adapter missing @NullMarked package-info.java: %s", packagesWithClasses)
                 .isEmpty();
     }
+
+    static ArchRule noClassesMustCallRawStatementExecution() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.persistence..")
+                .and()
+                .doNotHaveFullyQualifiedName("com.uxplima.uxmskyblock.persistence.backup.SqlDatabaseBackupAdapter")
+                .should(callMethodWhere(com.tngtech.archunit.base.DescribedPredicate.describe(
+                        "call raw Statement.executeQuery/executeUpdate",
+                        call -> "java.sql.Statement"
+                                        .equals(call.getTargetOwner().getFullName())
+                                && (call.getName().equals("executeQuery")
+                                        || call.getName().equals("executeUpdate")
+                                        || call.getName().equals("executeLargeUpdate")
+                                        || call.getName().equals("addBatch"))
+                                && !call.getTarget().getRawParameterTypes().isEmpty()
+                                && "java.lang.String"
+                                        .equals(call.getTarget()
+                                                .getRawParameterTypes()
+                                                .get(0)
+                                                .getFullName()))))
+                .because(
+                        "Raw Statement.executeQuery/executeUpdate(sql) is forbidden; all queries and updates must use PreparedStatement with parameters (disaster backup adapter excepted)")
+                .allowEmptyShould(true);
+    }
+
+    @Test
+    @DisplayName("Production :persistence-adapter classes must not call raw Statement.execute*(String)")
+    void productionPersistenceHasNoRawStatementExecution() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> noClassesMustCallRawStatementExecution().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Verify teeth: guard catches forbidden raw Statement.execute*(String) call")
+    void guardCatchesForbiddenRawStatementExecution() {
+        JavaClasses fixture = new ClassFileImporter()
+                .importClasses(
+                        com.uxplima.uxmskyblock.persistence.architecture.fixtures
+                                .PersistenceForbiddenRawStatementFixture.class);
+        EvaluationResult result = noClassesMustCallRawStatementExecution().evaluate(fixture);
+        assertThat(result.hasViolation())
+                .as("noClassesMustCallRawStatementExecution must catch fixture calling raw Statement.executeQuery")
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("Every @SuppressWarnings annotation in :persistence-adapter must be from an allowed classification")
+    void allSuppressWarningsMustBeClassified() {
+        java.util.Set<String> allowedClassifications = java.util.Set.of(
+                "EmptyCatch",
+                "NullAway",
+                "NullAway.Init",
+                "FieldCanBeLocal",
+                "deprecation",
+                "unchecked",
+                "ArrayRecordComponent",
+                "NullablePrimitiveArray",
+                "FutureReturnValueIgnored",
+                "unused",
+                "SelfComparison",
+                "removal");
+
+        JavaClasses production = importProductionClasses();
+        production.stream()
+                .flatMap(c -> java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(c),
+                        java.util.stream.Stream.concat(c.getMembers().stream(), c.getMethods().stream())))
+                .forEach(element -> {
+                    element.tryGetAnnotationOfType(SuppressWarnings.class).ifPresent(ann -> {
+                        for (String value : ann.value()) {
+                            assertThat(allowedClassifications)
+                                    .as("@SuppressWarnings(\"%s\") on %s is unclassified", value, element)
+                                    .contains(value);
+                        }
+                    });
+                });
+    }
 }

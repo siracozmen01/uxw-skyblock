@@ -20,8 +20,6 @@ out/
 
 # Agents & AI
 .agents/
-docs/
-project-board.html
 CLAUDE.md
 claude.md
 .claude/
