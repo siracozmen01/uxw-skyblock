@@ -1,4 +1,4 @@
-/**
- * Persistence composition root and adapter factories.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.persistence.bootstrap;
+
+import org.jspecify.annotations.NullMarked;

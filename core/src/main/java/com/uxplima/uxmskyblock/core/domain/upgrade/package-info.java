@@ -1,4 +1,4 @@
-/**
- * Domain models, value records, and purchase outcome ADTs for Island Upgrades.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.upgrade;
+
+import org.jspecify.annotations.NullMarked;

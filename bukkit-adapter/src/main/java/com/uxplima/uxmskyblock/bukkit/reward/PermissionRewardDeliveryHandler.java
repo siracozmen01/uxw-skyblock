@@ -117,7 +117,7 @@ public final class PermissionRewardDeliveryHandler implements RewardDeliveryHand
         }
     }
 
-    private PlayerUuid resolvePlayerUuid(ProfileId profileId) {
+    private @Nullable PlayerUuid resolvePlayerUuid(ProfileId profileId) {
         if (profileSwitchPort != null) {
             Optional<PlayerUuid> resolved = profileSwitchPort.resolvePlayerUuid(profileId);
             if (resolved.isPresent()) {
@@ -135,7 +135,7 @@ public final class PermissionRewardDeliveryHandler implements RewardDeliveryHand
         return null;
     }
 
-    private String parsePermission(String payload) {
+    private @Nullable String parsePermission(@Nullable String payload) {
         if (payload == null) return null;
         String clean =
                 payload.replace("{", "").replace("}", "").replace("\"", "").trim();

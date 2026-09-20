@@ -129,7 +129,11 @@ public final class BukkitInventorySerializer {
         byte[] potionBytes = serializePotionEffects(player.getActivePotionEffects());
 
         Location loc = player.getLocation();
-        String worldName = loc.getWorld() != null ? loc.getWorld().getName() : null;
+        String worldName =
+                (loc != null && loc.getWorld() != null) ? loc.getWorld().getName() : null;
+        double locX = loc != null ? loc.getX() : 0.0;
+        double locY = loc != null ? loc.getY() : 0.0;
+        double locZ = loc != null ? loc.getZ() : 0.0;
 
         return new ProfileInventoryRecord(
                 profileId,
@@ -142,9 +146,9 @@ public final class BukkitInventorySerializer {
                 player.getSaturation(),
                 potionBytes,
                 worldName,
-                loc.getX(),
-                loc.getY(),
-                loc.getZ(),
+                locX,
+                locY,
+                locZ,
                 player.getGameMode().name(),
                 player.getAllowFlight());
     }

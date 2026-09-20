@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +21,7 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageObjectMetadata;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -96,7 +98,8 @@ class BackupServiceTest {
         boolean success = service.publishBackup(bucket, "backups/" + setId, initialRecord, manifest, payloads);
         assertThat(success).isTrue();
 
-        assertThat(catalog.records.get(setId).state()).isEqualTo(BackupLifecycleState.AVAILABLE);
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state())
+                .isEqualTo(BackupLifecycleState.AVAILABLE);
 
         // Verify order of put calls on destinationA
         List<String> puts = destinationA.putOrder;
@@ -121,7 +124,7 @@ class BackupServiceTest {
 
         boolean success = service.publishBackup(bucket, "backups/" + setId, initialRecord, manifest, payloads);
         assertThat(success).isFalse();
-        assertThat(catalog.records.get(setId).state()).isEqualTo(BackupLifecycleState.FAILED);
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state()).isEqualTo(BackupLifecycleState.FAILED);
         assertThat(destinationA.putOrder).isEmpty();
     }
 
@@ -135,7 +138,7 @@ class BackupServiceTest {
 
         boolean success = service.publishBackup(bucket, "backups/" + setId, initialRecord, manifest, payloads);
         assertThat(success).isFalse();
-        assertThat(catalog.records.get(setId).state()).isEqualTo(BackupLifecycleState.FAILED);
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state()).isEqualTo(BackupLifecycleState.FAILED);
         assertThat(destinationA.putOrder).isEmpty();
     }
 
@@ -184,7 +187,7 @@ class BackupServiceTest {
         boolean deleted = service.deleteBackup(bucket, "backups/" + setId, setId, manifest);
         assertThat(deleted).isTrue();
 
-        assertThat(catalog.records.get(setId).state()).isEqualTo(BackupLifecycleState.DELETED);
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state()).isEqualTo(BackupLifecycleState.DELETED);
         List<String> deletes = destinationA.deleteOrder;
         assertThat(deletes.getFirst()).isEqualTo("backups/" + setId + "/AVAILABLE.marker");
     }
@@ -213,7 +216,7 @@ class BackupServiceTest {
 
         boolean success = service.publishBackup(bucket, "backups/" + setId, initialRecord, manifest, payloads);
         assertThat(success).isFalse();
-        assertThat(catalog.records.get(setId).state()).isEqualTo(BackupLifecycleState.PARTIAL);
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state()).isEqualTo(BackupLifecycleState.PARTIAL);
     }
 
     @Test
@@ -229,7 +232,8 @@ class BackupServiceTest {
         boolean deleted = service.deleteBackup(bucket, "backups/" + setId, setId, manifest);
         assertThat(deleted).isFalse();
 
-        assertThat(catalog.records.get(setId).state()).isEqualTo(BackupLifecycleState.RECOVERY_REQUIRED);
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state())
+                .isEqualTo(BackupLifecycleState.RECOVERY_REQUIRED);
     }
 
     private static class FakeBackupCatalog implements BackupCatalogPort {
@@ -257,7 +261,7 @@ class BackupServiceTest {
         }
 
         @Override
-        public void updateState(BackupSetId id, BackupLifecycleState state, String failureReason) {
+        public void updateState(BackupSetId id, BackupLifecycleState state, @Nullable String failureReason) {
             BackupCatalogRecord existing = records.get(id);
             if (existing != null) {
                 records.put(id, existing.withState(state, failureReason, Instant.now()));

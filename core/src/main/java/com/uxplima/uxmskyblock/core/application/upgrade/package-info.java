@@ -1,4 +1,4 @@
-/**
- * Application services and ports for Island Upgrades and progression.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.application.upgrade;
+
+import org.jspecify.annotations.NullMarked;

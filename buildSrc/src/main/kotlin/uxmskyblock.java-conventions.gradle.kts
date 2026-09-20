@@ -71,7 +71,6 @@ configure<com.diffplug.gradle.spotless.SpotlessExtension> {
         importOrder("java", "javax", "org.bukkit", "io.papermc", "net.kyori", "")
         trimTrailingWhitespace()
         endWithNewline()
-        toggleOffOn()
     }
     kotlinGradle { ktlint("1.5.0") }
 }

@@ -196,26 +196,22 @@ public final class IslandDimensionListener implements Listener {
                             if (!player.isOnline()) {
                                 return;
                             }
-                            Location targetLoc = new Location(
-                                    destWorld,
-                                    centerX + 0.5,
-                                    targetY + 1.0,
-                                    centerZ + 0.5,
-                                    player.getLocation().getYaw(),
-                                    player.getLocation().getPitch());
+                            Location pLoc = player.getLocation();
+                            float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
+                            float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
+                            Location targetLoc =
+                                    new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
                             player.teleport(targetLoc);
                             sendMessage(
                                     player, "<green>Welcome to your " + targetDimension.name() + " island!</green>");
                         });
                     });
                 } else {
-                    Location targetLoc = new Location(
-                            destWorld,
-                            centerX + 0.5,
-                            targetY + 1.0,
-                            centerZ + 0.5,
-                            player.getLocation().getYaw(),
-                            player.getLocation().getPitch());
+                    Location pLoc = player.getLocation();
+                    float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
+                    float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
+                    Location targetLoc =
+                            new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
                     event.setTo(targetLoc);
                 }
             }
@@ -297,13 +293,11 @@ public final class IslandDimensionListener implements Listener {
                         if (!player.isOnline()) {
                             return;
                         }
-                        Location targetLoc = new Location(
-                                destWorld,
-                                centerX + 0.5,
-                                targetY + 1.0,
-                                centerZ + 0.5,
-                                player.getLocation().getYaw(),
-                                player.getLocation().getPitch());
+                        Location pLoc = player.getLocation();
+                        float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
+                        float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
+                        Location targetLoc =
+                                new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
                         player.teleport(targetLoc);
                         sendMessage(player, "<green>Teleported to your " + targetDimension.name() + " island!</green>");
                     });

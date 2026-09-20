@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonId;
@@ -79,7 +80,7 @@ class IslandSeasonServiceTest {
                 leader1,
                 new ProfileId(leader1.value()),
                 Instant.now());
-        islandStorage.saveIsland(island, null);
+        islandStorage.saveIsland(island, IslandLocation.fromCenterAndRadius(island.id(), "world", 0, 0, 100));
 
         leaderboard.setLevelEntries(List.of(new LeaderboardEntry(1, isl1, "Alex's Island", 5000L, "5,000")));
 
@@ -141,6 +142,83 @@ class IslandSeasonServiceTest {
         // Since CAS failed, snapshots and payouts must NOT be processed
         List<SeasonSnapshotEntry> snapshots = storage.findSnapshots(seasonId, SeasonMetric.LEVEL, 10);
         assertThat(snapshots).isEmpty();
+    }
+
+    @Test
+    @DisplayName("issues typed rewards to RewardInboxService upon season expiration")
+    void issuesTypedRewardsToRewardInboxService() {
+        com.uxplima.uxmskyblock.core.application.reward.RewardInboxService rewardInbox =
+                org.mockito.Mockito.mock(com.uxplima.uxmskyblock.core.application.reward.RewardInboxService.class);
+        IslandSeasonService serviceWithInbox =
+                new IslandSeasonService(storage, leaderboard, islandStorage, rewardInbox);
+
+        Instant start = Instant.now().minus(45, ChronoUnit.DAYS);
+        Instant end = Instant.now().minus(1, ChronoUnit.MINUTES);
+        SeasonId seasonId = SeasonId.of(5);
+
+        storage.saveSeason(new SeasonRecord(seasonId, "Season 5", start, end, SeasonState.ACTIVE));
+
+        IslandId isl = new IslandId(UUID.randomUUID());
+        PlayerUuid leader = new PlayerUuid(UUID.randomUUID());
+        Island island = Island.create(
+                isl, IslandBounds.fromCenterAndRadius(0, 0, 100), leader, new ProfileId(leader.value()), Instant.now());
+        islandStorage.saveIsland(island, IslandLocation.fromCenterAndRadius(island.id(), "world", 0, 0, 100));
+
+        leaderboard.setLevelEntries(List.of(new LeaderboardEntry(1, isl, "Winner", 10000L, "10,000")));
+
+        Map<Integer, List<String>> tierRewards = Map.of(1, List.of("eco give %leader% 1000000"));
+
+        Instant checkTime = Instant.now();
+        serviceWithInbox.checkAndAdvanceSeason(checkTime, tierRewards);
+
+        // Verify RewardInboxService.issueReward was called with the winner's ProfileId and typed EXTERNAL_VAULT
+        // component
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent>> captor =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        org.mockito.Mockito.verify(rewardInbox)
+                .issueReward(
+                        org.mockito.ArgumentMatchers.eq(new ProfileId(leader.value())),
+                        org.mockito.ArgumentMatchers.eq("SEASON_PAYOUT"),
+                        org.mockito.ArgumentMatchers.eq("5:RANK_1"),
+                        org.mockito.ArgumentMatchers.any(),
+                        captor.capture());
+
+        List<com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent> drafts = captor.getValue();
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).componentType())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.EXTERNAL_VAULT);
+        assertThat(drafts.get(0).payloadData()).contains("1000000");
+    }
+
+    @Test
+    @DisplayName("retry when season is already completed or frozen does not duplicate snapshots or payouts")
+    void retryWhenSeasonAlreadyCompletedDoesNotDuplicate() {
+        Instant start = Instant.now().minus(45, ChronoUnit.DAYS);
+        Instant end = Instant.now().minus(1, ChronoUnit.MINUTES);
+        SeasonId seasonId = SeasonId.of(10);
+
+        storage.saveSeason(new SeasonRecord(seasonId, "Season 10", start, end, SeasonState.ACTIVE));
+
+        IslandId isl = new IslandId(UUID.randomUUID());
+        PlayerUuid leader = new PlayerUuid(UUID.randomUUID());
+        Island island = Island.create(
+                isl, IslandBounds.fromCenterAndRadius(0, 0, 100), leader, new ProfileId(leader.value()), Instant.now());
+        islandStorage.saveIsland(island, IslandLocation.fromCenterAndRadius(island.id(), "world", 0, 0, 100));
+
+        leaderboard.setLevelEntries(List.of(new LeaderboardEntry(1, isl, "Leader Island", 8000L, "8,000")));
+        Map<Integer, List<String>> tierRewards = Map.of(1, List.of("eco give %leader% 500000"));
+
+        Instant checkTime = Instant.now();
+        // First execution: advances season to COMPLETED
+        seasonService.checkAndAdvanceSeason(checkTime, tierRewards);
+        assertThat(storage.findSnapshots(seasonId, SeasonMetric.LEVEL, 10)).hasSize(1);
+        assertThat(storage.findPendingPayouts(leader)).hasSize(1);
+
+        // Second execution (retry / periodic poll): must NO-OP and NOT duplicate
+        seasonService.checkAndAdvanceSeason(checkTime.plusSeconds(30), tierRewards);
+        assertThat(storage.findSnapshots(seasonId, SeasonMetric.LEVEL, 10)).hasSize(1);
+        assertThat(storage.findPendingPayouts(leader)).hasSize(1);
     }
 
     private static class InMemorySeasonStorage implements IslandSeasonStoragePort {

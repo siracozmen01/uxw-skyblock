@@ -1315,7 +1315,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.recycleService();
     }
 
-    public IslandResetConfirmationMenu resetConfirmationMenu() {
+    public @Nullable IslandResetConfirmationMenu resetConfirmationMenu() {
         return gameplayWiring.resetConfirmationMenu();
     }
 

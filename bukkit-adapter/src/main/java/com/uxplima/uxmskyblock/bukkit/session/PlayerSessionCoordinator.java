@@ -100,7 +100,8 @@ public final class PlayerSessionCoordinator {
         }
 
         public SessionState state() {
-            return state.get();
+            SessionState s = state.get();
+            return s != null ? s : SessionState.ACTIVE;
         }
 
         public void fence() {
@@ -523,6 +524,9 @@ public final class PlayerSessionCoordinator {
                     });
                 }
                 byte[] invBytes = invBytesRef.get();
+                if (invBytes == null) {
+                    invBytes = new byte[0];
+                }
 
                 SessionAuthorityOutcome drainOutcome =
                         sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());

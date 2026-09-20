@@ -9,6 +9,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrant;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Production reward delivery handler for cosmetics.
@@ -57,7 +58,7 @@ public final class CosmeticRewardDeliveryHandler implements RewardDeliveryHandle
         return cosmeticStoragePort.getCosmetics(profileId);
     }
 
-    private String parseCosmeticId(String payload) {
+    private @Nullable String parseCosmeticId(@Nullable String payload) {
         if (payload == null) return null;
         String clean =
                 payload.replace("{", "").replace("}", "").replace("\"", "").trim();

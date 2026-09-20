@@ -1,4 +1,4 @@
-/**
- * Application services and ports for Island Leaderboards and ranking queries.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.application.leaderboard;
+
+import org.jspecify.annotations.NullMarked;

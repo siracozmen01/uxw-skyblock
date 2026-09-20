@@ -258,6 +258,48 @@ class BukkitArchitectureTest {
                 .isFalse();
     }
 
+    // RULE D: No legacy ChatColor
+    static ArchRule noClassesMustDependOnLegacyChatColor() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.bukkit..")
+                .should()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("org.bukkit.ChatColor")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("net.md_5.bungee.api.ChatColor")
+                .because("legacy ChatColor is forbidden; use Adventure Component and MiniMessage")
+                .allowEmptyShould(true);
+    }
+
+    // RULE E: No printStackTrace
+    static ArchRule noClassesMustCallPrintStackTrace() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.bukkit..")
+                .should(callMethodWhere(DescribedPredicate.describe(
+                        "call printStackTrace()",
+                        call -> "java.lang.Throwable"
+                                        .equals(call.getTargetOwner().getFullName())
+                                && "printStackTrace".equals(call.getName()))))
+                .because("printStackTrace() is forbidden; use standard logging")
+                .allowEmptyShould(true);
+    }
+
+    // RULE F: No System.out / System.err
+    static ArchRule noClassesMustAccessSystemOutOrErr() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.bukkit..")
+                .should()
+                .accessField("java.lang.System", "out")
+                .orShould()
+                .accessField("java.lang.System", "err")
+                .because("direct console access via System.out/System.err is forbidden; use logger")
+                .allowEmptyShould(true);
+    }
+
     @Test
     @DisplayName("Production :bukkit-adapter classes must contain real P1-005 configuration adapter classes")
     void productionBukkitContainsRealClasses() {
@@ -265,5 +307,49 @@ class BukkitArchitectureTest {
         assertThat(production).isNotEmpty();
         assertThat(production.contain(com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter.class))
                 .isTrue();
+    }
+
+    @Test
+    @DisplayName("Production :bukkit-adapter classes must not depend on legacy ChatColor")
+    void productionBukkitAdapterHasNoLegacyChatColor() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> noClassesMustDependOnLegacyChatColor().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Production :bukkit-adapter classes must not call printStackTrace()")
+    void productionBukkitAdapterHasNoPrintStackTrace() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> noClassesMustCallPrintStackTrace().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Production :bukkit-adapter classes must not access System.out or System.err")
+    void productionBukkitAdapterHasNoSystemOutOrErr() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> noClassesMustAccessSystemOutOrErr().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName(
+            "Every production package in :bukkit-adapter must contain package-info.java annotated with @NullMarked")
+    void everyPackageMustHaveNullMarkedPackageInfo() {
+        JavaClasses classes = importProductionClasses();
+        java.util.Set<String> packagesWithClasses = classes.stream()
+                .filter(c -> !c.getSimpleName().equals("package-info"))
+                .map(com.tngtech.archunit.core.domain.JavaClass::getPackageName)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> nullMarkedPackages = classes.stream()
+                .filter(c -> c.getSimpleName().equals("package-info"))
+                .filter(c -> c.isAnnotatedWith("org.jspecify.annotations.NullMarked"))
+                .map(com.tngtech.archunit.core.domain.JavaClass::getPackageName)
+                .collect(java.util.stream.Collectors.toSet());
+        packagesWithClasses.removeAll(nullMarkedPackages);
+        assertThat(packagesWithClasses)
+                .as("Packages in :bukkit-adapter missing @NullMarked package-info.java: %s", packagesWithClasses)
+                .isEmpty();
     }
 }

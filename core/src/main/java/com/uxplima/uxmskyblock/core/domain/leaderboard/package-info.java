@@ -1,4 +1,4 @@
-/**
- * Domain records and categories for competitive multi-metric Island Leaderboards.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.leaderboard;
+
+import org.jspecify.annotations.NullMarked;

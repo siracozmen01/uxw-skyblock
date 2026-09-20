@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -122,8 +123,10 @@ class BedrockFormServiceTest {
                         "FIRE_SPREAD", "true"));
 
         assertThat(savedFlags.get()).isNotNull();
-        assertThat(savedFlags.get().isEnabled(IslandFlags.PVP)).isTrue();
-        assertThat(savedFlags.get().isEnabled(IslandFlags.FIRE_SPREAD)).isTrue();
+        assertThat(Objects.requireNonNull(savedFlags.get()).isEnabled(IslandFlags.PVP))
+                .isTrue();
+        assertThat(Objects.requireNonNull(savedFlags.get()).isEnabled(IslandFlags.FIRE_SPREAD))
+                .isTrue();
     }
 
     @Test

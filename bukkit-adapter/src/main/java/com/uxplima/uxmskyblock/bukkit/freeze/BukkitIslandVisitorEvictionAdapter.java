@@ -113,7 +113,8 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
                 }
 
                 Location cur = player.getLocation();
-                if (cur.getWorld() != null
+                if (cur != null
+                        && cur.getWorld() != null
                         && cur.getWorld().getName().equals(plan.worldName())
                         && plan.bounds().contains(cur.getBlockX(), cur.getBlockZ())) {
                     if (spawnLocation != null) {

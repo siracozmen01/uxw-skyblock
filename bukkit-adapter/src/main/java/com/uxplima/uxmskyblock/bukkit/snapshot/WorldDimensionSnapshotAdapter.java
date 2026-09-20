@@ -369,7 +369,7 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
         throw new IllegalStateException("Failed to resolve island bounds from storage for root: " + rootRef.rootId());
     }
 
-    private World findWorldForDimension(DimensionId dimensionId) {
+    private @Nullable World findWorldForDimension(DimensionId dimensionId) {
         try {
             if (Bukkit.getServer() == null) {
                 return null;

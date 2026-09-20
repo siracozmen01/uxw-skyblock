@@ -130,6 +130,7 @@ class IslandBoundaryServiceTest {
 
     @Test
     @DisplayName("null arguments throw NullPointerException")
+    @SuppressWarnings("NullAway")
     void testNullGuards() {
         assertThatThrownBy(() -> boundaryService.togglePerimeter(null)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> boundaryService.isSpillover(null, 0, 0, 0, 0))

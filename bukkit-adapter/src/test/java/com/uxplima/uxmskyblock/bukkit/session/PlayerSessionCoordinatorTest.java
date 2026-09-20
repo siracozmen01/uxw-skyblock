@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -85,7 +86,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         eventually(() -> {
             PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
             assertThat(session).isNotNull();
-            assertThat(session.sessionEpoch()).isEqualTo(1L);
+            assertThat(Objects.requireNonNull(session).sessionEpoch()).isEqualTo(1L);
             assertThat(session.lastDurableVersion()).isGreaterThanOrEqualTo(1L);
         });
     }
@@ -105,8 +106,9 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         eventuallyTick(() -> {
             PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
             assertThat(session).isNotNull();
-            Optional<ProfileInventoryRecord> inv =
-                    persistenceBootstrap.inventoryPort().loadInventory(session.activeProfileId());
+            Optional<ProfileInventoryRecord> inv = persistenceBootstrap
+                    .inventoryPort()
+                    .loadInventory(Objects.requireNonNull(session).activeProfileId());
             assertThat(inv).isPresent();
             byte[] nbt = inv.get().inventoryNbt();
             assertThat(nbt).isNotEmpty();
@@ -154,7 +156,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
 
         PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
         assertThat(session).isNotNull();
-        ProfileId profileA = session.activeProfileId();
+        ProfileId profileA = Objects.requireNonNull(session).activeProfileId();
         ProfileId profileB = new ProfileId(UUID.randomUUID());
         assertThat(profileA).isNotEqualTo(profileB);
 
@@ -176,7 +178,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         eventuallyTick(() -> {
             PlayerSessionCoordinator.ActiveSession currentSession = coordinator.getActiveSession(player.getUniqueId());
             assertThat(currentSession).isNotNull();
-            assertThat(currentSession.activeProfileId()).isEqualTo(profileB);
+            assertThat(Objects.requireNonNull(currentSession).activeProfileId()).isEqualTo(profileB);
             assertThat(player.getInventory().getItem(0)).isEqualTo(new ItemStack(Material.EMERALD, 64));
         });
     }

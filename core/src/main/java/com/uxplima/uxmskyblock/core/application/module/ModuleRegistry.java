@@ -22,6 +22,7 @@ import com.uxplima.uxmskyblock.core.domain.module.MissingDependencyException;
 import com.uxplima.uxmskyblock.core.domain.module.ModuleDescriptor;
 import com.uxplima.uxmskyblock.core.domain.module.ModuleState;
 import com.uxplima.uxmskyblock.core.domain.module.SemVer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Deterministic registry managing module registration, DAG topological startup ordering,
@@ -151,8 +152,11 @@ public final class ModuleRegistry {
             }
 
             for (String depId : allDeps) {
-                dependentsMap.get(depId).add(id);
-                inDegree.put(id, inDegree.get(id) + 1);
+                Set<String> dependents = dependentsMap.get(depId);
+                if (dependents != null) {
+                    dependents.add(id);
+                }
+                inDegree.merge(id, 1, Integer::sum);
             }
         }
 
@@ -166,13 +170,18 @@ public final class ModuleRegistry {
         List<FeatureModule> ordered = new ArrayList<>();
         while (!queue.isEmpty()) {
             String current = queue.poll();
-            ordered.add(candidateModules.get(current));
+            FeatureModule currentModule = candidateModules.get(current);
+            if (currentModule != null) {
+                ordered.add(currentModule);
+            }
 
-            for (String dependent : dependentsMap.get(current)) {
-                int deg = inDegree.get(dependent) - 1;
-                inDegree.put(dependent, deg);
-                if (deg == 0) {
-                    queue.add(dependent);
+            Set<String> dependents = dependentsMap.get(current);
+            if (dependents != null) {
+                for (String dependent : dependents) {
+                    int deg = inDegree.merge(dependent, -1, Integer::sum);
+                    if (deg == 0) {
+                        queue.add(dependent);
+                    }
                 }
             }
         }
@@ -250,7 +259,7 @@ public final class ModuleRegistry {
         return List.copyOf(activeStartupOrder);
     }
 
-    public synchronized boolean isModuleEnabled(String id) {
+    public synchronized boolean isModuleEnabled(@Nullable String id) {
         if (id == null) {
             return false;
         }

@@ -241,7 +241,7 @@ public final class IslandControlMenu {
     public SimpleGui buildGui(
             Player player,
             Island island,
-            IslandBank bank,
+            @Nullable IslandBank bank,
             Map<UpgradeId, Integer> upgrades,
             Optional<IslandLocation> optLoc) {
 

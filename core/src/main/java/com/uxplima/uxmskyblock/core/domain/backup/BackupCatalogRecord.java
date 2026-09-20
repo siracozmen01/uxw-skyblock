@@ -3,6 +3,8 @@ package com.uxplima.uxmskyblock.core.domain.backup;
 import java.time.Instant;
 import java.util.Objects;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Mutable operational record stored in canonical SQL persistence to track backup lifecycle progression.
  */
@@ -16,9 +18,9 @@ public record BackupCatalogRecord(
         long dbVersion,
         int schemaVersion,
         String pluginVersion,
-        String failureReason,
+        @Nullable String failureReason,
         Instant createdAt,
-        Instant completedAt,
+        @Nullable Instant completedAt,
         Instant updatedAt) {
 
     public BackupCatalogRecord {
@@ -30,7 +32,7 @@ public record BackupCatalogRecord(
         Objects.requireNonNull(updatedAt, "updatedAt");
     }
 
-    public BackupCatalogRecord withState(BackupLifecycleState newState, String reason, Instant timestamp) {
+    public BackupCatalogRecord withState(BackupLifecycleState newState, @Nullable String reason, Instant timestamp) {
         Instant completed = (newState == BackupLifecycleState.AVAILABLE
                         || newState == BackupLifecycleState.FAILED
                         || newState == BackupLifecycleState.DELETED)

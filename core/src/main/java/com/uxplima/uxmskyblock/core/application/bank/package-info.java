@@ -1,4 +1,4 @@
-/**
- * Outbound application ports for Island Bank and treasury operations.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.application.bank;
+
+import org.jspecify.annotations.NullMarked;

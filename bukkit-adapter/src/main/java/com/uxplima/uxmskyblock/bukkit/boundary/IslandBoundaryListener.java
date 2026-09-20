@@ -193,6 +193,9 @@ public final class IslandBoundaryListener implements Listener {
         }
 
         Location loc = player.getLocation();
+        if (loc == null) {
+            return;
+        }
         Optional<Island> optIsland = protectionListener.findIslandAt(loc);
         if (optIsland.isEmpty()) {
             return;

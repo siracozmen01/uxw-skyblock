@@ -5,6 +5,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Enumeration of supported island biomes with unlock requirements.
  */
@@ -46,7 +48,7 @@ public enum IslandBiome {
         return requiredLevel;
     }
 
-    public static Optional<IslandBiome> fromId(String id) {
+    public static Optional<IslandBiome> fromId(@Nullable String id) {
         if (id == null) {
             return Optional.empty();
         }

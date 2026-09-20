@@ -57,6 +57,7 @@ class IslandDimensionServiceTest {
 
     @Test
     @DisplayName("Constructor should reject null parameters")
+    @SuppressWarnings("NullAway")
     void constructorNullValidation() {
         assertThatThrownBy(() -> new IslandDimensionService(null, Map.of())).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new IslandDimensionService(upgradeStoragePort, null))

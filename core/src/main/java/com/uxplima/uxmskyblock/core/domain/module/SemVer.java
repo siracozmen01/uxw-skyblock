@@ -5,6 +5,8 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Immutable Semantic Versioning 2.0.0 implementation supporting version comparison
  * and range expression matching (caret, tilde, comparisons, wildcards).
@@ -16,9 +18,9 @@ public final class SemVer implements Comparable<SemVer> {
     private final int major;
     private final int minor;
     private final int patch;
-    private final String prerelease;
+    private final @Nullable String prerelease;
 
-    public SemVer(int major, int minor, int patch, String prerelease) {
+    public SemVer(int major, int minor, int patch, @Nullable String prerelease) {
         if (major < 0 || minor < 0 || patch < 0) {
             throw new IllegalArgumentException(
                     "Version numbers cannot be negative: " + major + "." + minor + "." + patch);

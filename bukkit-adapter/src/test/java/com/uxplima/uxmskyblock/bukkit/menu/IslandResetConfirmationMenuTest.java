@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -63,19 +64,34 @@ class IslandResetConfirmationMenuTest extends MockBukkitHarness {
 
         assertThat(gui.size()).isEqualTo(27);
         assertThat(gui.getItem(11)).isInstanceOf(GuiItem.Static.class);
-        assertThat(((GuiItem.Static) gui.getItem(11)).item().getType()).isEqualTo(Material.RED_CONCRETE);
+        assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(11)))
+                        .item()
+                        .getType())
+                .isEqualTo(Material.RED_CONCRETE);
 
         assertThat(gui.getItem(13)).isInstanceOf(GuiItem.Static.class);
-        assertThat(((GuiItem.Static) gui.getItem(13)).item().getType()).isEqualTo(Material.BARRIER);
+        assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(13)))
+                        .item()
+                        .getType())
+                .isEqualTo(Material.BARRIER);
 
         assertThat(gui.getItem(15)).isInstanceOf(GuiItem.Static.class);
-        assertThat(((GuiItem.Static) gui.getItem(15)).item().getType()).isEqualTo(Material.GREEN_CONCRETE);
+        assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(15)))
+                        .item()
+                        .getType())
+                .isEqualTo(Material.GREEN_CONCRETE);
 
         // Fillers
         assertThat(gui.getItem(0)).isInstanceOf(GuiItem.Static.class);
-        assertThat(((GuiItem.Static) gui.getItem(0)).item().getType()).isEqualTo(Material.GRAY_STAINED_GLASS_PANE);
+        assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(0)))
+                        .item()
+                        .getType())
+                .isEqualTo(Material.GRAY_STAINED_GLASS_PANE);
         assertThat(gui.getItem(26)).isInstanceOf(GuiItem.Static.class);
-        assertThat(((GuiItem.Static) gui.getItem(26)).item().getType()).isEqualTo(Material.GRAY_STAINED_GLASS_PANE);
+        assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(26)))
+                        .item()
+                        .getType())
+                .isEqualTo(Material.GRAY_STAINED_GLASS_PANE);
     }
 
     @Test

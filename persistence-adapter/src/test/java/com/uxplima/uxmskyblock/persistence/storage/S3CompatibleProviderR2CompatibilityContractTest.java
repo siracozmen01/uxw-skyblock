@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
 
 import com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability;
 import com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageProviderId;
@@ -61,7 +62,8 @@ class S3CompatibleProviderR2CompatibilityContractTest {
 
         // Verify SigV4 header with "auto" region
         assertThat(putReq.headers()).containsKey("Authorization");
-        String authHeader = putReq.headers().get("Authorization").get(0);
+        String authHeader =
+                Objects.requireNonNull(putReq.headers().get("Authorization")).get(0);
         assertThat(authHeader).startsWith("AWS4-HMAC-SHA256 Credential=r2-access-token-id/");
         assertThat(authHeader).contains("/auto/s3/aws4_request");
 

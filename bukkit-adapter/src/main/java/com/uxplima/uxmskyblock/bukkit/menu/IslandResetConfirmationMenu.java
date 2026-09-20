@@ -102,8 +102,10 @@ public final class IslandResetConfirmationMenu {
                             "Confirm Island Reset",
                             "WARNING: This action CANNOT BE UNDONE!\nConfirmation Code: " + verificationCode
                                     + "\nAll island blocks, items, and bank funds will be wiped.",
-                            "§cCONFIRM RESET",
-                            "§aCANCEL",
+                            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+                                    .serialize(MiniMessage.miniMessage().deserialize("<red>CONFIRM RESET</red>")),
+                            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+                                    .serialize(MiniMessage.miniMessage().deserialize("<green>CANCEL</green>")),
                             () -> {
                                 var unused = recycleService
                                         .executeReset(profileId, islandId, verificationCode, false)

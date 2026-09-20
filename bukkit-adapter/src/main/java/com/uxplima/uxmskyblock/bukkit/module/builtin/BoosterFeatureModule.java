@@ -8,6 +8,7 @@ import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.module.AbstractFeatureModule;
 import com.uxplima.uxmskyblock.core.application.module.ModuleContext;
 import com.uxplima.uxmskyblock.core.domain.module.ModuleDescriptor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Built-in feature module managing flexible island boosters and multipliers (Section 2.34).
@@ -17,7 +18,7 @@ public final class BoosterFeatureModule extends AbstractFeatureModule {
     private final IslandBoosterService boosterService;
     private final BoosterConfiguration configuration;
     private final com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler;
-    private AutoCloseable purgeTask;
+    private @Nullable AutoCloseable purgeTask;
 
     public BoosterFeatureModule(
             IslandBoosterService boosterService,

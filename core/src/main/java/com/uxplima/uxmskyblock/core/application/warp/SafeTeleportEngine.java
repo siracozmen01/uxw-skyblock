@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import com.uxplima.uxmskyblock.core.domain.warp.UnsafeTeleportDestinationException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLocation;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Enterprise engine validating teleport destination safety and locating nearest safe air columns
@@ -96,7 +97,7 @@ public final class SafeTeleportEngine {
         return true;
     }
 
-    private WarpLocation findNearestSafeSpot(
+    private @Nullable WarpLocation findNearestSafeSpot(
             String world, int originX, int originY, int originZ, float yaw, float pitch, SafeBlockInspector inspector) {
         Candidate best = null;
         int r = searchRadius;

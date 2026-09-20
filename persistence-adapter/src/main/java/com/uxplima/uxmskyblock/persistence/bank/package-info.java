@@ -1,4 +1,4 @@
-/**
- * SQL-backed persistence adapter for Island Bank, transactions, and scoped idempotency.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.persistence.bank;
+
+import org.jspecify.annotations.NullMarked;

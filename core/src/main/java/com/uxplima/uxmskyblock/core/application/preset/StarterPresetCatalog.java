@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Registry catalog containing the standard starter presets available to new islands.
@@ -58,7 +59,7 @@ public final class StarterPresetCatalog {
         return List.copyOf(PRESETS.values());
     }
 
-    public Optional<StarterPreset> findById(String id) {
+    public Optional<StarterPreset> findById(@Nullable String id) {
         if (id == null) {
             return Optional.empty();
         }

@@ -35,6 +35,7 @@ import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantState;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -327,7 +328,7 @@ class ProductionRewardDeliveryHandlersTest {
                             new java.util.concurrent.ConcurrentHashMap<>();
 
                     @Override
-                    public void grantCosmetic(ProfileId profileId, String cosmeticId, String grantedBy) {
+                    public void grantCosmetic(ProfileId profileId, String cosmeticId, @Nullable String grantedBy) {
                         cosmetics
                                 .computeIfAbsent(profileId, k -> new java.util.concurrent.ConcurrentSkipListSet<>())
                                 .add(cosmeticId);

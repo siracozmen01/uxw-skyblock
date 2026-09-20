@@ -138,7 +138,8 @@ public final class IslandBankruptcyService {
             bankruptcyCache.put(islandId, updated);
             return new BankruptcyCycleResult.GraceEntered(fee, graceDeadline, fee);
         } else if (record.status() == BankruptcyStatus.GRACE) {
-            if (record.graceUntil() != null && !now.isBefore(record.graceUntil())) {
+            Instant graceUntil = record.graceUntil() != null ? record.graceUntil() : now.plus(policy.graceDuration());
+            if (!now.isBefore(graceUntil)) {
                 // Grace expired: escalate to quarantine lockout
                 IslandBankruptcyRecord updated = record.addDebt(fee, now).toLocked(now);
                 bankruptcyStoragePort.save(updated);
@@ -149,7 +150,7 @@ public final class IslandBankruptcyService {
                 IslandBankruptcyRecord updated = record.addDebt(fee, now);
                 bankruptcyStoragePort.save(updated);
                 bankruptcyCache.put(islandId, updated);
-                return new BankruptcyCycleResult.GraceExtended(fee, record.graceUntil(), updated.debtMinorUnits());
+                return new BankruptcyCycleResult.GraceExtended(fee, graceUntil, updated.debtMinorUnits());
             }
         } else {
             // Already locked: accumulate additional debt

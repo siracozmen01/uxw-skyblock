@@ -1,4 +1,4 @@
-/**
- * Transactional outbox and idempotent consumer inbox persistence adapters.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.persistence.event;
+
+import org.jspecify.annotations.NullMarked;

@@ -1,4 +1,4 @@
-/**
- * Pure domain models, identifiers and manifests for the backup subsystem.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.backup;
+
+import org.jspecify.annotations.NullMarked;

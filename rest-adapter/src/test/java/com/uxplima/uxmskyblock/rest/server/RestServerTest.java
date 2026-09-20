@@ -300,6 +300,104 @@ class RestServerTest {
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Amount must be strictly positive");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with fractional amount returns 400 Bad Request")
+    void testBankDepositFractionalAmount() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": 12.5}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString())
+                .contains("Amount must be an integer, fractional values are not allowed");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with string amount returns 400 Bad Request")
+    void testBankDepositStringAmount() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": \"5000\"}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Amount must be a numeric integer");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with boolean amount returns 400 Bad Request")
+    void testBankDepositBooleanAmount() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": true}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Amount must be a numeric integer");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with zero amount returns 400 Bad Request")
+    void testBankDepositZeroAmount() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": 0}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Amount must be strictly positive");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with out-of-range amount returns 400 Bad Request")
+    void testBankDepositOutOfRangeAmount() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": 99999999999999999999999999999999}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Amount exceeds maximum supported value");
     }
 
     @Test

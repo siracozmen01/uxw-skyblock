@@ -1,4 +1,4 @@
-/**
- * Application ports for general object storage integration.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.application.storage;
+
+import org.jspecify.annotations.NullMarked;

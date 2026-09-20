@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Immutable disaster-recovery document published alongside artifacts as {@code manifest.json}.
  *
@@ -15,8 +17,8 @@ import java.util.Optional;
 public record BackupManifest(
         BackupSetId backupSetId,
         BackupType backupType,
-        String rootTypeId,
-        String rootKey,
+        @Nullable String rootTypeId,
+        @Nullable String rootKey,
         Instant createdAt,
         long authorityEpoch,
         long dbVersion,

@@ -1,4 +1,4 @@
-/**
- * SQL persistence adapter implementations for the backup catalog.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.persistence.backup;
+
+import org.jspecify.annotations.NullMarked;

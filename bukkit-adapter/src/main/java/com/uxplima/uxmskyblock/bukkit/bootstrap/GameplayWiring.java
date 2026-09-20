@@ -1,6 +1,5 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -13,13 +12,8 @@ import com.uxplima.uxmskyblock.bukkit.biome.BukkitBiomeAdapter;
 import com.uxplima.uxmskyblock.bukkit.booster.IslandBoosterListener;
 import com.uxplima.uxmskyblock.bukkit.boundary.IslandBoundaryListener;
 import com.uxplima.uxmskyblock.bukkit.boundary.WorldBorderPacketAdapter;
-import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
-import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
-import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitIslandArchivalAdapter;
-import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitIslandRecycleAdapter;
-import com.uxplima.uxmskyblock.bukkit.inactivity.BukkitPlayerActivityProvider;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.limit.IslandLimitListener;
 import com.uxplima.uxmskyblock.bukkit.limit.IslandLimitReconciler;
@@ -36,11 +30,6 @@ import com.uxplima.uxmskyblock.bukkit.protection.ObsidianRecoveryListener;
 import com.uxplima.uxmskyblock.bukkit.protection.VoidProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
 import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
-import com.uxplima.uxmskyblock.bukkit.reward.CosmeticRewardDeliveryHandler;
-import com.uxplima.uxmskyblock.bukkit.reward.ExternalVaultRewardDeliveryHandler;
-import com.uxplima.uxmskyblock.bukkit.reward.ItemRewardDeliveryHandler;
-import com.uxplima.uxmskyblock.bukkit.reward.PermissionRewardDeliveryHandler;
-import com.uxplima.uxmskyblock.bukkit.reward.SqlCurrencyRewardDeliveryHandler;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.upgrade.OreGeneratorListener;
@@ -72,7 +61,6 @@ import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
-import com.uxplima.uxmskyblock.core.application.reward.RewardClaimCoordinator;
 import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
@@ -88,8 +76,6 @@ import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
-import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
-import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter;
@@ -110,15 +96,9 @@ public final class GameplayWiring {
     private final SpiralWorldGridService gridService;
     private final CreateIslandUseCase createIslandUseCase;
     private final IslandLocationService locationService;
-    private final IslandBankService bankService;
     private final IslandLeaderboardService leaderboardService;
     private final IslandSeasonService seasonService;
-    private final IslandSocialService socialService;
-    private final IslandAllianceService allianceService;
-    private final DynamicPricingEngine dynamicPricingEngine;
-    private final TemporaryAccessService temporaryAccessService;
     private final BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter;
-    private final IslandAdminFreezeService freezeService;
     private final IslandProtectionListener protectionListener;
     private final BukkitBiomeAdapter biomeAdapter;
     private final IslandMissionService missionService;
@@ -127,25 +107,11 @@ public final class GameplayWiring {
     private final WorldBorderPacketAdapter worldBorderAdapter;
     private final IslandBoundaryService boundaryService;
     private final @Nullable IslandBoundaryListener boundaryListener;
-    private final NbtIslandBackupAdapter islandBackupAdapter;
-    private final FoliaIslandVoidingAdapter voidingAdapter;
-    private final IslandRecycleService recycleService;
-    private final @Nullable IslandResetConfirmationMenu resetConfirmationMenu;
-    private final @Nullable FoliaIslandChunkScanner chunkScanner;
-    private final IslandWorthService worthService;
-    private final @Nullable IslandWorthListener worthListener;
     private final IslandDimensionService dimensionService;
     private final @Nullable IslandDimensionListener dimensionListener;
     private final IslandLimitService limitService;
     private final @Nullable IslandLimitListener limitListener;
     private final @Nullable IslandLimitReconciler limitReconciler;
-    private final IslandAntiAbuseService antiAbuseService;
-    private final @Nullable IslandAntiAbuseListener antiAbuseListener;
-    private final IslandBoosterService boosterService;
-    private final @Nullable IslandBoosterListener boosterListener;
-    private final @Nullable IslandBoosterMenu boosterMenu;
-    private final IslandBankruptcyService bankruptcyService;
-    private final @Nullable IslandBankruptcyListener bankruptcyListener;
     private final IslandNameService islandNameService;
     private final KineticWardService kineticWardService;
     private final KineticWardListener kineticWardListener;
@@ -154,20 +120,10 @@ public final class GameplayWiring {
     private final CategoricalInteractablesListener categoricalInteractablesListener;
     private final IslandRedstoneOptimizationListener redstoneOptimizationListener;
     private final AsyncStructureSuppressionListener structureSuppressionListener;
-    private final RewardInboxService rewardInboxService;
-    private final IslandUpgradeService upgradeService;
-    private final @Nullable OreGeneratorListener oreGeneratorListener;
-    private final UpgradesModule upgradesModule;
-    private final SafeTeleportEngine safeTeleportEngine;
-    private final IslandWarpService warpService;
-    private final IslandVaultService vaultService;
-    private final IslandChatService chatService;
-    private final @Nullable IslandChatListener chatListener;
-    private final IslandInactivityService inactivityService;
-    private final WorldDimensionSnapshotPort worldDimensionSnapshotPort;
-    private final ObjectStoragePort objectStoragePort;
-    private final BackupService backupService;
-    private final IslandRestoreService islandRestoreService;
+
+    private final AdminWiring adminWiring;
+    private final EconomicWiring economicWiring;
+    private final SocialWiring socialWiring;
 
     public GameplayWiring(
             JavaPlugin plugin,
@@ -256,12 +212,8 @@ public final class GameplayWiring {
         this.backpressureController =
                 Objects.requireNonNull(backpressureController, "backpressureController must not be null");
         this.accessService = Objects.requireNonNull(accessService, "accessService must not be null");
-        this.allianceService = Objects.requireNonNull(allianceService, "allianceService must not be null");
-        this.temporaryAccessService =
-                Objects.requireNonNull(temporaryAccessService, "temporaryAccessService must not be null");
         this.visitorEvictionAdapter =
                 Objects.requireNonNull(visitorEvictionAdapter, "visitorEvictionAdapter must not be null");
-        this.freezeService = Objects.requireNonNull(freezeService, "freezeService must not be null");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
 
         String worldName = config.nodeConfig().worldName();
@@ -280,88 +232,35 @@ public final class GameplayWiring {
                 persistence.worldGridAllocationPort(),
                 persistence.outboxPort());
         this.locationService = new IslandLocationService(persistence.islandStoragePort());
-        this.bankService = new IslandBankService(
-                persistence.islandBankPort(),
-                persistence.islandStoragePort(),
-                persistence.islandAuthorityPort(),
-                persistence.outboxPort());
         this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());
         this.seasonService = new IslandSeasonService(
                 persistence.islandSeasonStoragePort(),
                 persistence.islandLeaderboardPort(),
                 persistence.islandStoragePort());
-        this.socialService = new IslandSocialService(
-                persistence.islandSocialStoragePort(),
-                RatingPolicy.standardFiveStar(),
-                persistence.islandStoragePort(),
-                config.socialConfig().minDwellTime(),
-                config.socialConfig().priorWeight(),
-                config.socialConfig().priorMean(),
-                config.socialConfig().maxPinned(),
-                config.socialConfig().maxMessageLength());
-        this.upgradeService = new IslandUpgradeService(
-                persistence.islandUpgradeStoragePort(), config.upgradesConfig().definitions());
 
-        this.dynamicPricingEngine = new DynamicPricingEngine(config.shopConfig().dampingFactor());
+        this.economicWiring = new EconomicWiring(
+                plugin, config, persistence, authority, protectionListener, scheduler, economyBridgeSupplier);
 
-        this.safeTeleportEngine = new SafeTeleportEngine(config.warpConfig().searchRadius());
-        this.warpService = new IslandWarpService(
-                persistence.islandWarpStoragePort(),
-                safeTeleportEngine,
-                this.upgradeService,
-                config.warpConfig().baseWarpLimit(),
-                (targetIslandId, visitorProfileId) -> {
-                    if (!config.allianceConfig().privilegedVisitAccess()) {
-                        return false;
-                    }
-                    return persistence
-                            .islandStoragePort()
-                            .findIslandIdByProfileId(visitorProfileId)
-                            .map(visitorIslandId -> allianceService.canPrivilegedVisit(visitorIslandId, targetIslandId))
-                            .orElse(false);
-                });
+        this.socialWiring = new SocialWiring(
+                config,
+                persistence,
+                authority,
+                allianceService,
+                temporaryAccessService,
+                this.economicWiring.upgradeService(),
+                chatTransport);
 
-        this.vaultService = new IslandVaultService(
-                persistence.islandVaultStoragePort(),
-                this.upgradeService,
-                config.vaultConfig().basePages(),
-                config.vaultConfig().maxPages(),
-                config.vaultConfig().leaseDuration());
-
-        IslandChatTransportPort actualChatTransport =
-                Objects.requireNonNull(chatTransport, "chatTransport must not be null");
-        BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(config.chatConfig());
-        BukkitIslandOnlineMemberProvider chatMemberProvider = new BukkitIslandOnlineMemberProvider(
-                persistence.islandStoragePort(), authority.activeProfileProvider());
-        this.chatService = new IslandChatService(
-                persistence.islandStoragePort(),
-                actualChatTransport,
-                chatDelivery,
-                chatMemberProvider,
-                config.chatConfig().rateLimitMessagesPerSecond());
-        this.chatListener = config.moduleSettings().isModuleEnabled("chat")
-                ? new IslandChatListener(chatService, authority.activeProfileProvider())
-                : null;
-
-        this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler, this.backpressureController);
-        BukkitIslandArchivalAdapter archivalAdapter =
-                new BukkitIslandArchivalAdapter(protectionListener, visitorEvictionAdapter);
-        BukkitIslandRecycleAdapter recycleAdapter = new BukkitIslandRecycleAdapter(
-                persistence.islandStoragePort(),
-                persistence.worldGridAllocationPort(),
-                persistence.spiralSlotPoolPort(),
-                voidingAdapter,
+        this.adminWiring = new AdminWiring(
+                plugin,
+                config,
+                persistence,
+                authority,
                 protectionListener,
-                visitorEvictionAdapter);
-
-        BukkitPlayerActivityProvider activityProvider = new BukkitPlayerActivityProvider();
-        this.inactivityService = new IslandInactivityService(
-                persistence.islandStoragePort(),
-                activityProvider,
-                config.inactivityConfig().toPolicy(),
-                archivalAdapter,
-                recycleAdapter,
-                persistence.outboxPort());
+                visitorEvictionAdapter,
+                freezeService,
+                scheduler,
+                this.backpressureController,
+                objectStorage);
 
         this.biomeAdapter = new BukkitBiomeAdapter(persistence.islandStoragePort(), scheduler, worldName);
 
@@ -385,51 +284,6 @@ public final class GameplayWiring {
         } else {
             this.boundaryListener = null;
         }
-
-        this.worldDimensionSnapshotPort = new com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter(
-                plugin, persistence.islandStoragePort(), scheduler, config.dimensionConfig());
-        this.islandBackupAdapter = new NbtIslandBackupAdapter(
-                plugin.getDataFolder(), this.worldDimensionSnapshotPort, persistence.gameModeHierarchyStoragePort());
-        this.recycleService = new IslandRecycleService(
-                persistence.islandStoragePort(),
-                persistence.worldGridAllocationPort(),
-                persistence.spiralSlotPoolPort(),
-                voidingAdapter,
-                islandBackupAdapter,
-                persistence.outboxPort(),
-                persistence.islandRecycleOperationPort());
-        this.resetConfirmationMenu = new IslandResetConfirmationMenu(
-                recycleService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
-
-        this.objectStoragePort = Objects.requireNonNull(objectStorage, "objectStorage must not be null");
-        this.backupService = new BackupService(persistence.backupCatalogPort(), this.objectStoragePort);
-        this.islandRestoreService = new IslandRestoreService(
-                persistence.backupCatalogPort(),
-                this.objectStoragePort,
-                persistence.rootRelationalSnapshotPort(),
-                this.worldDimensionSnapshotPort);
-
-        boolean worthEnabled = config.moduleSettings().isModuleEnabled("worth");
-        this.chunkScanner = worthEnabled
-                ? new FoliaIslandChunkScanner(
-                        this.scheduler,
-                        config.levelConfig().blockWeights().keySet(),
-                        config.levelConfig().spawnerWeights().keySet())
-                : null;
-        MaterialValuationIndex valuationIndex = new MaterialValuationIndex();
-        config.levelConfig().blockWeights().forEach(valuationIndex::setWeight);
-        config.levelConfig().basePricesMinorUnits().forEach(valuationIndex::setPrice);
-        this.worthService = new IslandWorthService(
-                valuationIndex,
-                config.levelConfig().spawnerWeights(),
-                config.levelConfig().defaultSpawnerWeight(),
-                config.levelConfig().questWeight(),
-                config.levelConfig().pointsPerLevel(),
-                config.levelConfig().bankMinorUnitsPerPoint(),
-                config.levelConfig().dampingFactor(),
-                persistence.islandLeaderboardPort(),
-                this.chunkScanner);
-        this.worthListener = worthEnabled ? new IslandWorthListener(this.worthService, this.protectionListener) : null;
 
         this.dimensionService = new IslandDimensionService(
                 persistence.islandUpgradeStoragePort(),
@@ -456,56 +310,6 @@ public final class GameplayWiring {
                 : null;
         this.limitReconciler = limitsEnabled ? new IslandLimitReconciler(this.scheduler, this.limitService) : null;
 
-        this.antiAbuseService = new IslandAntiAbuseService(
-                persistence.antiAbuseStoragePort(),
-                config.antiAbuseConfig().purgeInventoryOnReset(),
-                config.antiAbuseConfig().quarantineDuration(),
-                config.antiAbuseConfig().resetCooldown(),
-                config.antiAbuseConfig().maxResetsPerDay(),
-                config.antiAbuseConfig().resetWindowDuration(),
-                config.antiAbuseConfig().coopJoinCooldown(),
-                java.time.Clock.systemUTC());
-        this.antiAbuseListener = config.moduleSettings().isModuleEnabled("anti-abuse")
-                ? new IslandAntiAbuseListener(
-                        persistence.islandStoragePort(), this.antiAbuseService, config.antiAbuseConfig())
-                : null;
-
-        boolean boostersEnabled = config.moduleSettings().isModuleEnabled("boosters");
-        this.boosterService = new IslandBoosterService(
-                persistence.islandBoosterStoragePort(),
-                config.boosterConfig()::policy,
-                config.boosterConfig().pauseWhenEmpty());
-        this.boosterListener = boostersEnabled
-                ? new IslandBoosterListener(
-                        persistence.islandStoragePort(),
-                        this.boosterService,
-                        config.boosterConfig(),
-                        authority.sessionCoordinator(),
-                        this.scheduler)
-                : null;
-        this.boosterMenu = boostersEnabled
-                ? new IslandBoosterMenu(
-                        persistence.islandStoragePort(),
-                        this.boosterService,
-                        config.boosterConfig(),
-                        authority.sessionCoordinator(),
-                        this.scheduler)
-                : null;
-
-        this.bankruptcyService = new IslandBankruptcyService(
-                persistence.islandBankruptcyStoragePort(),
-                persistence.islandBankPort(),
-                persistence.islandAuthorityPort(),
-                config.bankConfig()::upkeepPolicy);
-        this.bankruptcyListener = config.moduleSettings().isModuleEnabled("bank-upkeep")
-                ? new IslandBankruptcyListener(
-                        this.bankruptcyService,
-                        this.protectionListener,
-                        persistence.islandStoragePort(),
-                        authority.sessionCoordinator(),
-                        this.scheduler)
-                : null;
-
         this.islandNameService = new IslandNameService(
                 persistence.islandNameStoragePort(),
                 persistence.islandStoragePort(),
@@ -529,7 +333,7 @@ public final class GameplayWiring {
                         .sessionCoordinator()
                         .activeProfile(uuid.value())
                         .orElse(null),
-                this.temporaryAccessService);
+                temporaryAccessService);
         this.categoricalInteractablesListener.setNodeIdentitySupplier(authority::nodeProcessIdentity);
         this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
             PlayerSessionCoordinator.ActiveSession session =
@@ -543,54 +347,6 @@ public final class GameplayWiring {
         this.redstoneOptimizationListener =
                 new IslandRedstoneOptimizationListener(config.settingsConfig(), this.protectionListener::findIslandAt);
         this.structureSuppressionListener = new AsyncStructureSuppressionListener(config.worldConfig());
-
-        ItemRewardDeliveryHandler itemDeliveryHandler = new ItemRewardDeliveryHandler(
-                authority.sessionCoordinator(),
-                persistence.mutationJournalPort(),
-                config.nodeConfig().nodeId());
-
-        SqlCurrencyRewardDeliveryHandler currencyDeliveryHandler = new SqlCurrencyRewardDeliveryHandler(
-                persistence.islandStoragePort(),
-                this.bankService,
-                config.nodeConfig().nodeId(),
-                persistence.profileSwitchPort());
-
-        ExternalVaultRewardDeliveryHandler vaultDeliveryHandler = new ExternalVaultRewardDeliveryHandler(
-                economyBridgeSupplier,
-                persistence.economySagaPort(),
-                persistence.profileSwitchPort(),
-                persistence.islandStoragePort());
-
-        CosmeticRewardDeliveryHandler cosmeticDeliveryHandler =
-                new CosmeticRewardDeliveryHandler(persistence.profileCosmeticStoragePort());
-
-        PermissionRewardDeliveryHandler permDeliveryHandler = new PermissionRewardDeliveryHandler(
-                PermissionRewardDeliveryHandler::fromVault,
-                persistence.profileSwitchPort(),
-                authority.sessionCoordinator());
-
-        RewardClaimCoordinator rewardClaimCoordinator = new RewardClaimCoordinator(
-                persistence.rewardStoragePort(),
-                List.of(
-                        itemDeliveryHandler,
-                        currencyDeliveryHandler,
-                        vaultDeliveryHandler,
-                        cosmeticDeliveryHandler,
-                        permDeliveryHandler));
-
-        this.rewardInboxService = new RewardInboxService(persistence.rewardStoragePort(), rewardClaimCoordinator);
-
-        boolean upgradesEnabled = config.moduleSettings().isModuleEnabled("upgrades");
-        this.oreGeneratorListener = upgradesEnabled
-                ? new OreGeneratorListener(
-                        this.upgradeService, config.generatorsConfig(), this.protectionListener.spatialIndex())
-                : null;
-        this.upgradesModule = new UpgradesModule(
-                this.upgradeService,
-                config.upgradesConfig(),
-                config.generatorsConfig(),
-                this.oreGeneratorListener,
-                plugin);
     }
 
     public SchedulerPort scheduler() {
@@ -625,12 +381,24 @@ public final class GameplayWiring {
         return createIslandUseCase;
     }
 
+    public AdminWiring adminWiring() {
+        return adminWiring;
+    }
+
+    public EconomicWiring economicWiring() {
+        return economicWiring;
+    }
+
+    public SocialWiring socialWiring() {
+        return socialWiring;
+    }
+
     public IslandLocationService locationService() {
         return locationService;
     }
 
     public IslandBankService bankService() {
-        return bankService;
+        return economicWiring.bankService();
     }
 
     public IslandLeaderboardService leaderboardService() {
@@ -642,19 +410,19 @@ public final class GameplayWiring {
     }
 
     public IslandSocialService socialService() {
-        return socialService;
+        return socialWiring.socialService();
     }
 
     public IslandAllianceService allianceService() {
-        return allianceService;
+        return socialWiring.allianceService();
     }
 
     public DynamicPricingEngine dynamicPricingEngine() {
-        return dynamicPricingEngine;
+        return economicWiring.dynamicPricingEngine();
     }
 
     public TemporaryAccessService temporaryAccessService() {
-        return temporaryAccessService;
+        return socialWiring.temporaryAccessService();
     }
 
     public BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter() {
@@ -662,7 +430,7 @@ public final class GameplayWiring {
     }
 
     public IslandAdminFreezeService freezeService() {
-        return freezeService;
+        return adminWiring.freezeService();
     }
 
     public IslandProtectionListener protectionListener() {
@@ -698,31 +466,31 @@ public final class GameplayWiring {
     }
 
     public FoliaIslandVoidingAdapter voidingAdapter() {
-        return voidingAdapter;
+        return adminWiring.voidingAdapter();
     }
 
     public NbtIslandBackupAdapter islandBackupAdapter() {
-        return islandBackupAdapter;
+        return adminWiring.islandBackupAdapter();
     }
 
     public IslandRecycleService recycleService() {
-        return recycleService;
+        return adminWiring.recycleService();
     }
 
-    public IslandResetConfirmationMenu resetConfirmationMenu() {
-        return resetConfirmationMenu;
+    public @Nullable IslandResetConfirmationMenu resetConfirmationMenu() {
+        return adminWiring.resetConfirmationMenu();
     }
 
     public @Nullable FoliaIslandChunkScanner chunkScanner() {
-        return chunkScanner;
+        return economicWiring.chunkScanner();
     }
 
     public IslandWorthService worthService() {
-        return worthService;
+        return economicWiring.worthService();
     }
 
     public @Nullable IslandWorthListener worthListener() {
-        return worthListener;
+        return economicWiring.worthListener();
     }
 
     public IslandDimensionService dimensionService() {
@@ -746,31 +514,31 @@ public final class GameplayWiring {
     }
 
     public IslandAntiAbuseService antiAbuseService() {
-        return antiAbuseService;
+        return adminWiring.antiAbuseService();
     }
 
     public @Nullable IslandAntiAbuseListener antiAbuseListener() {
-        return antiAbuseListener;
+        return adminWiring.antiAbuseListener();
     }
 
     public IslandBoosterService boosterService() {
-        return boosterService;
+        return economicWiring.boosterService();
     }
 
     public @Nullable IslandBoosterListener boosterListener() {
-        return boosterListener;
+        return economicWiring.boosterListener();
     }
 
     public @Nullable IslandBoosterMenu boosterMenu() {
-        return boosterMenu;
+        return economicWiring.boosterMenu();
     }
 
     public IslandBankruptcyService bankruptcyService() {
-        return bankruptcyService;
+        return economicWiring.bankruptcyService();
     }
 
     public @Nullable IslandBankruptcyListener bankruptcyListener() {
-        return bankruptcyListener;
+        return economicWiring.bankruptcyListener();
     }
 
     public IslandNameService islandNameService() {
@@ -806,58 +574,58 @@ public final class GameplayWiring {
     }
 
     public RewardInboxService rewardInboxService() {
-        return rewardInboxService;
+        return economicWiring.rewardInboxService();
     }
 
     public IslandUpgradeService upgradeService() {
-        return upgradeService;
+        return economicWiring.upgradeService();
     }
 
     public @Nullable OreGeneratorListener oreGeneratorListener() {
-        return oreGeneratorListener;
+        return economicWiring.oreGeneratorListener();
     }
 
     public UpgradesModule upgradesModule() {
-        return upgradesModule;
+        return economicWiring.upgradesModule();
     }
 
     public SafeTeleportEngine safeTeleportEngine() {
-        return safeTeleportEngine;
+        return socialWiring.safeTeleportEngine();
     }
 
     public IslandWarpService warpService() {
-        return warpService;
+        return socialWiring.warpService();
     }
 
     public IslandVaultService vaultService() {
-        return vaultService;
+        return socialWiring.vaultService();
     }
 
     public IslandChatService chatService() {
-        return chatService;
+        return socialWiring.chatService();
     }
 
     public @Nullable IslandChatListener chatListener() {
-        return chatListener;
+        return socialWiring.chatListener();
     }
 
     public IslandInactivityService inactivityService() {
-        return inactivityService;
+        return adminWiring.inactivityService();
     }
 
     public WorldDimensionSnapshotPort worldDimensionSnapshotPort() {
-        return worldDimensionSnapshotPort;
+        return adminWiring.worldDimensionSnapshotPort();
     }
 
     public ObjectStoragePort objectStoragePort() {
-        return objectStoragePort;
+        return adminWiring.objectStoragePort();
     }
 
     public BackupService backupService() {
-        return backupService;
+        return adminWiring.backupService();
     }
 
     public IslandRestoreService islandRestoreService() {
-        return islandRestoreService;
+        return adminWiring.islandRestoreService();
     }
 }

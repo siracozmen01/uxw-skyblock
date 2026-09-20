@@ -1,4 +1,4 @@
-/**
- * Pure domain value objects and metadata definitions for general object storage.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.storage;
+
+import org.jspecify.annotations.NullMarked;

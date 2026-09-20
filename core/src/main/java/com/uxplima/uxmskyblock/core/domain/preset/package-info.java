@@ -1,4 +1,4 @@
-/**
- * Pure domain representations for starter presets and island schematics.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.preset;
+
+import org.jspecify.annotations.NullMarked;

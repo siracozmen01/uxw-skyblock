@@ -6,6 +6,7 @@ import java.util.Optional;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupLifecycleState;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Outbound application port for persistent SQL cataloging of backup lifecycle operations.
@@ -30,5 +31,5 @@ public interface BackupCatalogPort {
     /**
      * Updates the mutable lifecycle state of an active backup operation.
      */
-    void updateState(BackupSetId id, BackupLifecycleState state, String failureReason);
+    void updateState(BackupSetId id, BackupLifecycleState state, @Nullable String failureReason);
 }

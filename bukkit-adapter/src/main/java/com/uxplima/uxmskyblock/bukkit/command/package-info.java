@@ -1,4 +1,4 @@
-/**
- * Bukkit command trees and user interaction adapters.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.bukkit.command;
+
+import org.jspecify.annotations.NullMarked;

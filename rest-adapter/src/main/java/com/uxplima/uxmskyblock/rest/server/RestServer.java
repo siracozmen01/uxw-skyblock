@@ -26,9 +26,11 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.json.JavalinGson;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Embedded Javalin REST server implementing the Section 2.18 REST API contract.
+ * Embedded lightweight REST server providing health, metrics, island queries,
+ * bank operations, and leaderboard access (Section 2.44).
  */
 public final class RestServer implements AutoCloseable {
 
@@ -39,7 +41,7 @@ public final class RestServer implements AutoCloseable {
     private final IslandStoragePort islandStoragePort;
     private final IslandBankService bankService;
     private final IslandLeaderboardService leaderboardService;
-    private Javalin app;
+    private @Nullable Javalin app;
 
     public RestServer(
             RestConfiguration config,
@@ -222,14 +224,37 @@ public final class RestServer implements AutoCloseable {
             return;
         }
 
-        if (!body.has("amount") || !body.get("amount").isJsonPrimitive()) {
+        if (!body.has("amount")) {
             ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Missing required field: amount"));
             return;
         }
 
-        long amount = body.get("amount").getAsLong();
-        if (amount <= 0) {
-            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Amount must be strictly positive"));
+        var amountElem = body.get("amount");
+        if (!amountElem.isJsonPrimitive() || !amountElem.getAsJsonPrimitive().isNumber()) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Amount must be a numeric integer"));
+            return;
+        }
+
+        long amount;
+        try {
+            java.math.BigDecimal bd = new java.math.BigDecimal(amountElem.getAsString());
+            if (bd.scale() > 0 && bd.stripTrailingZeros().scale() > 0) {
+                ctx.status(HttpStatus.BAD_REQUEST)
+                        .json(Map.of("error", "Amount must be an integer, fractional values are not allowed"));
+                return;
+            }
+            java.math.BigInteger bi = bd.toBigIntegerExact();
+            if (bi.compareTo(java.math.BigInteger.ZERO) <= 0) {
+                ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Amount must be strictly positive"));
+                return;
+            }
+            if (bi.compareTo(java.math.BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+                ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Amount exceeds maximum supported value"));
+                return;
+            }
+            amount = bi.longValueExact();
+        } catch (Exception e) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Invalid numeric amount: " + e.getMessage()));
             return;
         }
 

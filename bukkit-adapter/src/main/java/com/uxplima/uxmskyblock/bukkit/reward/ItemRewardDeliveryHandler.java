@@ -222,7 +222,7 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         player.updateInventory();
     }
 
-    private Player findOnlinePlayerForProfile(ProfileId profileId) {
+    private @Nullable Player findOnlinePlayerForProfile(ProfileId profileId) {
         for (Player online : Bukkit.getOnlinePlayers()) {
             var active = sessionCoordinator.activeProfile(online.getUniqueId());
             if (active.isPresent() && active.get().equals(profileId)) {
@@ -285,7 +285,7 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         return copy;
     }
 
-    private ItemStack parseItemStack(String payload) {
+    private @Nullable ItemStack parseItemStack(@Nullable String payload) {
         if (payload == null || payload.isBlank()) {
             return null;
         }

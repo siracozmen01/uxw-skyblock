@@ -152,7 +152,7 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
         }
     }
 
-    private PlayerUuid resolvePlayerUuid(ProfileId profileId) {
+    private @Nullable PlayerUuid resolvePlayerUuid(ProfileId profileId) {
         if (profileSwitchPort != null) {
             Optional<PlayerUuid> resolved = profileSwitchPort.resolvePlayerUuid(profileId);
             if (resolved.isPresent()) {

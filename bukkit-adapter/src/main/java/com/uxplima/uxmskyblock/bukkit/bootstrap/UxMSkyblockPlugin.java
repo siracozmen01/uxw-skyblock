@@ -1,13 +1,17 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
+import java.util.Objects;
+
 import org.bukkit.plugin.java.JavaPlugin;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Main Paper / Folia plugin entry point for UXPLIMA Skyblock.
  */
 public class UxMSkyblockPlugin extends JavaPlugin {
 
-    private SkyblockBootstrap bootstrap;
+    private @Nullable SkyblockBootstrap bootstrap;
 
     @Override
     public void onEnable() {
@@ -25,6 +29,6 @@ public class UxMSkyblockPlugin extends JavaPlugin {
     }
 
     public SkyblockBootstrap bootstrap() {
-        return bootstrap;
+        return Objects.requireNonNull(bootstrap, "Plugin has not been enabled yet");
     }
 }

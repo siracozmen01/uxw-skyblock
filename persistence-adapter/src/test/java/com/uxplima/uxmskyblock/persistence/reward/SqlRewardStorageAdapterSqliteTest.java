@@ -22,6 +22,7 @@ import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantState;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -237,7 +238,11 @@ class SqlRewardStorageAdapterSqliteTest {
     }
 
     private RewardGrant createGrant(
-            RewardGrantId grantId, ProfileId recipient, RewardGrantState state, Instant createdAt, Instant expiresAt) {
+            RewardGrantId grantId,
+            ProfileId recipient,
+            RewardGrantState state,
+            Instant createdAt,
+            @Nullable Instant expiresAt) {
         RewardGrantComponent comp = new RewardGrantComponent(
                 UUID.randomUUID(),
                 grantId,

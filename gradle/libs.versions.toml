@@ -5,7 +5,7 @@ paper          = "26.2.build.112-stable"
 adventure      = "5.2.0"
 
 # UXPLIMA Toolkit
-uxmlib         = "0.88.0"
+uxmlib         = "5d34a0b073"
 
 # Runtime Database Drivers (selected network drivers required at runtime; SQLite is provided by uxmlib-storage)
 sqlite-jdbc    = "3.49.1.0"

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -129,7 +130,7 @@ class IslandVaultServiceTest {
         assertThat(transfer.destinationSlot()).isEqualTo(12);
 
         vaultService.markTransferApplied(transfer.transferId());
-        EscrowTransferRecord updated = storage.transfers.get(transfer.transferId());
+        EscrowTransferRecord updated = Objects.requireNonNull(storage.transfers.get(transfer.transferId()));
         assertThat(updated.state()).isEqualTo(EscrowTransferState.APPLIED);
     }
 
@@ -150,7 +151,7 @@ class IslandVaultServiceTest {
                 null,
                 List.of(entry));
 
-        VaultPage updatedPage = storage.pages.get(1);
+        VaultPage updatedPage = Objects.requireNonNull(storage.pages.get(1));
         assertThat(updatedPage.contentsNbt()).isEqualTo(new byte[] {9, 9, 9});
         assertThat(updatedPage.pageVersion()).isEqualTo(2);
 

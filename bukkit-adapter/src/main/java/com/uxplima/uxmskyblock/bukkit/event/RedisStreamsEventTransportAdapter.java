@@ -128,7 +128,19 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
         try {
             record = fromMap(entry.body());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to deserialize event from stream entry " + entry.id(), e);
+            LOGGER.log(
+                    Level.SEVERE,
+                    "Failed to deserialize event from stream entry " + entry.id() + ", routing to dead-letter stream "
+                            + deadLetterStreamKey,
+                    e);
+            try {
+                streamBus.xadd(deadLetterStreamKey, entry.body());
+            } catch (Exception dlqError) {
+                LOGGER.log(
+                        Level.SEVERE,
+                        "Failed to route malformed stream entry " + entry.id() + " to dead letter stream",
+                        dlqError);
+            }
             streamBus.xack(streamKey, consumerGroup, entry.id());
             return;
         }
@@ -195,10 +207,14 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
     }
 
     public static OutboxEventRecord fromMap(Map<String, String> map) {
-        EventId eventId = EventId.fromString(map.get("eventId"));
-        String eventType = map.get("eventType");
-        String aggregateId = map.get("aggregateId");
-        String payload = map.get("payload");
+        String rawEventId = map.get("eventId");
+        if (rawEventId == null) {
+            throw new IllegalArgumentException("Missing required eventId in stream event payload");
+        }
+        EventId eventId = EventId.fromString(rawEventId);
+        String eventType = map.getOrDefault("eventType", "unknown");
+        String aggregateId = map.getOrDefault("aggregateId", "global");
+        String payload = map.getOrDefault("payload", "{}");
         OutboxStatus status = OutboxStatus.valueOf(map.getOrDefault("status", "PENDING"));
         String claimOwner = map.get("claimOwner");
         String claimToken = map.get("claimToken");

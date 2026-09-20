@@ -154,13 +154,15 @@ class RedisStreamsEventTransportAdapterTest {
     }
 
     @Test
-    @DisplayName("malformed entry safely acks to prevent head-of-line blocking")
+    @DisplayName("malformed entry safely routes to dead letter stream and acks to prevent head-of-line blocking")
     void malformedEntryAcksSafely() throws Exception {
         RedisStreamBus.StreamEntry corruptedEntry = new RedisStreamBus.StreamEntry("bad-msg", Map.of("foo", "bar"));
 
         StreamEventHandler handler = mock(StreamEventHandler.class);
         adapter.processEntry("test:stream", "group-1", corruptedEntry, handler);
 
+        verify(streamBus)
+                .xadd(eq(RedisStreamsEventTransportAdapter.DEFAULT_DEAD_LETTER_STREAM), eq(corruptedEntry.body()));
         verify(streamBus).xack("test:stream", "group-1", "bad-msg");
         verify(handler, never()).onEvent(any(), any());
     }

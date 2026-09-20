@@ -1,4 +1,4 @@
-/**
- * Domain models, material histogram index, and scoring records for Island Levels.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.level;
+
+import org.jspecify.annotations.NullMarked;

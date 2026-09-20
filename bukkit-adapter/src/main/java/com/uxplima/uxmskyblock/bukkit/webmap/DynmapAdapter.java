@@ -8,6 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Web map adapter integrating with the Dynmap plugin (Section 2.42).
@@ -110,7 +111,7 @@ public final class DynmapAdapter implements WebMapAdapter {
         }
     }
 
-    private Object getOrCreateMarkerSet() {
+    private @Nullable Object getOrCreateMarkerSet() {
         try {
             Plugin dynmap = Bukkit.getPluginManager().getPlugin("dynmap");
             if (dynmap == null || !dynmap.isEnabled()) {

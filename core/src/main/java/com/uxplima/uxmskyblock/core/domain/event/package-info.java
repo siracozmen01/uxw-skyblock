@@ -1,4 +1,4 @@
-/**
- * Distributed outbox domain models, event identifiers, and claim state records.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.core.domain.event;
+
+import org.jspecify.annotations.NullMarked;

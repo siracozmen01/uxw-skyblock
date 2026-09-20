@@ -10,10 +10,14 @@ import java.util.UUID;
 
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
+import com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent;
+import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonId;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonMetric;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonPayoutRecord;
@@ -32,18 +36,28 @@ public final class IslandSeasonService {
     private final IslandSeasonStoragePort storage;
     private final IslandLeaderboardPort leaderboard;
     private final @Nullable IslandStoragePort islandStorage;
+    private final @Nullable RewardInboxService rewardInboxService;
+
+    public IslandSeasonService(
+            IslandSeasonStoragePort storage,
+            IslandLeaderboardPort leaderboard,
+            @Nullable IslandStoragePort islandStorage,
+            @Nullable RewardInboxService rewardInboxService) {
+        this.storage = Objects.requireNonNull(storage, "storage must not be null");
+        this.leaderboard = Objects.requireNonNull(leaderboard, "leaderboard must not be null");
+        this.islandStorage = islandStorage;
+        this.rewardInboxService = rewardInboxService;
+    }
 
     public IslandSeasonService(
             IslandSeasonStoragePort storage,
             IslandLeaderboardPort leaderboard,
             @Nullable IslandStoragePort islandStorage) {
-        this.storage = Objects.requireNonNull(storage, "storage must not be null");
-        this.leaderboard = Objects.requireNonNull(leaderboard, "leaderboard must not be null");
-        this.islandStorage = islandStorage;
+        this(storage, leaderboard, islandStorage, null);
     }
 
     public IslandSeasonService(IslandSeasonStoragePort storage, IslandLeaderboardPort leaderboard) {
-        this(storage, leaderboard, null);
+        this(storage, leaderboard, null, null);
     }
 
     public void startSeason(SeasonId id, String name, Instant startsAt, Instant endsAt) {
@@ -98,7 +112,9 @@ public final class IslandSeasonService {
         for (SeasonSnapshotEntry snapshot : allSnapshots) {
             if (snapshot.metric() == SeasonMetric.LEVEL) {
                 List<String> actions = tierRewardActions.get(snapshot.rank());
-                if (actions != null) {
+                if (actions != null && !actions.isEmpty()) {
+                    List<com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent> draftComponents =
+                            new ArrayList<>();
                     for (String action : actions) {
                         String payoutId = UUID.randomUUID().toString();
                         storage.queuePayout(new SeasonPayoutRecord(
@@ -109,6 +125,27 @@ public final class IslandSeasonService {
                                 SeasonPayoutState.PENDING,
                                 now,
                                 null));
+
+                        var draft = parseRewardAction(action);
+                        if (draft != null) {
+                            draftComponents.add(draft);
+                        }
+                    }
+
+                    if (rewardInboxService != null && !draftComponents.isEmpty()) {
+                        try {
+                            ProfileId recipient =
+                                    new ProfileId(snapshot.ownerUuid().value());
+                            rewardInboxService.issueReward(
+                                    recipient,
+                                    "SEASON_PAYOUT",
+                                    active.id().number() + ":RANK_" + snapshot.rank(),
+                                    now.plus(java.time.Duration.ofDays(30)),
+                                    draftComponents);
+                        } catch (Exception expected) {
+                            // Payout is already recorded in durable season storage; reward inbox delivery is
+                            // best-effort on rotation
+                        }
                     }
                 }
             }
@@ -140,5 +177,26 @@ public final class IslandSeasonService {
             }
         }
         return new PlayerUuid(entry.islandId().value());
+    }
+
+    private static @Nullable RewardDraftComponent parseRewardAction(String action) {
+        if (action == null || action.isBlank()) {
+            return null;
+        }
+        String trimmed = action.trim();
+        if (trimmed.startsWith("eco give ")) {
+            int lastSpace = trimmed.lastIndexOf(' ');
+            if (lastSpace > 8) {
+                String amountStr = trimmed.substring(lastSpace + 1).trim();
+                try {
+                    long amount = Long.parseLong(amountStr);
+                    return new RewardDraftComponent(
+                            RewardComponentType.EXTERNAL_VAULT, "currency.vault", 1, "{\"amount\":" + amount + "}");
+                } catch (NumberFormatException expected) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 }

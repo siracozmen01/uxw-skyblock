@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupLifecycleState;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Production SQL persistence adapter for the Backup Catalog.
@@ -176,7 +177,7 @@ public final class PlayerBackupCatalogAdapter implements BackupCatalogPort {
     }
 
     @Override
-    public void updateState(BackupSetId id, BackupLifecycleState state, String failureReason) {
+    public void updateState(BackupSetId id, BackupLifecycleState state, @Nullable String failureReason) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(state, "state");
 
@@ -207,7 +208,7 @@ public final class PlayerBackupCatalogAdapter implements BackupCatalogPort {
             int updated = ps.executeUpdate();
             if (updated == 0) {
                 throw new BackupCatalogPersistenceException(
-                        "No backup catalog record found to update state for: " + id, null);
+                        "No backup catalog record found to update state for: " + id);
             }
         } catch (SQLException e) {
             throw new BackupCatalogPersistenceException("Failed to update state for backup record: " + id, e);

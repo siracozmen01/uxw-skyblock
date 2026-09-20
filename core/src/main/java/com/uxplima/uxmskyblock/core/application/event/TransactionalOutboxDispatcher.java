@@ -115,8 +115,9 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
                         LOGGER.warning(() -> "Outbox claim completion fenced for event " + event.eventId());
                     }
                 } else {
+                    String message = failureMessage != null ? failureMessage : "Unknown failure during event dispatch";
                     outboxPort.recordFailure(
-                            event.eventId(), workerId, claim.claimToken(), failureMessage, retryBackoff, maxRetries);
+                            event.eventId(), workerId, claim.claimToken(), message, retryBackoff, maxRetries);
                 }
             }
             return processedCount;

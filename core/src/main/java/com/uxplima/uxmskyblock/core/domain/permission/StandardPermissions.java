@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Standard built-in domain permission keys and canonical mapping to legacy {@link IslandPermission}s.
@@ -101,7 +102,7 @@ public final class StandardPermissions {
         PERMISSION_MAP = Collections.unmodifiableMap(map);
     }
 
-    public static PermissionKey fromIslandPermission(IslandPermission permission) {
+    public static @Nullable PermissionKey fromIslandPermission(IslandPermission permission) {
         return PERMISSION_MAP.get(permission);
     }
 

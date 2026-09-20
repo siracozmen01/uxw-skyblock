@@ -3,6 +3,8 @@ package com.uxplima.uxmskyblock.core.domain.event;
 import java.time.Instant;
 import java.util.Objects;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Immutable operational record representing an outbox event.
  */
@@ -12,14 +14,14 @@ public record OutboxEventRecord(
         String aggregateId,
         String payload,
         OutboxStatus status,
-        String claimOwner,
-        String claimToken,
-        Instant claimExpiresAt,
+        @Nullable String claimOwner,
+        @Nullable String claimToken,
+        @Nullable Instant claimExpiresAt,
         int retryCount,
-        Instant nextAttemptAt,
-        String lastError,
+        @Nullable Instant nextAttemptAt,
+        @Nullable String lastError,
         Instant createdAt,
-        Instant processedAt) {
+        @Nullable Instant processedAt) {
 
     public OutboxEventRecord {
         Objects.requireNonNull(eventId, "eventId");

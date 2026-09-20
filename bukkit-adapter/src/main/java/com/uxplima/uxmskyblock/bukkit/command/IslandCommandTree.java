@@ -9,7 +9,6 @@ import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -24,7 +23,6 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import com.mojang.brigadier.arguments.DoubleArgumentType;
-import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -65,26 +63,13 @@ import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
-import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
-import com.uxplima.uxmskyblock.core.domain.backup.BackupManifest;
-import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
-import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
-import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult;
-import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus;
-import com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterApplyResult;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
-import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
-import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
-import com.uxplima.uxmskyblock.core.domain.chat.IslandChatPermissionDeniedException;
-import com.uxplima.uxmskyblock.core.domain.chat.NoIslandForChatException;
 import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.inactivity.IslandInactivityScanReport;
-import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
@@ -93,7 +78,6 @@ import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
 import com.uxplima.uxmskyblock.core.domain.name.IslandName;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
-import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.worth.IslandScoreBreakdown;
 import org.jspecify.annotations.Nullable;
 
@@ -808,6 +792,29 @@ public final class IslandCommandTree {
     }
 
     public void register(JavaPlugin plugin) {
+        IslandBankCommands bankCommands = new IslandBankCommands(
+                islandBankService,
+                islandLocationService,
+                economyBridge,
+                schedulerPort,
+                serverNodeId,
+                () -> bankruptcyService,
+                sessionCoordinator);
+
+        IslandChatCommands chatCommands = new IslandChatCommands(() -> chatService, schedulerPort, sessionCoordinator);
+
+        IslandAdminCommands adminCommands = new IslandAdminCommands(
+                () -> inactivityService,
+                () -> freezeService,
+                () -> restoreService,
+                () -> backupService,
+                () -> recycleService,
+                protectionListener,
+                islandLocationService,
+                sessionCoordinator,
+                schedulerPort,
+                worldName);
+
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
                 .then(Cmd.literal("help").executes(this::executeHelp))
@@ -856,24 +863,8 @@ public final class IslandCommandTree {
                         .executes(this::executeGetRename)
                         .then(Cmd.argument("name", StringArgumentType.greedyString())
                                 .executes(this::executeRename)))
-                .then(Cmd.literal("restore")
-                        .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
-                                || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                                || src.getSender().isOp())
-                        .then(Cmd.argument("backupId", StringArgumentType.word())
-                                .executes(this::executeAdminRestore)))
-                .then(Cmd.literal("bank")
-                        .executes(this::executeBankBalance)
-                        .then(Cmd.literal("balance").executes(this::executeBankBalance))
-                        .then(Cmd.literal("status").executes(this::executeBankStatus))
-                        .then(Cmd.literal("upkeep").executes(this::executeBankStatus))
-                        .then(Cmd.literal("paydebt").executes(this::executeBankPayDebt))
-                        .then(Cmd.literal("deposit")
-                                .then(Cmd.argument("amount", LongArgumentType.longArg(1))
-                                        .executes(this::executeBankDeposit)))
-                        .then(Cmd.literal("withdraw")
-                                .then(Cmd.argument("amount", LongArgumentType.longArg(1))
-                                        .executes(this::executeBankWithdraw))))
+                .then(adminCommands.buildRestore())
+                .then(bankCommands.build())
                 .then(Cmd.literal("biome")
                         .then(Cmd.argument("type", StringArgumentType.word()).executes(this::executeBiomeChange)))
                 .then(Cmd.literal("top")
@@ -884,52 +875,10 @@ public final class IslandCommandTree {
                         .then(Cmd.literal("switch")
                                 .then(Cmd.argument("profileId", StringArgumentType.word())
                                         .executes(this::executeProfileSwitch))))
-                .then(Cmd.literal("chat")
-                        .executes(this::executeChatToggle)
-                        .then(Cmd.argument("message", StringArgumentType.greedyString())
-                                .executes(this::executeChatMessage)))
-                .then(Cmd.literal("c")
-                        .executes(this::executeChatToggle)
-                        .then(Cmd.argument("message", StringArgumentType.greedyString())
-                                .executes(this::executeChatMessage)))
-                .then(Cmd.literal("spy").executes(this::executeSpyToggle))
-                .then(Cmd.literal("admin")
-                        .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                                || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
-                                || src.getSender().hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
-                                || src.getSender().isOp())
-                        .then(Cmd.literal("inactivity")
-                                .then(Cmd.literal("scan").executes(this::executeAdminInactivityScan)))
-                        .then(Cmd.literal("freeze")
-                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
-                                        || src.getSender().isOp())
-                                .then(Cmd.argument("target", StringArgumentType.word())
-                                        .executes(ctx -> executeAdminFreeze(ctx, "Administrative quarantine"))
-                                        .then(Cmd.argument("reason", StringArgumentType.greedyString())
-                                                .executes(ctx -> executeAdminFreeze(
-                                                        ctx, StringArgumentType.getString(ctx, "reason"))))))
-                        .then(Cmd.literal("unfreeze")
-                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
-                                        || src.getSender().isOp())
-                                .then(Cmd.argument("target", StringArgumentType.word())
-                                        .executes(this::executeAdminUnfreeze)))
-                        .then(Cmd.literal("inspect")
-                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
-                                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
-                                        || src.getSender().isOp())
-                                .then(Cmd.argument("target", StringArgumentType.word())
-                                        .executes(this::executeAdminInspect)))
-                        .then(Cmd.literal("restore")
-                                .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
-                                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                                        || src.getSender().isOp())
-                                .then(Cmd.argument("backupId", StringArgumentType.word())
-                                        .executes(this::executeAdminRestore)))
-                        .then(Cmd.literal("delete")
-                                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                                        || src.getSender().isOp())
-                                .then(Cmd.argument("target", StringArgumentType.word())
-                                        .executes(this::executeAdminDelete))));
+                .then(chatCommands.buildChat())
+                .then(chatCommands.buildChatAlias())
+                .then(chatCommands.buildSpy())
+                .then(adminCommands.buildAdmin());
 
         CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
     }
@@ -1038,209 +987,8 @@ public final class IslandCommandTree {
         return Cmd.OK;
     }
 
-    private int executeAdminInactivityScan(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack src = ctx.getSource();
-        if (inactivityService == null) {
-            send(src.getSender(), Component.text("Inactivity service is not enabled.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        send(src.getSender(), Component.text("Starting asynchronous island inactivity scan...", NamedTextColor.YELLOW));
-        schedulerPort.async(() -> {
-            try {
-                IslandInactivityScanReport report = inactivityService.scanWorld(worldName, Instant.now());
-                send(
-                        src.getSender(),
-                        Component.text(
-                                String.format(
-                                        "Inactivity scan complete: %d evaluated, %d successions, %d archived, %d deleted, %d skipped.",
-                                        report.totalEvaluated(),
-                                        report.successionsExecuted(),
-                                        report.islandsArchived(),
-                                        report.islandsDeleted(),
-                                        report.islandsSkipped()),
-                                NamedTextColor.GREEN));
-            } catch (Exception e) {
-                send(src.getSender(), Component.text("Inactivity scan failed: " + e.getMessage(), NamedTextColor.RED));
-            }
-        });
-        return Cmd.OK;
-    }
-
     private Optional<IslandId> resolveIslandId(String target) {
-        try {
-            return Optional.of(IslandId.of(UUID.fromString(target)));
-        } catch (IllegalArgumentException notUuid) {
-            Player online = Bukkit.getPlayerExact(target);
-            if (online != null) {
-                Optional<ProfileId> optProfile = activeProfile(online);
-                if (optProfile.isPresent()) {
-                    Optional<IslandId> id = islandLocationService.findIslandId(optProfile.get());
-                    if (id.isPresent()) {
-                        return id;
-                    }
-                }
-            }
-            if (sessionCoordinator != null) {
-                @SuppressWarnings("deprecation")
-                OfflinePlayer offline = Bukkit.getOfflinePlayer(target);
-                if (offline.hasPlayedBefore() || offline.isOnline()) {
-                    Optional<ProfileId> optProfile = sessionCoordinator.findDurableActiveProfile(offline.getUniqueId());
-                    if (optProfile.isPresent()) {
-                        return islandLocationService.findIslandId(optProfile.get());
-                    }
-                }
-            }
-            return Optional.empty();
-        }
-    }
-
-    private int executeAdminFreeze(CommandContext<CommandSourceStack> ctx, String reason) {
-        CommandSourceStack src = ctx.getSource();
-        if (freezeService == null) {
-            send(src.getSender(), Component.text("Freeze service is not enabled.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        String target = StringArgumentType.getString(ctx, "target");
-        String actor = src.getSender().getName();
-
-        schedulerPort.async(() -> {
-            Optional<IslandId> optId = resolveIslandId(target);
-            if (optId.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
-                return;
-            }
-
-            IslandId islandId = optId.get();
-            try {
-                freezeService.freezeIsland(islandId, reason, actor);
-                protectionListener.invalidateIsland(islandId);
-                send(
-                        src.getSender(),
-                        MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<green>Successfully quarantined and froze island <yellow>" + islandId.value()
-                                                + "</yellow> with reason: <aqua>" + reason + "</aqua></green>"));
-            } catch (Exception e) {
-                send(src.getSender(), Component.text("Failed to freeze island: " + e.getMessage(), NamedTextColor.RED));
-            }
-        });
-        return Cmd.OK;
-    }
-
-    private int executeAdminUnfreeze(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack src = ctx.getSource();
-        if (freezeService == null) {
-            send(src.getSender(), Component.text("Freeze service is not enabled.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        String target = StringArgumentType.getString(ctx, "target");
-        String actor = src.getSender().getName();
-
-        schedulerPort.async(() -> {
-            Optional<IslandId> optId = resolveIslandId(target);
-            if (optId.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
-                return;
-            }
-
-            IslandId islandId = optId.get();
-            try {
-                freezeService.unfreezeIsland(islandId, actor);
-                protectionListener.invalidateIsland(islandId);
-                send(
-                        src.getSender(),
-                        MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<green>Successfully lifted administrative quarantine and unfroze island <yellow>"
-                                                + islandId.value() + "</yellow></green>"));
-            } catch (Exception e) {
-                send(
-                        src.getSender(),
-                        Component.text("Failed to unfreeze island: " + e.getMessage(), NamedTextColor.RED));
-            }
-        });
-        return Cmd.OK;
-    }
-
-    private int executeAdminInspect(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack src = ctx.getSource();
-        String target = StringArgumentType.getString(ctx, "target");
-
-        schedulerPort.async(() -> {
-            Optional<IslandId> optId = resolveIslandId(target);
-            if (optId.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
-                return;
-            }
-
-            IslandId islandId = optId.get();
-            Optional<Island> optIsland = freezeService != null ? freezeService.findIsland(islandId) : Optional.empty();
-            if (optIsland.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Island record not found: " + islandId.value(), NamedTextColor.RED));
-                return;
-            }
-
-            Island island = optIsland.get();
-            Optional<IslandLocation> optLoc = freezeService.findLocation(islandId);
-
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gold>--- Island Inspection: <yellow>" + islandId.value()
-                                    + "</yellow> ---</gold>"));
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Owner UUID: <white>"
-                                    + island.ownerPlayerUuid().value() + "</white></gray>"));
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Lifecycle: <green>"
-                                    + island.lifecycle().name() + "</green></gray>"));
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Economic State: <aqua>"
-                                    + island.economicState().name() + "</aqua></gray>"));
-            String adminColor = island.isFrozen() ? "<red><bold>FROZEN</bold></red>" : "<green>NORMAL</green>";
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage().deserialize("<gray>Administrative State: " + adminColor + "</gray>"));
-            if (island.isFrozen()) {
-                send(
-                        src.getSender(),
-                        MiniMessage.miniMessage()
-                                .deserialize("<gray>Freeze Reason: <yellow>"
-                                        + (island.freezeReason() != null ? island.freezeReason() : "None")
-                                        + "</yellow></gray>"));
-            }
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<gray>Members: <white>" + island.members().size() + "</white> | Roles: <white>"
-                                            + island.roles().size() + "</white></gray>"));
-            optLoc.ifPresent(loc -> send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Location: <white>" + loc.worldName() + " ("
-                                    + loc.bounds().centerX() + ", "
-                                    + loc.bounds().centerZ() + ") radius="
-                                    + loc.bounds().radius() + "</white></gray>")));
-        });
-        return Cmd.OK;
+        return IslandAdminCommands.resolveIslandId(sessionCoordinator, islandLocationService, target);
     }
 
     private int executeProfileSwitch(CommandContext<CommandSourceStack> ctx) {
@@ -1508,6 +1256,9 @@ public final class IslandCommandTree {
         }
         ProfileId profileId = optProfile.get();
         Location current = player.getLocation();
+        if (current == null) {
+            return Cmd.OK;
+        }
         String currentWorld = current.getWorld() != null ? current.getWorld().getName() : this.worldName;
         double x = current.getX();
         double y = current.getY();
@@ -1600,257 +1351,6 @@ public final class IslandCommandTree {
         return Cmd.OK;
     }
 
-    private int executeBankBalance(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            return Cmd.OK;
-        }
-
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-
-        schedulerPort.async(() -> {
-            Optional<Long> optBalance = islandBankService.getBalanceMinorUnits(profileId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (optBalance.isEmpty()) {
-                    send(player, Component.text("You do not have an island.", NamedTextColor.RED));
-                } else {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island Bank Balance: $" + (optBalance.get() / 100.0), NamedTextColor.GREEN));
-                }
-            });
-        });
-
-        return Cmd.OK;
-    }
-
-    private int executeBankStatus(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            return Cmd.OK;
-        }
-
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-
-        schedulerPort.async(() -> {
-            Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (optIslandId.isEmpty()) {
-                    send(player, Component.text("You do not belong to an island.", NamedTextColor.RED));
-                    return;
-                }
-                IslandId islandId = optIslandId.get();
-                if (bankruptcyService == null) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island upkeep and bankruptcy subsystem is not active.", NamedTextColor.GRAY));
-                    return;
-                }
-
-                Instant now = Instant.now();
-                IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
-                NamedTextColor statusColor =
-                        switch (record.status()) {
-                            case SOLVENT -> NamedTextColor.GREEN;
-                            case GRACE -> NamedTextColor.YELLOW;
-                            case LOCKED -> NamedTextColor.RED;
-                        };
-
-                send(player, Component.text("--- Island Bank & Upkeep Status ---", NamedTextColor.GOLD));
-                send(
-                        player,
-                        Component.text("Bankruptcy Status: ", NamedTextColor.GRAY)
-                                .append(Component.text(record.status().name(), statusColor)));
-                send(
-                        player,
-                        Component.text(
-                                "Outstanding Debt: $" + String.format("%.2f", record.debtMinorUnits() / 100.0),
-                                NamedTextColor.GRAY));
-
-                if (record.status() == BankruptcyStatus.GRACE && record.graceUntil() != null) {
-                    java.time.Duration remaining = java.time.Duration.between(now, record.graceUntil());
-                    long hours = Math.max(0, remaining.toHours());
-                    long minutes = Math.max(0, remaining.toMinutesPart());
-                    send(
-                            player,
-                            Component.text(
-                                    "Grace Remaining: " + hours + "h " + minutes + "m (until lockout)",
-                                    NamedTextColor.YELLOW));
-                } else if (record.status() == BankruptcyStatus.LOCKED) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island is LOCKED! Spawners, crops, and visitor entries are suppressed.",
-                                    NamedTextColor.RED));
-                    send(player, Component.text("Use /is bank paydebt or deposit to remediate.", NamedTextColor.AQUA));
-                }
-            });
-        });
-
-        return Cmd.OK;
-    }
-
-    private int executeBankPayDebt(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            return Cmd.OK;
-        }
-
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-
-        schedulerPort.async(() -> {
-            Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (optIslandId.isEmpty()) {
-                    send(player, Component.text("You do not belong to an island.", NamedTextColor.RED));
-                    return;
-                }
-                if (bankruptcyService == null) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island upkeep and bankruptcy subsystem is not active.", NamedTextColor.GRAY));
-                    return;
-                }
-
-                IslandId islandId = optIslandId.get();
-                Instant now = Instant.now();
-                BankruptcyRemediationResult result = bankruptcyService.settleArrears(islandId, now, serverNodeId);
-
-                if (result instanceof BankruptcyRemediationResult.Settled settled) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Successfully settled $"
-                                            + String.format("%.2f", settled.amountPaid() / 100.0)
-                                            + " in arrears! New bank balance: $"
-                                            + String.format("%.2f", settled.remainingBalance() / 100.0)
-                                            + ". Island is now SOLVENT.",
-                                    NamedTextColor.GREEN));
-                } else if (result instanceof BankruptcyRemediationResult.InsufficientFunds ins) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Insufficient bank funds to settle arrears! Debt: $"
-                                            + String.format("%.2f", ins.debtAmount() / 100.0)
-                                            + ", Available bank balance: $"
-                                            + String.format("%.2f", ins.currentBalance() / 100.0)
-                                            + ". Deposit more funds to clear debt.",
-                                    NamedTextColor.RED));
-                } else if (result instanceof BankruptcyRemediationResult.NotInArrears) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Your island has no outstanding arrears and is fully SOLVENT.",
-                                    NamedTextColor.GREEN));
-                }
-            });
-        });
-
-        return Cmd.OK;
-    }
-
-    private int executeBankDeposit(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            return Cmd.OK;
-        }
-        long amount = LongArgumentType.getLong(ctx, "amount");
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-
-        economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
-            if (outcome instanceof BankTransactionOutcome.Success) {
-                send(player, Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
-                if (bankruptcyService != null && bankruptcyService.policy().autoRemediateOnDeposit()) {
-                    islandLocationService.findIslandId(profileId).ifPresent(islandId -> {
-                        BankruptcyRemediationResult rem =
-                                bankruptcyService.settleArrears(islandId, Instant.now(), serverNodeId);
-                        if (rem instanceof BankruptcyRemediationResult.Settled settled) {
-                            send(
-                                    player,
-                                    Component.text(
-                                            "Outstanding arrears of $"
-                                                    + String.format("%.2f", settled.amountPaid() / 100.0)
-                                                    + " were automatically settled from deposit! Island is now SOLVENT.",
-                                            NamedTextColor.GOLD));
-                        }
-                    });
-                }
-            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                send(player, Component.text("Insufficient funds in your personal wallet.", NamedTextColor.RED));
-            } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
-                send(player, Component.text("Deposit rejected: " + rej.reason(), NamedTextColor.RED));
-            } else {
-                send(player, Component.text("Deposit failed: " + outcome, NamedTextColor.RED));
-            }
-        });
-
-        return Cmd.OK;
-    }
-
-    private int executeBankWithdraw(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            return Cmd.OK;
-        }
-        long amount = LongArgumentType.getLong(ctx, "amount");
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-
-        economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
-            if (outcome instanceof BankTransactionOutcome.Success) {
-                send(player, Component.text("Withdrew $" + amount + " from the island bank.", NamedTextColor.GREEN));
-            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                send(player, Component.text("Insufficient funds in the island bank.", NamedTextColor.RED));
-            } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
-                send(player, Component.text("Withdrawal rejected: " + rej.reason(), NamedTextColor.RED));
-            } else {
-                send(player, Component.text("Withdrawal failed: " + outcome, NamedTextColor.RED));
-            }
-        });
-
-        return Cmd.OK;
-    }
-
     private int executeBiomeChange(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             return Cmd.OK;
@@ -1933,139 +1433,6 @@ public final class IslandCommandTree {
             });
         });
 
-        return Cmd.OK;
-    }
-
-    private int executeChatToggle(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can use island chat.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        if (chatService == null) {
-            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-        schedulerPort.async(() -> {
-            try {
-                IslandChatChannel newChannel = chatService.toggleChannel(profileId);
-                schedulerPort.onEntity(playerUuid, () -> {
-                    if (newChannel == IslandChatChannel.ISLAND) {
-                        send(
-                                player,
-                                Component.text(
-                                        "Island chat enabled. All chat messages will now go to your island team.",
-                                        NamedTextColor.GREEN));
-                    } else {
-                        send(
-                                player,
-                                Component.text(
-                                        "Island chat disabled. Chat messages will now go to public chat.",
-                                        NamedTextColor.YELLOW));
-                    }
-                });
-            } catch (NoIslandForChatException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You must belong to an island to use island chat.", NamedTextColor.RED)));
-            }
-        });
-        return Cmd.OK;
-    }
-
-    private int executeChatMessage(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can use island chat.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        if (chatService == null) {
-            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        String message = StringArgumentType.getString(ctx, "message");
-        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-        schedulerPort.async(() -> {
-            try {
-                chatService.sendChat(profileId, player.getName(), message);
-            } catch (NoIslandForChatException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You must belong to an island to use island chat.", NamedTextColor.RED)));
-            } catch (IslandChatPermissionDeniedException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You do not have permission to send messages in island chat.",
-                                        NamedTextColor.RED)));
-            } catch (ChatRateLimitExceededException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You are sending messages too quickly. Please slow down.",
-                                        NamedTextColor.RED)));
-            }
-        });
-        return Cmd.OK;
-    }
-
-    private int executeSpyToggle(CommandContext<CommandSourceStack> ctx) {
-        if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(
-                    ctx.getSource().getSender(),
-                    Component.text("Only players can spy on island chat.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        if (chatService == null) {
-            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        if (!player.hasPermission(CatalogPermissions.CHAT_SPY.node()) && !player.hasPermission("skyblock.chat.spy")) {
-            send(player, Component.text("You do not have permission to spy on island chat.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        Optional<ProfileId> optProfile = activeProfile(player);
-        if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-        ProfileId profileId = optProfile.get();
-        boolean enabled = chatService.toggleSpy(profileId);
-        if (enabled) {
-            send(player, Component.text("Island chat spy enabled.", NamedTextColor.GREEN));
-        } else {
-            send(player, Component.text("Island chat spy disabled.", NamedTextColor.YELLOW));
-        }
         return Cmd.OK;
     }
 
@@ -2269,53 +1636,6 @@ public final class IslandCommandTree {
                         }
                     });
                 });
-        return Cmd.OK;
-    }
-
-    private int executeAdminDelete(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack src = ctx.getSource();
-        if (recycleService == null) {
-            send(src.getSender(), Component.text("Island recycle service is disabled.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        String target = StringArgumentType.getString(ctx, "target");
-        schedulerPort.async(() -> {
-            Optional<IslandId> optIsland = resolveIslandId(target);
-            if (optIsland.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not find island for target: " + target, NamedTextColor.RED));
-                return;
-            }
-
-            IslandId islandId = optIsland.get();
-            send(
-                    src.getSender(),
-                    Component.text(
-                            "Initiating administrative deletion of island " + islandId.value() + "...",
-                            NamedTextColor.YELLOW));
-            var unusedAdminReset = recycleService
-                    .executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true)
-                    .thenAccept(result -> {
-                        schedulerPort.onGlobal(() -> {
-                            if (result instanceof RecycleResult.Success) {
-                                send(
-                                        src.getSender(),
-                                        Component.text(
-                                                "Island " + islandId.value()
-                                                        + " was deleted and recycled successfully.",
-                                                NamedTextColor.GREEN));
-                            } else {
-                                send(
-                                        src.getSender(),
-                                        Component.text(
-                                                "Administrative deletion failed for island " + islandId.value(),
-                                                NamedTextColor.RED));
-                            }
-                        });
-                    });
-        });
         return Cmd.OK;
     }
 
@@ -2732,81 +2052,5 @@ public final class IslandCommandTree {
             return String.format("%dm %ds", minutes, secs);
         }
         return String.format("%ds", secs);
-    }
-
-    private int executeAdminRestore(CommandContext<CommandSourceStack> ctx) {
-        CommandSender sender = ctx.getSource().getSender();
-        if (!sender.hasPermission("uxmskyblock.admin.restore")
-                && !sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                && !sender.isOp()) {
-            send(sender, Component.text("You do not have permission to restore island backups.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        if (restoreService == null) {
-            send(sender, Component.text("Island restore service is not configured on this node.", NamedTextColor.RED));
-            return Cmd.OK;
-        }
-
-        String backupIdStr = StringArgumentType.getString(ctx, "backupId");
-        send(sender, Component.text("Initiating restore for backup ID: " + backupIdStr + "...", NamedTextColor.YELLOW));
-
-        schedulerPort.async(() -> {
-            try {
-                BackupSetId backupSetId = BackupSetId.fromString(backupIdStr);
-                StorageBucket bucket = new StorageBucket("uxmskyblock-backups");
-                String rootPrefix = "backups/" + backupSetId;
-
-                Optional<BackupManifest> optManifest = Optional.empty();
-                if (backupService != null) {
-                    optManifest = backupService.loadManifest(bucket, rootPrefix);
-                }
-
-                if (optManifest.isEmpty()) {
-                    Optional<BackupCatalogRecord> optRecord =
-                            restoreService.catalogPort().findById(backupSetId);
-                    if (optRecord.isPresent() && backupService != null) {
-                        BackupCatalogRecord record = optRecord.get();
-                        String customPrefix = "backups/" + record.targetRootTypeId() + "/" + record.targetRootKey()
-                                + "/" + backupSetId;
-                        optManifest = backupService.loadManifest(bucket, customPrefix);
-                        if (optManifest.isPresent()) {
-                            rootPrefix = customPrefix;
-                        }
-                    }
-                }
-
-                if (optManifest.isEmpty()) {
-                    send(
-                            sender,
-                            Component.text(
-                                    "Failed to locate valid backup manifest for " + backupIdStr + " in storage.",
-                                    NamedTextColor.RED));
-                    return;
-                }
-
-                BackupManifest manifest = optManifest.get();
-                IslandRestoreService.RestoreOutcome outcome =
-                        restoreService.executeRestore(manifest, bucket, rootPrefix, true);
-                if (outcome instanceof IslandRestoreService.RestoreOutcome.Success success) {
-                    send(
-                            sender,
-                            Component.text(
-                                    "Successfully restored backup " + backupIdStr + " (" + success.artifactsRestored()
-                                            + " artifacts restored).",
-                                    NamedTextColor.GREEN));
-                } else if (outcome instanceof IslandRestoreService.RestoreOutcome.Failure failure) {
-                    send(
-                            sender,
-                            Component.text(
-                                    "Failed to restore backup " + backupIdStr + ": " + failure.reason(),
-                                    NamedTextColor.RED));
-                }
-            } catch (Exception e) {
-                send(sender, Component.text("Error executing restore: " + e.getMessage(), NamedTextColor.RED));
-            }
-        });
-
-        return Cmd.OK;
     }
 }

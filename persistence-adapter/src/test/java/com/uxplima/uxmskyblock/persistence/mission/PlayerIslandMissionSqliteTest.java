@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -115,9 +116,11 @@ class PlayerIslandMissionSqliteTest {
 
         Map<MissionId, MissionProgress> all = adapter.findAllProgress(islandId, profileId);
         assertThat(all).hasSize(2);
-        assertThat(all.get(mission1).progressCount()).isEqualTo(20L);
-        assertThat(all.get(mission1).completed()).isFalse();
-        assertThat(all.get(mission2).progressCount()).isEqualTo(10L);
-        assertThat(all.get(mission2).completed()).isTrue();
+        MissionProgress prog1 = Objects.requireNonNull(all.get(mission1));
+        assertThat(prog1.progressCount()).isEqualTo(20L);
+        assertThat(prog1.completed()).isFalse();
+        MissionProgress prog2 = Objects.requireNonNull(all.get(mission2));
+        assertThat(prog2.progressCount()).isEqualTo(10L);
+        assertThat(prog2.completed()).isTrue();
     }
 }

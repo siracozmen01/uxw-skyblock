@@ -287,7 +287,7 @@ class IslandAdminFreezeServiceTest {
 
         @Override
         public OutboxClaim claimPendingBatch(String workerId, Duration leaseDuration, int batchSize) {
-            return null;
+            return OutboxClaim.empty(workerId, UUID.randomUUID().toString(), Instant.now());
         }
 
         @Override

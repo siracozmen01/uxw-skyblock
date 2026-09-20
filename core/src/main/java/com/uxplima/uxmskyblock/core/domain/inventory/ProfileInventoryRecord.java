@@ -21,7 +21,7 @@ public record ProfileInventoryRecord(
         double health,
         int foodLevel,
         float saturation,
-        byte @Nullable [] activePotionEffectsNbt,
+        @Nullable byte[] activePotionEffectsNbt,
         @Nullable String logoutWorld,
         @Nullable Double logoutX,
         @Nullable Double logoutY,
@@ -108,7 +108,7 @@ public record ProfileInventoryRecord(
     }
 
     @Override
-    public byte @Nullable [] activePotionEffectsNbt() {
+    public @Nullable byte[] activePotionEffectsNbt() {
         return activePotionEffectsNbt != null ? activePotionEffectsNbt.clone() : null;
     }
 

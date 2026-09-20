@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
 
 import com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability;
 import com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageProviderId;
@@ -65,7 +66,8 @@ class S3CompatibleProviderAwsCompatibilityContractTest {
         assertThat(putReq.headers()).containsKey("x-amz-date");
         assertThat(putReq.headers()).containsKey("x-amz-content-sha256");
         assertThat(putReq.headers()).containsKey("Authorization");
-        String authHeader = putReq.headers().get("Authorization").get(0);
+        String authHeader =
+                Objects.requireNonNull(putReq.headers().get("Authorization")).get(0);
         assertThat(authHeader).startsWith("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/");
         assertThat(authHeader).contains("/us-east-1/s3/aws4_request");
         assertThat(authHeader).contains("SignedHeaders=");

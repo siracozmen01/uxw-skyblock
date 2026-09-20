@@ -7,6 +7,7 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.webmap.WebMapMarker;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Enterprise web map integration service preparing multi-layer polygon descriptors
@@ -26,7 +27,7 @@ public final class IslandWebMapService {
      */
     public record IslandMapContext(
             Island island,
-            String customName,
+            @Nullable String customName,
             long levelScore,
             long netWorthMinorUnits,
             long bankBalanceMinorUnits,

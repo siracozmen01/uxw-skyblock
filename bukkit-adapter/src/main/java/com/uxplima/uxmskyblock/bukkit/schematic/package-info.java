@@ -1,4 +1,4 @@
-/**
- * Starter island schematics and structure placement engines.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.bukkit.schematic;
+
+import org.jspecify.annotations.NullMarked;

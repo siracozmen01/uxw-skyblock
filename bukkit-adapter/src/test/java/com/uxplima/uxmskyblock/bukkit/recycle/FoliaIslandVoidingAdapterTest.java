@@ -29,6 +29,7 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -78,7 +79,7 @@ class FoliaIslandVoidingAdapterTest {
         setBukkitServer(null);
     }
 
-    private static void setBukkitServer(Server s) throws Exception {
+    private static void setBukkitServer(@Nullable Server s) throws Exception {
         Field field = Bukkit.class.getDeclaredField("server");
         field.setAccessible(true);
         field.set(null, s);

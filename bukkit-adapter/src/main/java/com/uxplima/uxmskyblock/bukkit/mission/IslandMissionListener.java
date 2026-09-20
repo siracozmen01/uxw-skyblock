@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -174,7 +175,10 @@ public final class IslandMissionListener implements Listener {
             player.sendMessage(MiniMessage.miniMessage()
                     .deserialize("<gold><b>[MISSION COMPLETED]</b></gold> <yellow>" + def.displayName() + "</yellow>"));
             try {
-                player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
+                Location loc = player.getLocation();
+                if (loc != null) {
+                    player.playSound(loc, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
+                }
             } catch (Throwable ignored) {
                 // Sound playback failure is non-fatal
             }

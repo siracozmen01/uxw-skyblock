@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.core.architecture;
 
+import static com.tngtech.archunit.lang.conditions.ArchConditions.callMethodWhere;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -313,5 +314,65 @@ class CoreArchitectureTest {
         assertThat(production.contain(
                         com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort.class))
                 .isTrue();
+    }
+
+    static ArchRule noClassesMustCallPrintStackTrace() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.core..")
+                .should(callMethodWhere(com.tngtech.archunit.base.DescribedPredicate.describe(
+                        "call printStackTrace()",
+                        call -> "java.lang.Throwable"
+                                        .equals(call.getTargetOwner().getFullName())
+                                && "printStackTrace".equals(call.getName()))))
+                .because("printStackTrace() is forbidden; use standard logging or exceptions")
+                .allowEmptyShould(true);
+    }
+
+    static ArchRule noClassesMustAccessSystemOutOrErr() {
+        return noClasses()
+                .that()
+                .resideInAPackage("com.uxplima.uxmskyblock.core..")
+                .should()
+                .accessField("java.lang.System", "out")
+                .orShould()
+                .accessField("java.lang.System", "err")
+                .because("direct console access via System.out/System.err is forbidden; use logger or diagnostics")
+                .allowEmptyShould(true);
+    }
+
+    @Test
+    @DisplayName("Production :core classes must not call printStackTrace()")
+    void productionCoreHasNoPrintStackTrace() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> noClassesMustCallPrintStackTrace().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Production :core classes must not access System.out or System.err")
+    void productionCoreHasNoSystemOutOrErr() {
+        JavaClasses production = importProductionClasses();
+        assertThatCode(() -> noClassesMustAccessSystemOutOrErr().check(production))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Every production package in :core must contain package-info.java annotated with @NullMarked")
+    void everyPackageMustHaveNullMarkedPackageInfo() {
+        JavaClasses classes = importProductionClasses();
+        java.util.Set<String> packagesWithClasses = classes.stream()
+                .filter(c -> !c.getSimpleName().equals("package-info"))
+                .map(com.tngtech.archunit.core.domain.JavaClass::getPackageName)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> nullMarkedPackages = classes.stream()
+                .filter(c -> c.getSimpleName().equals("package-info"))
+                .filter(c -> c.isAnnotatedWith("org.jspecify.annotations.NullMarked"))
+                .map(com.tngtech.archunit.core.domain.JavaClass::getPackageName)
+                .collect(java.util.stream.Collectors.toSet());
+        packagesWithClasses.removeAll(nullMarkedPackages);
+        assertThat(packagesWithClasses)
+                .as("Packages in :core missing @NullMarked package-info.java: %s", packagesWithClasses)
+                .isEmpty();
     }
 }

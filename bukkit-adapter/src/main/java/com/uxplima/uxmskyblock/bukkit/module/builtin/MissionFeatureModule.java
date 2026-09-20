@@ -17,6 +17,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class MissionFeatureModule extends AbstractFeatureModule {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(MissionFeatureModule.class.getName());
+
     private final IslandMissionService missionService;
     private final MissionConfiguration configuration;
     private final @Nullable SchedulerPort scheduler;
@@ -44,26 +47,30 @@ public final class MissionFeatureModule extends AbstractFeatureModule {
     }
 
     @Override
-    @SuppressWarnings("EmptyCatch")
     protected void onEnable(ModuleContext context) {
         context.registerService(IslandMissionService.class, missionService);
         if (scheduler != null) {
             try {
                 this.flushTaskHandle = scheduler.repeatAsync(
                         missionService::flushDirtyProgress, Duration.ofSeconds(15), Duration.ofSeconds(15));
-            } catch (Throwable ignored) {
-                // Ignore if scheduler stub does not support repeatAsync
+            } catch (UnsupportedOperationException e) {
+                LOGGER.warning(
+                        () -> "Scheduler does not support repeatAsync; background mission progress flushing disabled: "
+                                + e.getMessage());
+            } catch (Exception e) {
+                LOGGER.log(java.util.logging.Level.SEVERE, "Failed to schedule mission dirty progress flusher", e);
+                throw new IllegalStateException("Failed to schedule mission dirty progress flusher", e);
             }
         }
     }
 
     @Override
-    @SuppressWarnings("EmptyCatch")
     protected void onDisable() {
         if (flushTaskHandle != null) {
             try {
                 flushTaskHandle.close();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                LOGGER.warning(() -> "Failed to close mission flush task handle: " + e.getMessage());
             }
             flushTaskHandle = null;
         }

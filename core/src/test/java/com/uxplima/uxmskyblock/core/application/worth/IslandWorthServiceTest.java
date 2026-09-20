@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -212,10 +213,10 @@ class IslandWorthServiceTest {
         scannerService.triggerAsyncRecalculation(
                 islandId, "skyblock_world", IslandBounds.fromCenterAndRadius(0, 0, 50), 0, 0L, resultRef::set);
 
-        assertThat(resultRef.get()).isNotNull();
+        IslandScoreBreakdown result = Objects.requireNonNull(resultRef.get());
         // 5 * 900 + 1 * 5000 = 4500 + 5000 = 9500
-        assertThat(resultRef.get().totalScore()).isEqualTo(9500L);
-        assertThat(resultRef.get().calculatedLevel()).isEqualTo(95L);
+        assertThat(result.totalScore()).isEqualTo(9500L);
+        assertThat(result.calculatedLevel()).isEqualTo(95L);
     }
 
     @Test

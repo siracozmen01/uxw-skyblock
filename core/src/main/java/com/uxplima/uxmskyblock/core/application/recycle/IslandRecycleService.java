@@ -167,7 +167,7 @@ public final class IslandRecycleService {
      * @param code 4-digit code provided
      * @return true if valid
      */
-    public boolean verifyResetChallenge(ProfileId requesterProfileId, String code) {
+    public boolean verifyResetChallenge(ProfileId requesterProfileId, @Nullable String code) {
         if (code == null) {
             return false;
         }

@@ -75,7 +75,10 @@ public final class IslandAntiAbuseListener implements Listener {
         }
     }
 
-    public Optional<Island> findIslandAt(Location location) {
+    public Optional<Island> findIslandAt(@Nullable Location location) {
+        if (location == null) {
+            return Optional.empty();
+        }
         return spatialIndex.findIslandAt(location);
     }
 

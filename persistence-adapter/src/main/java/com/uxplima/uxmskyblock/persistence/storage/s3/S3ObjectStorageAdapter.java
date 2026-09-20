@@ -33,6 +33,7 @@ import com.uxplima.uxmskyblock.core.domain.storage.S3StorageConfiguration;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageChecksumMismatchException;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageObjectMetadata;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Enterprise S3-compatible remote object storage adapter.
@@ -548,7 +549,7 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         }
     }
 
-    private URI resolveBucketRootUri(StorageBucket bucket, String query) {
+    private URI resolveBucketRootUri(StorageBucket bucket, @Nullable String query) {
         String bucketName = bucket.name();
         URI base = configuration.endpoint();
         String scheme = base.getScheme() != null ? base.getScheme() : "https";
@@ -568,7 +569,7 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         }
     }
 
-    private URI resolveObjectUri(StorageBucket bucket, String objectKey, String query) {
+    private URI resolveObjectUri(StorageBucket bucket, String objectKey, @Nullable String query) {
         String sanitizedKey = sanitizeKey(objectKey);
         if (configuration.pathPrefix() != null && !configuration.pathPrefix().isBlank()) {
             sanitizedKey = configuration.pathPrefix().trim() + "/" + sanitizedKey;

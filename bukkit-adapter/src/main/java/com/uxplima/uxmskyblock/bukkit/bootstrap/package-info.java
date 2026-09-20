@@ -1,4 +1,4 @@
-/**
- * Bukkit plugin bootstrap and composition root.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
+
+import org.jspecify.annotations.NullMarked;

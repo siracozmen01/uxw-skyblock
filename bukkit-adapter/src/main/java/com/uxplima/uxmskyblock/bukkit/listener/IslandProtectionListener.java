@@ -334,7 +334,11 @@ public final class IslandProtectionListener implements Listener {
         if (isStaffInspector(player)) {
             return;
         }
-        findIslandAt(player.getLocation()).ifPresent(island -> {
+        Location loc = player.getLocation();
+        if (loc == null) {
+            return;
+        }
+        findIslandAt(loc).ifPresent(island -> {
             if (isIslandFrozen(island)) {
                 event.setCancelled(true);
                 player.sendMessage(MiniMessage.miniMessage()

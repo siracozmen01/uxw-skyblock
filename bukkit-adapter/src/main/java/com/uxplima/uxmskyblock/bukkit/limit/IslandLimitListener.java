@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.limit;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
@@ -30,6 +31,7 @@ import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * High-performance event listener enforcing anti-lag tile entity and living entity caps (Section 2.31).
@@ -79,7 +81,10 @@ public final class IslandLimitListener implements Listener {
                             + "/"
                             + max
                             + "</gray>)!</red>"));
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.5f);
+            Location pLoc = player.getLocation();
+            if (pLoc != null) {
+                player.playSound(pLoc, Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.5f);
+            }
         }
     }
 
@@ -162,7 +167,7 @@ public final class IslandLimitListener implements Listener {
                 .ifPresent(island -> limitService.decrement(island.id(), limitType));
     }
 
-    public static LimitType resolveBlockLimitType(Material material) {
+    public static @Nullable LimitType resolveBlockLimitType(Material material) {
         return switch (material) {
             case HOPPER -> LimitType.HOPPER;
             case PISTON -> LimitType.PISTON;
@@ -176,7 +181,7 @@ public final class IslandLimitListener implements Listener {
         };
     }
 
-    public static LimitType resolveEntityLimitType(Entity entity) {
+    public static @Nullable LimitType resolveEntityLimitType(@Nullable Entity entity) {
         if (entity == null) {
             return null;
         }

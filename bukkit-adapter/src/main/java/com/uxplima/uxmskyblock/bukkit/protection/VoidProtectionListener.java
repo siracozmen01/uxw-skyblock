@@ -130,7 +130,7 @@ public final class VoidProtectionListener implements Listener {
         }
 
         Location loc = player.getLocation();
-        if (loc.getWorld() == null) {
+        if (loc == null || loc.getWorld() == null) {
             return false;
         }
 

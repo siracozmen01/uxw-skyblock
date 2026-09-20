@@ -1,4 +1,4 @@
-/**
- * Bukkit biome adapters and world modification services.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.bukkit.biome;
+
+import org.jspecify.annotations.NullMarked;

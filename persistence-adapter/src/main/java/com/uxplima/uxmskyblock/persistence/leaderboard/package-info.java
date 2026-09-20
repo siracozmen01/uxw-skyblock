@@ -1,4 +1,4 @@
-/**
- * SQL persistence adapter implementations for island competitive leaderboards.
- */
+@NullMarked
 package com.uxplima.uxmskyblock.persistence.leaderboard;
+
+import org.jspecify.annotations.NullMarked;

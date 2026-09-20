@@ -939,6 +939,7 @@ class ProductionMigrationFastLaneTest {
 
     @Test
     @DisplayName("10. Null dialect is rejected with NullPointerException")
+    @SuppressWarnings("NullAway")
     void nullDialectThrowsNpe() {
         assertThatThrownBy(() -> SkyblockMigrations.getMigrations(null))
                 .isInstanceOf(NullPointerException.class)

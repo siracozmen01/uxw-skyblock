@@ -20,6 +20,7 @@ import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Enterprise service presenting native Bedrock Forms (SimpleForm, ModalForm, CustomForm)
@@ -87,11 +88,11 @@ public final class BedrockFormService {
     public void openIslandControlForm(
             Player player,
             Island island,
-            Runnable onHome,
-            Runnable onWarps,
-            Runnable onBank,
-            Runnable onMembers,
-            Runnable onSettings) {
+            @Nullable Runnable onHome,
+            @Nullable Runnable onWarps,
+            @Nullable Runnable onBank,
+            @Nullable Runnable onMembers,
+            @Nullable Runnable onSettings) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(island, "island must not be null");
 
@@ -145,7 +146,7 @@ public final class BedrockFormService {
     /**
      * Sends a SimpleForm displaying available Island Warps.
      */
-    public void openWarpDirectoryForm(Player player, List<IslandWarp> warps, Consumer<IslandWarp> onSelect) {
+    public void openWarpDirectoryForm(Player player, List<IslandWarp> warps, @Nullable Consumer<IslandWarp> onSelect) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(warps, "warps must not be null");
 
@@ -175,10 +176,10 @@ public final class BedrockFormService {
             Player player,
             String title,
             String content,
-            String confirmButton,
-            String cancelButton,
-            Runnable onConfirm,
-            Runnable onCancel) {
+            @Nullable String confirmButton,
+            @Nullable String cancelButton,
+            @Nullable Runnable onConfirm,
+            @Nullable Runnable onCancel) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(title, "title must not be null");
 
@@ -199,7 +200,10 @@ public final class BedrockFormService {
      * Sends a CustomForm for Island Settings with toggles.
      */
     public void openIslandSettingsForm(
-            Player player, IslandFlags currentFlags, Consumer<IslandFlags> onSave, Runnable onClose) {
+            Player player,
+            IslandFlags currentFlags,
+            @Nullable Consumer<IslandFlags> onSave,
+            @Nullable Runnable onClose) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(currentFlags, "currentFlags must not be null");
 
