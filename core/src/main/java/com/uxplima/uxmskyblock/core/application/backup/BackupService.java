@@ -368,7 +368,31 @@ public final class BackupService {
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static BackupManifest deserializeManifest(byte[] bytes) {
+    public List<ObjectStoragePort> storageDestinations() {
+        return storageDestinations;
+    }
+
+    @SuppressWarnings("EmptyCatch")
+    public Optional<BackupManifest> loadManifest(StorageBucket bucket, String rootPrefix) {
+        Objects.requireNonNull(bucket, "bucket");
+        Objects.requireNonNull(rootPrefix, "rootPrefix");
+        String normalizedPrefix =
+                rootPrefix.endsWith("/") ? rootPrefix.substring(0, rootPrefix.length() - 1) : rootPrefix;
+        String manifestKey = normalizedPrefix + "/" + MANIFEST_FILE_NAME;
+        for (ObjectStoragePort destination : storageDestinations) {
+            Optional<byte[]> opt = destination.getObject(bucket, manifestKey);
+            if (opt.isPresent()) {
+                try {
+                    return Optional.of(deserializeManifest(opt.get()));
+                } catch (Exception ignored) {
+                    // Ignore corrupted or unparseable manifests and try next destination
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    public static BackupManifest deserializeManifest(byte[] bytes) {
         String json = new String(bytes, StandardCharsets.UTF_8);
         String setId = extractStringField(json, "backupSetId");
         String typeStr = extractStringField(json, "backupType");

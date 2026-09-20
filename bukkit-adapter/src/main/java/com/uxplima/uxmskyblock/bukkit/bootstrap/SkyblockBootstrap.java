@@ -78,6 +78,7 @@ import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
+import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
@@ -103,7 +104,10 @@ import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
+import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
+import com.uxplima.uxmskyblock.core.application.snapshot.WorldDimensionSnapshotPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
+import com.uxplima.uxmskyblock.core.application.storage.ObjectStoragePort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.application.ward.KineticWardService;
@@ -202,7 +206,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 scheduler,
                 backpressureController,
                 economyBridgeRef::get,
-                clusterTransportWiring.chatTransport());
+                clusterTransportWiring.chatTransport(),
+                persistenceWiring.objectStoragePort());
 
         this.integrationWiring = new IntegrationWiring(
                 plugin,
@@ -1520,6 +1525,22 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public MessageProvider messageProvider() {
         return integrationWiring.messageProvider();
+    }
+
+    public ObjectStoragePort objectStoragePort() {
+        return persistenceWiring.objectStoragePort();
+    }
+
+    public WorldDimensionSnapshotPort worldDimensionSnapshotPort() {
+        return gameplayWiring.worldDimensionSnapshotPort();
+    }
+
+    public BackupService backupService() {
+        return gameplayWiring.backupService();
+    }
+
+    public IslandRestoreService islandRestoreService() {
+        return gameplayWiring.islandRestoreService();
     }
 
     @Override

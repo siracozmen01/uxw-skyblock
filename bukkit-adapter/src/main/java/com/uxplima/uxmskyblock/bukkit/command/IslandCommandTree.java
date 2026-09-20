@@ -41,6 +41,7 @@ import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
+import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
@@ -60,9 +61,13 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
+import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
+import com.uxplima.uxmskyblock.core.domain.backup.BackupManifest;
+import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult;
 import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus;
@@ -88,6 +93,7 @@ import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
 import com.uxplima.uxmskyblock.core.domain.name.IslandName;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.worth.IslandScoreBreakdown;
 import org.jspecify.annotations.Nullable;
 
@@ -132,6 +138,8 @@ public final class IslandCommandTree {
     private volatile @Nullable IslandBankruptcyService bankruptcyService;
     private volatile @Nullable IslandNameService nameService;
     private volatile @Nullable IslandNetworkRouter networkRouter;
+    private volatile @Nullable IslandRestoreService restoreService;
+    private volatile @Nullable BackupService backupService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -783,6 +791,22 @@ public final class IslandCommandTree {
         return networkRouter;
     }
 
+    public void setRestoreService(@Nullable IslandRestoreService restoreService) {
+        this.restoreService = restoreService;
+    }
+
+    public @Nullable IslandRestoreService restoreService() {
+        return restoreService;
+    }
+
+    public void setBackupService(@Nullable BackupService backupService) {
+        this.backupService = backupService;
+    }
+
+    public @Nullable BackupService backupService() {
+        return backupService;
+    }
+
     public void register(JavaPlugin plugin) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
@@ -832,6 +856,12 @@ public final class IslandCommandTree {
                         .executes(this::executeGetRename)
                         .then(Cmd.argument("name", StringArgumentType.greedyString())
                                 .executes(this::executeRename)))
+                .then(Cmd.literal("restore")
+                        .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
+                                || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                                || src.getSender().isOp())
+                        .then(Cmd.argument("backupId", StringArgumentType.word())
+                                .executes(this::executeAdminRestore)))
                 .then(Cmd.literal("bank")
                         .executes(this::executeBankBalance)
                         .then(Cmd.literal("balance").executes(this::executeBankBalance))
@@ -889,6 +919,12 @@ public final class IslandCommandTree {
                                         || src.getSender().isOp())
                                 .then(Cmd.argument("target", StringArgumentType.word())
                                         .executes(this::executeAdminInspect)))
+                        .then(Cmd.literal("restore")
+                                .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
+                                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                                        || src.getSender().isOp())
+                                .then(Cmd.argument("backupId", StringArgumentType.word())
+                                        .executes(this::executeAdminRestore)))
                         .then(Cmd.literal("delete")
                                 .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                         || src.getSender().isOp())
@@ -2696,5 +2732,81 @@ public final class IslandCommandTree {
             return String.format("%dm %ds", minutes, secs);
         }
         return String.format("%ds", secs);
+    }
+
+    private int executeAdminRestore(CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        if (!sender.hasPermission("uxmskyblock.admin.restore")
+                && !sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                && !sender.isOp()) {
+            send(sender, Component.text("You do not have permission to restore island backups.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        if (restoreService == null) {
+            send(sender, Component.text("Island restore service is not configured on this node.", NamedTextColor.RED));
+            return Cmd.OK;
+        }
+
+        String backupIdStr = StringArgumentType.getString(ctx, "backupId");
+        send(sender, Component.text("Initiating restore for backup ID: " + backupIdStr + "...", NamedTextColor.YELLOW));
+
+        schedulerPort.async(() -> {
+            try {
+                BackupSetId backupSetId = BackupSetId.fromString(backupIdStr);
+                StorageBucket bucket = new StorageBucket("uxmskyblock-backups");
+                String rootPrefix = "backups/" + backupSetId;
+
+                Optional<BackupManifest> optManifest = Optional.empty();
+                if (backupService != null) {
+                    optManifest = backupService.loadManifest(bucket, rootPrefix);
+                }
+
+                if (optManifest.isEmpty()) {
+                    Optional<BackupCatalogRecord> optRecord =
+                            restoreService.catalogPort().findById(backupSetId);
+                    if (optRecord.isPresent() && backupService != null) {
+                        BackupCatalogRecord record = optRecord.get();
+                        String customPrefix = "backups/" + record.targetRootTypeId() + "/" + record.targetRootKey()
+                                + "/" + backupSetId;
+                        optManifest = backupService.loadManifest(bucket, customPrefix);
+                        if (optManifest.isPresent()) {
+                            rootPrefix = customPrefix;
+                        }
+                    }
+                }
+
+                if (optManifest.isEmpty()) {
+                    send(
+                            sender,
+                            Component.text(
+                                    "Failed to locate valid backup manifest for " + backupIdStr + " in storage.",
+                                    NamedTextColor.RED));
+                    return;
+                }
+
+                BackupManifest manifest = optManifest.get();
+                IslandRestoreService.RestoreOutcome outcome =
+                        restoreService.executeRestore(manifest, bucket, rootPrefix, true);
+                if (outcome instanceof IslandRestoreService.RestoreOutcome.Success success) {
+                    send(
+                            sender,
+                            Component.text(
+                                    "Successfully restored backup " + backupIdStr + " (" + success.artifactsRestored()
+                                            + " artifacts restored).",
+                                    NamedTextColor.GREEN));
+                } else if (outcome instanceof IslandRestoreService.RestoreOutcome.Failure failure) {
+                    send(
+                            sender,
+                            Component.text(
+                                    "Failed to restore backup " + backupIdStr + ": " + failure.reason(),
+                                    NamedTextColor.RED));
+                }
+            } catch (Exception e) {
+                send(sender, Component.text("Error executing restore: " + e.getMessage(), NamedTextColor.RED));
+            }
+        });
+
+        return Cmd.OK;
     }
 }

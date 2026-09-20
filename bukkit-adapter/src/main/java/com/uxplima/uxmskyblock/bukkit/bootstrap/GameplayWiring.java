@@ -51,6 +51,7 @@ import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
+import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
@@ -76,7 +77,10 @@ import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
+import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
+import com.uxplima.uxmskyblock.core.application.snapshot.WorldDimensionSnapshotPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
+import com.uxplima.uxmskyblock.core.application.storage.ObjectStoragePort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.application.ward.KineticWardService;
@@ -88,6 +92,7 @@ import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -122,10 +127,10 @@ public final class GameplayWiring {
     private final WorldBorderPacketAdapter worldBorderAdapter;
     private final IslandBoundaryService boundaryService;
     private final @Nullable IslandBoundaryListener boundaryListener;
-    private final FoliaIslandVoidingAdapter voidingAdapter;
     private final NbtIslandBackupAdapter islandBackupAdapter;
+    private final FoliaIslandVoidingAdapter voidingAdapter;
     private final IslandRecycleService recycleService;
-    private final IslandResetConfirmationMenu resetConfirmationMenu;
+    private final @Nullable IslandResetConfirmationMenu resetConfirmationMenu;
     private final @Nullable FoliaIslandChunkScanner chunkScanner;
     private final IslandWorthService worthService;
     private final @Nullable IslandWorthListener worthListener;
@@ -159,6 +164,10 @@ public final class GameplayWiring {
     private final IslandChatService chatService;
     private final @Nullable IslandChatListener chatListener;
     private final IslandInactivityService inactivityService;
+    private final WorldDimensionSnapshotPort worldDimensionSnapshotPort;
+    private final ObjectStoragePort objectStoragePort;
+    private final BackupService backupService;
+    private final IslandRestoreService islandRestoreService;
 
     public GameplayWiring(
             JavaPlugin plugin,
@@ -188,7 +197,9 @@ public final class GameplayWiring {
                 scheduler,
                 backpressureController,
                 economyBridgeSupplier,
-                new LocalIslandChatTransportAdapter());
+                new LocalIslandChatTransportAdapter(),
+                new LocalFilesystemStorageAdapter(
+                        plugin.getDataFolder().toPath().resolve("backups")));
     }
 
     public GameplayWiring(
@@ -206,6 +217,41 @@ public final class GameplayWiring {
             AdaptiveBackpressureController backpressureController,
             Supplier<SkyblockEconomyBridge> economyBridgeSupplier,
             IslandChatTransportPort chatTransport) {
+        this(
+                plugin,
+                config,
+                persistence,
+                authority,
+                protectionListener,
+                accessService,
+                allianceService,
+                temporaryAccessService,
+                visitorEvictionAdapter,
+                freezeService,
+                scheduler,
+                backpressureController,
+                economyBridgeSupplier,
+                chatTransport,
+                new LocalFilesystemStorageAdapter(
+                        plugin.getDataFolder().toPath().resolve("backups")));
+    }
+
+    public GameplayWiring(
+            JavaPlugin plugin,
+            ConfigurationWiring config,
+            PersistenceBootstrap persistence,
+            AuthorityWiring authority,
+            IslandProtectionListener protectionListener,
+            IslandAccessService accessService,
+            IslandAllianceService allianceService,
+            TemporaryAccessService temporaryAccessService,
+            BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter,
+            IslandAdminFreezeService freezeService,
+            SchedulerPort scheduler,
+            AdaptiveBackpressureController backpressureController,
+            Supplier<SkyblockEconomyBridge> economyBridgeSupplier,
+            IslandChatTransportPort chatTransport,
+            ObjectStoragePort objectStorage) {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.backpressureController =
                 Objects.requireNonNull(backpressureController, "backpressureController must not be null");
@@ -340,10 +386,9 @@ public final class GameplayWiring {
             this.boundaryListener = null;
         }
 
-        com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter dimensionSnapshotAdapter =
-                new com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter(
-                        plugin, persistence.islandStoragePort());
-        this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder(), dimensionSnapshotAdapter);
+        this.worldDimensionSnapshotPort = new com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter(
+                plugin, persistence.islandStoragePort());
+        this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder(), this.worldDimensionSnapshotPort);
         this.recycleService = new IslandRecycleService(
                 persistence.islandStoragePort(),
                 persistence.worldGridAllocationPort(),
@@ -354,6 +399,14 @@ public final class GameplayWiring {
                 persistence.islandRecycleOperationPort());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
                 recycleService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
+
+        this.objectStoragePort = Objects.requireNonNull(objectStorage, "objectStorage must not be null");
+        this.backupService = new BackupService(persistence.backupCatalogPort(), this.objectStoragePort);
+        this.islandRestoreService = new IslandRestoreService(
+                persistence.backupCatalogPort(),
+                this.objectStoragePort,
+                persistence.rootRelationalSnapshotPort(),
+                this.worldDimensionSnapshotPort);
 
         boolean worthEnabled = config.moduleSettings().isModuleEnabled("worth");
         this.chunkScanner = worthEnabled
@@ -789,5 +842,21 @@ public final class GameplayWiring {
 
     public IslandInactivityService inactivityService() {
         return inactivityService;
+    }
+
+    public WorldDimensionSnapshotPort worldDimensionSnapshotPort() {
+        return worldDimensionSnapshotPort;
+    }
+
+    public ObjectStoragePort objectStoragePort() {
+        return objectStoragePort;
+    }
+
+    public BackupService backupService() {
+        return backupService;
+    }
+
+    public IslandRestoreService islandRestoreService() {
+        return islandRestoreService;
     }
 }

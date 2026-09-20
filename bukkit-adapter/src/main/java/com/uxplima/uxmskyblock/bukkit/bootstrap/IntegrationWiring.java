@@ -192,6 +192,8 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setNameService(gameplay.islandNameService());
         this.commandTree.setNetworkRouter(this.networkRouter);
+        this.commandTree.setRestoreService(gameplay.islandRestoreService());
+        this.commandTree.setBackupService(gameplay.backupService());
 
         this.apiBridge = new BukkitSkyblockApiBridge(
                 persistence.islandStoragePort(),
