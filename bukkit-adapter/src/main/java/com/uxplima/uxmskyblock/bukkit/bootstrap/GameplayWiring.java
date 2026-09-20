@@ -1,7 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.bukkit.plugin.java.JavaPlugin;
@@ -31,7 +30,6 @@ import com.uxplima.uxmskyblock.bukkit.protection.VoidProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
 import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
-import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.upgrade.OreGeneratorListener;
 import com.uxplima.uxmskyblock.bukkit.ward.KineticWardListener;
 import com.uxplima.uxmskyblock.bukkit.world.AsyncStructureSuppressionListener;
@@ -47,7 +45,6 @@ import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
-import com.uxplima.uxmskyblock.core.application.chat.LocalIslandChatTransportAdapter;
 import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
@@ -82,81 +79,22 @@ import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter
 import org.jspecify.annotations.Nullable;
 
 /**
- * Encapsulates core gameplay domain services, region schedulers, boundary management,
- * protection listeners, physical item delivery pipelines, and island upgrade loops.
+ * Composition root for gameplay subsystems: island creation, economy, social, admin, protection, and environment.
  */
 public final class GameplayWiring {
 
     private final SchedulerPort scheduler;
     private final AdaptiveBackpressureController backpressureController;
     private final IslandAccessService accessService;
-    private final StarterPresetCatalog presetCatalog;
-    private final StarterSchematicEngine schematicEngine;
-    private final SpiralGridCoordinateAllocator coordinateAllocator;
-    private final SpiralWorldGridService gridService;
-    private final CreateIslandUseCase createIslandUseCase;
-    private final IslandLocationService locationService;
-    private final IslandLeaderboardService leaderboardService;
-    private final IslandSeasonService seasonService;
     private final BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter;
     private final IslandProtectionListener protectionListener;
-    private final BukkitBiomeAdapter biomeAdapter;
-    private final IslandMissionService missionService;
-    private final @Nullable IslandMissionsMenu missionsMenu;
-    private final @Nullable IslandMissionListener missionListener;
-    private final WorldBorderPacketAdapter worldBorderAdapter;
-    private final IslandBoundaryService boundaryService;
-    private final @Nullable IslandBoundaryListener boundaryListener;
-    private final IslandDimensionService dimensionService;
-    private final @Nullable IslandDimensionListener dimensionListener;
-    private final IslandLimitService limitService;
-    private final @Nullable IslandLimitListener limitListener;
-    private final @Nullable IslandLimitReconciler limitReconciler;
-    private final IslandNameService islandNameService;
-    private final KineticWardService kineticWardService;
-    private final KineticWardListener kineticWardListener;
-    private final ObsidianRecoveryListener obsidianRecoveryListener;
-    private final VoidProtectionListener voidProtectionListener;
-    private final CategoricalInteractablesListener categoricalInteractablesListener;
-    private final IslandRedstoneOptimizationListener redstoneOptimizationListener;
-    private final AsyncStructureSuppressionListener structureSuppressionListener;
 
+    private final GameplayCreationWiring creationWiring;
     private final AdminWiring adminWiring;
     private final EconomicWiring economicWiring;
     private final SocialWiring socialWiring;
-
-    public GameplayWiring(
-            JavaPlugin plugin,
-            ConfigurationWiring config,
-            PersistenceBootstrap persistence,
-            AuthorityWiring authority,
-            IslandProtectionListener protectionListener,
-            IslandAccessService accessService,
-            IslandAllianceService allianceService,
-            TemporaryAccessService temporaryAccessService,
-            BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter,
-            IslandAdminFreezeService freezeService,
-            SchedulerPort scheduler,
-            AdaptiveBackpressureController backpressureController,
-            Supplier<SkyblockEconomyBridge> economyBridgeSupplier) {
-        this(
-                plugin,
-                config,
-                persistence,
-                authority,
-                protectionListener,
-                accessService,
-                allianceService,
-                temporaryAccessService,
-                visitorEvictionAdapter,
-                freezeService,
-                scheduler,
-                backpressureController,
-                economyBridgeSupplier,
-                new LocalIslandChatTransportAdapter(),
-                new LocalFilesystemStorageAdapter(
-                        plugin.getDataFolder().toPath().resolve("backups")));
-    }
+    private final GameplayProtectionWiring protectionWiring;
+    private final GameplayEnvironmentWiring environmentWiring;
 
     public GameplayWiring(
             JavaPlugin plugin,
@@ -218,28 +156,16 @@ public final class GameplayWiring {
 
         String worldName = config.nodeConfig().worldName();
 
-        this.presetCatalog = new StarterPresetCatalog();
-        this.schematicEngine = new StarterSchematicEngine(this.backpressureController);
-        this.coordinateAllocator = new SpiralGridCoordinateAllocator();
-        this.gridService = new SpiralWorldGridService(coordinateAllocator);
-
-        this.createIslandUseCase = new CreateIslandUseCase(
-                persistence.islandStoragePort(),
-                persistence.islandAuthorityPort(),
-                persistence.islandBankPort(),
-                presetCatalog,
-                gridService,
-                persistence.worldGridAllocationPort(),
-                persistence.outboxPort());
-        this.locationService = new IslandLocationService(persistence.islandStoragePort());
-        this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());
         this.economicWiring = new EconomicWiring(
                 plugin, config, persistence, authority, protectionListener, scheduler, economyBridgeSupplier);
 
-        this.seasonService = new IslandSeasonService(
-                persistence.islandSeasonStoragePort(),
-                persistence.islandLeaderboardPort(),
-                persistence.islandStoragePort(),
+        this.creationWiring = new GameplayCreationWiring(
+                config,
+                persistence,
+                authority,
+                scheduler,
+                backpressureController,
+                accessService,
                 this.economicWiring.rewardInboxService());
 
         this.socialWiring = new SocialWiring(
@@ -263,91 +189,18 @@ public final class GameplayWiring {
                 this.backpressureController,
                 objectStorage);
 
-        this.biomeAdapter = new BukkitBiomeAdapter(persistence.islandStoragePort(), scheduler, worldName);
+        this.environmentWiring = new GameplayEnvironmentWiring(
+                config,
+                persistence,
+                authority,
+                protectionListener,
+                creationWiring.locationService(),
+                creationWiring.schematicEngine(),
+                scheduler,
+                worldName);
 
-        this.missionService = new IslandMissionService(persistence.islandMissionStoragePort());
-        if (config.moduleSettings().isModuleEnabled("missions")) {
-            this.missionService.registerMissions(config.missionConfig().missions());
-            this.missionsMenu = new IslandMissionsMenu(
-                    missionService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
-            this.missionListener = new IslandMissionListener(
-                    missionService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
-        } else {
-            this.missionsMenu = null;
-            this.missionListener = null;
-        }
-
-        this.worldBorderAdapter = new WorldBorderPacketAdapter(scheduler);
-        this.boundaryService = new IslandBoundaryService(worldBorderAdapter);
-        if (config.moduleSettings().isModuleEnabled("boundary")) {
-            this.boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, scheduler);
-            this.boundaryListener.setStopBorderCrossing(config.settingsConfig().stopBorderCrossing());
-        } else {
-            this.boundaryListener = null;
-        }
-
-        this.dimensionService = new IslandDimensionService(
-                persistence.islandUpgradeStoragePort(),
-                config.dimensionConfig().mappings(),
-                persistence.islandDimensionStoragePort());
-        this.dimensionListener = config.moduleSettings().isModuleEnabled("dimensions")
-                ? new IslandDimensionListener(
-                        this.dimensionService,
-                        locationService,
-                        schematicEngine,
-                        this.scheduler,
-                        p -> authority.sessionCoordinator().activeProfile(p.getUniqueId()),
-                        worldName)
-                : null;
-
-        boolean limitsEnabled = config.moduleSettings().isModuleEnabled("limits");
-        this.limitService = new IslandLimitService(
-                persistence.islandUpgradeStoragePort(), config.limitConfig().quotas());
-        this.limitListener = limitsEnabled
-                ? new IslandLimitListener(
-                        this.limitService,
-                        this.protectionListener,
-                        config.limitConfig().bypassPermission())
-                : null;
-        this.limitReconciler = limitsEnabled ? new IslandLimitReconciler(this.scheduler, this.limitService) : null;
-
-        this.islandNameService = new IslandNameService(
-                persistence.islandNameStoragePort(),
-                persistence.islandStoragePort(),
-                this.accessService,
-                persistence.outboxPort());
-
-        this.kineticWardService = new KineticWardService(
-                config.protectionConfig().kineticWardRadius(),
-                config.protectionConfig().kineticWardForce(),
-                config.protectionConfig().kineticWardVerticalLift());
-        this.kineticWardListener = new KineticWardListener(config.protectionConfig(), this.kineticWardService);
-
-        this.obsidianRecoveryListener = new ObsidianRecoveryListener(config.protectionConfig());
-        this.voidProtectionListener = new VoidProtectionListener(
-                config.protectionConfig(), config.settingsConfig(), this.protectionListener::findIslandAt);
-
-        this.categoricalInteractablesListener = new CategoricalInteractablesListener(
-                config.interactablesConfig(),
-                this.protectionListener::findIslandAt,
-                uuid -> authority
-                        .sessionCoordinator()
-                        .activeProfile(uuid.value())
-                        .orElse(null),
-                temporaryAccessService);
-        this.categoricalInteractablesListener.setNodeIdentitySupplier(authority::nodeProcessIdentity);
-        this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
-            PlayerSessionCoordinator.ActiveSession session =
-                    authority.sessionCoordinator().getActiveSession(uuid.value());
-            if (session == null || session.isFenced()) {
-                return Optional.empty();
-            }
-            return persistence.sessionAuthorityPort().findSession(uuid);
-        });
-
-        this.redstoneOptimizationListener =
-                new IslandRedstoneOptimizationListener(config.settingsConfig(), this.protectionListener::findIslandAt);
-        this.structureSuppressionListener = new AsyncStructureSuppressionListener(config.worldConfig());
+        this.protectionWiring = new GameplayProtectionWiring(
+                config, persistence, authority, protectionListener, temporaryAccessService);
     }
 
     public SchedulerPort scheduler() {
@@ -363,23 +216,23 @@ public final class GameplayWiring {
     }
 
     public StarterPresetCatalog presetCatalog() {
-        return presetCatalog;
+        return creationWiring.presetCatalog();
     }
 
     public StarterSchematicEngine schematicEngine() {
-        return schematicEngine;
+        return creationWiring.schematicEngine();
     }
 
     public SpiralGridCoordinateAllocator coordinateAllocator() {
-        return coordinateAllocator;
+        return creationWiring.coordinateAllocator();
     }
 
     public SpiralWorldGridService gridService() {
-        return gridService;
+        return creationWiring.gridService();
     }
 
     public CreateIslandUseCase createIslandUseCase() {
-        return createIslandUseCase;
+        return creationWiring.createIslandUseCase();
     }
 
     public AdminWiring adminWiring() {
@@ -395,7 +248,7 @@ public final class GameplayWiring {
     }
 
     public IslandLocationService locationService() {
-        return locationService;
+        return creationWiring.locationService();
     }
 
     public IslandBankService bankService() {
@@ -403,11 +256,11 @@ public final class GameplayWiring {
     }
 
     public IslandLeaderboardService leaderboardService() {
-        return leaderboardService;
+        return creationWiring.leaderboardService();
     }
 
     public IslandSeasonService seasonService() {
-        return seasonService;
+        return creationWiring.seasonService();
     }
 
     public IslandSocialService socialService() {
@@ -439,31 +292,31 @@ public final class GameplayWiring {
     }
 
     public BukkitBiomeAdapter biomeAdapter() {
-        return biomeAdapter;
+        return environmentWiring.biomeAdapter();
     }
 
     public IslandMissionService missionService() {
-        return missionService;
+        return creationWiring.missionService();
     }
 
     public @Nullable IslandMissionsMenu missionsMenu() {
-        return missionsMenu;
+        return creationWiring.missionsMenu();
     }
 
     public @Nullable IslandMissionListener missionListener() {
-        return missionListener;
+        return creationWiring.missionListener();
     }
 
     public WorldBorderPacketAdapter worldBorderAdapter() {
-        return worldBorderAdapter;
+        return environmentWiring.worldBorderAdapter();
     }
 
     public IslandBoundaryService boundaryService() {
-        return boundaryService;
+        return environmentWiring.boundaryService();
     }
 
     public @Nullable IslandBoundaryListener boundaryListener() {
-        return boundaryListener;
+        return environmentWiring.boundaryListener();
     }
 
     public FoliaIslandVoidingAdapter voidingAdapter() {
@@ -495,23 +348,23 @@ public final class GameplayWiring {
     }
 
     public IslandDimensionService dimensionService() {
-        return dimensionService;
+        return environmentWiring.dimensionService();
     }
 
     public @Nullable IslandDimensionListener dimensionListener() {
-        return dimensionListener;
+        return environmentWiring.dimensionListener();
     }
 
     public IslandLimitService limitService() {
-        return limitService;
+        return environmentWiring.limitService();
     }
 
     public @Nullable IslandLimitListener limitListener() {
-        return limitListener;
+        return environmentWiring.limitListener();
     }
 
     public @Nullable IslandLimitReconciler limitReconciler() {
-        return limitReconciler;
+        return environmentWiring.limitReconciler();
     }
 
     public IslandAntiAbuseService antiAbuseService() {
@@ -543,35 +396,35 @@ public final class GameplayWiring {
     }
 
     public IslandNameService islandNameService() {
-        return islandNameService;
+        return creationWiring.islandNameService();
     }
 
     public KineticWardService kineticWardService() {
-        return kineticWardService;
+        return protectionWiring.kineticWardService();
     }
 
     public KineticWardListener kineticWardListener() {
-        return kineticWardListener;
+        return protectionWiring.kineticWardListener();
     }
 
     public ObsidianRecoveryListener obsidianRecoveryListener() {
-        return obsidianRecoveryListener;
+        return protectionWiring.obsidianRecoveryListener();
     }
 
     public VoidProtectionListener voidProtectionListener() {
-        return voidProtectionListener;
+        return protectionWiring.voidProtectionListener();
     }
 
     public CategoricalInteractablesListener categoricalInteractablesListener() {
-        return categoricalInteractablesListener;
+        return protectionWiring.categoricalInteractablesListener();
     }
 
     public IslandRedstoneOptimizationListener redstoneOptimizationListener() {
-        return redstoneOptimizationListener;
+        return protectionWiring.redstoneOptimizationListener();
     }
 
     public AsyncStructureSuppressionListener structureSuppressionListener() {
-        return structureSuppressionListener;
+        return protectionWiring.structureSuppressionListener();
     }
 
     public RewardInboxService rewardInboxService() {
