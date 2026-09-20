@@ -233,13 +233,14 @@ public final class GameplayWiring {
                 persistence.outboxPort());
         this.locationService = new IslandLocationService(persistence.islandStoragePort());
         this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());
+        this.economicWiring = new EconomicWiring(
+                plugin, config, persistence, authority, protectionListener, scheduler, economyBridgeSupplier);
+
         this.seasonService = new IslandSeasonService(
                 persistence.islandSeasonStoragePort(),
                 persistence.islandLeaderboardPort(),
-                persistence.islandStoragePort());
-
-        this.economicWiring = new EconomicWiring(
-                plugin, config, persistence, authority, protectionListener, scheduler, economyBridgeSupplier);
+                persistence.islandStoragePort(),
+                this.economicWiring.rewardInboxService());
 
         this.socialWiring = new SocialWiring(
                 config,

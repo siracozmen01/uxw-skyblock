@@ -50,7 +50,8 @@ public final class SeasonFeatureModule extends AbstractFeatureModule {
 
         // Schedule periodic evaluation
         this.scheduledTask = scheduler.repeatAsync(
-                () -> seasonService.checkAndAdvanceSeason(Instant.now(), configuration.tierRewards()),
+                () -> seasonService.checkAndAdvanceSeason(
+                        Instant.now(), configuration.tierRewards(), configuration.typedTierRewards()),
                 Duration.ofSeconds(5),
                 configuration.checkInterval());
     }

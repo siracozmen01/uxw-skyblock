@@ -54,6 +54,72 @@ class SeasonConfigurationTest {
     }
 
     @Test
+    @DisplayName("loads typed season rewards correctly from structured HOCON")
+    void loadsTypedSeasonRewardsFromStructuredHocon() throws Exception {
+        String hocon = """
+                seasons {
+                  season-number = 3
+                  season-name = "Season 3 - Titan"
+                  duration = "7d"
+                  check-interval = "15s"
+                  rewards {
+                    1 = [
+                      {
+                        type = "SQL_CURRENCY"
+                        currency = "PRIMARY"
+                        amount = 1000000
+                      },
+                      {
+                        type = "EXTERNAL_VAULT"
+                        amount = 50000.0
+                      },
+                      {
+                        type = "ITEM"
+                        item = "NETHERITE_INGOT"
+                        amount = 8
+                      },
+                      {
+                        type = "PERMISSION"
+                        permission = "uxmskyblock.vip"
+                      },
+                      {
+                        type = "COSMETIC"
+                        cosmetic-id = "season_crown"
+                      }
+                    ]
+                  }
+                }
+                """;
+
+        ConfigurationNode root = HoconConfigurationLoader.builder().buildAndLoadString(hocon);
+        SeasonConfiguration config = SeasonConfiguration.load(root);
+
+        assertThat(config.typedTierRewards()).containsKey(1);
+        var drafts = java.util.Objects.requireNonNull(config.typedTierRewards().get(1));
+        assertThat(drafts).hasSize(5);
+
+        assertThat(drafts.get(0).componentType())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.SQL_CURRENCY);
+        assertThat(drafts.get(0).payloadData()).contains("1000000");
+
+        assertThat(drafts.get(1).componentType())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.EXTERNAL_VAULT);
+        assertThat(drafts.get(1).payloadData()).contains("50000");
+
+        assertThat(drafts.get(2).componentType())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.ITEM);
+        assertThat(drafts.get(2).payloadData()).contains("NETHERITE_INGOT");
+
+        assertThat(drafts.get(3).componentType())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.PERMISSION);
+        assertThat(drafts.get(3).payloadData()).contains("uxmskyblock.vip");
+
+        assertThat(drafts.get(4).componentType())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.COSMETIC);
+        assertThat(drafts.get(4).payloadData()).contains("season_crown");
+    }
+
+    @Test
     @DisplayName("rejects null configuration node")
     @SuppressWarnings("NullAway")
     void rejectsNullNode() {

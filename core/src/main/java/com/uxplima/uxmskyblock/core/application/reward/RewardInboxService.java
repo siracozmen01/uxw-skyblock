@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -46,16 +47,44 @@ public final class RewardInboxService {
             String sourceId,
             @Nullable Instant expiresAt,
             List<RewardDraftComponent> draftComponents) {
+        return issueReward(
+                RewardGrantId.random(), recipientProfileId, sourceType, sourceId, expiresAt, draftComponents);
+    }
+
+    /**
+     * Issues a new durable reward grant to a recipient profile with an explicit grant ID.
+     * If a grant with this ID already exists, it is returned idempotently without re-saving.
+     *
+     * @param grantId explicit grant ID
+     * @param recipientProfileId recipient profile ID
+     * @param sourceType source category (e.g. "SEASON_PAYOUT", "ADMIN_GRANT")
+     * @param sourceId external or business source ID
+     * @param expiresAt optional expiration timestamp
+     * @param draftComponents list of components to deliver
+     * @return persisted reward grant aggregate
+     */
+    public RewardGrant issueReward(
+            RewardGrantId grantId,
+            ProfileId recipientProfileId,
+            String sourceType,
+            String sourceId,
+            @Nullable Instant expiresAt,
+            List<RewardDraftComponent> draftComponents) {
+        Objects.requireNonNull(grantId, "grantId must not be null");
         Objects.requireNonNull(recipientProfileId, "recipientProfileId must not be null");
         Objects.requireNonNull(sourceType, "sourceType must not be null");
         Objects.requireNonNull(sourceId, "sourceId must not be null");
         Objects.requireNonNull(draftComponents, "draftComponents must not be null");
 
+        Optional<RewardGrant> existing = storagePort.findGrantById(grantId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
         if (draftComponents.isEmpty()) {
             throw new IllegalArgumentException("Cannot issue a reward grant with zero components");
         }
 
-        RewardGrantId grantId = RewardGrantId.random();
         Instant now = Instant.now();
 
         List<RewardGrantComponent> components = new ArrayList<>(draftComponents.size());

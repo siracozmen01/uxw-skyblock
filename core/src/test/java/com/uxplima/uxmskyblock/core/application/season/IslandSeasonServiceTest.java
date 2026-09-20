@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.core.application.season;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -178,6 +179,8 @@ class IslandSeasonServiceTest {
                 org.mockito.ArgumentCaptor.forClass(List.class);
         org.mockito.Mockito.verify(rewardInbox)
                 .issueReward(
+                        org.mockito.ArgumentMatchers.any(
+                                com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId.class),
                         org.mockito.ArgumentMatchers.eq(new ProfileId(leader.value())),
                         org.mockito.ArgumentMatchers.eq("SEASON_PAYOUT"),
                         org.mockito.ArgumentMatchers.eq("5:RANK_1"),
@@ -189,6 +192,110 @@ class IslandSeasonServiceTest {
         assertThat(drafts.get(0).componentType())
                 .isEqualTo(com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType.EXTERNAL_VAULT);
         assertThat(drafts.get(0).payloadData()).contains("1000000");
+    }
+
+    @Test
+    @DisplayName("correctly resolves distinct ProfileId when PlayerUuid != ProfileId")
+    void resolvesDistinctProfileId() {
+        com.uxplima.uxmskyblock.core.application.reward.RewardInboxService rewardInbox =
+                org.mockito.Mockito.mock(com.uxplima.uxmskyblock.core.application.reward.RewardInboxService.class);
+        IslandSeasonService serviceWithInbox =
+                new IslandSeasonService(storage, leaderboard, islandStorage, rewardInbox);
+
+        Instant start = Instant.now().minus(45, ChronoUnit.DAYS);
+        Instant end = Instant.now().minus(1, ChronoUnit.MINUTES);
+        SeasonId seasonId = SeasonId.of(6);
+
+        storage.saveSeason(new SeasonRecord(seasonId, "Season 6", start, end, SeasonState.ACTIVE));
+
+        IslandId isl = new IslandId(UUID.randomUUID());
+        PlayerUuid leaderPlayerUuid = new PlayerUuid(UUID.randomUUID());
+        ProfileId distinctProfileId = new ProfileId(UUID.randomUUID());
+        assertThat(distinctProfileId.value()).isNotEqualTo(leaderPlayerUuid.value());
+
+        Island island = Island.create(
+                isl, IslandBounds.fromCenterAndRadius(0, 0, 100), leaderPlayerUuid, distinctProfileId, Instant.now());
+        islandStorage.saveIsland(island, IslandLocation.fromCenterAndRadius(island.id(), "world", 0, 0, 100));
+
+        leaderboard.setLevelEntries(List.of(new LeaderboardEntry(1, isl, "Distinct Winner", 20000L, "20,000")));
+
+        Map<Integer, List<String>> tierRewards = Map.of(1, List.of("eco give %leader% 1000000"));
+
+        serviceWithInbox.checkAndAdvanceSeason(Instant.now(), tierRewards);
+
+        // Verify recipient is distinctProfileId, NOT leaderPlayerUuid
+        org.mockito.Mockito.verify(rewardInbox)
+                .issueReward(
+                        org.mockito.ArgumentMatchers.any(
+                                com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId.class),
+                        org.mockito.ArgumentMatchers.eq(distinctProfileId),
+                        org.mockito.ArgumentMatchers.eq("SEASON_PAYOUT"),
+                        org.mockito.ArgumentMatchers.eq("6:RANK_1"),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("resumes and completes interrupted season from FROZEN state safely")
+    void resumesFromFrozenStateSafely() {
+        com.uxplima.uxmskyblock.core.application.reward.RewardInboxService rewardInbox =
+                org.mockito.Mockito.mock(com.uxplima.uxmskyblock.core.application.reward.RewardInboxService.class);
+        IslandSeasonService serviceWithInbox =
+                new IslandSeasonService(storage, leaderboard, islandStorage, rewardInbox);
+
+        Instant start = Instant.now().minus(45, ChronoUnit.DAYS);
+        Instant end = Instant.now().minus(1, ChronoUnit.MINUTES);
+        SeasonId seasonId = SeasonId.of(7);
+
+        // Interrupted season in FROZEN state
+        storage.saveSeason(new SeasonRecord(seasonId, "Season 7", start, end, SeasonState.FROZEN));
+
+        IslandId isl = new IslandId(UUID.randomUUID());
+        PlayerUuid leader = new PlayerUuid(UUID.randomUUID());
+        ProfileId profileId = new ProfileId(UUID.randomUUID());
+        Island island =
+                Island.create(isl, IslandBounds.fromCenterAndRadius(0, 0, 100), leader, profileId, Instant.now());
+        islandStorage.saveIsland(island, IslandLocation.fromCenterAndRadius(island.id(), "world", 0, 0, 100));
+
+        leaderboard.setLevelEntries(List.of(new LeaderboardEntry(1, isl, "Resumed Winner", 15000L, "15,000")));
+        Map<Integer, List<String>> tierRewards = Map.of(1, List.of("eco give %leader% 500000"));
+
+        serviceWithInbox.checkAndAdvanceSeason(Instant.now(), tierRewards);
+
+        // Should have completed the season
+        Optional<SeasonRecord> season = storage.findSeason(seasonId);
+        assertThat(season).isPresent();
+        assertThat(season.get().state()).isEqualTo(SeasonState.COMPLETED);
+
+        // Payout should have been issued
+        org.mockito.Mockito.verify(rewardInbox)
+                .issueReward(
+                        org.mockito.ArgumentMatchers.any(
+                                com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId.class),
+                        org.mockito.ArgumentMatchers.eq(profileId),
+                        org.mockito.ArgumentMatchers.eq("SEASON_PAYOUT"),
+                        org.mockito.ArgumentMatchers.eq("7:RANK_1"),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("dispatchPendingPayouts does not mark dispatched when executor fails")
+    void dispatchPendingPayoutsDoesNotMarkDispatchedOnFailure() {
+        SeasonId seasonId = SeasonId.of(1);
+        PlayerUuid leader = new PlayerUuid(UUID.randomUUID());
+        storage.queuePayout(new SeasonPayoutRecord(
+                "payout-err", seasonId, leader, "fail-cmd", SeasonPayoutState.PENDING, Instant.now(), null));
+
+        assertThatThrownBy(() -> seasonService.dispatchPendingPayouts(leader, cmd -> {
+                    throw new RuntimeException("Command execution failed");
+                }))
+                .isInstanceOf(RuntimeException.class);
+
+        // Payout must still be PENDING in storage
+        List<SeasonPayoutRecord> pending = storage.findPendingPayouts(leader);
+        assertThat(pending).hasSize(1);
+        assertThat(pending.get(0).state()).isEqualTo(SeasonPayoutState.PENDING);
     }
 
     @Test

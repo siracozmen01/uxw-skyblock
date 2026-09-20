@@ -75,8 +75,16 @@ public final class IslandSeasonService {
     }
 
     public synchronized void checkAndAdvanceSeason(Instant now, Map<Integer, List<String>> tierRewardActions) {
+        checkAndAdvanceSeason(now, tierRewardActions, Map.of());
+    }
+
+    public synchronized void checkAndAdvanceSeason(
+            Instant now,
+            Map<Integer, List<String>> tierRewardActions,
+            Map<Integer, List<RewardDraftComponent>> typedTierRewards) {
         Objects.requireNonNull(now, "now must not be null");
         Objects.requireNonNull(tierRewardActions, "tierRewardActions must not be null");
+        Objects.requireNonNull(typedTierRewards, "typedTierRewards must not be null");
 
         Optional<SeasonRecord> optActive = storage.findActiveSeason();
         if (optActive.isEmpty()) {
@@ -84,39 +92,61 @@ public final class IslandSeasonService {
         }
 
         SeasonRecord active = optActive.get();
-        if (active.state() != SeasonState.ACTIVE || now.isBefore(active.endsAt())) {
+        if (active.state() != SeasonState.ACTIVE && active.state() != SeasonState.FROZEN) {
             return;
         }
 
-        // 1. Cluster-safe CAS transition ACTIVE -> FROZEN.
-        // Prevents split-brain duplicate rotation across multiple cluster nodes.
-        if (!storage.transitionSeasonState(active.id(), SeasonState.ACTIVE, SeasonState.FROZEN)) {
-            return;
-        }
-
-        // 2. Take immutable snapshots across tracked metrics
-        List<SeasonSnapshotEntry> allSnapshots = new ArrayList<>();
-        for (SeasonMetric metric : SeasonMetric.values()) {
-            LeaderboardCategory category = LeaderboardCategory.valueOf(metric.name());
-            List<LeaderboardEntry> entries = leaderboard.fetchTopIslands(category, 100);
-
-            for (LeaderboardEntry entry : entries) {
-                PlayerUuid ownerUuid = resolveOwner(entry);
-                allSnapshots.add(new SeasonSnapshotEntry(
-                        active.id(), metric, entry.rank(), entry.islandId(), ownerUuid, entry.score(), now));
+        if (active.state() == SeasonState.ACTIVE) {
+            if (now.isBefore(active.endsAt())) {
+                return;
+            }
+            // 1. Cluster-safe CAS transition ACTIVE -> FROZEN.
+            // Prevents split-brain duplicate rotation across multiple cluster nodes.
+            if (!storage.transitionSeasonState(active.id(), SeasonState.ACTIVE, SeasonState.FROZEN)) {
+                return;
             }
         }
-        storage.saveSnapshots(allSnapshots);
+
+        // 2. Take immutable snapshots across tracked metrics (or reuse existing if crash recovering)
+        List<SeasonSnapshotEntry> existingSnapshots = storage.findSnapshots(active.id(), SeasonMetric.LEVEL, 100);
+        List<SeasonSnapshotEntry> allSnapshots;
+        if (existingSnapshots.isEmpty()) {
+            allSnapshots = new ArrayList<>();
+            for (SeasonMetric metric : SeasonMetric.values()) {
+                LeaderboardCategory category = LeaderboardCategory.valueOf(metric.name());
+                List<LeaderboardEntry> entries = leaderboard.fetchTopIslands(category, 100);
+
+                for (LeaderboardEntry entry : entries) {
+                    PlayerUuid ownerUuid = resolveOwner(entry);
+                    allSnapshots.add(new SeasonSnapshotEntry(
+                            active.id(), metric, entry.rank(), entry.islandId(), ownerUuid, entry.score(), now));
+                }
+            }
+            storage.saveSnapshots(allSnapshots);
+        } else {
+            allSnapshots = new ArrayList<>();
+            for (SeasonMetric metric : SeasonMetric.values()) {
+                allSnapshots.addAll(storage.findSnapshots(active.id(), metric, 100));
+            }
+        }
 
         // 3. Queue reward payouts for ranked placements (primary metric LEVEL)
         for (SeasonSnapshotEntry snapshot : allSnapshots) {
             if (snapshot.metric() == SeasonMetric.LEVEL) {
+                ProfileId recipientProfileId = resolveOwnerProfile(snapshot);
+
+                List<RewardDraftComponent> draftComponents = new ArrayList<>();
+                List<RewardDraftComponent> configuredDrafts = typedTierRewards.get(snapshot.rank());
+                if (configuredDrafts != null && !configuredDrafts.isEmpty()) {
+                    draftComponents.addAll(configuredDrafts);
+                }
+
                 List<String> actions = tierRewardActions.get(snapshot.rank());
                 if (actions != null && !actions.isEmpty()) {
-                    List<com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent> draftComponents =
-                            new ArrayList<>();
-                    for (String action : actions) {
-                        String payoutId = UUID.randomUUID().toString();
+                    for (int i = 0; i < actions.size(); i++) {
+                        String action = actions.get(i);
+                        String payoutId = "season-" + active.id().number() + "-rank-" + snapshot.rank() + "-"
+                                + recipientProfileId.value() + (actions.size() > 1 ? "-" + i : "");
                         storage.queuePayout(new SeasonPayoutRecord(
                                 payoutId,
                                 active.id(),
@@ -126,26 +156,33 @@ public final class IslandSeasonService {
                                 now,
                                 null));
 
-                        var draft = parseRewardAction(action);
-                        if (draft != null) {
-                            draftComponents.add(draft);
+                        if (draftComponents.isEmpty()) {
+                            var draft = parseRewardAction(action);
+                            if (draft != null) {
+                                draftComponents.add(draft);
+                            }
                         }
                     }
+                }
 
-                    if (rewardInboxService != null && !draftComponents.isEmpty()) {
-                        try {
-                            ProfileId recipient =
-                                    new ProfileId(snapshot.ownerUuid().value());
-                            rewardInboxService.issueReward(
-                                    recipient,
-                                    "SEASON_PAYOUT",
-                                    active.id().number() + ":RANK_" + snapshot.rank(),
-                                    now.plus(java.time.Duration.ofDays(30)),
-                                    draftComponents);
-                        } catch (Exception expected) {
-                            // Payout is already recorded in durable season storage; reward inbox delivery is
-                            // best-effort on rotation
-                        }
+                if (rewardInboxService != null && !draftComponents.isEmpty()) {
+                    try {
+                        UUID grantUuid =
+                                UUID.nameUUIDFromBytes(("season:" + active.id().number() + ":rank:" + snapshot.rank()
+                                                + ":recipient:" + recipientProfileId.value())
+                                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId grantId =
+                                com.uxplima.uxmskyblock.core.domain.reward.RewardGrantId.of(grantUuid);
+                        rewardInboxService.issueReward(
+                                grantId,
+                                recipientProfileId,
+                                "SEASON_PAYOUT",
+                                active.id().number() + ":RANK_" + snapshot.rank(),
+                                now.plus(java.time.Duration.ofDays(30)),
+                                draftComponents);
+                    } catch (Exception expected) {
+                        // Payout is already recorded in durable season storage; reward inbox delivery is
+                        // best-effort on rotation
                     }
                 }
             }
@@ -153,6 +190,17 @@ public final class IslandSeasonService {
 
         // 4. Complete season
         storage.transitionSeasonState(active.id(), SeasonState.FROZEN, SeasonState.COMPLETED);
+    }
+
+    public List<SeasonPayoutRecord> getPendingPayouts(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        return storage.findPendingPayouts(playerUuid);
+    }
+
+    public void markPayoutDispatched(String payoutId, Instant dispatchedAt) {
+        Objects.requireNonNull(payoutId, "payoutId must not be null");
+        Objects.requireNonNull(dispatchedAt, "dispatchedAt must not be null");
+        storage.markPayoutDispatched(payoutId, dispatchedAt);
     }
 
     public List<String> claimPendingPayouts(PlayerUuid playerUuid) {
@@ -169,6 +217,22 @@ public final class IslandSeasonService {
         return actions;
     }
 
+    public int dispatchPendingPayouts(PlayerUuid playerUuid, java.util.function.Consumer<String> actionExecutor) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        Objects.requireNonNull(actionExecutor, "actionExecutor must not be null");
+        List<SeasonPayoutRecord> pending = storage.findPendingPayouts(playerUuid);
+        int dispatchedCount = 0;
+        Instant now = Instant.now();
+
+        for (SeasonPayoutRecord payout : pending) {
+            actionExecutor.accept(payout.rewardAction());
+            storage.markPayoutDispatched(payout.payoutId(), now);
+            dispatchedCount++;
+        }
+
+        return dispatchedCount;
+    }
+
     private PlayerUuid resolveOwner(LeaderboardEntry entry) {
         if (islandStorage != null) {
             Optional<Island> optIsland = islandStorage.findIslandById(entry.islandId());
@@ -177,6 +241,16 @@ public final class IslandSeasonService {
             }
         }
         return new PlayerUuid(entry.islandId().value());
+    }
+
+    private ProfileId resolveOwnerProfile(SeasonSnapshotEntry snapshot) {
+        if (islandStorage != null) {
+            Optional<Island> optIsland = islandStorage.findIslandById(snapshot.islandId());
+            if (optIsland.isPresent()) {
+                return optIsland.get().ownerProfileId();
+            }
+        }
+        return new ProfileId(snapshot.ownerUuid().value());
     }
 
     private static @Nullable RewardDraftComponent parseRewardAction(String action) {
