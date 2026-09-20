@@ -1,7 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,7 +14,6 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 
@@ -83,20 +81,10 @@ public final class AuthorityWiring implements AutoCloseable {
         protectionListener.setNodeIdentitySupplier(() -> identity);
         protectionListener.setSessionRecordProvider(uuid -> {
             PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(uuid.value());
-            if (session == null) {
+            if (session == null || session.isFenced()) {
                 return Optional.empty();
             }
-            return Optional.of(new PlayerSessionRecord(
-                    uuid,
-                    session.activeProfileId(),
-                    serverNodeId,
-                    session.sessionEpoch(),
-                    session.state(),
-                    Instant.now().plusSeconds(60),
-                    session.lastDurableVersion(),
-                    null,
-                    null,
-                    null));
+            return persistenceBootstrap.sessionAuthorityPort().findSession(uuid);
         });
 
         return new AuthorityWiring(serverNodeId, identity, switchProfile, coordinator, listener);

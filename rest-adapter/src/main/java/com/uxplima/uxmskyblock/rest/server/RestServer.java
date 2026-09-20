@@ -185,6 +185,12 @@ public final class RestServer implements AutoCloseable {
         ctx.status(HttpStatus.OK).json(response);
     }
 
+    public record IdempotentDepositRecord(
+            IslandId islandId, long amount, String reason, HttpStatus status, Map<String, Object> responseBody) {}
+
+    private final java.util.concurrent.ConcurrentMap<String, IdempotentDepositRecord> idempotencyCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private void handleBankDeposit(Context ctx) {
         String rawId = ctx.pathParam("id");
         IslandId islandId;
@@ -216,23 +222,57 @@ public final class RestServer implements AutoCloseable {
 
         String reason = body.has("reason") ? body.get("reason").getAsString() : "web_store_deposit";
 
-        PlayerUuid systemActor = PlayerUuid.of(new UUID(0L, 0L));
+        String rawIdempotencyKey = ctx.header("Idempotency-Key");
+        String idempotencyKey =
+                (rawIdempotencyKey != null && !rawIdempotencyKey.isBlank()) ? rawIdempotencyKey.trim() : null;
+
+        if (idempotencyKey != null) {
+            IdempotentDepositRecord cached = idempotencyCache.get(idempotencyKey);
+            if (cached != null) {
+                if (cached.islandId().equals(islandId)
+                        && cached.amount() == amount
+                        && Objects.equals(cached.reason(), reason)) {
+                    // Replay cached response
+                    ctx.status(cached.status()).json(cached.responseBody());
+                    return;
+                } else {
+                    // Conflict detected
+                    ctx.status(HttpStatus.CONFLICT)
+                            .json(Map.of(
+                                    "error",
+                                    "Idempotency conflict: request payload differs from original request for key "
+                                            + idempotencyKey,
+                                    "idempotencyKey",
+                                    idempotencyKey));
+                    return;
+                }
+            }
+        }
+
         BankTransactionOutcome outcome =
-                bankService.depositToIsland(islandId, systemActor, amount, reason, serverNodeId);
+                bankService.depositToIsland(islandId, PlayerUuid.WEBSTORE, amount, reason, serverNodeId);
         if (outcome instanceof BankTransactionOutcome.Success success) {
-            ctx.status(HttpStatus.OK)
-                    .json(Map.of(
-                            "status", "SUCCESS",
-                            "islandId", islandId.value().toString(),
-                            "newBalanceMinorUnits", success.updatedBank().primaryBalanceMinorUnits(),
-                            "transactionId",
-                                    success.transaction().transactionId().toString()));
+            Map<String, Object> resp = Map.of(
+                    "status", "SUCCESS",
+                    "islandId", islandId.value().toString(),
+                    "newBalanceMinorUnits", success.updatedBank().primaryBalanceMinorUnits(),
+                    "transactionId", success.transaction().transactionId().toString());
+            if (idempotencyKey != null) {
+                idempotencyCache.put(
+                        idempotencyKey, new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
+            }
+            ctx.status(HttpStatus.OK).json(resp);
         } else {
-            ctx.status(HttpStatus.UNPROCESSABLE_CONTENT)
-                    .json(Map.of(
-                            "status", "FAILED",
-                            "islandId", islandId.value().toString(),
-                            "error", outcome.toString()));
+            Map<String, Object> resp = Map.of(
+                    "status", "FAILED",
+                    "islandId", islandId.value().toString(),
+                    "error", outcome.toString());
+            if (idempotencyKey != null) {
+                idempotencyCache.put(
+                        idempotencyKey,
+                        new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.UNPROCESSABLE_CONTENT, resp));
+            }
+            ctx.status(HttpStatus.UNPROCESSABLE_CONTENT).json(resp);
         }
     }
 

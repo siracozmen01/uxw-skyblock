@@ -13,11 +13,14 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
+import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandVoidingPort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Platform adapter executing asynchronous Folia-native chunk voiding, entity evacuation,
@@ -26,13 +29,10 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
 
     private final SchedulerPort schedulerPort;
-    private final com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
-            backpressureController;
+    private final @Nullable AdaptiveBackpressureController backpressureController;
 
     public FoliaIslandVoidingAdapter(
-            SchedulerPort schedulerPort,
-            com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
-                    backpressureController) {
+            SchedulerPort schedulerPort, @Nullable AdaptiveBackpressureController backpressureController) {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.backpressureController = backpressureController;
     }
@@ -41,11 +41,12 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
         this(schedulerPort, null);
     }
 
-    public com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController backpressureController() {
+    public @Nullable AdaptiveBackpressureController backpressureController() {
         return backpressureController;
     }
 
     @Override
+    @SuppressWarnings("EmptyCatch")
     public CompletableFuture<Void> voidIslandChunks(IslandId islandId, String worldName, IslandBounds bounds) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(worldName, "worldName must not be null");
@@ -76,10 +77,24 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                         Location spawn = world.getSpawnLocation();
 
                         // 1. Evacuate online players from this chunk
+                        List<CompletableFuture<Boolean>> playerTeleports = new ArrayList<>();
                         for (Entity entity : chunk.getEntities()) {
                             if (entity instanceof Player player) {
                                 if (player.isOnline()) {
-                                    var unused = player.teleportAsync(spawn);
+                                    player.setVelocity(new Vector(0, 0, 0));
+                                    player.setFallDistance(0.0f);
+                                    CompletableFuture<Boolean> tpFuture = player.teleportAsync(spawn)
+                                            .whenComplete((success, ex) -> {
+                                                if (ex == null && Boolean.TRUE.equals(success)) {
+                                                    try {
+                                                        player.setVelocity(new Vector(0, 0, 0));
+                                                        player.setFallDistance(0.0f);
+                                                    } catch (Exception ignored) {
+                                                        // Ignore if player disconnected
+                                                    }
+                                                }
+                                            });
+                                    playerTeleports.add(tpFuture);
                                 }
                             } else {
                                 entity.remove();
@@ -104,7 +119,13 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                                 }
                             }
                         }
-                        chunkFuture.complete(null);
+
+                        if (playerTeleports.isEmpty()) {
+                            chunkFuture.complete(null);
+                        } else {
+                            var unused = CompletableFuture.allOf(playerTeleports.toArray(CompletableFuture<?>[]::new))
+                                    .whenComplete((res, ex) -> chunkFuture.complete(null));
+                        }
                     } catch (Throwable t) {
                         chunkFuture.completeExceptionally(t);
                     }

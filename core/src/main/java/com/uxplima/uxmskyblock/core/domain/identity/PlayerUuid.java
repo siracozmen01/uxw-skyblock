@@ -17,6 +17,13 @@ public record PlayerUuid(UUID value) implements Comparable<PlayerUuid> {
         Objects.requireNonNull(value, "value must not be null");
     }
 
+    public static final PlayerUuid SYSTEM =
+            new PlayerUuid(UUID.nameUUIDFromBytes("uxm:system".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    public static final PlayerUuid WEBSTORE =
+            new PlayerUuid(UUID.nameUUIDFromBytes("uxm:webstore".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    public static final PlayerUuid UPKEEP = new PlayerUuid(
+            UUID.nameUUIDFromBytes("island-upkeep-actor".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
     public static PlayerUuid of(UUID value) {
         return new PlayerUuid(value);
     }

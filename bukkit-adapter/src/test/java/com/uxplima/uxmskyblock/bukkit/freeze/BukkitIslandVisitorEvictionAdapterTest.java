@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.freeze;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -28,6 +29,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class BukkitIslandVisitorEvictionAdapterTest {
 
@@ -142,6 +144,51 @@ class BukkitIslandVisitorEvictionAdapterTest {
         adapter.evictNonStaffVisitors(islandId, "Quarantine investigation");
 
         verify(visitor, never()).teleportAsync(any());
+    }
+
+    @Test
+    @DisplayName("resolves configured evacuation world and formats message via MessageProvider")
+    void configuredEvacuationWorldAndLocalizedMessage() {
+        World customWorld = mock(World.class);
+        when(customWorld.getName()).thenReturn("lobby_world");
+        Location customSpawn = new Location(customWorld, 100, 70, 100);
+        when(customWorld.getSpawnLocation()).thenReturn(customSpawn);
+        when(server.getWorld("lobby_world")).thenReturn(customWorld);
+
+        com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider messageProvider =
+                new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en");
+        messageProvider.loadBundledDefaults(getClass().getClassLoader());
+
+        adapter.setEvacuationWorldName("lobby_world");
+        adapter.setMessageProvider(messageProvider);
+
+        IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 100);
+        IslandLocation location = new IslandLocation(islandId, "skyblock_world", bounds, 0, 100, 0, 0, 0);
+        when(storagePort.findLocationByIslandId(islandId)).thenReturn(Optional.of(location));
+
+        Player visitor = mock(Player.class);
+        UUID visitorUuid = UUID.randomUUID();
+        when(visitor.getUniqueId()).thenReturn(visitorUuid);
+        when(visitor.isOnline()).thenReturn(true);
+        when(visitor.isOp()).thenReturn(false);
+        when(visitor.hasPermission(any(String.class))).thenReturn(false);
+        when(visitor.locale()).thenReturn(java.util.Locale.forLanguageTag("tr"));
+
+        Location playerLoc = new Location(testWorld, 10, 100, 10);
+        when(visitor.getLocation()).thenReturn(playerLoc);
+        when(visitor.teleportAsync(customSpawn)).thenReturn(CompletableFuture.completedFuture(true));
+
+        doReturn(List.of(visitor)).when(server).getOnlinePlayers();
+
+        adapter.evictNonStaffVisitors(islandId, "Hile şüphesi");
+
+        verify(visitor).teleportAsync(customSpawn);
+        ArgumentCaptor<net.kyori.adventure.text.Component> msgCaptor =
+                ArgumentCaptor.forClass(net.kyori.adventure.text.Component.class);
+        verify(visitor).sendMessage(msgCaptor.capture());
+        String serialized = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(msgCaptor.getValue());
+        assertThat(serialized).contains("KARANTİNA").contains("Hile şüphesi");
     }
 
     private static class DirectScheduler implements SchedulerPort {

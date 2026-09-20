@@ -90,12 +90,31 @@ public final class IntegrationWiring implements AutoCloseable {
         this.serverNodeId = config.nodeConfig().nodeId();
         String worldName = config.nodeConfig().worldName();
 
+        this.messageProvider = new MessageProvider("en");
+        this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
+        File messagesDir = new File(plugin.getDataFolder(), "messages");
+        if (messagesDir.exists() && messagesDir.isDirectory()) {
+            File[] files = messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
+            if (files != null) {
+                for (File file : files) {
+                    String name = file.getName();
+                    String locale = name.substring("messages_".length(), name.length() - ".conf".length());
+                    try {
+                        this.messageProvider.loadFromFile(locale, file.toPath());
+                    } catch (Exception e) {
+                        plugin.getLogger()
+                                .warning("Failed loading custom message file " + file + ": " + e.getMessage());
+                    }
+                }
+            }
+        }
+
         this.economyBridge = SkyblockEconomyBridge.createDefault(
                 gameplay.bankService(), gameplay.scheduler(), persistence.economySagaPort());
 
         this.bedrockDetector = BedrockDetector.forServer(plugin.getServer());
         this.bedrockScreen = BedrockScreen.forServer(plugin.getServer());
-        this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen);
+        this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen, this.messageProvider);
         gameplay.resetConfirmationMenu().setBedrockFormService(this.bedrockFormService);
 
         this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin, persistence.islandStoragePort());
@@ -140,25 +159,6 @@ public final class IntegrationWiring implements AutoCloseable {
                 config.discordConfig().botUsername(),
                 config.discordConfig().avatarUrl(),
                 config.discordConfig().rateLimitPerSecond());
-
-        this.messageProvider = new MessageProvider("en");
-        this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
-        File messagesDir = new File(plugin.getDataFolder(), "messages");
-        if (messagesDir.exists() && messagesDir.isDirectory()) {
-            File[] files = messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
-            if (files != null) {
-                for (File file : files) {
-                    String name = file.getName();
-                    String locale = name.substring("messages_".length(), name.length() - ".conf".length());
-                    try {
-                        this.messageProvider.loadFromFile(locale, file.toPath());
-                    } catch (Exception e) {
-                        plugin.getLogger()
-                                .warning("Failed loading custom message file " + file + ": " + e.getMessage());
-                    }
-                }
-            }
-        }
 
         this.commandTree = new IslandCommandTree(
                 gameplay.createIslandUseCase(),

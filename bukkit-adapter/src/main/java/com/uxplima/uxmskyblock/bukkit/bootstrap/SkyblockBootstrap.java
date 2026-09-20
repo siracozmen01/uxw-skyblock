@@ -159,7 +159,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         TemporaryAccessService temporaryAccessService =
                 new TemporaryAccessService(persistenceWiring.bootstrap().temporaryAccessStoragePort());
         BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter = new BukkitIslandVisitorEvictionAdapter(
-                plugin, persistenceWiring.bootstrap().islandStoragePort(), scheduler);
+                plugin,
+                persistenceWiring.bootstrap().islandStoragePort(),
+                scheduler,
+                configWiring.nodeConfig().worldName(),
+                null);
         IslandAdminFreezeService freezeService = new IslandAdminFreezeService(
                 persistenceWiring.bootstrap().islandStoragePort(),
                 persistenceWiring.bootstrap().islandAdminFreezePort(),
@@ -208,6 +212,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 gameplayWiring,
                 clusterTransportWiring);
         economyBridgeRef.set(this.integrationWiring.economyBridge());
+        visitorEvictionAdapter.setMessageProvider(this.integrationWiring.messageProvider());
 
         this.featureModuleWiring =
                 new FeatureModuleWiring(configWiring, persistenceWiring.bootstrap(), gameplayWiring, integrationWiring);
@@ -989,6 +994,13 @@ public final class SkyblockBootstrap implements AutoCloseable {
         this(plugin, persistenceBootstrap, nodeConfiguration, PlayerStateDurabilityConfig.defaultPolicy());
     }
 
+    /**
+     * @deprecated Unsafe for clustered multi-server deployments because it uses a default fallback node identity
+     *             ("skyblock-node-default"). Use {@link #createDefault(JavaPlugin)} or specify an explicit
+     *             {@link ServerNodeConfiguration}.
+     */
+    @Deprecated
+    @SuppressWarnings("InlineMeSuggester")
     public SkyblockBootstrap(JavaPlugin plugin, PersistenceBootstrap persistenceBootstrap) {
         this(plugin, persistenceBootstrap, ServerNodeConfiguration.of("skyblock-node-default", "world"));
     }

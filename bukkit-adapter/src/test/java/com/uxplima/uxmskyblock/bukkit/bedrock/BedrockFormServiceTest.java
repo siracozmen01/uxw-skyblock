@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -123,5 +124,41 @@ class BedrockFormServiceTest {
         assertThat(savedFlags.get()).isNotNull();
         assertThat(savedFlags.get().isEnabled(IslandFlags.PVP)).isTrue();
         assertThat(savedFlags.get().isEnabled(IslandFlags.FIRE_SPREAD)).isTrue();
+    }
+
+    @Test
+    @DisplayName("openIslandControlForm uses MessageProvider localization based on player locale")
+    void testLocalizedBedrockForms() {
+        com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider messageProvider =
+                new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en");
+        messageProvider.loadBundledDefaults(getClass().getClassLoader());
+        BedrockFormService localizedService = new BedrockFormService(detector, screen, messageProvider);
+
+        Player trPlayer = mock(Player.class);
+        when(trPlayer.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(trPlayer.locale()).thenReturn(java.util.Locale.forLanguageTag("tr"));
+
+        Island island = Island.create(
+                IslandId.of(UUID.randomUUID()),
+                IslandBounds.fromCenterAndRadius(0, 0, 100),
+                PlayerUuid.of(UUID.randomUUID()),
+                new ProfileId(UUID.randomUUID()),
+                Instant.now());
+
+        localizedService.openIslandControlForm(trPlayer, island, null, null, null, null, null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<com.uxplima.uxmlib.bedrock.BedrockButton>> buttonCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(screen)
+                .sendSimpleForm(
+                        eq(trPlayer),
+                        eq("Ada Kontrol Paneli"),
+                        eq("Ada ayarlarınızı, kasanızı ve ışınlanma noktalarınızı yönetin."),
+                        buttonCaptor.capture(),
+                        any());
+
+        assertThat(buttonCaptor.getValue().get(0).text()).isEqualTo("§aAda Evi");
+        assertThat(buttonCaptor.getValue().get(1).text()).isEqualTo("§bIşınlanma Noktaları");
     }
 }

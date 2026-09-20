@@ -10,7 +10,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandVisitorEvictionPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -28,6 +30,8 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     private final Plugin plugin;
     private final IslandStoragePort islandStoragePort;
     private final SchedulerPort schedulerPort;
+    private volatile @Nullable String evacuationWorldName;
+    private volatile @Nullable MessageProvider messageProvider;
 
     public record EvictionPlan(
             IslandId islandId,
@@ -37,9 +41,36 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
 
     public BukkitIslandVisitorEvictionAdapter(
             Plugin plugin, IslandStoragePort islandStoragePort, SchedulerPort schedulerPort) {
+        this(plugin, islandStoragePort, schedulerPort, null, null);
+    }
+
+    public BukkitIslandVisitorEvictionAdapter(
+            Plugin plugin,
+            IslandStoragePort islandStoragePort,
+            SchedulerPort schedulerPort,
+            @Nullable String evacuationWorldName,
+            @Nullable MessageProvider messageProvider) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.evacuationWorldName = evacuationWorldName;
+        this.messageProvider = messageProvider;
+    }
+
+    public void setEvacuationWorldName(@Nullable String evacuationWorldName) {
+        this.evacuationWorldName = evacuationWorldName;
+    }
+
+    public void setMessageProvider(@Nullable MessageProvider messageProvider) {
+        this.messageProvider = messageProvider;
+    }
+
+    public @Nullable String evacuationWorldName() {
+        return evacuationWorldName;
+    }
+
+    public @Nullable MessageProvider messageProvider() {
+        return messageProvider;
     }
 
     @Override
@@ -59,10 +90,16 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     }
 
     private void executeEvictionPlan(EvictionPlan plan) {
-        World defaultWorld = plugin.getServer().getWorlds().isEmpty()
-                ? null
-                : plugin.getServer().getWorlds().get(0);
-        Location spawnLocation = defaultWorld != null ? defaultWorld.getSpawnLocation() : null;
+        World evacuationWorld = null;
+        if (evacuationWorldName != null && !evacuationWorldName.isBlank()) {
+            evacuationWorld = plugin.getServer().getWorld(evacuationWorldName);
+        }
+        if (evacuationWorld == null) {
+            evacuationWorld = plugin.getServer().getWorlds().isEmpty()
+                    ? null
+                    : plugin.getServer().getWorlds().get(0);
+        }
+        Location spawnLocation = evacuationWorld != null ? evacuationWorld.getSpawnLocation() : null;
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             if (isStaffOrBypass(player)) {
@@ -87,14 +124,32 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
                             }
                         });
                     }
-                    player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<red><bold>QUARANTINE:</bold> This island has been placed under administrative freeze. "
-                                            + "Reason: <yellow>"
-                                            + (plan.reason() != null ? plan.reason() : "Administrative quarantine")
-                                            + "</yellow></red>"));
+                    sendFrozenNotice(player, plan.reason());
                 }
             });
+        }
+    }
+
+    @SuppressWarnings("EmptyCatch")
+    private void sendFrozenNotice(Player player, @Nullable String reason) {
+        String reasonText = reason != null ? reason : "Administrative quarantine";
+        if (messageProvider != null) {
+            String locale = "en";
+            try {
+                if (player.locale() != null) {
+                    locale = player.locale().getLanguage();
+                }
+            } catch (Throwable ignored) {
+            }
+            player.sendMessage(messageProvider.getComponent(
+                    "error.island_frozen", locale, Placeholder.parsed("reason", reasonText)));
+        } else {
+            player.sendMessage(MiniMessage.miniMessage()
+                    .deserialize(
+                            "<red><bold>QUARANTINE:</bold> This island has been placed under administrative freeze. "
+                                    + "Reason: <yellow>"
+                                    + reasonText
+                                    + "</yellow></red>"));
         }
     }
 

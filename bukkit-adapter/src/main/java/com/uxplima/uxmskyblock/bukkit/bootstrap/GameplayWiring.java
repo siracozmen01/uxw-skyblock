@@ -1,6 +1,5 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -86,7 +85,6 @@ import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
-import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
@@ -482,20 +480,10 @@ public final class GameplayWiring {
         this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
             PlayerSessionCoordinator.ActiveSession session =
                     authority.sessionCoordinator().getActiveSession(uuid.value());
-            if (session == null) {
+            if (session == null || session.isFenced()) {
                 return Optional.empty();
             }
-            return Optional.of(new PlayerSessionRecord(
-                    uuid,
-                    session.activeProfileId(),
-                    config.nodeConfig().nodeId(),
-                    session.sessionEpoch(),
-                    session.state(),
-                    Instant.now().plusSeconds(60),
-                    session.lastDurableVersion(),
-                    null,
-                    null,
-                    null));
+            return persistence.sessionAuthorityPort().findSession(uuid);
         });
 
         this.redstoneOptimizationListener =
