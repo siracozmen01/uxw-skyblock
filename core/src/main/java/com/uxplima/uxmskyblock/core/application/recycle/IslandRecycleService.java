@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -355,12 +356,7 @@ public final class IslandRecycleService {
                 return new RecycleResult.Failure("Canonical island deletion failed: " + e.getMessage());
             }
 
-            // 6. Transaction State: SLOT_RELEASED (Only after database deletion succeeds)
-            if (recycleOperationPort != null) {
-                recycleOperationPort.updateState(
-                        operationId, IslandRecycleState.SLOT_RELEASED, null, null, clock.instant());
-            }
-
+            // 6. Release Archimedean spiral slot
             try {
                 spiralSlotPoolPort.releaseSlot(finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
             } catch (Exception e) {
@@ -375,6 +371,12 @@ public final class IslandRecycleService {
                 return new RecycleResult.Failure("Slot release failed: " + e.getMessage());
             }
 
+            // Transaction State: SLOT_RELEASED (Only after slot release actually succeeds)
+            if (recycleOperationPort != null) {
+                recycleOperationPort.updateState(
+                        operationId, IslandRecycleState.SLOT_RELEASED, null, null, clock.instant());
+            }
+
             // 7. Transaction State: COMPLETED
             if (recycleOperationPort != null) {
                 recycleOperationPort.updateState(
@@ -383,6 +385,48 @@ public final class IslandRecycleService {
 
             return new RecycleResult.Success(islandId, finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
         });
+    }
+
+    /**
+     * Recovers incomplete island recycle operations on system startup.
+     *
+     * <p>Enforces:
+     * <ul>
+     *   <li>Operations in {@link IslandRecycleState#CANONICAL_DELETE}: canonical deletion already succeeded in SQL,
+     *       so release the Archimedean spiral slot and advance state to {@code SLOT_RELEASED} and {@code COMPLETED}.</li>
+     *   <li>Operations in {@link IslandRecycleState#SLOT_RELEASED}: slot was already released, so advance to {@code COMPLETED}.</li>
+     * </ul>
+     */
+    public void recoverIncompleteOperations() {
+        if (recycleOperationPort == null) {
+            return;
+        }
+
+        List<IslandRecycleOperation> pendingDeletes =
+                recycleOperationPort.findOperationsByState(IslandRecycleState.CANONICAL_DELETE);
+        for (IslandRecycleOperation op : pendingDeletes) {
+            try {
+                spiralSlotPoolPort.releaseSlot(op.targetSlot(), "skyblock_world", 0, 0);
+                recycleOperationPort.updateState(
+                        op.operationId(), IslandRecycleState.SLOT_RELEASED, null, null, clock.instant());
+                recycleOperationPort.updateState(
+                        op.operationId(), IslandRecycleState.COMPLETED, null, null, clock.instant());
+            } catch (Exception e) {
+                recycleOperationPort.updateState(
+                        op.operationId(),
+                        IslandRecycleState.FAILED,
+                        null,
+                        "Startup recovery slot release failed: " + e.getMessage(),
+                        clock.instant());
+            }
+        }
+
+        List<IslandRecycleOperation> pendingCompletions =
+                recycleOperationPort.findOperationsByState(IslandRecycleState.SLOT_RELEASED);
+        for (IslandRecycleOperation op : pendingCompletions) {
+            recycleOperationPort.updateState(
+                    op.operationId(), IslandRecycleState.COMPLETED, null, null, clock.instant());
+        }
     }
 
     /**

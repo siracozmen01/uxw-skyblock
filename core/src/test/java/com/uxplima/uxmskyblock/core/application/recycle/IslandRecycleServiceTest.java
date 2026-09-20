@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -32,6 +33,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import com.uxplima.uxmskyblock.core.domain.recycle.IslandRecycleOperation;
 import com.uxplima.uxmskyblock.core.domain.recycle.IslandRecycleState;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -233,13 +235,50 @@ class IslandRecycleServiceTest {
         inOrder.verify(recycleOperationPort).updateState(any(), eq(IslandRecycleState.VOIDING), any(), any(), any());
         inOrder.verify(recycleOperationPort)
                 .updateState(any(), eq(IslandRecycleState.VOID_COMPLETE), any(), any(), any());
-        inOrder.verify(recycleOperationPort)
-                .updateState(any(), eq(IslandRecycleState.CANONICAL_DELETE), any(), any(), any());
         inOrder.verify(islandStoragePort).deleteIsland(eq(islandId), any());
+        inOrder.verify(spiralSlotPoolPort).releaseSlot(eq(42L), eq("skyblock_world"), eq(100), eq(200));
         inOrder.verify(recycleOperationPort)
                 .updateState(any(), eq(IslandRecycleState.SLOT_RELEASED), any(), any(), any());
-        inOrder.verify(spiralSlotPoolPort).releaseSlot(eq(42L), eq("skyblock_world"), eq(100), eq(200));
         inOrder.verify(recycleOperationPort).updateState(any(), eq(IslandRecycleState.COMPLETED), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("recoverIncompleteOperations recovers CANONICAL_DELETE and SLOT_RELEASED operations on startup")
+    void testRecoverIncompleteOperations() {
+        IslandRecycleOperation opDelete = new IslandRecycleOperation(
+                "op-delete-1",
+                islandId,
+                PlayerUuid.of(UUID.randomUUID()),
+                55L,
+                IslandRecycleState.CANONICAL_DELETE,
+                null,
+                null,
+                Instant.now(),
+                Instant.now());
+        IslandRecycleOperation opReleased = new IslandRecycleOperation(
+                "op-rel-2",
+                islandId,
+                PlayerUuid.of(UUID.randomUUID()),
+                66L,
+                IslandRecycleState.SLOT_RELEASED,
+                null,
+                null,
+                Instant.now(),
+                Instant.now());
+
+        when(recycleOperationPort.findOperationsByState(IslandRecycleState.CANONICAL_DELETE))
+                .thenReturn(List.of(opDelete));
+        when(recycleOperationPort.findOperationsByState(IslandRecycleState.SLOT_RELEASED))
+                .thenReturn(List.of(opReleased));
+
+        service.recoverIncompleteOperations();
+
+        verify(spiralSlotPoolPort).releaseSlot(eq(55L), any(), anyInt(), anyInt());
+        verify(recycleOperationPort)
+                .updateState(eq("op-delete-1"), eq(IslandRecycleState.SLOT_RELEASED), any(), any(), any());
+        verify(recycleOperationPort)
+                .updateState(eq("op-delete-1"), eq(IslandRecycleState.COMPLETED), any(), any(), any());
+        verify(recycleOperationPort).updateState(eq("op-rel-2"), eq(IslandRecycleState.COMPLETED), any(), any(), any());
     }
 
     @Test

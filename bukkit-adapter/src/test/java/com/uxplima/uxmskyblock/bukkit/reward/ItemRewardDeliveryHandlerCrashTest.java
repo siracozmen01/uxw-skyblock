@@ -271,6 +271,88 @@ class ItemRewardDeliveryHandlerCrashTest {
         verify(journalPort, never()).commitMutation(any(), any(), any(), anyLong(), anyLong(), any(), any());
     }
 
+    @Test
+    @DisplayName("Rollback on commit failure preserves unrelated Slot 12 contents completely untouched")
+    void testUnrelatedSlot12PreservedOnRollback() {
+        PlayerMock player = server.addPlayer();
+        // Populate Slot 12 with emeralds
+        ItemStack slot12Item = new ItemStack(Material.EMERALD, 5);
+        player.getInventory().setItem(12, slot12Item);
+        player.getInventory().setItem(0, new ItemStack(Material.IRON_INGOT, 10));
+
+        when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
+        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
+                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
+
+        when(journalPort.recordIntent(
+                        any(), any(), any(), anyLong(), anyLong(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(InventoryMutationJournalOutcome.intentRecorded());
+        when(journalPort.commitMutation(any(), any(), any(), anyLong(), anyLong(), any(), any()))
+                .thenReturn(InventoryMutationJournalOutcome.conflict("DB write failure"));
+
+        ItemRewardDeliveryHandler handler = new ItemRewardDeliveryHandler(sessionCoordinator, journalPort, nodeId);
+        RewardGrantComponent component = new RewardGrantComponent(
+                UUID.randomUUID(),
+                testGrant.grantId(),
+                0,
+                new RewardComponentOperationId(UUID.randomUUID()),
+                RewardComponentType.ITEM,
+                "uxm:item_bundle",
+                1,
+                "{\"item\":\"DIAMOND\",\"amount\":32}",
+                RewardComponentState.PENDING,
+                null,
+                Instant.now());
+
+        DeliveryResult result = handler.deliver(testGrant, component, recipientProfile);
+
+        assertThat(result.success()).isFalse();
+        // Slot 12 MUST remain completely untouched!
+        assertThat(player.getInventory().getItem(12)).isEqualTo(slot12Item);
+        assertThat(player.getInventory().getItem(0)).isEqualTo(new ItemStack(Material.IRON_INGOT, 10));
+        assertThat(countItems(player, Material.DIAMOND)).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Insufficient inventory space safely fails without ground drops and retains reward in inbox")
+    void testInsufficientSpaceFailsSafelyWithoutDrops() {
+        PlayerMock player = server.addPlayer();
+        // Completely fill inventory
+        for (int i = 0; i < player.getInventory().getSize(); i++) {
+            player.getInventory().setItem(i, new ItemStack(Material.COBBLESTONE, 64));
+        }
+
+        when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
+        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
+                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
+
+        ItemRewardDeliveryHandler handler = new ItemRewardDeliveryHandler(sessionCoordinator, journalPort, nodeId);
+        RewardGrantComponent component = new RewardGrantComponent(
+                UUID.randomUUID(),
+                testGrant.grantId(),
+                0,
+                new RewardComponentOperationId(UUID.randomUUID()),
+                RewardComponentType.ITEM,
+                "uxm:item_bundle",
+                1,
+                "{\"item\":\"DIAMOND\",\"amount\":10}",
+                RewardComponentState.PENDING,
+                null,
+                Instant.now());
+
+        DeliveryResult result = handler.deliver(testGrant, component, recipientProfile);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.errorMessage()).contains("Insufficient inventory space");
+        // Zero dropped items in world
+        assertThat(player.getWorld().getEntitiesByClass(Item.class)).isEmpty();
+        // Zero mutations recorded in journal
+        verify(journalPort, never())
+                .recordIntent(any(), any(), any(), anyLong(), anyLong(), any(), any(), any(), any(), any(), any());
+    }
+
     private int countItems(PlayerMock player, Material mat) {
         int count = 0;
         for (ItemStack item : player.getInventory().getContents()) {

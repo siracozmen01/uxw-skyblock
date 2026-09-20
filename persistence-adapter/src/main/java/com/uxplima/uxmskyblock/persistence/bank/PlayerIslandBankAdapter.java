@@ -212,6 +212,37 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
             UUID operationId,
             String idempotencyKey,
             @Nullable StagedOutboxEvent outboxEvent) {
+        return executeTransaction(
+                islandId,
+                actorUuid,
+                currencyId,
+                currencyScale,
+                deltaAmountMinorUnits,
+                reason,
+                currentNode,
+                expectedEpoch,
+                expectedVersion,
+                operationId,
+                idempotencyKey,
+                "ISLAND_BANK",
+                outboxEvent);
+    }
+
+    @Override
+    public BankTransactionOutcome executeTransaction(
+            IslandId islandId,
+            UUID actorUuid,
+            String currencyId,
+            int currencyScale,
+            long deltaAmountMinorUnits,
+            String reason,
+            String currentNode,
+            long expectedEpoch,
+            long expectedVersion,
+            UUID operationId,
+            String idempotencyKey,
+            String operationScope,
+            @Nullable StagedOutboxEvent outboxEvent) {
 
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(actorUuid, "actorUuid");
@@ -220,6 +251,9 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
         Objects.requireNonNull(currentNode, "currentNode");
         Objects.requireNonNull(operationId, "operationId");
         Objects.requireNonNull(idempotencyKey, "idempotencyKey");
+
+        String effectiveScope =
+                (operationScope != null && !operationScope.isBlank()) ? operationScope.trim() : "ISLAND_BANK";
 
         String upperCurrency = currencyId.trim().toUpperCase(Locale.ROOT);
         if (!upperCurrency.equals("PRIMARY") && !upperCurrency.equals("CRYSTALS") && !upperCurrency.equals("EXP")) {
@@ -231,24 +265,29 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
             try {
                 // Step 1: Idempotency check on processed_operations
                 String checkOpSql = """
-                        SELECT operation_id, status, result_code
+                        SELECT operation_id, status, result_code, result_payload
                         FROM processed_operations
-                        WHERE (operation_scope = 'ISLAND_BANK' AND actor_id = ? AND idempotency_key = ?)
+                        WHERE (operation_scope = ? AND actor_id = ? AND idempotency_key = ?)
                            OR operation_id = ?
                         """;
                 try (PreparedStatement ps = connection.prepareStatement(checkOpSql)) {
-                    ps.setString(1, actorUuid.toString());
-                    ps.setString(2, idempotencyKey);
-                    ps.setString(3, operationId.toString());
+                    ps.setString(1, effectiveScope);
+                    ps.setString(2, actorUuid.toString());
+                    ps.setString(3, idempotencyKey);
+                    ps.setString(4, operationId.toString());
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             UUID existingOpId = UUID.fromString(rs.getString("operation_id"));
                             String status = rs.getString("status");
                             String resultCode = rs.getString("result_code");
+                            String resultPayload = rs.getString("result_payload");
                             rollbackTransaction(connection);
                             return new BankTransactionOutcome.DuplicateOperation(
                                     existingOpId,
-                                    "Operation already recorded with status " + status + " (" + resultCode + ")");
+                                    "Operation already recorded with status " + status + " (" + resultCode + ")",
+                                    status,
+                                    resultCode,
+                                    resultPayload);
                         }
                     }
                 }
@@ -258,13 +297,14 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                         INSERT INTO processed_operations (
                             operation_id, operation_scope, actor_id, idempotency_key,
                             operation_type, resource_id, status, created_at
-                        ) VALUES (?, 'ISLAND_BANK', ?, ?, 'BANK_TRANSACTION', ?, 'PENDING', CURRENT_TIMESTAMP)
+                        ) VALUES (?, ?, ?, ?, 'BANK_TRANSACTION', ?, 'PENDING', CURRENT_TIMESTAMP)
                         """;
                 try (PreparedStatement ps = connection.prepareStatement(insertOpSql)) {
                     ps.setString(1, operationId.toString());
-                    ps.setString(2, actorUuid.toString());
-                    ps.setString(3, idempotencyKey);
-                    ps.setString(4, islandId.value().toString());
+                    ps.setString(2, effectiveScope);
+                    ps.setString(3, actorUuid.toString());
+                    ps.setString(4, idempotencyKey);
+                    ps.setString(5, islandId.value().toString());
                     ps.executeUpdate();
                 }
 
@@ -407,7 +447,10 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 }
 
                 // Step 7: Finalize processed_operations to APPLIED
-                updateProcessedOp(connection, operationId, "APPLIED", "SUCCESS");
+                String resultPayload = String.format(
+                        "{\"status\":\"SUCCESS\",\"islandId\":\"%s\",\"newBalanceMinorUnits\":%d,\"transactionId\":\"%s\"}",
+                        islandId.value(), newBal, txId);
+                updateProcessedOp(connection, operationId, "APPLIED", "SUCCESS", resultPayload);
 
                 // Step 7.5: Stage outbox event atomically in same transaction
                 if (outboxEvent != null) {
@@ -446,15 +489,22 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
 
     private static void updateProcessedOp(Connection connection, UUID operationId, String status, String resultCode)
             throws SQLException {
+        updateProcessedOp(connection, operationId, status, resultCode, null);
+    }
+
+    private static void updateProcessedOp(
+            Connection connection, UUID operationId, String status, String resultCode, @Nullable String resultPayload)
+            throws SQLException {
         String updateSql = """
                 UPDATE processed_operations
-                SET status = ?, result_code = ?, completed_at = CURRENT_TIMESTAMP
+                SET status = ?, result_code = ?, result_payload = ?, completed_at = CURRENT_TIMESTAMP
                 WHERE operation_id = ?
                 """;
         try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
             ps.setString(1, status);
             ps.setString(2, resultCode);
-            ps.setString(3, operationId.toString());
+            ps.setString(3, resultPayload);
+            ps.setString(4, operationId.toString());
             ps.executeUpdate();
         }
     }

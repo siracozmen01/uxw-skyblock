@@ -113,6 +113,22 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             }
         }
 
+        // Verify inventory capacity before live mutation to prevent lost items / ground drops on crash
+        int neededAmount = itemToDeliver.getAmount();
+        int maxStack = itemToDeliver.getMaxStackSize();
+        int availableSpace = 0;
+        for (ItemStack slot : player.getInventory().getContents()) {
+            if (slot == null || slot.getType().isAir()) {
+                availableSpace += maxStack;
+            } else if (slot.isSimilar(itemToDeliver)) {
+                availableSpace += Math.max(0, maxStack - slot.getAmount());
+            }
+        }
+        if (availableSpace < neededAmount) {
+            return DeliveryResult.failure(
+                    "Insufficient inventory space for item reward; item remains safely in inbox.");
+        }
+
         // 4. Calculate real BEFORE and simulated AFTER fingerprints
         byte[] beforeInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
                 player.getInventory().getContents());
@@ -141,16 +157,31 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
                     + intentOutcome.rejectionReason().orElse("unknown"));
         }
 
-        // 6. Snapshot current inventory for rollback reconciliation
+        // 6. Snapshot current inventory and apply live mutation
         ItemStack[] beforeContents = cloneContents(player.getInventory().getContents());
-        Map<Integer, ItemStack> overflow;
+        Map<Integer, ItemStack> mutatedSlots = new java.util.HashMap<>();
         byte[] updatedInventoryNbt;
 
         try {
             // Apply live item mutation
-            overflow = player.getInventory().addItem(itemToDeliver);
-            updatedInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
-                    player.getInventory().getContents());
+            player.getInventory().addItem(itemToDeliver);
+            ItemStack[] afterContents = player.getInventory().getContents();
+            for (int i = 0; i < beforeContents.length; i++) {
+                ItemStack b = beforeContents[i];
+                ItemStack a = afterContents[i];
+                boolean changed;
+                if (b == null && a == null) {
+                    changed = false;
+                } else if (b == null || a == null) {
+                    changed = true;
+                } else {
+                    changed = !b.isSimilar(a) || b.getAmount() != a.getAmount();
+                }
+                if (changed) {
+                    mutatedSlots.put(i, b != null ? b.clone() : null);
+                }
+            }
+            updatedInventoryNbt = BukkitInventorySerializer.serializeItemStacks(afterContents);
         } catch (Exception e) {
             journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
             return DeliveryResult.failure("Live inventory mutation failed: " + e.getMessage());
@@ -162,29 +193,18 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             commitOutcome = journalPort.commitMutation(
                     playerUuid, recipient, nodeId, sessionEpoch, expectedVersion, opId, updatedInventoryNbt);
         } catch (Exception e) {
-            // Rollback inventory on commit exception
-            player.getInventory().setContents(beforeContents);
-            player.updateInventory();
+            // Rollback ONLY mutated slots on commit exception, preserving unrelated slots (e.g. Slot 12)
+            rollbackMutatedSlots(player, mutatedSlots);
             journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
             return DeliveryResult.failure("Commit exception; rolled back inventory: " + e.getMessage());
         }
 
         if (!commitOutcome.isSuccess()) {
-            // Rollback inventory on commit rejection
-            player.getInventory().setContents(beforeContents);
-            player.updateInventory();
+            // Rollback ONLY mutated slots on commit rejection, preserving unrelated slots (e.g. Slot 12)
+            rollbackMutatedSlots(player, mutatedSlots);
             journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
             return DeliveryResult.failure("Failed to commit journal mutation: "
                     + commitOutcome.rejectionReason().orElse("unknown") + "; inventory rolled back.");
-        }
-
-        // 8. Safely drop overflow into the world ONLY AFTER durable commit succeeded
-        if (overflow != null && !overflow.isEmpty()) {
-            for (ItemStack drop : overflow.values()) {
-                if (drop != null && !drop.getType().isAir()) {
-                    player.getWorld().dropItemNaturally(player.getLocation(), drop);
-                }
-            }
         }
 
         if (commitOutcome.version().isPresent()) {
@@ -193,6 +213,13 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
 
         sessionCoordinator.checkpointPlayer(playerUuid);
         return DeliveryResult.success(opUuid);
+    }
+
+    private static void rollbackMutatedSlots(Player player, Map<Integer, ItemStack> mutatedSlots) {
+        for (Map.Entry<Integer, ItemStack> entry : mutatedSlots.entrySet()) {
+            player.getInventory().setItem(entry.getKey(), entry.getValue());
+        }
+        player.updateInventory();
     }
 
     private Player findOnlinePlayerForProfile(ProfileId profileId) {

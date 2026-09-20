@@ -205,22 +205,31 @@ class RestServerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/islands/{id}/bank/deposit successfully deposits to bank")
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit successfully deposits to bank with valid Idempotency-Key")
     void testBankDepositSuccess() throws Exception {
         UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
         IslandBank bank = new IslandBank(testIslandId, 5000L, 0L, 0L, 1L, Instant.now());
         BankTransaction tx = new BankTransaction(
                 txId,
                 UUID.randomUUID(),
                 testIslandId,
-                UUID.randomUUID(),
+                PlayerUuid.WEBSTORE.value(),
                 "PRIMARY",
                 2,
                 5000L,
                 5000L,
                 "tebex_package_42",
                 Instant.now());
-        when(bankService.depositToIsland(eq(testIslandId), any(), eq(5000L), eq("tebex_package_42"), eq(NODE_ID)))
+        when(bankService.depositToIsland(
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(5000L),
+                        eq("tebex_package_42"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
                 .thenReturn(new BankTransactionOutcome.Success(bank, tx));
 
         String body = "{\"amount\": 5000, \"reason\": \"tebex_package_42\"}";
@@ -228,6 +237,7 @@ class RestServerTest {
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
@@ -241,9 +251,9 @@ class RestServerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with negative amount returns 400 Bad Request")
-    void testBankDepositInvalidAmount() throws Exception {
-        String body = "{\"amount\": -50}";
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit missing Idempotency-Key returns 400 Bad Request")
+    void testBankDepositMissingIdempotencyKey() throws Exception {
+        String body = "{\"amount\": 5000, \"reason\": \"tebex_package_42\"}";
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
@@ -253,14 +263,54 @@ class RestServerTest {
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Missing required header: Idempotency-Key");
     }
 
     @Test
-    @DisplayName("POST /api/v1/islands/{id}/bank/deposit passes PlayerUuid.WEBSTORE as actor")
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit invalid Idempotency-Key format returns 400 Bad Request")
+    void testBankDepositInvalidIdempotencyKeyFormat() throws Exception {
+        String body = "{\"amount\": 5000, \"reason\": \"tebex_package_42\"}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", "not-a-uuid-or-ulid")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Invalid Idempotency-Key format: must be UUIDv4 or ULID");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit with negative amount returns 400 Bad Request")
+    void testBankDepositInvalidAmount() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": -50}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName(
+            "POST /api/v1/islands/{id}/bank/deposit passes PlayerUuid.WEBSTORE as actor with REST_BANK_DEPOSIT scope")
     void testBankDepositPassesWebstoreActor() throws Exception {
+        UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
         IslandBank bank = new IslandBank(testIslandId, 1000L, 0L, 0L, 1L, Instant.now());
         BankTransaction tx = new BankTransaction(
-                UUID.randomUUID(),
+                txId,
                 UUID.randomUUID(),
                 testIslandId,
                 PlayerUuid.WEBSTORE.value(),
@@ -271,7 +321,14 @@ class RestServerTest {
                 "webstore_credit",
                 Instant.now());
         when(bankService.depositToIsland(
-                        eq(testIslandId), eq(PlayerUuid.WEBSTORE), eq(1000L), eq("webstore_credit"), eq(NODE_ID)))
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(1000L),
+                        eq("webstore_credit"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
                 .thenReturn(new BankTransactionOutcome.Success(bank, tx));
 
         String body = "{\"amount\": 1000, \"reason\": \"webstore_credit\"}";
@@ -279,6 +336,7 @@ class RestServerTest {
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
@@ -287,7 +345,14 @@ class RestServerTest {
 
         verify(bankService)
                 .depositToIsland(
-                        eq(testIslandId), eq(PlayerUuid.WEBSTORE), eq(1000L), eq("webstore_credit"), eq(NODE_ID));
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(1000L),
+                        eq("webstore_credit"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT"));
     }
 
     @Test
@@ -295,6 +360,7 @@ class RestServerTest {
             "POST /api/v1/islands/{id}/bank/deposit with Idempotency-Key replays cached response without re-executing")
     void testBankDepositIdempotencyKeyReplay() throws Exception {
         UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
         IslandBank bank = new IslandBank(testIslandId, 2500L, 0L, 0L, 1L, Instant.now());
         BankTransaction tx = new BankTransaction(
                 txId,
@@ -308,7 +374,14 @@ class RestServerTest {
                 "tx-order-888",
                 Instant.now());
         when(bankService.depositToIsland(
-                        eq(testIslandId), eq(PlayerUuid.WEBSTORE), eq(2500L), eq("tx-order-888"), eq(NODE_ID)))
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(2500L),
+                        eq("tx-order-888"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
                 .thenReturn(new BankTransactionOutcome.Success(bank, tx));
 
         String body = "{\"amount\": 2500, \"reason\": \"tx-order-888\"}";
@@ -316,7 +389,7 @@ class RestServerTest {
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .header("Content-Type", "application/json")
-                .header("Idempotency-Key", "idemp-key-xyz-123")
+                .header("Idempotency-Key", idempKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
@@ -331,7 +404,7 @@ class RestServerTest {
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .header("Content-Type", "application/json")
-                .header("Idempotency-Key", "idemp-key-xyz-123")
+                .header("Idempotency-Key", idempKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
@@ -343,7 +416,15 @@ class RestServerTest {
 
         // Verify depositToIsland was called EXACTLY ONCE
         verify(bankService, times(1))
-                .depositToIsland(eq(testIslandId), eq(PlayerUuid.WEBSTORE), eq(2500L), eq("tx-order-888"), eq(NODE_ID));
+                .depositToIsland(
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(2500L),
+                        eq("tx-order-888"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT"));
     }
 
     @Test
@@ -351,6 +432,7 @@ class RestServerTest {
             "POST /api/v1/islands/{id}/bank/deposit with same Idempotency-Key but different payload returns 409 Conflict")
     void testBankDepositIdempotencyConflict() throws Exception {
         UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
         IslandBank bank = new IslandBank(testIslandId, 2500L, 0L, 0L, 1L, Instant.now());
         BankTransaction tx = new BankTransaction(
                 txId,
@@ -364,7 +446,14 @@ class RestServerTest {
                 "first_reason",
                 Instant.now());
         when(bankService.depositToIsland(
-                        eq(testIslandId), eq(PlayerUuid.WEBSTORE), eq(2500L), eq("first_reason"), eq(NODE_ID)))
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(2500L),
+                        eq("first_reason"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
                 .thenReturn(new BankTransactionOutcome.Success(bank, tx));
 
         String body1 = "{\"amount\": 2500, \"reason\": \"first_reason\"}";
@@ -372,7 +461,7 @@ class RestServerTest {
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .header("Content-Type", "application/json")
-                .header("Idempotency-Key", "conflict-key-999")
+                .header("Idempotency-Key", idempKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body1))
                 .build();
 
@@ -385,7 +474,7 @@ class RestServerTest {
                 .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .header("Content-Type", "application/json")
-                .header("Idempotency-Key", "conflict-key-999")
+                .header("Idempotency-Key", idempKey)
                 .POST(HttpRequest.BodyPublishers.ofString(body2))
                 .build();
 
@@ -393,5 +482,43 @@ class RestServerTest {
         assertThat(resp2.statusCode()).isEqualTo(409);
         JsonObject json2 = JsonParser.parseString(resp2.body()).getAsJsonObject();
         assertThat(json2.get("error").getAsString()).contains("Idempotency conflict");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit replaying from SQL processed_operations returns 200 OK")
+    void testBankDepositReplayFromSqlProcessedOperations() throws Exception {
+        UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
+        String payload = String.format(
+                "{\"status\":\"SUCCESS\",\"islandId\":\"%s\",\"newBalanceMinorUnits\":7777,\"transactionId\":\"%s\"}",
+                testIslandId.value(), txId);
+
+        when(bankService.depositToIsland(
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(7777L),
+                        eq("sql_replay"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
+                .thenReturn(new BankTransactionOutcome.DuplicateOperation(
+                        UUID.randomUUID(), "Already processed", "APPLIED", "SUCCESS", payload));
+
+        String body = "{\"amount\": 7777, \"reason\": \"sql_replay\"}";
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        assertThat(resp.statusCode()).isEqualTo(200);
+        JsonObject json = JsonParser.parseString(resp.body()).getAsJsonObject();
+        assertThat(json.get("status").getAsString()).isEqualTo("SUCCESS");
+        assertThat(json.get("newBalanceMinorUnits").getAsLong()).isEqualTo(7777L);
+        assertThat(json.get("transactionId").getAsString()).isEqualTo(txId.toString());
     }
 }

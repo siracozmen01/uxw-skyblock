@@ -185,6 +185,19 @@ public final class RestServer implements AutoCloseable {
         ctx.status(HttpStatus.OK).json(response);
     }
 
+    private static final java.util.regex.Pattern UUID_V4_PATTERN = java.util.regex.Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$");
+    private static final java.util.regex.Pattern ULID_PATTERN =
+            java.util.regex.Pattern.compile("^[0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz]{26}$");
+
+    private static boolean isValidIdempotencyKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        return UUID_V4_PATTERN.matcher(key).matches()
+                || ULID_PATTERN.matcher(key).matches();
+    }
+
     public record IdempotentDepositRecord(
             IslandId islandId, long amount, String reason, HttpStatus status, Map<String, Object> responseBody) {}
 
@@ -223,55 +236,104 @@ public final class RestServer implements AutoCloseable {
         String reason = body.has("reason") ? body.get("reason").getAsString() : "web_store_deposit";
 
         String rawIdempotencyKey = ctx.header("Idempotency-Key");
-        String idempotencyKey =
-                (rawIdempotencyKey != null && !rawIdempotencyKey.isBlank()) ? rawIdempotencyKey.trim() : null;
+        if (rawIdempotencyKey == null || rawIdempotencyKey.isBlank()) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Missing required header: Idempotency-Key"));
+            return;
+        }
 
-        if (idempotencyKey != null) {
-            IdempotentDepositRecord cached = idempotencyCache.get(idempotencyKey);
-            if (cached != null) {
-                if (cached.islandId().equals(islandId)
-                        && cached.amount() == amount
-                        && Objects.equals(cached.reason(), reason)) {
-                    // Replay cached response
-                    ctx.status(cached.status()).json(cached.responseBody());
-                    return;
-                } else {
-                    // Conflict detected
-                    ctx.status(HttpStatus.CONFLICT)
-                            .json(Map.of(
-                                    "error",
-                                    "Idempotency conflict: request payload differs from original request for key "
-                                            + idempotencyKey,
-                                    "idempotencyKey",
-                                    idempotencyKey));
-                    return;
-                }
+        String idempotencyKey = rawIdempotencyKey.trim();
+        if (!isValidIdempotencyKey(idempotencyKey)) {
+            ctx.status(HttpStatus.BAD_REQUEST)
+                    .json(Map.of("error", "Invalid Idempotency-Key format: must be UUIDv4 or ULID"));
+            return;
+        }
+
+        IdempotentDepositRecord cached = idempotencyCache.get(idempotencyKey);
+        if (cached != null) {
+            if (cached.islandId().equals(islandId)
+                    && cached.amount() == amount
+                    && Objects.equals(cached.reason(), reason)) {
+                // Replay cached response
+                ctx.status(cached.status()).json(cached.responseBody());
+                return;
+            } else {
+                // Conflict detected
+                ctx.status(HttpStatus.CONFLICT)
+                        .json(Map.of(
+                                "error",
+                                "Idempotency conflict: request payload differs from original request for key "
+                                        + idempotencyKey,
+                                "idempotencyKey",
+                                idempotencyKey));
+                return;
             }
         }
 
-        BankTransactionOutcome outcome =
-                bankService.depositToIsland(islandId, PlayerUuid.WEBSTORE, amount, reason, serverNodeId);
+        UUID operationId = UUID.randomUUID();
+        BankTransactionOutcome outcome = bankService.depositToIsland(
+                islandId,
+                PlayerUuid.WEBSTORE,
+                amount,
+                reason,
+                serverNodeId,
+                operationId,
+                idempotencyKey,
+                "REST_BANK_DEPOSIT");
+
         if (outcome instanceof BankTransactionOutcome.Success success) {
             Map<String, Object> resp = Map.of(
                     "status", "SUCCESS",
                     "islandId", islandId.value().toString(),
                     "newBalanceMinorUnits", success.updatedBank().primaryBalanceMinorUnits(),
                     "transactionId", success.transaction().transactionId().toString());
-            if (idempotencyKey != null) {
-                idempotencyCache.put(
-                        idempotencyKey, new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
-            }
+            idempotencyCache.put(
+                    idempotencyKey, new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
             ctx.status(HttpStatus.OK).json(resp);
+        } else if (outcome instanceof BankTransactionOutcome.DuplicateOperation dup) {
+            if ("APPLIED".equalsIgnoreCase(dup.status()) && dup.resultPayload() != null) {
+                try {
+                    JsonObject cachedJson =
+                            JsonParser.parseString(dup.resultPayload()).getAsJsonObject();
+                    if (cachedJson.has("islandId")
+                            && cachedJson
+                                    .get("islandId")
+                                    .getAsString()
+                                    .equals(islandId.value().toString())) {
+                        Map<String, Object> resp = Map.of(
+                                "status", "SUCCESS",
+                                "islandId", islandId.value().toString(),
+                                "newBalanceMinorUnits",
+                                        cachedJson.get("newBalanceMinorUnits").getAsLong(),
+                                "transactionId", cachedJson.get("transactionId").getAsString());
+                        idempotencyCache.put(
+                                idempotencyKey,
+                                new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
+                        ctx.status(HttpStatus.OK).json(resp);
+                        return;
+                    }
+                } catch (Exception ignored) {
+                    // Fallthrough to conflict
+                }
+            }
+            if ("PENDING".equalsIgnoreCase(dup.status())) {
+                ctx.status(HttpStatus.CONFLICT)
+                        .json(Map.of(
+                                "error",
+                                "Operation in progress for idempotency key: " + idempotencyKey,
+                                "idempotencyKey",
+                                idempotencyKey));
+                return;
+            }
+            ctx.status(HttpStatus.CONFLICT)
+                    .json(Map.of("error", "Idempotency conflict: " + dup.message(), "idempotencyKey", idempotencyKey));
         } else {
             Map<String, Object> resp = Map.of(
                     "status", "FAILED",
                     "islandId", islandId.value().toString(),
                     "error", outcome.toString());
-            if (idempotencyKey != null) {
-                idempotencyCache.put(
-                        idempotencyKey,
-                        new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.UNPROCESSABLE_CONTENT, resp));
-            }
+            idempotencyCache.put(
+                    idempotencyKey,
+                    new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.UNPROCESSABLE_CONTENT, resp));
             ctx.status(HttpStatus.UNPROCESSABLE_CONTENT).json(resp);
         }
     }

@@ -143,6 +143,32 @@ public final class SqlIslandRecycleStorageAdapter implements IslandRecycleOperat
         }
     }
 
+    @Override
+    public List<IslandRecycleOperation> findOperationsByState(IslandRecycleState state) {
+        Objects.requireNonNull(state, "state must not be null");
+
+        String sql = """
+                SELECT operation_id, island_id, initiator_uuid, target_slot, state, backup_path, error_message, created_at, updated_at
+                FROM island_recycle_operations
+                WHERE state = ?
+                ORDER BY created_at ASC
+                """;
+
+        try (Connection conn = database.connection();
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, state.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                List<IslandRecycleOperation> list = new ArrayList<>();
+                while (rs.next()) {
+                    list.add(mapRow(rs));
+                }
+                return Collections.unmodifiableList(list);
+            }
+        } catch (SQLException e) {
+            throw new StorageException("Failed to find island recycle operations by state: " + state, e);
+        }
+    }
+
     private static IslandRecycleOperation mapRow(ResultSet rs) throws SQLException {
         String opId = rs.getString("operation_id");
         IslandId islandId = IslandId.fromString(rs.getString("island_id"));

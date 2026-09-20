@@ -78,8 +78,8 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
             return DeliveryResult.failure("External Vault economy bridge is not initialized.");
         }
 
-        double amount = parseAmount(component.payloadData());
-        if (amount <= 0.0) {
+        long amountMinor = parseAmountMinorUnits(component.payloadData());
+        if (amountMinor <= 0L) {
             return DeliveryResult.failure("Invalid external vault amount: " + component.payloadData());
         }
 
@@ -105,12 +105,15 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
                 if (state == SagaState.COMMITTED) {
                     // Idempotent duplicate: external deposit already succeeded
                     return DeliveryResult.success(opId);
-                } else if (state == SagaState.FAILED) {
+                } else if (state == SagaState.STARTED || state == SagaState.COMPENSATING) {
+                    // Previous execution started and was not confirmed; fail-closed against duplicate payout!
+                    return DeliveryResult.failure("External Vault saga is in unconfirmed state " + state
+                            + " for operation " + opId + "; fail-closed against duplicate payout.");
+                } else if (state == SagaState.FAILED || state == SagaState.ROLLED_BACK) {
                     return DeliveryResult.failure("External Vault saga previously failed for operation " + opId);
                 }
             } else {
                 IslandId islandId = resolveIslandId(recipient);
-                long amountMinor = Math.max(1L, Math.round(amount * 100.0));
                 EconomySagaRecord newSaga = EconomySagaRecord.start(
                         sagaId,
                         playerUuid,
@@ -126,9 +129,10 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
         }
 
         // 3. Execute external deposit with fail-closed UNKNOWN on unexpected failure
+        double doubleAmount = amountMinor / 100.0;
         boolean depositSuccess;
         try {
-            depositSuccess = economyBridge.depositWallet(player, amount);
+            depositSuccess = economyBridge.depositWallet(player, doubleAmount);
         } catch (Exception e) {
             // Do NOT mark FAILED because external provider may have accepted transaction!
             return DeliveryResult.failure("External Vault provider outcome UNKNOWN: " + e.getMessage());
@@ -144,7 +148,7 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
             if (economySagaPort != null) {
                 economySagaPort.updateState(sagaId, SagaState.FAILED, now);
             }
-            return DeliveryResult.failure("External Vault provider rejected deposit of " + amount);
+            return DeliveryResult.failure("External Vault provider rejected deposit of " + doubleAmount);
         }
     }
 
@@ -183,18 +187,25 @@ public final class ExternalVaultRewardDeliveryHandler implements RewardDeliveryH
         return new IslandId(new UUID(0L, 0L));
     }
 
-    private double parseAmount(String payload) {
-        if (payload == null) return 0.0;
+    private long parseAmountMinorUnits(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return 0L;
+        }
         String clean =
                 payload.replace("{", "").replace("}", "").replace("\"", "").trim();
         int idx = clean.indexOf("amount:");
-        if (idx < 0) return 0.0;
+        if (idx < 0) return 0L;
         int end = clean.indexOf(",", idx);
         if (end < 0) end = clean.length();
+        String val = clean.substring(idx + 7, end).trim();
         try {
-            return Double.parseDouble(clean.substring(idx + 7, end).trim());
-        } catch (NumberFormatException e) {
-            return 0.0;
+            if (val.contains(".")) {
+                java.math.BigDecimal bd = new java.math.BigDecimal(val);
+                return bd.multiply(new java.math.BigDecimal("100")).longValueExact();
+            }
+            return Long.parseLong(val) * 100L;
+        } catch (Exception e) {
+            return 0L;
         }
     }
 }

@@ -97,6 +97,35 @@ public interface IslandBankPort {
                 idempotencyKey);
     }
 
+    default BankTransactionOutcome executeTransaction(
+            IslandId islandId,
+            UUID actorUuid,
+            String currencyId,
+            int currencyScale,
+            long deltaAmountMinorUnits,
+            String reason,
+            String currentNode,
+            long expectedEpoch,
+            long expectedVersion,
+            UUID operationId,
+            String idempotencyKey,
+            String operationScope,
+            @Nullable StagedOutboxEvent outboxEvent) {
+        return executeTransaction(
+                islandId,
+                actorUuid,
+                currencyId,
+                currencyScale,
+                deltaAmountMinorUnits,
+                reason,
+                currentNode,
+                expectedEpoch,
+                expectedVersion,
+                operationId,
+                idempotencyKey,
+                outboxEvent);
+    }
+
     /**
      * Retrieves recent transaction audit history for an island.
      *

@@ -98,8 +98,41 @@ public final class IslandBankService {
         return execute(optIslandId.get(), playerUuid, -amountMinorUnits, "Player withdrawal", serverNodeId);
     }
 
+    public BankTransactionOutcome depositToIsland(
+            IslandId islandId,
+            PlayerUuid playerUuid,
+            long amountMinorUnits,
+            String reason,
+            ServerNodeId serverNodeId,
+            UUID operationId,
+            String idempotencyKey,
+            String operationScope) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return execute(
+                islandId,
+                playerUuid,
+                amountMinorUnits,
+                reason,
+                serverNodeId,
+                operationId,
+                idempotencyKey,
+                operationScope);
+    }
+
     private BankTransactionOutcome execute(
             IslandId islandId, PlayerUuid playerUuid, long deltaMinorUnits, String reason, ServerNodeId serverNodeId) {
+        return execute(islandId, playerUuid, deltaMinorUnits, reason, serverNodeId, null, null, "ISLAND_BANK");
+    }
+
+    private BankTransactionOutcome execute(
+            IslandId islandId,
+            PlayerUuid playerUuid,
+            long deltaMinorUnits,
+            String reason,
+            ServerNodeId serverNodeId,
+            @Nullable UUID customOperationId,
+            @Nullable String customIdempotencyKey,
+            @Nullable String customOperationScope) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
@@ -127,8 +160,9 @@ public final class IslandBankService {
 
         long epoch = auth.authorityEpoch();
 
-        UUID operationId = UUID.randomUUID();
-        String idempotencyKey = "tx-" + operationId;
+        UUID operationId = (customOperationId != null) ? customOperationId : UUID.randomUUID();
+        String idempotencyKey = (customIdempotencyKey != null) ? customIdempotencyKey : "tx-" + operationId;
+        String operationScope = (customOperationScope != null) ? customOperationScope : "ISLAND_BANK";
 
         StagedOutboxEvent outboxEvent = (outboxPort != null)
                 ? new StagedOutboxEvent(
@@ -152,6 +186,7 @@ public final class IslandBankService {
                 bank.version(),
                 operationId,
                 idempotencyKey,
+                operationScope,
                 outboxEvent);
     }
 }

@@ -387,8 +387,9 @@ public final class GameplayWiring {
         }
 
         this.worldDimensionSnapshotPort = new com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter(
-                plugin, persistence.islandStoragePort());
-        this.islandBackupAdapter = new NbtIslandBackupAdapter(plugin.getDataFolder(), this.worldDimensionSnapshotPort);
+                plugin, persistence.islandStoragePort(), scheduler, config.dimensionConfig());
+        this.islandBackupAdapter = new NbtIslandBackupAdapter(
+                plugin.getDataFolder(), this.worldDimensionSnapshotPort, persistence.gameModeHierarchyStoragePort());
         this.recycleService = new IslandRecycleService(
                 persistence.islandStoragePort(),
                 persistence.worldGridAllocationPort(),

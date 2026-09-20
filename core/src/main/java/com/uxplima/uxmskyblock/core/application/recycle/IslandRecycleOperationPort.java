@@ -53,4 +53,12 @@ public interface IslandRecycleOperationPort {
      * @return list of operation records
      */
     List<IslandRecycleOperation> findOperationsByIslandId(IslandId islandId);
+
+    /**
+     * Lists all recycle operations currently recorded in a given lifecycle state.
+     *
+     * @param state lifecycle state to filter by
+     * @return list of operation records
+     */
+    List<IslandRecycleOperation> findOperationsByState(IslandRecycleState state);
 }

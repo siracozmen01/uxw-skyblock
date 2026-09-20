@@ -3,6 +3,8 @@ package com.uxplima.uxmskyblock.core.domain.bank;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Sealed algebraic data type representing the exhaustive outcome of an island bank transaction.
  */
@@ -30,7 +32,17 @@ public sealed interface BankTransactionOutcome {
     }
 
     /** Transaction was already applied previously with the same operation ID / idempotency key. */
-    record DuplicateOperation(UUID operationId, String message) implements BankTransactionOutcome {
+    record DuplicateOperation(
+            UUID operationId,
+            String message,
+            @Nullable String status,
+            @Nullable String resultCode,
+            @Nullable String resultPayload)
+            implements BankTransactionOutcome {
+        public DuplicateOperation(UUID operationId, String message) {
+            this(operationId, message, null, null, null);
+        }
+
         public DuplicateOperation {
             Objects.requireNonNull(operationId, "operationId");
             Objects.requireNonNull(message, "message");
