@@ -31,6 +31,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.WorthFeatureModule;
 import com.uxplima.uxmskyblock.core.application.module.ModuleRegistry;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Manages modular feature subsystem registration, configuration toggles,
@@ -40,7 +41,7 @@ public final class FeatureModuleWiring implements AutoCloseable {
 
     private final ModuleRegistry moduleRegistry;
     private final BukkitModuleContext moduleContext;
-    private final BankUpkeepFeatureModule bankUpkeepFeatureModule;
+    private final @Nullable BankUpkeepFeatureModule bankUpkeepFeatureModule;
 
     public FeatureModuleWiring(
             ConfigurationWiring config,
@@ -58,48 +59,104 @@ public final class FeatureModuleWiring implements AutoCloseable {
         this.moduleRegistry = new ModuleRegistry();
         this.moduleContext = new BukkitModuleContext("1.0.0");
 
-        this.bankUpkeepFeatureModule = new BankUpkeepFeatureModule(
-                gameplay.bankruptcyService(),
-                config.bankConfig(),
-                gameplay.scheduler(),
-                persistence.islandStoragePort(),
-                worldName,
-                serverNodeId);
+        if (config.moduleSettings().isModuleEnabled("bank-upkeep")) {
+            this.bankUpkeepFeatureModule = new BankUpkeepFeatureModule(
+                    gameplay.bankruptcyService(),
+                    config.bankConfig(),
+                    gameplay.scheduler(),
+                    persistence.islandStoragePort(),
+                    worldName,
+                    serverNodeId);
+        } else {
+            this.bankUpkeepFeatureModule = null;
+        }
 
-        this.moduleRegistry.register(new CoreModule(gameplay.createIslandUseCase()));
-        this.moduleRegistry.register(new BankModule(gameplay.bankService()));
-        this.moduleRegistry.register(gameplay.upgradesModule());
-        this.moduleRegistry.register(new BiomesModule(gameplay.biomeAdapter()));
-        this.moduleRegistry.register(new PresetsModule(gameplay.presetCatalog(), gameplay.schematicEngine()));
-        this.moduleRegistry.register(
-                new SeasonFeatureModule(gameplay.seasonService(), gameplay.scheduler(), config.seasonConfig()));
-        this.moduleRegistry.register(new SocialFeatureModule(gameplay.socialService()));
-        this.moduleRegistry.register(new DiscordFeatureModule(integration.discordService()));
-        this.moduleRegistry.register(new AllianceFeatureModule(gameplay.allianceService()));
-        this.moduleRegistry.register(new ShopFeatureModule(gameplay.dynamicPricingEngine()));
-        this.moduleRegistry.register(new TemporaryAccessFeatureModule(
-                gameplay.temporaryAccessService(), gameplay.scheduler(), config.temporaryAccessConfig()));
-        this.moduleRegistry.register(new RewardInboxFeatureModule(
-                gameplay.rewardInboxService(), gameplay.scheduler(), config.rewardConfig()));
-        this.moduleRegistry.register(
-                new WarpFeatureModule(gameplay.warpService(), gameplay.safeTeleportEngine(), config.warpConfig()));
-        this.moduleRegistry.register(new VaultFeatureModule(gameplay.vaultService(), config.vaultConfig()));
-        this.moduleRegistry.register(new ChatFeatureModule(gameplay.chatService(), config.chatConfig()));
-        this.moduleRegistry.register(new InactivityFeatureModule(
-                gameplay.inactivityService(), gameplay.scheduler(), config.inactivityConfig(), worldName));
-        this.moduleRegistry.register(new FreezeFeatureModule(gameplay.freezeService()));
-        this.moduleRegistry.register(
-                new MissionFeatureModule(gameplay.missionService(), config.missionConfig(), gameplay.scheduler()));
-        this.moduleRegistry.register(new BoundaryFeatureModule(
-                gameplay.boundaryService(), gameplay.boundaryListener(), gameplay.scheduler()));
-        this.moduleRegistry.register(new RecycleFeatureModule(gameplay.recycleService()));
-        this.moduleRegistry.register(new WorthFeatureModule(gameplay.worthService()));
-        this.moduleRegistry.register(new DimensionFeatureModule(gameplay.dimensionService()));
-        this.moduleRegistry.register(new LimitFeatureModule(gameplay.limitService()));
-        this.moduleRegistry.register(new AntiAbuseFeatureModule(gameplay.antiAbuseService()));
-        this.moduleRegistry.register(
-                new BoosterFeatureModule(gameplay.boosterService(), config.boosterConfig(), gameplay.scheduler()));
-        this.moduleRegistry.register(bankUpkeepFeatureModule);
+        if (config.moduleSettings().isModuleEnabled("core")) {
+            this.moduleRegistry.register(new CoreModule(gameplay.createIslandUseCase()));
+        }
+        if (config.moduleSettings().isModuleEnabled("bank")) {
+            this.moduleRegistry.register(new BankModule(gameplay.bankService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("upgrades")) {
+            this.moduleRegistry.register(gameplay.upgradesModule());
+        }
+        if (config.moduleSettings().isModuleEnabled("biomes")) {
+            this.moduleRegistry.register(new BiomesModule(gameplay.biomeAdapter()));
+        }
+        if (config.moduleSettings().isModuleEnabled("presets")) {
+            this.moduleRegistry.register(new PresetsModule(gameplay.presetCatalog(), gameplay.schematicEngine()));
+        }
+        if (config.moduleSettings().isModuleEnabled("seasons")) {
+            this.moduleRegistry.register(
+                    new SeasonFeatureModule(gameplay.seasonService(), gameplay.scheduler(), config.seasonConfig()));
+        }
+        if (config.moduleSettings().isModuleEnabled("social")) {
+            this.moduleRegistry.register(new SocialFeatureModule(gameplay.socialService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("discord")) {
+            this.moduleRegistry.register(new DiscordFeatureModule(integration.discordService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("alliances")) {
+            this.moduleRegistry.register(new AllianceFeatureModule(gameplay.allianceService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("shop")) {
+            this.moduleRegistry.register(new ShopFeatureModule(gameplay.dynamicPricingEngine()));
+        }
+        if (config.moduleSettings().isModuleEnabled("temporary-access")) {
+            this.moduleRegistry.register(new TemporaryAccessFeatureModule(
+                    gameplay.temporaryAccessService(), gameplay.scheduler(), config.temporaryAccessConfig()));
+        }
+        if (config.moduleSettings().isModuleEnabled("reward-inbox")) {
+            this.moduleRegistry.register(new RewardInboxFeatureModule(
+                    gameplay.rewardInboxService(), gameplay.scheduler(), config.rewardConfig()));
+        }
+        if (config.moduleSettings().isModuleEnabled("warps")) {
+            this.moduleRegistry.register(
+                    new WarpFeatureModule(gameplay.warpService(), gameplay.safeTeleportEngine(), config.warpConfig()));
+        }
+        if (config.moduleSettings().isModuleEnabled("vault")) {
+            this.moduleRegistry.register(new VaultFeatureModule(gameplay.vaultService(), config.vaultConfig()));
+        }
+        if (config.moduleSettings().isModuleEnabled("chat")) {
+            this.moduleRegistry.register(new ChatFeatureModule(gameplay.chatService(), config.chatConfig()));
+        }
+        if (config.moduleSettings().isModuleEnabled("inactivity")) {
+            this.moduleRegistry.register(new InactivityFeatureModule(
+                    gameplay.inactivityService(), gameplay.scheduler(), config.inactivityConfig(), worldName));
+        }
+        if (config.moduleSettings().isModuleEnabled("freeze")) {
+            this.moduleRegistry.register(new FreezeFeatureModule(gameplay.freezeService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("missions")) {
+            this.moduleRegistry.register(
+                    new MissionFeatureModule(gameplay.missionService(), config.missionConfig(), gameplay.scheduler()));
+        }
+        if (config.moduleSettings().isModuleEnabled("boundary") && gameplay.boundaryListener() != null) {
+            this.moduleRegistry.register(new BoundaryFeatureModule(
+                    gameplay.boundaryService(), gameplay.boundaryListener(), gameplay.scheduler()));
+        }
+        if (config.moduleSettings().isModuleEnabled("recycle")) {
+            this.moduleRegistry.register(new RecycleFeatureModule(gameplay.recycleService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("worth")) {
+            this.moduleRegistry.register(new WorthFeatureModule(gameplay.worthService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("dimensions")) {
+            this.moduleRegistry.register(new DimensionFeatureModule(gameplay.dimensionService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("limits")) {
+            this.moduleRegistry.register(new LimitFeatureModule(gameplay.limitService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("anti-abuse")) {
+            this.moduleRegistry.register(new AntiAbuseFeatureModule(gameplay.antiAbuseService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("boosters")) {
+            this.moduleRegistry.register(
+                    new BoosterFeatureModule(gameplay.boosterService(), config.boosterConfig(), gameplay.scheduler()));
+        }
+        if (this.bankUpkeepFeatureModule != null) {
+            this.moduleRegistry.register(this.bankUpkeepFeatureModule);
+        }
 
         this.moduleRegistry.configure(
                 config.moduleSettings().moduleToggles(), config.moduleSettings().selectedProviders());
@@ -117,7 +174,7 @@ public final class FeatureModuleWiring implements AutoCloseable {
         return moduleContext;
     }
 
-    public BankUpkeepFeatureModule bankUpkeepFeatureModule() {
+    public @Nullable BankUpkeepFeatureModule bankUpkeepFeatureModule() {
         return bankUpkeepFeatureModule;
     }
 

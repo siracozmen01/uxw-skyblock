@@ -28,7 +28,7 @@ public final class IslandLimitService {
     public IslandLimitService(IslandUpgradeStoragePort upgradeStoragePort, Map<LimitType, LimitQuota> quotas) {
         this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
         Objects.requireNonNull(quotas, "quotas must not be null");
-        this.quotas = Collections.unmodifiableMap(new EnumMap<>(quotas));
+        this.quotas = quotas.isEmpty() ? Map.of() : Collections.unmodifiableMap(new EnumMap<>(quotas));
     }
 
     /**

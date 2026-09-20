@@ -114,6 +114,7 @@ import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Platform composition root orchestrating configuration, persistence, authority,
@@ -1013,39 +1014,60 @@ public final class SkyblockBootstrap implements AutoCloseable {
             pm.registerEvents(gameplayWiring.protectionListener(), plugin);
             pm.registerEvents(authorityWiring.sessionListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("chat")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("chat") && gameplayWiring.chatListener() != null) {
             pm.registerEvents(gameplayWiring.chatListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("missions")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("missions")
+                && gameplayWiring.missionListener() != null) {
             pm.registerEvents(gameplayWiring.missionListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("boundary")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("boundary")
+                && gameplayWiring.boundaryListener() != null) {
             pm.registerEvents(gameplayWiring.boundaryListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("worth")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("worth") && gameplayWiring.worthListener() != null) {
             pm.registerEvents(gameplayWiring.worthListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("dimensions")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("dimensions")
+                && gameplayWiring.dimensionListener() != null) {
             pm.registerEvents(gameplayWiring.dimensionListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("limits")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("limits") && gameplayWiring.limitListener() != null) {
             pm.registerEvents(gameplayWiring.limitListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("anti-abuse")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("anti-abuse")
+                && gameplayWiring.antiAbuseListener() != null) {
             pm.registerEvents(gameplayWiring.antiAbuseListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("boosters")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("boosters")
+                && gameplayWiring.boosterListener() != null) {
             pm.registerEvents(gameplayWiring.boosterListener(), plugin);
         }
-        if (featureModuleWiring.moduleRegistry().isModuleEnabled("bank-upkeep")) {
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("bank-upkeep")
+                && gameplayWiring.bankruptcyListener() != null) {
             pm.registerEvents(gameplayWiring.bankruptcyListener(), plugin);
         }
-        pm.registerEvents(gameplayWiring.obsidianRecoveryListener(), plugin);
-        pm.registerEvents(gameplayWiring.voidProtectionListener(), plugin);
-        pm.registerEvents(gameplayWiring.categoricalInteractablesListener(), plugin);
-        pm.registerEvents(gameplayWiring.kineticWardListener(), plugin);
-        pm.registerEvents(gameplayWiring.redstoneOptimizationListener(), plugin);
-        pm.registerEvents(gameplayWiring.structureSuppressionListener(), plugin);
+        if (configWiring.protectionConfig().obsidianRecoveryEnabled()
+                && configWiring.settingsConfig().obsidianToLava()) {
+            pm.registerEvents(gameplayWiring.obsidianRecoveryListener(), plugin);
+        }
+        if (configWiring.protectionConfig().voidRecoveryEnabled()
+                && (configWiring.settingsConfig().voidTeleportMembers()
+                        || configWiring.settingsConfig().voidTeleportVisitors())) {
+            pm.registerEvents(gameplayWiring.voidProtectionListener(), plugin);
+        }
+        if (!configWiring.interactablesConfig().isEmpty()) {
+            pm.registerEvents(gameplayWiring.categoricalInteractablesListener(), plugin);
+        }
+        if (configWiring.protectionConfig().kineticWardEnabled()) {
+            pm.registerEvents(gameplayWiring.kineticWardListener(), plugin);
+        }
+        if (configWiring.settingsConfig().disableRedstoneOffline()) {
+            pm.registerEvents(gameplayWiring.redstoneOptimizationListener(), plugin);
+        }
+        if (!configWiring.worldConfig().suppressedStructures().isEmpty()) {
+            pm.registerEvents(gameplayWiring.structureSuppressionListener(), plugin);
+        }
     }
 
     public ConfigurationWiring configurationWiring() {
@@ -1220,7 +1242,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return configWiring.chatConfig();
     }
 
-    public IslandChatListener chatListener() {
+    @Nullable public IslandChatListener chatListener() {
         return gameplayWiring.chatListener();
     }
 
@@ -1252,11 +1274,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.missionService();
     }
 
-    public IslandMissionsMenu missionsMenu() {
+    public @Nullable IslandMissionsMenu missionsMenu() {
         return gameplayWiring.missionsMenu();
     }
 
-    public IslandMissionListener missionListener() {
+    public @Nullable IslandMissionListener missionListener() {
         return gameplayWiring.missionListener();
     }
 
@@ -1264,7 +1286,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.boundaryService();
     }
 
-    public IslandBoundaryListener boundaryListener() {
+    public @Nullable IslandBoundaryListener boundaryListener() {
         return gameplayWiring.boundaryListener();
     }
 
@@ -1308,11 +1330,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.worthService();
     }
 
-    public FoliaIslandChunkScanner chunkScanner() {
+    public @Nullable FoliaIslandChunkScanner chunkScanner() {
         return gameplayWiring.chunkScanner();
     }
 
-    public IslandWorthListener worthListener() {
+    public @Nullable IslandWorthListener worthListener() {
         return gameplayWiring.worthListener();
     }
 
@@ -1324,7 +1346,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.dimensionService();
     }
 
-    public IslandDimensionListener dimensionListener() {
+    public @Nullable IslandDimensionListener dimensionListener() {
         return gameplayWiring.dimensionListener();
     }
 
@@ -1336,11 +1358,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.limitService();
     }
 
-    public IslandLimitListener limitListener() {
+    public @Nullable IslandLimitListener limitListener() {
         return gameplayWiring.limitListener();
     }
 
-    public IslandLimitReconciler limitReconciler() {
+    public @Nullable IslandLimitReconciler limitReconciler() {
         return gameplayWiring.limitReconciler();
     }
 
@@ -1352,7 +1374,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.antiAbuseService();
     }
 
-    public IslandAntiAbuseListener antiAbuseListener() {
+    public @Nullable IslandAntiAbuseListener antiAbuseListener() {
         return gameplayWiring.antiAbuseListener();
     }
 
@@ -1364,11 +1386,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.boosterService();
     }
 
-    public IslandBoosterListener boosterListener() {
+    public @Nullable IslandBoosterListener boosterListener() {
         return gameplayWiring.boosterListener();
     }
 
-    public IslandBoosterMenu boosterMenu() {
+    public @Nullable IslandBoosterMenu boosterMenu() {
         return gameplayWiring.boosterMenu();
     }
 
@@ -1384,11 +1406,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.bankruptcyService();
     }
 
-    public IslandBankruptcyListener bankruptcyListener() {
+    public @Nullable IslandBankruptcyListener bankruptcyListener() {
         return gameplayWiring.bankruptcyListener();
     }
 
-    public BankUpkeepFeatureModule bankUpkeepFeatureModule() {
+    public @Nullable BankUpkeepFeatureModule bankUpkeepFeatureModule() {
         return featureModuleWiring.bankUpkeepFeatureModule();
     }
 
@@ -1424,7 +1446,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         return gameplayWiring.upgradeService();
     }
 
-    public OreGeneratorListener oreGeneratorListener() {
+    @Nullable public OreGeneratorListener oreGeneratorListener() {
         return gameplayWiring.oreGeneratorListener();
     }
 

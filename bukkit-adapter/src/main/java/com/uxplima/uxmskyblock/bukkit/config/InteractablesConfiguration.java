@@ -226,4 +226,8 @@ public final class InteractablesConfiguration {
     public Set<Material> workstations() {
         return workstations;
     }
+
+    public boolean isEmpty() {
+        return doorsAndGates.isEmpty() && redstoneTriggers.isEmpty() && containers.isEmpty() && workstations.isEmpty();
+    }
 }
