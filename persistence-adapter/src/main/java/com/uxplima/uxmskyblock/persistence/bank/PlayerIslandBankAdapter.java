@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.google.gson.JsonObject;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
@@ -447,9 +448,17 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 }
 
                 // Step 7: Finalize processed_operations to APPLIED
-                String resultPayload = String.format(
-                        "{\"status\":\"SUCCESS\",\"islandId\":\"%s\",\"newBalanceMinorUnits\":%d,\"transactionId\":\"%s\"}",
-                        islandId.value(), newBal, txId);
+                JsonObject payloadObj = new JsonObject();
+                payloadObj.addProperty("status", "SUCCESS");
+                payloadObj.addProperty("islandId", islandId.value().toString());
+                payloadObj.addProperty("actorId", actorUuid.toString());
+                payloadObj.addProperty("amount", deltaAmountMinorUnits);
+                payloadObj.addProperty("currencyId", upperCurrency);
+                payloadObj.addProperty("scope", effectiveScope);
+                payloadObj.addProperty("reason", reason);
+                payloadObj.addProperty("newBalanceMinorUnits", newBal);
+                payloadObj.addProperty("transactionId", txId.toString());
+                String resultPayload = payloadObj.toString();
                 updateProcessedOp(connection, operationId, "APPLIED", "SUCCESS", resultPayload);
 
                 // Step 7.5: Stage outbox event atomically in same transaction
@@ -487,15 +496,19 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
         }
     }
 
-    private static void updateProcessedOp(Connection connection, UUID operationId, String status, String resultCode)
+    private void updateProcessedOp(Connection connection, UUID operationId, String status, String resultCode)
             throws SQLException {
         updateProcessedOp(connection, operationId, status, resultCode, null);
     }
 
-    private static void updateProcessedOp(
+    private void updateProcessedOp(
             Connection connection, UUID operationId, String status, String resultCode, @Nullable String resultPayload)
             throws SQLException {
-        String updateSql = """
+        String updateSql = (dialect == Dialect.POSTGRES) ? """
+                UPDATE processed_operations
+                SET status = ?, result_code = ?, result_payload = CAST(? AS jsonb), completed_at = CURRENT_TIMESTAMP
+                WHERE operation_id = ?
+                """ : """
                 UPDATE processed_operations
                 SET status = ?, result_code = ?, result_payload = ?, completed_at = CURRENT_TIMESTAMP
                 WHERE operation_id = ?

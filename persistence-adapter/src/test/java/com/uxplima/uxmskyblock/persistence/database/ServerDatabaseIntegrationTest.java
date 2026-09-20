@@ -37,6 +37,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * distinct concurrent transactions.
  */
 @Tag("database-integration")
+@SuppressWarnings("NullAway")
 class ServerDatabaseIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
@@ -47,13 +48,15 @@ class ServerDatabaseIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+        }
     }
 
     @AfterAll
@@ -78,18 +81,21 @@ class ServerDatabaseIntegrationTest {
     // ==========================================
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 1: Portable Common SQL Contract")
     void verifiesMariaDbCommonSqlContract() throws Exception {
         PortableDatabaseContract.verifyCommonSqlContract(mariaDatabase);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 2: MigrationRunner Parity")
     void verifiesMariaDbMigrationRunnerParity() throws Exception {
         PortableDatabaseContract.verifyMigrationRunnerParity(mariaDatabase);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 3: Canonical Row Locking via SELECT ... FOR UPDATE")
     void verifiesMariaDbRowLockSerialization() throws Exception {
         verifyServerRowLockSerialization(mariaDatabase, "mariadb_lock");
@@ -100,18 +106,21 @@ class ServerDatabaseIntegrationTest {
     // ==========================================
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 1: Portable Common SQL Contract")
     void verifiesPostgresCommonSqlContract() throws Exception {
         PortableDatabaseContract.verifyCommonSqlContract(postgresDatabase);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 2: MigrationRunner Parity")
     void verifiesPostgresMigrationRunnerParity() throws Exception {
         PortableDatabaseContract.verifyMigrationRunnerParity(postgresDatabase);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 3: Canonical Row Locking via SELECT ... FOR UPDATE")
     void verifiesPostgresRowLockSerialization() throws Exception {
         verifyServerRowLockSerialization(postgresDatabase, "postgres_lock");

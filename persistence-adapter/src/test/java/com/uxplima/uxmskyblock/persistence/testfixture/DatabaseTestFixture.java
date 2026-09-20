@@ -25,6 +25,18 @@ public final class DatabaseTestFixture {
 
     private DatabaseTestFixture() {}
 
+    /** Checks whether MariaDB / MySQL integration tests are enabled for this test run. */
+    public static boolean isMariaDbEnabled() {
+        String db = System.getProperty("skyblock.test.database", "all").trim().toLowerCase(java.util.Locale.ROOT);
+        return db.equals("all") || db.equals("mariadb") || db.equals("mysql");
+    }
+
+    /** Checks whether PostgreSQL integration tests are enabled for this test run. */
+    public static boolean isPostgresEnabled() {
+        String db = System.getProperty("skyblock.test.database", "all").trim().toLowerCase(java.util.Locale.ROOT);
+        return db.equals("all") || db.equals("postgres") || db.equals("postgresql");
+    }
+
     /** Creates an isolated file-backed SQLite database for testing. */
     public static Database createSqliteFile(Path dbFile) {
         Objects.requireNonNull(dbFile, "dbFile");
@@ -44,6 +56,16 @@ public final class DatabaseTestFixture {
                 .withPassword("testpass");
     }
 
+    /** Starts a MariaDB container only if MariaDB tests are enabled; returns null otherwise. */
+    public static MariaDBContainer<?> startMariaDbIfEnabled() {
+        if (!isMariaDbEnabled()) {
+            return null;
+        }
+        MariaDBContainer<?> container = newMariaDbContainer();
+        container.start();
+        return container;
+    }
+
     /** Creates a configured, unstarted PostgreSQL container instance. */
     public static PostgreSQLContainer<?> newPostgresContainer() {
         return new PostgreSQLContainer<>(POSTGRES_IMAGE)
@@ -52,9 +74,21 @@ public final class DatabaseTestFixture {
                 .withPassword("testpass");
     }
 
+    /** Starts a PostgreSQL container only if PostgreSQL tests are enabled; returns null otherwise. */
+    public static PostgreSQLContainer<?> startPostgresIfEnabled() {
+        if (!isPostgresEnabled()) {
+            return null;
+        }
+        PostgreSQLContainer<?> container = newPostgresContainer();
+        container.start();
+        return container;
+    }
+
     /** Connects a uxmlib Database pool to an active Testcontainers JDBC database container. */
     public static Database connectToContainer(JdbcDatabaseContainer<?> container, Dialect dialect) {
-        Objects.requireNonNull(container, "container");
+        if (container == null) {
+            return null;
+        }
         Objects.requireNonNull(dialect, "dialect");
         return Database.builder()
                 .jdbcUrl(container.getJdbcUrl())
@@ -62,5 +96,18 @@ public final class DatabaseTestFixture {
                 .password(container.getPassword())
                 .maxPoolSize(5)
                 .build();
+    }
+
+    /** Asserts that MariaDB integration tests are enabled, aborting the test cleanly if not. */
+    public static void assumeMariaDb(Database database) {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                database != null && isMariaDbEnabled(), "MariaDB integration tests are disabled for this execution");
+    }
+
+    /** Asserts that PostgreSQL integration tests are enabled, aborting the test cleanly if not. */
+    public static void assumePostgres(Database database) {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                database != null && isPostgresEnabled(),
+                "PostgreSQL integration tests are disabled for this execution");
     }
 }

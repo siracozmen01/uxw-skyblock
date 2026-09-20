@@ -33,6 +33,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class PlayerIslandLeaderboardIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
@@ -46,17 +47,19 @@ class PlayerIslandLeaderboardIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        mariaAdapter = new PlayerIslandLeaderboardAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+            mariaAdapter = new PlayerIslandLeaderboardAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        postgresAdapter = new PlayerIslandLeaderboardAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+            postgresAdapter = new PlayerIslandLeaderboardAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -77,6 +80,7 @@ class PlayerIslandLeaderboardIntegrationTest {
 
     @Test
     @Order(1)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: leaderboard queries and score update")
     void mariaDbLeaderboard() throws Exception {
         testLeaderboard(mariaDatabase, mariaAdapter);
@@ -84,6 +88,7 @@ class PlayerIslandLeaderboardIntegrationTest {
 
     @Test
     @Order(2)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: leaderboard queries and score update")
     void postgresLeaderboard() throws Exception {
         testLeaderboard(postgresDatabase, postgresAdapter);

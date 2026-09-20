@@ -31,6 +31,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class PlayerBackupCatalogIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
@@ -44,19 +45,21 @@ class PlayerBackupCatalogIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase =
-                DatabaseTestFixture.connectToContainer(mariaDbContainer, com.uxplima.uxmlib.storage.sql.Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        mariaAdapter = new PlayerBackupCatalogAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(
+                    mariaDbContainer, com.uxplima.uxmlib.storage.sql.Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+            mariaAdapter = new PlayerBackupCatalogAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(
-                postgresContainer, com.uxplima.uxmlib.storage.sql.Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        postgresAdapter = new PlayerBackupCatalogAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(
+                    postgresContainer, com.uxplima.uxmlib.storage.sql.Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+            postgresAdapter = new PlayerBackupCatalogAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -77,6 +80,7 @@ class PlayerBackupCatalogIntegrationTest {
 
     @Test
     @Order(1)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: backup catalog lifecycle and dialect-specific upsert")
     void mariaDbBackupCatalogLifecycle() {
         testBackupCatalogLifecycle(mariaAdapter);
@@ -84,6 +88,7 @@ class PlayerBackupCatalogIntegrationTest {
 
     @Test
     @Order(2)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: backup catalog lifecycle and dialect-specific upsert")
     void postgresBackupCatalogLifecycle() {
         testBackupCatalogLifecycle(postgresAdapter);

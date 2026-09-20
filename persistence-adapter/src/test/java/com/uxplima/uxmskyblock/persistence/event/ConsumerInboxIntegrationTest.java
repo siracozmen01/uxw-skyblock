@@ -24,6 +24,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class ConsumerInboxIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
@@ -37,17 +38,19 @@ class ConsumerInboxIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        mariaAdapter = new ConsumerInboxAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+            mariaAdapter = new ConsumerInboxAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        postgresAdapter = new ConsumerInboxAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+            postgresAdapter = new ConsumerInboxAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -68,6 +71,7 @@ class ConsumerInboxIntegrationTest {
 
     @Test
     @Order(1)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: markProcessedIfAbsent returns true on first attempt, false on duplicate")
     void mariaDbInboxLifecycle() {
         testInboxLifecycle(mariaAdapter);
@@ -75,6 +79,7 @@ class ConsumerInboxIntegrationTest {
 
     @Test
     @Order(2)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: markProcessedIfAbsent returns true on first attempt, false on duplicate")
     void postgresInboxLifecycle() {
         testInboxLifecycle(postgresAdapter);

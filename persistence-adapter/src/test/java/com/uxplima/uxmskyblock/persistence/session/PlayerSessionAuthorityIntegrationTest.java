@@ -43,6 +43,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * deterministic latches/futures without {@code Thread.sleep}.
  */
 @Tag("database-integration")
+@SuppressWarnings("NullAway")
 class PlayerSessionAuthorityIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
@@ -59,17 +60,19 @@ class PlayerSessionAuthorityIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(Dialect.MYSQL));
-        mariaAdapter = new PlayerSessionAuthorityAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(Dialect.MYSQL));
+            mariaAdapter = new PlayerSessionAuthorityAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(Dialect.POSTGRES));
-        postgresAdapter = new PlayerSessionAuthorityAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(Dialect.POSTGRES));
+            postgresAdapter = new PlayerSessionAuthorityAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -94,24 +97,28 @@ class PlayerSessionAuthorityIntegrationTest {
     // ==========================================
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: Full Player Session Authority Lifecycle (Renew, Drain, Handoff, Acquire, Takeover)")
     void mariaDbLifecyclePasses() throws Exception {
         verifyAuthorityLifecycle(mariaDatabase, mariaAdapter, "mariadb");
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB Concurrency Scenario A: Renewal wins before lease expiry; concurrent takeover is rejected")
     void mariaDbConcurrencyScenarioAWinsBeforeExpiry() throws Exception {
         verifyConcurrencyScenarioA(mariaDatabase, mariaAdapter);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB Concurrency Scenario B: Expired takeover succeeds, increments epoch, and fences stale owner")
     void mariaDbConcurrencyScenarioBExpiredTakeover() throws Exception {
         verifyConcurrencyScenarioB(mariaDatabase, mariaAdapter);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName(
             "MariaDB Concurrency Scenario C: Planned acquire transfers ownership, increments epoch, and fences stale owner")
     void mariaDbConcurrencyScenarioCPlannedAcquire() throws Exception {
@@ -123,18 +130,21 @@ class PlayerSessionAuthorityIntegrationTest {
     // ==========================================
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: Full Player Session Authority Lifecycle (Renew, Drain, Handoff, Acquire, Takeover)")
     void postgresLifecyclePasses() throws Exception {
         verifyAuthorityLifecycle(postgresDatabase, postgresAdapter, "postgres");
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL Concurrency Scenario A: Renewal wins before lease expiry; concurrent takeover is rejected")
     void postgresConcurrencyScenarioAWinsBeforeExpiry() throws Exception {
         verifyConcurrencyScenarioA(postgresDatabase, postgresAdapter);
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName(
             "PostgreSQL Concurrency Scenario B: Expired takeover succeeds, increments epoch, and fences stale owner")
     void postgresConcurrencyScenarioBExpiredTakeover() throws Exception {
@@ -142,6 +152,7 @@ class PlayerSessionAuthorityIntegrationTest {
     }
 
     @Test
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName(
             "PostgreSQL Concurrency Scenario C: Planned acquire transfers ownership, increments epoch, and fences stale owner")
     void postgresConcurrencyScenarioCPlannedAcquire() throws Exception {

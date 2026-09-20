@@ -49,6 +49,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class PlayerProfileInventoryIntegrationTest {
 
     private static final ServerNodeId NODE_A = ServerNodeId.of("node-alpha");
@@ -65,17 +66,19 @@ class PlayerProfileInventoryIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        mariaAdapter = new PlayerProfileInventoryAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+            mariaAdapter = new PlayerProfileInventoryAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        postgresAdapter = new PlayerProfileInventoryAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+            postgresAdapter = new PlayerProfileInventoryAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -101,6 +104,7 @@ class PlayerProfileInventoryIntegrationTest {
 
     @Test
     @Order(1)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 1: Checkpoint Lifecycle and OCC Mutation")
     void mariaDbCheckpointLifecycleAndOcc() {
         verifyCheckpointLifecycleAndOcc(mariaDatabase, mariaAdapter);
@@ -108,6 +112,7 @@ class PlayerProfileInventoryIntegrationTest {
 
     @Test
     @Order(2)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 2: Canonical Row Lock Serialization via SELECT ... FOR UPDATE")
     void mariaDbRowLockSerialization() throws Exception {
         verifyRowLockSerialization(mariaDatabase, mariaAdapter);
@@ -115,6 +120,7 @@ class PlayerProfileInventoryIntegrationTest {
 
     @Test
     @Order(3)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 3: Cross-Profile Mismatch is Rejected without Mutating Profile")
     void mariaDbCrossProfileRejection() {
         verifyCrossProfileRejection(mariaDatabase, mariaAdapter);
@@ -126,6 +132,7 @@ class PlayerProfileInventoryIntegrationTest {
 
     @Test
     @Order(4)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 1: Checkpoint Lifecycle and OCC Mutation")
     void postgresCheckpointLifecycleAndOcc() {
         verifyCheckpointLifecycleAndOcc(postgresDatabase, postgresAdapter);
@@ -133,6 +140,7 @@ class PlayerProfileInventoryIntegrationTest {
 
     @Test
     @Order(5)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 2: Canonical Row Lock Serialization via SELECT ... FOR UPDATE")
     void postgresRowLockSerialization() throws Exception {
         verifyRowLockSerialization(postgresDatabase, postgresAdapter);
@@ -140,6 +148,7 @@ class PlayerProfileInventoryIntegrationTest {
 
     @Test
     @Order(6)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 3: Cross-Profile Mismatch is Rejected without Mutating Profile")
     void postgresCrossProfileRejection() {
         verifyCrossProfileRejection(postgresDatabase, postgresAdapter);

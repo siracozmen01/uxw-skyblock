@@ -38,5 +38,36 @@ val databaseIntegrationTest by tasks.registering(Test::class) {
     useJUnitPlatform {
         includeTags("database-integration")
     }
+    systemProperty("skyblock.test.database", System.getProperty("skyblock.test.database", "all"))
+    shouldRunAfter(tasks.test)
+}
+
+val mariadbIntegrationTest by tasks.registering(Test::class) {
+    description = "Runs containerized database integration tests against MariaDB only"
+    group = "verification"
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("database-integration")
+    }
+    systemProperty("skyblock.test.database", "mariadb")
+    shouldRunAfter(tasks.test)
+}
+
+val postgresIntegrationTest by tasks.registering(Test::class) {
+    description = "Runs containerized database integration tests against PostgreSQL only"
+    group = "verification"
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("database-integration")
+    }
+    systemProperty("skyblock.test.database", "postgresql")
     shouldRunAfter(tasks.test)
 }

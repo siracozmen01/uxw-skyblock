@@ -54,6 +54,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class PlayerInventoryMutationJournalIntegrationTest {
 
     private static final ServerNodeId NODE_A = ServerNodeId.of("node-alpha");
@@ -74,21 +75,23 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        mariaInventoryAdapter = new PlayerProfileInventoryAdapter(mariaDatabase);
-        mariaFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(mariaDatabase);
-        mariaJournalAdapter = new PlayerInventoryMutationJournalAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+            mariaInventoryAdapter = new PlayerProfileInventoryAdapter(mariaDatabase);
+            mariaFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(mariaDatabase);
+            mariaJournalAdapter = new PlayerInventoryMutationJournalAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        postgresInventoryAdapter = new PlayerProfileInventoryAdapter(postgresDatabase);
-        postgresFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(postgresDatabase);
-        postgresJournalAdapter = new PlayerInventoryMutationJournalAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+            postgresInventoryAdapter = new PlayerProfileInventoryAdapter(postgresDatabase);
+            postgresFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(postgresDatabase);
+            postgresJournalAdapter = new PlayerInventoryMutationJournalAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -109,6 +112,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(1)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: Full 2-phase lifecycle and monotonic version progression")
     void mariaDbTwoPhaseLifecycle() {
         verifyTwoPhaseLifecycle(mariaDatabase, mariaInventoryAdapter, mariaFinalizationAdapter, mariaJournalAdapter);
@@ -116,6 +120,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(2)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: Cross-profile mismatch rejection")
     void mariaDbCrossProfileRejection() {
         verifyCrossProfileRejection(
@@ -124,6 +129,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(3)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: Row-level lock serialization via SELECT FOR UPDATE")
     void mariaDbRowLockSerialization() throws Exception {
         verifyRowLockSerialization(mariaDatabase, mariaJournalAdapter, mariaFinalizationAdapter);
@@ -131,6 +137,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(4)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB: Abort intent lifecycle and idempotent commit")
     void mariaDbAbortAndIdempotency() {
         verifyAbortAndIdempotency(mariaDatabase, mariaInventoryAdapter, mariaFinalizationAdapter, mariaJournalAdapter);
@@ -138,6 +145,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(5)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: Full 2-phase lifecycle and monotonic version progression")
     void postgresTwoPhaseLifecycle() {
         verifyTwoPhaseLifecycle(
@@ -146,6 +154,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(6)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: Cross-profile mismatch rejection")
     void postgresCrossProfileRejection() {
         verifyCrossProfileRejection(
@@ -154,6 +163,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(7)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: Row-level lock serialization via SELECT FOR UPDATE")
     void postgresRowLockSerialization() throws Exception {
         verifyRowLockSerialization(postgresDatabase, postgresJournalAdapter, postgresFinalizationAdapter);
@@ -161,6 +171,7 @@ class PlayerInventoryMutationJournalIntegrationTest {
 
     @Test
     @Order(8)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL: Abort intent lifecycle and idempotent commit")
     void postgresAbortAndIdempotency() {
         verifyAbortAndIdempotency(

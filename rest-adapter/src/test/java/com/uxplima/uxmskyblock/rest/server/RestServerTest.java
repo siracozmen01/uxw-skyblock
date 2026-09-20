@@ -619,4 +619,105 @@ class RestServerTest {
         assertThat(json.get("newBalanceMinorUnits").getAsLong()).isEqualTo(7777L);
         assertThat(json.get("transactionId").getAsString()).isEqualTo(txId.toString());
     }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit invalid numeric amount string returns stable error message")
+    void testBankDepositInvalidNumericAmountStableMessage() throws Exception {
+        String idempKey = UUID.randomUUID().toString();
+        String body = "{\"amount\": \"abc\"}";
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(400);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).isEqualTo("Amount must be a numeric integer");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit replaying from SQL with divergent amount returns 409 Conflict")
+    void testBankDepositReplayFromSqlWithDivergentAmountReturnsConflict() throws Exception {
+        UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
+        JsonObject sqlPayload = new JsonObject();
+        sqlPayload.addProperty("status", "SUCCESS");
+        sqlPayload.addProperty("islandId", testIslandId.value().toString());
+        sqlPayload.addProperty("actorId", PlayerUuid.WEBSTORE.toString());
+        sqlPayload.addProperty("amount", 5000L);
+        sqlPayload.addProperty("reason", "original_order");
+        sqlPayload.addProperty("newBalanceMinorUnits", 5000L);
+        sqlPayload.addProperty("transactionId", txId.toString());
+
+        when(bankService.depositToIsland(
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(9999L),
+                        eq("original_order"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
+                .thenReturn(new BankTransactionOutcome.DuplicateOperation(
+                        UUID.randomUUID(), "Already processed", "APPLIED", "SUCCESS", sqlPayload.toString()));
+
+        String body = "{\"amount\": 9999, \"reason\": \"original_order\"}";
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        assertThat(resp.statusCode()).isEqualTo(409);
+        JsonObject json = JsonParser.parseString(resp.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Idempotency conflict");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/islands/{id}/bank/deposit replaying from SQL with divergent reason returns 409 Conflict")
+    void testBankDepositReplayFromSqlWithDivergentReasonReturnsConflict() throws Exception {
+        UUID txId = UUID.randomUUID();
+        String idempKey = UUID.randomUUID().toString();
+        JsonObject sqlPayload = new JsonObject();
+        sqlPayload.addProperty("status", "SUCCESS");
+        sqlPayload.addProperty("islandId", testIslandId.value().toString());
+        sqlPayload.addProperty("actorId", PlayerUuid.WEBSTORE.toString());
+        sqlPayload.addProperty("amount", 5000L);
+        sqlPayload.addProperty("reason", "original_order");
+        sqlPayload.addProperty("newBalanceMinorUnits", 5000L);
+        sqlPayload.addProperty("transactionId", txId.toString());
+
+        when(bankService.depositToIsland(
+                        eq(testIslandId),
+                        eq(PlayerUuid.WEBSTORE),
+                        eq(5000L),
+                        eq("different_order"),
+                        eq(NODE_ID),
+                        any(),
+                        eq(idempKey),
+                        eq("REST_BANK_DEPOSIT")))
+                .thenReturn(new BankTransactionOutcome.DuplicateOperation(
+                        UUID.randomUUID(), "Already processed", "APPLIED", "SUCCESS", sqlPayload.toString()));
+
+        String body = "{\"amount\": 5000, \"reason\": \"different_order\"}";
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/islands/" + testIslandId.value() + "/bank/deposit"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        assertThat(resp.statusCode()).isEqualTo(409);
+        JsonObject json = JsonParser.parseString(resp.body()).getAsJsonObject();
+        assertThat(json.get("error").getAsString()).contains("Idempotency conflict");
+    }
 }

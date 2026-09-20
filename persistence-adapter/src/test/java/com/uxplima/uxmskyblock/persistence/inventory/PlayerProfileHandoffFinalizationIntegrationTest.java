@@ -53,6 +53,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class PlayerProfileHandoffFinalizationIntegrationTest {
 
     private static final ServerNodeId NODE_A = ServerNodeId.of("node-alpha");
@@ -74,21 +75,23 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
-        mariaInventoryAdapter = new PlayerProfileInventoryAdapter(mariaDatabase);
-        mariaFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(mariaDatabase);
-        mariaSessionAdapter = new PlayerSessionAuthorityAdapter(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            new MigrationRunner(mariaDatabase).apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
+            mariaInventoryAdapter = new PlayerProfileInventoryAdapter(mariaDatabase);
+            mariaFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(mariaDatabase);
+            mariaSessionAdapter = new PlayerSessionAuthorityAdapter(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
-        postgresInventoryAdapter = new PlayerProfileInventoryAdapter(postgresDatabase);
-        postgresFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(postgresDatabase);
-        postgresSessionAdapter = new PlayerSessionAuthorityAdapter(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            new MigrationRunner(postgresDatabase).apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
+            postgresInventoryAdapter = new PlayerProfileInventoryAdapter(postgresDatabase);
+            postgresFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(postgresDatabase);
+            postgresSessionAdapter = new PlayerSessionAuthorityAdapter(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -114,6 +117,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(1)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 1: Handoff Finalization Lifecycle and Session Marker Synchronization")
     void mariaDbFinalizationLifecycleAndMarkerSync() {
         verifyFinalizationLifecycleAndMarkerSync(mariaDatabase, mariaInventoryAdapter, mariaFinalizationAdapter);
@@ -121,6 +125,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(2)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 2: Cross-Profile Mismatch is Rejected without Mutating Profile")
     void mariaDbCrossProfileRejection() {
         verifyCrossProfileRejection(mariaDatabase, mariaInventoryAdapter, mariaFinalizationAdapter);
@@ -128,6 +133,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(3)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 3: Canonical Row Lock Serialization via SELECT ... FOR UPDATE")
     void mariaDbRowLockSerialization() throws Exception {
         verifyRowLockSerialization(mariaDatabase, mariaFinalizationAdapter);
@@ -135,6 +141,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(4)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
     @DisplayName("MariaDB 4: Crash Window Recovery and Full Handoff Protocol")
     void mariaDbCrashWindowRecoveryAndFullHandoff() {
         verifyCrashWindowRecoveryAndFullHandoff(
@@ -147,6 +154,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(5)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 1: Handoff Finalization Lifecycle and Session Marker Synchronization")
     void postgresFinalizationLifecycleAndMarkerSync() {
         verifyFinalizationLifecycleAndMarkerSync(
@@ -155,6 +163,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(6)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 2: Cross-Profile Mismatch is Rejected without Mutating Profile")
     void postgresCrossProfileRejection() {
         verifyCrossProfileRejection(postgresDatabase, postgresInventoryAdapter, postgresFinalizationAdapter);
@@ -162,6 +171,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(7)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 3: Canonical Row Lock Serialization via SELECT ... FOR UPDATE")
     void postgresRowLockSerialization() throws Exception {
         verifyRowLockSerialization(postgresDatabase, postgresFinalizationAdapter);
@@ -169,6 +179,7 @@ class PlayerProfileHandoffFinalizationIntegrationTest {
 
     @Test
     @Order(8)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
     @DisplayName("PostgreSQL 4: Crash Window Recovery and Full Handoff Protocol")
     void postgresCrashWindowRecoveryAndFullHandoff() {
         verifyCrashWindowRecoveryAndFullHandoff(

@@ -69,11 +69,11 @@ jobs:
 
       - name: Run Tests & Database Integration (MySQL / MariaDB)
         if: matrix.database == 'mysql'
-        run: ./gradlew check :persistence-adapter:databaseIntegrationTest --no-build-cache
+        run: ./gradlew check :persistence-adapter:mariadbIntegrationTest --no-build-cache
 
       - name: Run Tests & Database Integration (PostgreSQL)
         if: matrix.database == 'postgresql'
-        run: ./gradlew check :persistence-adapter:databaseIntegrationTest --no-build-cache
+        run: ./gradlew check :persistence-adapter:postgresIntegrationTest --no-build-cache
 
       - name: Publish Test Results
         if: always()

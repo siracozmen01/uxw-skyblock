@@ -254,7 +254,7 @@ public final class RestServer implements AutoCloseable {
             }
             amount = bi.longValueExact();
         } catch (Exception e) {
-            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Invalid numeric amount: " + e.getMessage()));
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Invalid numeric amount format"));
             return;
         }
 
@@ -319,11 +319,19 @@ public final class RestServer implements AutoCloseable {
                 try {
                     JsonObject cachedJson =
                             JsonParser.parseString(dup.resultPayload()).getAsJsonObject();
-                    if (cachedJson.has("islandId")
+                    boolean islandMatch = cachedJson.has("islandId")
                             && cachedJson
                                     .get("islandId")
                                     .getAsString()
-                                    .equals(islandId.value().toString())) {
+                                    .equals(islandId.value().toString());
+                    boolean amountMatch = !cachedJson.has("amount")
+                            || cachedJson.get("amount").getAsLong() == amount;
+                    boolean reasonMatch = !cachedJson.has("reason")
+                            || Objects.equals(cachedJson.get("reason").getAsString(), reason);
+                    boolean actorMatch = !cachedJson.has("actorId")
+                            || Objects.equals(cachedJson.get("actorId").getAsString(), PlayerUuid.WEBSTORE.toString());
+
+                    if (islandMatch && amountMatch && reasonMatch && actorMatch) {
                         Map<String, Object> resp = Map.of(
                                 "status", "SUCCESS",
                                 "islandId", islandId.value().toString(),
@@ -334,6 +342,15 @@ public final class RestServer implements AutoCloseable {
                                 idempotencyKey,
                                 new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
                         ctx.status(HttpStatus.OK).json(resp);
+                        return;
+                    } else {
+                        ctx.status(HttpStatus.CONFLICT)
+                                .json(Map.of(
+                                        "error",
+                                        "Idempotency conflict: request payload differs from original persisted request for key "
+                                                + idempotencyKey,
+                                        "idempotencyKey",
+                                        idempotencyKey));
                         return;
                     }
                 } catch (Exception ignored) {
