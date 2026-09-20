@@ -19,6 +19,8 @@ import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
+import com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb;
+import com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +44,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@SuppressWarnings("NullAway")
 class ProductionMigrationIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
@@ -55,15 +58,17 @@ class ProductionMigrationIntegrationTest {
 
     @BeforeAll
     static void setUpAll() {
-        mariaDbContainer = DatabaseTestFixture.newMariaDbContainer();
-        mariaDbContainer.start();
-        mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
-        mariaRunner = new MigrationRunner(mariaDatabase);
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        if (mariaDbContainer != null) {
+            mariaDatabase = DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL);
+            mariaRunner = new MigrationRunner(mariaDatabase);
+        }
 
-        postgresContainer = DatabaseTestFixture.newPostgresContainer();
-        postgresContainer.start();
-        postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
-        postgresRunner = new MigrationRunner(postgresDatabase);
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+        if (postgresContainer != null) {
+            postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
+            postgresRunner = new MigrationRunner(postgresDatabase);
+        }
     }
 
     @AfterAll
@@ -89,6 +94,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(1)
+    @EnabledIfMariaDb
     @DisplayName("MariaDB 1: Clean database migrates to V1 then upgrades to V2 cleanly")
     void mariaDbMigratesCleanDatabase() throws Exception {
         assertThat(mariaRunner.currentVersion()).isEqualTo(0);
@@ -242,6 +248,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(2)
+    @EnabledIfMariaDb
     @DisplayName("MariaDB 2: Idempotent migration rerun applies zero migrations")
     void mariaDbIdempotentRerun() {
         int rerun = mariaRunner.apply(SkyblockMigrations.getMigrations(mariaDatabase.dialect()));
@@ -251,6 +258,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(3)
+    @EnabledIfMariaDb
     @DisplayName("MariaDB 3: Verified tables exist and deferred/future tables are absent")
     void mariaDbVerifiesTables() throws Exception {
         verifyCanonicalTables(mariaDatabase);
@@ -258,6 +266,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(4)
+    @EnabledIfMariaDb
     @DisplayName("MariaDB 4: Verified columns exist on canonical foundation tables")
     void mariaDbVerifiesColumns() throws Exception {
         verifyCanonicalColumns(mariaDatabase);
@@ -265,6 +274,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(5)
+    @EnabledIfMariaDb
     @DisplayName("MariaDB 5: Non-circular lifecycle, composite FK, and cascade delete")
     void mariaDbVerifiesLifecycleAndConstraints() throws Exception {
         verifyLifecycleAndConstraints(mariaDatabase, "maria");
@@ -276,6 +286,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(6)
+    @EnabledIfPostgres
     @DisplayName("PostgreSQL 1: Clean database migrates to V1 then upgrades to V2 cleanly")
     void postgresMigratesCleanDatabase() throws Exception {
         assertThat(postgresRunner.currentVersion()).isEqualTo(0);
@@ -429,6 +440,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(7)
+    @EnabledIfPostgres
     @DisplayName("PostgreSQL 2: Idempotent migration rerun applies zero migrations")
     void postgresIdempotentRerun() {
         int rerun = postgresRunner.apply(SkyblockMigrations.getMigrations(postgresDatabase.dialect()));
@@ -438,6 +450,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(8)
+    @EnabledIfPostgres
     @DisplayName("PostgreSQL 3: Verified tables exist and deferred/future tables are absent")
     void postgresVerifiesTables() throws Exception {
         verifyCanonicalTables(postgresDatabase);
@@ -445,6 +458,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(9)
+    @EnabledIfPostgres
     @DisplayName("PostgreSQL 4: Verified columns exist on canonical foundation tables")
     void postgresVerifiesColumns() throws Exception {
         verifyCanonicalColumns(postgresDatabase);
@@ -452,6 +466,7 @@ class ProductionMigrationIntegrationTest {
 
     @Test
     @Order(10)
+    @EnabledIfPostgres
     @DisplayName("PostgreSQL 5: Non-circular lifecycle, composite FK, and cascade delete")
     void postgresVerifiesLifecycleAndConstraints() throws Exception {
         verifyLifecycleAndConstraints(postgresDatabase, "pg");

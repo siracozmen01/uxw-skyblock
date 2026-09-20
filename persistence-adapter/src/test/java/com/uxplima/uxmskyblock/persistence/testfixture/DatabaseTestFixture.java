@@ -25,16 +25,27 @@ public final class DatabaseTestFixture {
 
     private DatabaseTestFixture() {}
 
+    /** Checks whether a Docker environment is available for Testcontainers. */
+    public static boolean isDockerAvailable() {
+        try {
+            return org.testcontainers.DockerClientFactory.instance().isDockerAvailable();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     /** Checks whether MariaDB / MySQL integration tests are enabled for this test run. */
     public static boolean isMariaDbEnabled() {
         String db = System.getProperty("skyblock.test.database", "all").trim().toLowerCase(java.util.Locale.ROOT);
-        return db.equals("all") || db.equals("mariadb") || db.equals("mysql");
+        boolean requested = db.equals("all") || db.equals("mariadb") || db.equals("mysql");
+        return requested && isDockerAvailable();
     }
 
     /** Checks whether PostgreSQL integration tests are enabled for this test run. */
     public static boolean isPostgresEnabled() {
         String db = System.getProperty("skyblock.test.database", "all").trim().toLowerCase(java.util.Locale.ROOT);
-        return db.equals("all") || db.equals("postgres") || db.equals("postgresql");
+        boolean requested = db.equals("all") || db.equals("postgres") || db.equals("postgresql");
+        return requested && isDockerAvailable();
     }
 
     /** Creates an isolated file-backed SQLite database for testing. */
