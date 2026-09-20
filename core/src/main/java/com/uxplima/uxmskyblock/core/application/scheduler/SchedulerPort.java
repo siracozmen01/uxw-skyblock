@@ -112,9 +112,7 @@ public interface SchedulerPort {
      * @param delay the duration to wait
      * @param task the runnable to execute
      */
-    default void laterGlobal(Duration delay, Runnable task) {
-        throw new UnsupportedOperationException("laterGlobal is not implemented by this SchedulerPort stub");
-    }
+    void laterGlobal(Duration delay, Runnable task);
 
     /**
      * Schedule a task to run repeatedly on the global region thread.
@@ -124,9 +122,7 @@ public interface SchedulerPort {
      * @param period delay between subsequent executions
      * @return an {@link AutoCloseable} that cancels the repeating execution
      */
-    default AutoCloseable repeatGlobal(Runnable task, Duration initialDelay, Duration period) {
-        throw new UnsupportedOperationException("repeatGlobal is not implemented by this SchedulerPort stub");
-    }
+    AutoCloseable repeatGlobal(Runnable task, Duration initialDelay, Duration period);
 
     /**
      * Schedule a task to run repeatedly asynchronously on the worker pool.
@@ -136,7 +132,5 @@ public interface SchedulerPort {
      * @param period delay between subsequent executions
      * @return an {@link AutoCloseable} that cancels the repeating execution
      */
-    default AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
-        throw new UnsupportedOperationException("repeatAsync is not implemented by this SchedulerPort stub");
-    }
+    AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period);
 }

@@ -228,6 +228,14 @@ class TransactionalOutboxDispatcherTest {
         public void asyncAfter(Duration delay, Runnable task) {}
 
         @Override
+        public void laterGlobal(Duration delay, Runnable task) {}
+
+        @Override
+        public AutoCloseable repeatGlobal(Runnable task, Duration initialDelay, Duration period) {
+            return () -> {};
+        }
+
+        @Override
         public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
             repeatingTaskScheduled = true;
             return () -> taskClosed = true;

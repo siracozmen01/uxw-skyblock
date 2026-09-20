@@ -91,30 +91,39 @@ class RedisStreamsEventTransportAdapterTest {
     @Test
     @DisplayName("message exceeding max retries routes to dead letter stream and acks")
     void exceededRetriesRoutesToDeadLetter() {
-        OutboxEventRecord highRetryRecord = new OutboxEventRecord(
-                sampleRecord.eventId(),
-                sampleRecord.eventType(),
-                sampleRecord.aggregateId(),
-                sampleRecord.payload(),
-                sampleRecord.status(),
-                null,
-                null,
-                null,
-                6,
-                null,
-                null,
-                sampleRecord.createdAt(),
-                null);
-
-        Map<String, String> body = RedisStreamsEventTransportAdapter.toMap(highRetryRecord);
+        Map<String, String> body = RedisStreamsEventTransportAdapter.toMap(sampleRecord);
         RedisStreamBus.StreamEntry entry = new RedisStreamBus.StreamEntry("msg-1", body);
 
-        StreamEventHandler handler = mock(StreamEventHandler.class);
+        StreamEventHandler failingHandler = (event, ack) -> {
+            throw new RuntimeException("Handler error");
+        };
 
-        adapter.processEntry("test:stream", "group-1", entry, handler);
+        // Attempts 1 to 5 fail in handler
+        for (int i = 0; i < 5; i++) {
+            adapter.processEntry("test:stream", "group-1", entry, failingHandler);
+        }
+        verify(streamBus, never()).xadd(any(), any());
+        verify(streamBus, never()).xack(any(), any(), any());
 
+        // Attempt 6 exceeds max retries (5) -> routes to DLQ and acks
+        adapter.processEntry("test:stream", "group-1", entry, failingHandler);
         verify(streamBus).xadd(eq(RedisStreamsEventTransportAdapter.DEFAULT_DEAD_LETTER_STREAM), eq(body));
         verify(streamBus).xack("test:stream", "group-1", "msg-1");
+    }
+
+    @Test
+    @DisplayName("never invokes xack if dlq xadd throws an exception")
+    void dlqFailureDoesNotAck() {
+        RedisStreamBus.StreamEntry corruptedEntry = new RedisStreamBus.StreamEntry("bad-msg", Map.of("foo", "bar"));
+        org.mockito.Mockito.doThrow(new RuntimeException("Redis DLQ failed"))
+                .when(streamBus)
+                .xadd(eq(RedisStreamsEventTransportAdapter.DEFAULT_DEAD_LETTER_STREAM), any());
+
+        StreamEventHandler handler = mock(StreamEventHandler.class);
+        adapter.processEntry("test:stream", "group-1", corruptedEntry, handler);
+
+        verify(streamBus).xadd(eq(RedisStreamsEventTransportAdapter.DEFAULT_DEAD_LETTER_STREAM), any());
+        verify(streamBus, never()).xack(any(), any(), any());
     }
 
     @Test

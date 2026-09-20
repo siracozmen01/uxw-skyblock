@@ -20,7 +20,9 @@ class MissionFeatureModuleTest {
     void registersServiceOnEnable() {
         IslandMissionService missionService = mock(IslandMissionService.class);
         MissionConfiguration config = MissionConfiguration.defaultConfiguration();
-        MissionFeatureModule module = new MissionFeatureModule(missionService, config);
+        com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler =
+                mock(com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort.class);
+        MissionFeatureModule module = new MissionFeatureModule(missionService, config, scheduler);
 
         assertThat(module.descriptor().id()).isEqualTo("missions");
         assertThat(module.descriptor().provides()).contains("island-missions", "island-quests");
@@ -59,8 +61,8 @@ class MissionFeatureModuleTest {
     }
 
     @Test
-    @DisplayName("module survives UnsupportedOperationException from scheduler stub")
-    void survivesUnsupportedOperationExceptionFromScheduler() {
+    @DisplayName("module throws IllegalStateException when scheduler fails with UnsupportedOperationException")
+    void throwsIllegalStateExceptionOnUnsupportedOperation() {
         IslandMissionService missionService = mock(IslandMissionService.class);
         MissionConfiguration config = MissionConfiguration.defaultConfiguration();
         com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler =
@@ -71,11 +73,7 @@ class MissionFeatureModuleTest {
         MissionFeatureModule module = new MissionFeatureModule(missionService, config, scheduler);
         BukkitModuleContext context = mock(BukkitModuleContext.class);
 
-        module.enable(context);
-        assertThat(module.state()).isEqualTo(ModuleState.ENABLED);
-
-        module.disable();
-        verify(missionService).flushDirtyProgress();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> module.enable(context));
     }
 
     @Test
@@ -92,5 +90,15 @@ class MissionFeatureModuleTest {
         BukkitModuleContext context = mock(BukkitModuleContext.class);
 
         org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> module.enable(context));
+    }
+
+    @Test
+    @DisplayName("rejects null scheduler in constructor")
+    @SuppressWarnings("NullAway")
+    void rejectsNullScheduler() {
+        IslandMissionService missionService = mock(IslandMissionService.class);
+        MissionConfiguration config = MissionConfiguration.defaultConfiguration();
+        org.junit.jupiter.api.Assertions.assertThrows(
+                NullPointerException.class, () -> new MissionFeatureModule(missionService, config, null));
     }
 }

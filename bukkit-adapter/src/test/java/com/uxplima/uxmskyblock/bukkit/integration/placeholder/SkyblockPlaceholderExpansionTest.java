@@ -170,6 +170,19 @@ class SkyblockPlaceholderExpansionTest {
 
                     @Override
                     public void asyncAfter(Duration delay, Runnable task) {}
+
+                    @Override
+                    public void laterGlobal(Duration delay, Runnable task) {}
+
+                    @Override
+                    public AutoCloseable repeatGlobal(Runnable task, Duration initialDelay, Duration period) {
+                        return () -> {};
+                    }
+
+                    @Override
+                    public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
+                        return () -> {};
+                    }
                 },
                 uuid -> Optional.of(profileId));
 
@@ -228,6 +241,21 @@ class SkyblockPlaceholderExpansionTest {
         @Override
         public void asyncAfter(Duration delay, Runnable task) {
             task.run();
+        }
+
+        @Override
+        public void laterGlobal(Duration delay, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public AutoCloseable repeatGlobal(Runnable task, Duration initialDelay, Duration period) {
+            return () -> {};
+        }
+
+        @Override
+        public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
+            return () -> {};
         }
     }
 }

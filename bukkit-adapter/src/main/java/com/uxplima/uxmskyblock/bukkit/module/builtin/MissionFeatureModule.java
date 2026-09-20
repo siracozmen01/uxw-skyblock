@@ -22,13 +22,11 @@ public final class MissionFeatureModule extends AbstractFeatureModule {
 
     private final IslandMissionService missionService;
     private final MissionConfiguration configuration;
-    private final @Nullable SchedulerPort scheduler;
+    private final SchedulerPort scheduler;
     private @Nullable AutoCloseable flushTaskHandle;
 
     public MissionFeatureModule(
-            IslandMissionService missionService,
-            MissionConfiguration configuration,
-            @Nullable SchedulerPort scheduler) {
+            IslandMissionService missionService, MissionConfiguration configuration, SchedulerPort scheduler) {
         super(new ModuleDescriptor(
                 "missions",
                 "1.0.0",
@@ -39,28 +37,18 @@ public final class MissionFeatureModule extends AbstractFeatureModule {
                 false));
         this.missionService = Objects.requireNonNull(missionService, "missionService must not be null");
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
-        this.scheduler = scheduler;
-    }
-
-    public MissionFeatureModule(IslandMissionService missionService, MissionConfiguration configuration) {
-        this(missionService, configuration, null);
+        this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
     }
 
     @Override
     protected void onEnable(ModuleContext context) {
         context.registerService(IslandMissionService.class, missionService);
-        if (scheduler != null) {
-            try {
-                this.flushTaskHandle = scheduler.repeatAsync(
-                        missionService::flushDirtyProgress, Duration.ofSeconds(15), Duration.ofSeconds(15));
-            } catch (UnsupportedOperationException e) {
-                LOGGER.warning(
-                        () -> "Scheduler does not support repeatAsync; background mission progress flushing disabled: "
-                                + e.getMessage());
-            } catch (Exception e) {
-                LOGGER.log(java.util.logging.Level.SEVERE, "Failed to schedule mission dirty progress flusher", e);
-                throw new IllegalStateException("Failed to schedule mission dirty progress flusher", e);
-            }
+        try {
+            this.flushTaskHandle = scheduler.repeatAsync(
+                    missionService::flushDirtyProgress, Duration.ofSeconds(15), Duration.ofSeconds(15));
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.SEVERE, "Failed to schedule mission dirty progress flusher", e);
+            throw new IllegalStateException("Failed to schedule mission dirty progress flusher", e);
         }
     }
 

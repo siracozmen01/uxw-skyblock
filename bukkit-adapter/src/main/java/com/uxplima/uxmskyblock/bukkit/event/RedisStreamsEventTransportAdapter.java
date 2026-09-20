@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -42,6 +44,7 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
     private final int maxRetries;
     private final Duration pendingTimeout;
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private final ConcurrentMap<String, Integer> deliveryAttempts = new ConcurrentHashMap<>();
 
     public RedisStreamsEventTransportAdapter(
             RedisStreamBus streamBus, String deadLetterStreamKey, int maxRetries, Duration pendingTimeout) {
@@ -124,6 +127,7 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
 
     public void processEntry(
             String streamKey, String consumerGroup, RedisStreamBus.StreamEntry entry, StreamEventHandler handler) {
+        String entryKey = consumerGroup + ":" + entry.id();
         OutboxEventRecord record;
         try {
             record = fromMap(entry.body());
@@ -135,30 +139,38 @@ public final class RedisStreamsEventTransportAdapter implements DurableEventTran
                     e);
             try {
                 streamBus.xadd(deadLetterStreamKey, entry.body());
+                streamBus.xack(streamKey, consumerGroup, entry.id());
+                deliveryAttempts.remove(entryKey);
             } catch (Exception dlqError) {
                 LOGGER.log(
                         Level.SEVERE,
                         "Failed to route malformed stream entry " + entry.id() + " to dead letter stream",
                         dlqError);
+                // NEVER XACK IF DLQ XADD THROWS
             }
-            streamBus.xack(streamKey, consumerGroup, entry.id());
             return;
         }
 
-        if (record.retryCount() > maxRetries) {
-            LOGGER.warning(() -> "Event " + record.eventId() + " exceeded max retries (" + record.retryCount() + " > "
+        int attempts = deliveryAttempts.compute(entryKey, (k, v) -> v == null ? 1 : v + 1);
+        if (attempts > maxRetries) {
+            LOGGER.warning(() -> "Stream entry " + entry.id() + " exceeded max retries (" + attempts + " > "
                     + maxRetries + "). Routing to dead-letter stream " + deadLetterStreamKey);
             try {
                 streamBus.xadd(deadLetterStreamKey, entry.body());
                 streamBus.xack(streamKey, consumerGroup, entry.id());
+                deliveryAttempts.remove(entryKey);
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Failed to route message " + entry.id() + " to dead letter stream", e);
+                // NEVER XACK IF DLQ XADD THROWS
             }
             return;
         }
 
         try {
-            handler.onEvent(record, () -> streamBus.xack(streamKey, consumerGroup, entry.id()));
+            handler.onEvent(record, () -> {
+                streamBus.xack(streamKey, consumerGroup, entry.id());
+                deliveryAttempts.remove(entryKey);
+            });
         } catch (Exception e) {
             LOGGER.log(
                     Level.WARNING, "Consumer failed to process message " + entry.id() + ", skipping XACK for retry", e);
