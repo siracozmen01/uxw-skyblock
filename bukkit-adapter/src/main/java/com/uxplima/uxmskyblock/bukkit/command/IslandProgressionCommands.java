@@ -24,6 +24,7 @@ import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
@@ -48,6 +49,7 @@ public final class IslandProgressionCommands {
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final Supplier<@Nullable IslandWorthService> worthServiceProvider;
+    private final Supplier<@Nullable IslandMissionService> missionServiceProvider;
     private final Messages messages;
 
     public IslandProgressionCommands(
@@ -58,6 +60,7 @@ public final class IslandProgressionCommands {
             PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
             Supplier<@Nullable IslandWorthService> worthServiceProvider,
+            Supplier<@Nullable IslandMissionService> missionServiceProvider,
             Messages messages) {
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -70,6 +73,8 @@ public final class IslandProgressionCommands {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.worthServiceProvider =
                 Objects.requireNonNull(worthServiceProvider, "worthServiceProvider must not be null");
+        this.missionServiceProvider =
+                Objects.requireNonNull(missionServiceProvider, "missionServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
@@ -159,7 +164,11 @@ public final class IslandProgressionCommands {
         IslandId islandId = optIsland.get();
         schedulerPort.async(() -> {
             long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
-            IslandScoreBreakdown score = worthService.calculateScore(islandId, 0, bankBalance);
+            // The finished missions really are counted. This used to pass a hardcoded zero, so
+            // levels.quest-weight was a number an operator could set and never see applied: a player
+            // who finished every mission scored the same as one who finished none.
+            IslandScoreBreakdown score =
+                    worthService.calculateScore(islandId, completedMissions(islandId, profileId), bankBalance);
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                 send(player, "level.header");
                 send(player, "level.calculated", number("level", score.calculatedLevel()));
@@ -312,5 +321,11 @@ public final class IslandProgressionCommands {
         });
 
         return Cmd.OK;
+    }
+
+    /** How many missions the caller has finished on this island, or none when missions are off. */
+    private int completedMissions(IslandId islandId, ProfileId profileId) {
+        IslandMissionService missions = missionServiceProvider.get();
+        return missions == null ? 0 : missions.countCompleted(islandId, profileId);
     }
 }

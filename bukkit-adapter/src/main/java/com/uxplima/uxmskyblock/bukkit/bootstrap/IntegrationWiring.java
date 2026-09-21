@@ -226,6 +226,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setAllianceService(gameplay.allianceService());
         this.commandTree.setRewardInboxService(gameplay.rewardInboxService());
         this.commandTree.useMarkerSynchroniser(this.markerSynchroniser);
+        this.commandTree.setMissionService(gameplay.missionService());
 
         this.apiBridge = new BukkitSkyblockApiBridge(
                 persistence.islandStoragePort(),

@@ -95,6 +95,26 @@ public final class IslandMissionService {
         });
     }
 
+    /**
+     * How many missions this profile has finished on this island.
+     *
+     * <p>The island level counts finished missions, weighted by {@code levels.quest-weight}. The
+     * command that shows a level passed a hardcoded zero, so that weight was a number an operator
+     * could configure and never see applied: a player who finished every mission on the server got
+     * the same level as one who finished none.
+     */
+    public int countCompleted(IslandId islandId, ProfileId profileId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        int completed = 0;
+        for (MissionProgress progress : findAllProgress(islandId, profileId).values()) {
+            if (progress.completed()) {
+                completed++;
+            }
+        }
+        return completed;
+    }
+
     public Optional<MissionProgress> findProgress(IslandId islandId, ProfileId profileId, MissionId missionId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(profileId, "profileId must not be null");

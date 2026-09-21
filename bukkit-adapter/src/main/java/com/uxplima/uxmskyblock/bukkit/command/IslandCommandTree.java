@@ -40,6 +40,7 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
+import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
@@ -95,6 +96,7 @@ public final class IslandCommandTree {
     private volatile @Nullable IslandAllianceService allianceService;
     private volatile @Nullable RewardInboxService rewardInboxService;
     private volatile @Nullable IslandMarkerSynchroniser markerSynchroniser;
+    private volatile @Nullable IslandMissionService missionService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -260,6 +262,11 @@ public final class IslandCommandTree {
         this.markerSynchroniser = markerSynchroniser;
     }
 
+    /** Hands the mission service to the level command, so finished missions count toward a level. */
+    public void setMissionService(@Nullable IslandMissionService missionService) {
+        this.missionService = missionService;
+    }
+
     /** Hands the reward inbox to the command that opens it. */
     public void setRewardInboxService(@Nullable RewardInboxService rewardInboxService) {
         this.rewardInboxService = rewardInboxService;
@@ -372,6 +379,7 @@ public final class IslandCommandTree {
                 sessionCoordinator,
                 schedulerPort,
                 () -> features.worthService(),
+                () -> missionService,
                 messages);
 
         IslandMechanicsCommands mechanicsCommands = new IslandMechanicsCommands(

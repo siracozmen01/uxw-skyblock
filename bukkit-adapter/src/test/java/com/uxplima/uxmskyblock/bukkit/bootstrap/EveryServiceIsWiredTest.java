@@ -79,11 +79,18 @@ class EveryServiceIsWiredTest {
         assertThat(allServices()).hasSizeGreaterThan(20);
     }
 
+    /**
+     * The services nothing else builds.
+     *
+     * <p>A service's own file does not count. {@code IslandLevelService} has a {@code defaultService()}
+     * factory that calls {@code new IslandLevelService(...)}, and for as long as this scan read that
+     * line the service looked wired while reaching no server at all: a dead duplicate of the worth
+     * service, sitting behind the one guard written to catch exactly that.
+     */
     private static Set<String> unwiredServices() throws IOException {
-        String production = productionSources();
         Set<String> unwired = new TreeSet<>();
         for (String service : allServices()) {
-            if (!production.contains("new " + service + "(")) {
+            if (!productionSourcesExcept(service).contains("new " + service + "(")) {
                 unwired.add(service);
             }
         }
@@ -102,8 +109,8 @@ class EveryServiceIsWiredTest {
         }
     }
 
-    /** Every production source of every module, which is everywhere a service could be built. */
-    private static String productionSources() throws IOException {
+    /** Every production source of every module, except the one file that declares {@code service}. */
+    private static String productionSourcesExcept(String service) throws IOException {
         StringBuilder all = new StringBuilder();
         for (String module : List.of(".", "../core", "../persistence-adapter", "../rest-adapter")) {
             Path main = Path.of(module, "src/main/java");
@@ -113,6 +120,9 @@ class EveryServiceIsWiredTest {
             try (Stream<Path> files = Files.walk(main)) {
                 for (Path file :
                         files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                    if (file.getFileName().toString().equals(service + ".java")) {
+                        continue;
+                    }
                     all.append(Files.readString(file, StandardCharsets.UTF_8));
                 }
             }
