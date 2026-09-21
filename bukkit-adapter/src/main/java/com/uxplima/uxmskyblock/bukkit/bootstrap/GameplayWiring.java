@@ -220,7 +220,8 @@ public final class GameplayWiring {
                 creationWiring.locationService(),
                 creationWiring.schematicEngine(),
                 scheduler,
-                worldName);
+                worldName,
+                this.economicWiring.upgradeService());
 
         this.protectionWiring = new GameplayProtectionWiring(
                 config, persistence, authority, protectionListener, temporaryAccessService);

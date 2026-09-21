@@ -15,6 +15,7 @@ import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import org.jspecify.annotations.Nullable;
 
@@ -42,7 +43,8 @@ public final class GameplayEnvironmentWiring {
             IslandLocationService locationService,
             StarterSchematicEngine schematicEngine,
             SchedulerPort scheduler,
-            String worldName) {
+            String worldName,
+            IslandUpgradeService upgradeService) {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(persistence, "persistence");
         Objects.requireNonNull(authority, "authority");
@@ -80,8 +82,11 @@ public final class GameplayEnvironmentWiring {
                 : null;
 
         boolean limitsEnabled = config.moduleSettings().isModuleEnabled("limits");
+        // The limit is asked on every block a player places. The upgrade service answers the tier
+        // through its own cache, so a player building runs one query for their island rather than
+        // one for every block they put down.
         this.limitService = new IslandLimitService(
-                persistence.islandUpgradeStoragePort(), config.limitConfig().quotas());
+                upgradeService::getCurrentTier, config.limitConfig().quotas());
         this.limitListener = limitsEnabled
                 ? new IslandLimitListener(
                         this.limitService,

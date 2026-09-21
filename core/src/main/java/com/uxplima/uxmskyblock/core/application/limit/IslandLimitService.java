@@ -13,6 +13,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.limit.IslandLimitCheckResult;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitQuota;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
+import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
 
 /**
  * Pure domain application service tracking and enforcing tile and entity placement caps
@@ -20,15 +21,41 @@ import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
  */
 public final class IslandLimitService {
 
-    private final IslandUpgradeStoragePort upgradeStoragePort;
+    /**
+     * Which tier of an upgrade an island holds.
+     *
+     * <p>This used to be the storage port itself, and {@link #getEffectiveLimit} is asked on every
+     * block a player places. That is a query per placement on the thread running the game for
+     * everybody in the region, and a player building runs several placements a second. The upgrade
+     * service answers the same question through its own cache, and the cache is warmed off the hot
+     * path rather than filled by the first block somebody puts down.
+     */
+    private final TierLookup tierLookup;
+
     private final Map<LimitType, LimitQuota> quotas;
     private final ConcurrentMap<IslandId, ConcurrentMap<LimitType, AtomicInteger>> islandCounts =
             new ConcurrentHashMap<>();
 
-    public IslandLimitService(IslandUpgradeStoragePort upgradeStoragePort, Map<LimitType, LimitQuota> quotas) {
-        this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
+    /** Which tier of one upgrade an island holds. */
+    @FunctionalInterface
+    public interface TierLookup {
+        int tierOf(IslandId islandId, UpgradeId upgradeId);
+    }
+
+    public IslandLimitService(TierLookup tierLookup, Map<LimitType, LimitQuota> quotas) {
+        this.tierLookup = Objects.requireNonNull(tierLookup, "tierLookup must not be null");
         Objects.requireNonNull(quotas, "quotas must not be null");
         this.quotas = quotas.isEmpty() ? Map.of() : Collections.unmodifiableMap(new EnumMap<>(quotas));
+    }
+
+    /**
+     * Asks the storage port directly, which is one query per block placed.
+     *
+     * <p>Here for a caller that has no upgrade service to ask, and for the tests that had one
+     * before this took a lookup. Production passes the cached one.
+     */
+    public IslandLimitService(IslandUpgradeStoragePort upgradeStoragePort, Map<LimitType, LimitQuota> quotas) {
+        this(Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null")::getUpgradeTier, quotas);
     }
 
     /**
@@ -45,7 +72,7 @@ public final class IslandLimitService {
 
         int tier = 0;
         if (quota.upgradeId() != null) {
-            tier = upgradeStoragePort.getUpgradeTier(islandId, quota.upgradeId());
+            tier = tierLookup.tierOf(islandId, quota.upgradeId());
         }
 
         return quota.baseLimit() + (tier * quota.perTierBonus());
