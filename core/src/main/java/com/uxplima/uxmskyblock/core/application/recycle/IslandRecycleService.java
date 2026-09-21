@@ -13,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
+import com.uxplima.uxmskyblock.core.application.island.IslandCacheEviction;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
@@ -62,6 +63,7 @@ public final class IslandRecycleService {
     private final @Nullable IslandRecycleOperationPort recycleOperationPort;
     private final Clock clock;
     private final Duration challengeTtl;
+    private final IslandCacheEviction cacheEviction;
     private final SecureRandom secureRandom;
     private final Map<ProfileId, ChallengeEntry> pendingChallenges = new ConcurrentHashMap<>();
 
@@ -103,6 +105,37 @@ public final class IslandRecycleService {
             @Nullable IslandRecycleOperationPort recycleOperationPort,
             Clock clock,
             Duration challengeTtl) {
+        this(
+                islandStoragePort,
+                worldGridAllocationPort,
+                spiralSlotPoolPort,
+                voidingPort,
+                backupPort,
+                outboxPort,
+                recycleOperationPort,
+                clock,
+                challengeTtl,
+                new IslandCacheEviction());
+    }
+
+    /**
+     * The constructor that also says what to forget when an island is erased.
+     *
+     * <p>Half a dozen services keep something per island in memory and several had a method to
+     * forget one that nothing called. An erased island is the moment they should.
+     */
+    public IslandRecycleService(
+            IslandStoragePort islandStoragePort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            SpiralSlotPoolPort spiralSlotPoolPort,
+            @Nullable IslandVoidingPort voidingPort,
+            @Nullable IslandBackupPort backupPort,
+            @Nullable OutboxPort outboxPort,
+            @Nullable IslandRecycleOperationPort recycleOperationPort,
+            Clock clock,
+            Duration challengeTtl,
+            IslandCacheEviction cacheEviction) {
+        this.cacheEviction = Objects.requireNonNull(cacheEviction, "cacheEviction must not be null");
         this.challengeTtl = Objects.requireNonNull(challengeTtl, "challengeTtl must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.worldGridAllocationPort =
@@ -415,6 +448,10 @@ public final class IslandRecycleService {
                         operationId, IslandRecycleState.COMPLETED, null, null, clock.instant());
             }
 
+            // The island is gone, so everything keeping something for it in memory is told to let
+            // it go. An island id is never reused, so a cache that keeps one is holding memory for
+            // an island that cannot come back.
+            cacheEviction.forget(islandId);
             return new RecycleResult.Success(islandId, finalSlotIndex, finalWorldName, finalGridX, finalGridZ);
         });
     }

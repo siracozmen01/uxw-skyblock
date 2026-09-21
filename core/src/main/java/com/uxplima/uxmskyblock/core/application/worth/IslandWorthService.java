@@ -259,6 +259,18 @@ public final class IslandWorthService {
         });
     }
 
+    /**
+     * Drops everything this service holds for one island.
+     *
+     * <p>The material index is a count per material and the spawner map is a count per entity type.
+     * Nothing removed either, so an island that was deleted a year ago was still being carried.
+     */
+    public void forgetIsland(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        activeIndices.remove(islandId);
+        activeSpawners.remove(islandId);
+    }
+
     public MaterialValuationIndex valuationIndex() {
         return valuationIndex;
     }

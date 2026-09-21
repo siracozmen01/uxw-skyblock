@@ -56,6 +56,7 @@ import com.uxplima.uxmskyblock.core.application.home.HomeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
+import com.uxplima.uxmskyblock.core.application.island.IslandCacheEviction;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
@@ -101,6 +102,7 @@ public final class GameplayWiring {
     private final GameplayCreationWiring creationWiring;
     private final AdminWiring adminWiring;
     private final StorageBucket backupBucket;
+    private final IslandCacheEviction cacheEviction;
     private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
     private final SocialWiring socialWiring;
@@ -192,6 +194,11 @@ public final class GameplayWiring {
                 scheduler);
 
         this.backupBucket = java.util.Objects.requireNonNull(backupBucket, "backupBucket must not be null");
+        // One place that forgets an island. Each service says once how to forget one, and erasing
+        // an island says it happened.
+        this.cacheEviction = new IslandCacheEviction();
+        this.cacheEviction.whenForgotten(this.economicWiring.upgradeService()::invalidateCache);
+
         this.adminWiring = new AdminWiring(
                 plugin,
                 config,
@@ -202,6 +209,7 @@ public final class GameplayWiring {
                 freezeService,
                 scheduler,
                 this.backpressureController,
+                this.cacheEviction,
                 objectStorage);
 
         // A skyblock with no way to make a team. The cap is the member limit upgrade's own tier
@@ -222,6 +230,11 @@ public final class GameplayWiring {
                 scheduler,
                 worldName,
                 this.economicWiring.upgradeService());
+
+        // The rest of the caches register as they are built, after the wiring that owns them.
+        this.cacheEviction.whenForgotten(this.environmentWiring.limitService()::clearIsland);
+        this.cacheEviction.whenForgotten(this.environmentWiring.dimensionService()::resetIslandDimensions);
+        this.cacheEviction.whenForgotten(this.economicWiring.worthService()::forgetIsland);
 
         this.protectionWiring = new GameplayProtectionWiring(
                 config, persistence, authority, protectionListener, temporaryAccessService);

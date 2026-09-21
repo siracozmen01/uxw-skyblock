@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
+import com.uxplima.uxmskyblock.core.application.island.IslandCacheEviction;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -58,6 +59,7 @@ public final class AdminWiring {
             IslandAdminFreezeService freezeService,
             SchedulerPort scheduler,
             AdaptiveBackpressureController backpressureController,
+            IslandCacheEviction cacheEviction,
             ObjectStoragePort objectStorage) {
         this.freezeService = Objects.requireNonNull(freezeService, "freezeService must not be null");
         this.voidingAdapter = new FoliaIslandVoidingAdapter(scheduler, backpressureController);
@@ -94,7 +96,8 @@ public final class AdminWiring {
                 persistence.outboxPort(),
                 persistence.islandRecycleOperationPort(),
                 java.time.Clock.systemUTC(),
-                config.antiAbuseConfig().resetChallengeTtl());
+                config.antiAbuseConfig().resetChallengeTtl(),
+                cacheEviction);
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
                 recycleService,
                 persistence.islandStoragePort(),
