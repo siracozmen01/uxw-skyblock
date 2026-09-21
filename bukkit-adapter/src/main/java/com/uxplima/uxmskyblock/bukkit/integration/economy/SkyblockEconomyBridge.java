@@ -216,9 +216,25 @@ public final class SkyblockEconomyBridge {
                 if (outcome instanceof BankTransactionOutcome.Success && economyBridge.isPresent()) {
                     boolean deposited = economyBridge.deposit(player, (double) dollars);
                     if (!deposited) {
-                        bankService.deposit(profileId, playerUuid, minorUnits, nodeId);
-                        outcome = new BankTransactionOutcome.AuthorityRejected(
-                                "Failed to deposit funds into your wallet. Island bank funds refunded.");
+                        // The island bank has already been debited. Putting it back can fail too, and
+                        // this used to throw that answer away and tell the player it had worked: the
+                        // money was gone from the bank, never in their wallet, and the line on screen
+                        // said it had been refunded.
+                        BankTransactionOutcome refund = bankService.deposit(profileId, playerUuid, minorUnits, nodeId);
+                        if (refund instanceof BankTransactionOutcome.Success) {
+                            outcome = new BankTransactionOutcome.AuthorityRejected(
+                                    "Failed to deposit funds into your wallet. Island bank funds refunded.");
+                        } else {
+                            LOGGER.log(
+                                    Level.SEVERE,
+                                    "Island bank refund failed after a wallet deposit that would not land."
+                                            + " player={0} amountMinorUnits={1} refundOutcome={2}",
+                                    new Object[] {playerUuid, minorUnits, refund});
+                            outcome = new BankTransactionOutcome.AuthorityRejected(
+                                    "Your wallet would not take the funds and the island bank could not be"
+                                            + " refunded. Contact an administrator with the time of this"
+                                            + " message.");
+                        }
                     }
                 }
             }
