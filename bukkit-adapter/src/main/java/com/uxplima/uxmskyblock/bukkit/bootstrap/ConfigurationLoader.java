@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.logging.Logger;
 
@@ -68,6 +69,27 @@ public final class ConfigurationLoader {
 
     private static final Logger LOGGER = Logger.getLogger(ConfigurationLoader.class.getName());
 
+    /**
+     * The menu files this plugin ships, written next to the server once and never over an edit.
+     *
+     * <p>Adding a menu is a file here and a line in this list. A menu the operator writes themselves
+     * needs neither: the engine reads every {@code menus/*.conf} it finds, shipped or not.
+     */
+    private static final List<String> SHIPPED_MENUS = List.of(
+            "island-main.conf",
+            "island-bank.conf",
+            "island-upgrades.conf",
+            "island-members.conf",
+            "island-settings.conf",
+            "island-warps.conf",
+            "island-vault.conf",
+            "island-missions.conf",
+            "island-boosters.conf",
+            "island-biome.conf",
+            "island-homes.conf",
+            "island-social.conf",
+            "island-top.conf");
+
     private ConfigurationLoader() {
         throw new UnsupportedOperationException("ConfigurationLoader is a set of loading steps, not a thing to hold.");
     }
@@ -91,9 +113,9 @@ public final class ConfigurationLoader {
         // 1. Unpack messages catalog & menus templates
         unpackResource(plugin, "messages/messages_en.conf", dataDir.resolve("messages/messages_en.conf"));
         unpackResource(plugin, "messages/messages_tr.conf", dataDir.resolve("messages/messages_tr.conf"));
-        unpackResource(plugin, "menus/island-main.conf", dataDir.resolve("menus/island-main.conf"));
-        unpackResource(plugin, "menus/island-upgrades.conf", dataDir.resolve("menus/island-upgrades.conf"));
-        unpackResource(plugin, "menus/island-members.conf", dataDir.resolve("menus/island-members.conf"));
+        for (String menu : SHIPPED_MENUS) {
+            unpackResource(plugin, "menus/" + menu, dataDir.resolve("menus/" + menu));
+        }
 
         // 2. Load root config.conf
         Path configFile = dataDir.resolve("config.conf");

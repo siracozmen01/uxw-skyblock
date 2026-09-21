@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -84,6 +85,42 @@ class ShippedMenuFilesAreReadTest {
                     .describedAs("item %s in %s must do something when clicked", id, file.getFileName())
                     .isTrue();
         });
+    }
+
+    @Test
+    @DisplayName("Every menu a shipped file opens is a shipped file")
+    void everyOpenReachesAMenuThatExists() throws IOException {
+        List<String> ids = new ArrayList<>();
+        for (Path file : menuFiles()) {
+            String name = file.getFileName().toString();
+            ids.add(name.substring(0, name.length() - ".conf".length()));
+        }
+
+        Pattern opens = Pattern.compile("\"open:([a-z0-9-]+)\"");
+        for (Path file : menuFiles()) {
+            Matcher matcher = opens.matcher(Files.readString(file, StandardCharsets.UTF_8));
+            while (matcher.find()) {
+                assertThat(ids)
+                        .describedAs(
+                                "%s opens %s, which must be a menu that exists", file.getFileName(), matcher.group(1))
+                        .contains(matcher.group(1));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Every shipped menu is unpacked next to the server")
+    void everyShippedMenuIsUnpacked() throws IOException {
+        String loader = Files.readString(
+                Path.of("src/main/java/com/uxplima/uxmskyblock/bukkit/bootstrap/ConfigurationLoader.java"),
+                StandardCharsets.UTF_8);
+
+        for (Path file : menuFiles()) {
+            assertThat(loader)
+                    .describedAs(
+                            "%s ships in the jar, so it must be written next to the server too", file.getFileName())
+                    .contains("\"" + file.getFileName() + "\"");
+        }
     }
 
     @Test

@@ -9,6 +9,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -56,6 +58,17 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     private final Path menusDir;
     private final List<String> loaded = new ArrayList<>();
 
+    /**
+     * The live values each viewer's menus were last opened with.
+     *
+     * <p>A menu file says {@code open:island-bank} and the engine opens it on the click thread,
+     * where reading a balance from the database is exactly what must not happen. The values were
+     * gathered moments earlier, when the player opened the panel these menus hang off, so the
+     * remembered set is what the sub menu shows. A balance a few seconds old on a page the player
+     * navigated to is the right trade against a query under their cursor.
+     */
+    private final Map<UUID, Map<String, String>> lastValues = new ConcurrentHashMap<>();
+
     public SkyblockMenuEngine(Plugin plugin, Messages messages, Path dataDir, @Nullable ConfigurationNode themeNode) {
         Objects.requireNonNull(plugin, "plugin must not be null");
         Objects.requireNonNull(messages, "messages must not be null");
@@ -84,7 +97,26 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         // close, open, command, message and sound mean the same in every plugin, so they come from
         // the library. Anything a skyblock menu can do that a generic menu cannot is registered by
         // the feature that owns it, through bindings().
-        MenuBasics.register(bindings, menus);
+        // Four of the five: close, command, message and sound. Not the library's open, because that
+        // one carries no values and a sub menu opened without them shows blanks where a balance
+        // should be. The registry refuses a second registration under the same name, which is right:
+        // a verb that quietly changed meaning depending on wiring order would be worse.
+        MenuBasics.register(bindings);
+
+        bindings.action("open", ctx -> {
+            String target = ctx.arg().strip();
+            menus.open(ctx.player(), target, null, 0, valuesFor(ctx.player().getUniqueId()));
+        });
+    }
+
+    /** What the viewer's menus were last opened with, or nothing when they have opened none. */
+    private Map<String, String> valuesFor(UUID viewer) {
+        return lastValues.getOrDefault(viewer, Map.of());
+    }
+
+    /** Forgets a viewer's values, for a quit or a profile switch. */
+    public void forget(UUID viewer) {
+        lastValues.remove(Objects.requireNonNull(viewer, "viewer must not be null"));
     }
 
     /**
@@ -159,6 +191,7 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         if (!has(specId)) {
             return false;
         }
+        lastValues.put(viewer.getUniqueId(), Map.copyOf(values));
         menus.open(viewer, specId, null, 0, values);
         return true;
     }
@@ -174,6 +207,7 @@ public final class SkyblockMenuEngine implements AutoCloseable {
 
     @Override
     public void close() {
+        lastValues.clear();
         listener.uninstall();
         menus.shutdown();
     }
