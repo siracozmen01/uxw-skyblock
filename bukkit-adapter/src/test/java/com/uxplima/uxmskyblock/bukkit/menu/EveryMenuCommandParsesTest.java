@@ -59,8 +59,17 @@ class EveryMenuCommandParsesTest {
 
     private static final Path MENUS = Path.of("src/main/resources/menus");
 
-    /** A whole command line a menu file runs, for example {@code command:is warp create}. */
-    private static final Pattern MENU_COMMAND = Pattern.compile("\"command:(is [a-z_0-9 ]+)\"");
+    /** A whole command line a menu file runs, for example {@code command:is warp create %input%}. */
+    private static final Pattern MENU_COMMAND = Pattern.compile("\"command:(is [a-z_0-9 %]+)\"");
+
+    /**
+     * What a typed line looks like when the guard asks Brigadier.
+     *
+     * <p>A {@code %input%} token is the word the player types at an {@code input:} prompt, substituted
+     * by the engine before the command runs. A word stands in for it here, because what is being
+     * checked is whether the command has somewhere to put a word, not which word.
+     */
+    private static final String SAMPLE_INPUT = "example";
 
     /** The tree the plugin registers, built with stand-ins for everything it talks to. */
     private static CommandDispatcher<CommandSourceStack> dispatcher() {
@@ -124,7 +133,7 @@ class EveryMenuCommandParsesTest {
             String line = entry.substring(entry.indexOf(" :: ") + 4);
             // The tree is registered under "island"; "is" is its alias, which Paper adds and Brigadier
             // here does not, so the line is asked under the name the tree itself declares.
-            String asRegistered = "island" + line.substring("is".length());
+            String asRegistered = ("island" + line.substring("is".length())).replace("%input%", SAMPLE_INPUT);
             ParseResults<CommandSourceStack> parsed = dispatcher.parse(asRegistered, source);
             String remaining = parsed.getReader().getRemaining();
             if (!remaining.isEmpty() || parsed.getContext().getNodes().isEmpty()) {

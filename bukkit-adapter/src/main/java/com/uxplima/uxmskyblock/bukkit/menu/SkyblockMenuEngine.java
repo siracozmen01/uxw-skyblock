@@ -21,7 +21,11 @@ import org.bukkit.plugin.Plugin;
 
 import com.uxplima.uxmlib.bedrock.BedrockDetector;
 import com.uxplima.uxmlib.bedrock.BedrockScreen;
+import com.uxplima.uxmlib.common.Log;
 import com.uxplima.uxmlib.gui.GuiText;
+import com.uxplima.uxmlib.gui.anvil.AnvilInput;
+import com.uxplima.uxmlib.gui.input.TextInputInstaller;
+import com.uxplima.uxmlib.gui.style.MenuSounds;
 import com.uxplima.uxmlib.menu.MenuBasics;
 import com.uxplima.uxmlib.menu.Menus;
 import com.uxplima.uxmlib.menu.binding.MenuBindings;
@@ -56,6 +60,8 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     private final Menus menus;
     private final MenuListener listener;
     private final Path menusDir;
+    private final AnvilInput anvilInput;
+    private final TextInputInstaller.Installed textInput;
     private final List<String> loaded = new ArrayList<>();
 
     /**
@@ -92,7 +98,39 @@ public final class SkyblockMenuEngine implements AutoCloseable {
                 BedrockDetector.forServer(Bukkit.getServer()),
                 BedrockScreen.forServer(Bukkit.getServer()),
                 bindings.pagedLists());
-        this.listener = new MenuListener(renderer, bindings.actions(), bindings.conditions(), scheduler, plugin);
+        // The text prompt behind an input: step. Without it a menu file can ask for a warp name and
+        // the engine has nowhere to ask it, so the step cancels and the button does nothing. It is
+        // also how a Bedrock player gets asked: the seam sends them a native Cumulus form instead of
+        // an anvil, which is what "Bedrock is the floor" means for a menu that needs a word typed.
+        AnvilInput anvil = new AnvilInput(plugin);
+        anvil.install();
+        this.anvilInput = anvil;
+        this.textInput = TextInputInstaller.install(
+                plugin,
+                dataDir,
+                anvil,
+                words,
+                scheduler,
+                Log.of(LOGGER),
+                BedrockDetector.forServer(Bukkit.getServer()),
+                BedrockScreen.forServer(Bukkit.getServer()));
+
+        this.listener = new MenuListener(
+                renderer,
+                bindings.actions(),
+                bindings.conditions(),
+                scheduler,
+                plugin,
+                null,
+                null,
+                null,
+                0L,
+                System::currentTimeMillis,
+                bindings.pagedLists(),
+                this.textInput.textInput()::promptResolved,
+                bindings.contents(),
+                MenuSounds.defaults(),
+                refs -> false);
 
         // close, open, command, message and sound mean the same in every plugin, so they come from
         // the library. Anything a skyblock menu can do that a generic menu cannot is registered by
@@ -208,6 +246,8 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     @Override
     public void close() {
         lastValues.clear();
+        textInput.uninstall().run();
+        anvilInput.uninstall();
         listener.uninstall();
         menus.shutdown();
     }
