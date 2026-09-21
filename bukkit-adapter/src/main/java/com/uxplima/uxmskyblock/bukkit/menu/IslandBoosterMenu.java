@@ -14,13 +14,14 @@ import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -44,17 +45,20 @@ public final class IslandBoosterMenu {
     private final BoosterConfiguration configuration;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final @Nullable SchedulerPort schedulerPort;
+    private final Messages messages;
 
     public IslandBoosterMenu(
             IslandStoragePort islandStoragePort,
             IslandBoosterService boosterService,
             BoosterConfiguration configuration,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
-            @Nullable SchedulerPort schedulerPort) {
+            @Nullable SchedulerPort schedulerPort,
+            Messages messages) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.boosterService = Objects.requireNonNull(boosterService, "boosterService must not be null");
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         this.sessionCoordinator = sessionCoordinator;
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.schedulerPort = schedulerPort;
     }
 
@@ -62,8 +66,9 @@ public final class IslandBoosterMenu {
             IslandStoragePort islandStoragePort,
             IslandBoosterService boosterService,
             BoosterConfiguration configuration,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null);
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            Messages messages) {
+        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null, messages);
     }
 
     public void open(Player player) {
@@ -122,7 +127,7 @@ public final class IslandBoosterMenu {
 
     public SimpleGui buildGui(Player player, IslandId islandId, Instant now) {
         SimpleGui gui = Guis.gui()
-                .title(Component.text("Active Island Boosters", NamedTextColor.GOLD))
+                .title(messages.renderPlain(player, "menu.booster.title"))
                 .rows(4)
                 .build();
 
@@ -135,38 +140,35 @@ public final class IslandBoosterMenu {
         // Center Overview Header (Slot 4)
         boolean isPaused = boosterService.isIslandPaused(islandId);
         List<IslandBooster> allActive = boosterService.getActiveBoosters(islandId, now);
+        String idleKey = configuration.pauseWhenEmpty()
+                ? (isPaused ? "menu.booster.idle_paused" : "menu.booster.idle_online")
+                : "menu.booster.idle_disabled";
         ItemStack header = ItemBuilder.of(Material.NETHER_STAR)
-                .name(MiniMessage.miniMessage().deserialize("<gold><bold>Island Multiplier Overview</bold></gold>"))
-                .lore(
-                        List.of(
-                                MiniMessage.miniMessage()
-                                        .deserialize("<gray>Active Boosters: <white>" + allActive.size()
-                                                + "</white></gray>"),
-                                MiniMessage.miniMessage()
-                                        .deserialize("<gray>Pause-on-Idle: "
-                                                + (configuration.pauseWhenEmpty()
-                                                        ? (isPaused
-                                                                ? "<yellow>PAUSED</yellow>"
-                                                                : "<green>ONLINE</green>")
-                                                        : "<dark_gray>DISABLED</dark_gray>")
-                                                + "</gray>"),
-                                MiniMessage.miniMessage()
-                                        .deserialize(
-                                                "<dark_gray>Booster timers freeze automatically when 0 members are online.</dark_gray>")))
+                .name(messages.renderPlain(player, "menu.booster.overview_name"))
+                .lore(List.of(
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.overview_active",
+                                Placeholder.unparsed("count", Integer.toString(allActive.size()))),
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.overview_idle",
+                                Placeholder.component("state", messages.renderPlain(player, idleKey))),
+                        messages.renderPlain(player, "menu.booster.overview_note")))
                 .build();
         gui.set(4, GuiItem.display(header));
 
         // Category Cards
-        setupCategoryCard(gui, 10, BoosterCategory.SPAWNER_RATE, Material.SPAWNER, islandId, now);
-        setupCategoryCard(gui, 12, BoosterCategory.CROP_GROWTH, Material.WHEAT, islandId, now);
-        setupCategoryCard(gui, 14, BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE, islandId, now);
-        setupCategoryCard(gui, 16, BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE, islandId, now);
-        setupCategoryCard(gui, 21, BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK, islandId, now);
-        setupCategoryCard(gui, 23, BoosterCategory.MISSION_REWARDS, Material.EMERALD, islandId, now);
+        setupCategoryCard(player, gui, 10, BoosterCategory.SPAWNER_RATE, Material.SPAWNER, islandId, now);
+        setupCategoryCard(player, gui, 12, BoosterCategory.CROP_GROWTH, Material.WHEAT, islandId, now);
+        setupCategoryCard(player, gui, 14, BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE, islandId, now);
+        setupCategoryCard(player, gui, 16, BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE, islandId, now);
+        setupCategoryCard(player, gui, 21, BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK, islandId, now);
+        setupCategoryCard(player, gui, 23, BoosterCategory.MISSION_REWARDS, Material.EMERALD, islandId, now);
 
         // Close button (Slot 31)
         ItemStack closeItem = ItemBuilder.of(Material.BARRIER)
-                .name(MiniMessage.miniMessage().deserialize("<red><bold>Close Menu</bold></red>"))
+                .name(messages.renderPlain(player, "menu.booster.close"))
                 .build();
         gui.set(31, GuiItem.button(closeItem, event -> player.closeInventory()));
 
@@ -174,7 +176,13 @@ public final class IslandBoosterMenu {
     }
 
     private void setupCategoryCard(
-            SimpleGui gui, int slot, BoosterCategory category, Material icon, IslandId islandId, Instant now) {
+            Player player,
+            SimpleGui gui,
+            int slot,
+            BoosterCategory category,
+            Material icon,
+            IslandId islandId,
+            Instant now) {
         CategoryBoosterPolicy policy = configuration.policy(category);
         List<IslandBooster> active = boosterService.getActiveBoosters(islandId, category, now);
         double effectiveMultiplier = boosterService.getEffectiveMultiplier(islandId, category, now);
@@ -193,38 +201,48 @@ public final class IslandBoosterMenu {
                 (maxDuration.toSeconds() > 0) ? (double) totalRemainingSec / (double) maxDuration.toSeconds() : 0.0;
         String progressBar = renderProgressBar(ratio, 10);
 
-        String statusStr;
+        String statusKey;
         if (!policy.enabled()) {
-            statusStr = "<dark_gray>DISABLED</dark_gray>";
+            statusKey = "menu.booster.status_disabled";
         } else if (isPaused) {
-            statusStr = "<yellow>PAUSED (Timer Frozen)</yellow>";
+            statusKey = "menu.booster.status_paused";
         } else if (hasActive) {
-            statusStr = "<green>ACTIVE</green>";
+            statusKey = "menu.booster.status_active";
         } else {
-            statusStr = "<gray>INACTIVE</gray>";
+            statusKey = "menu.booster.status_inactive";
         }
 
         ItemStack card = ItemBuilder.of(icon)
-                .name(MiniMessage.miniMessage()
-                        .deserialize("<gold><bold>" + category.displayName() + " Booster</bold></gold>"))
+                .name(messages.renderPlain(
+                        player, "menu.booster.card_name", Placeholder.unparsed("category", category.displayName())))
                 .lore(List.of(
-                        MiniMessage.miniMessage().deserialize("<gray>Status: " + statusStr),
-                        MiniMessage.miniMessage()
-                                .deserialize("<gray>Current Multiplier: <yellow><bold>"
-                                        + String.format(java.util.Locale.ROOT, "%.2fx", effectiveMultiplier)
-                                        + "</bold></yellow></gray>"),
-                        MiniMessage.miniMessage()
-                                .deserialize("<gray>Remaining Time: <white>" + formatDuration(remaining)
-                                        + "</white></gray>"),
-                        MiniMessage.miniMessage().deserialize("<gray>Progress: " + progressBar),
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.card_status",
+                                Placeholder.component("status", messages.renderPlain(player, statusKey))),
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.card_multiplier",
+                                Placeholder.unparsed(
+                                        "multiplier",
+                                        String.format(java.util.Locale.ROOT, "%.2f", effectiveMultiplier))),
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.card_remaining",
+                                Placeholder.unparsed("remaining", formatDuration(remaining))),
+                        messages.renderPlain(
+                                player, "menu.booster.card_progress", Placeholder.unparsed("bar", progressBar)),
                         Component.empty(),
-                        MiniMessage.miniMessage()
-                                .deserialize("<dark_gray>Stack Mode: "
-                                        + policy.stackMode().name() + " | Cap: " + policy.maxMultiplier()
-                                        + "x</dark_gray>"),
-                        MiniMessage.miniMessage()
-                                .deserialize("<dark_gray>Max Duration: " + formatDuration(policy.maxDuration())
-                                        + "</dark_gray>")))
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.card_stacking",
+                                Placeholder.unparsed("mode", policy.stackMode().name()),
+                                Placeholder.unparsed(
+                                        "cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier()))),
+                        messages.renderPlain(
+                                player,
+                                "menu.booster.card_max_duration",
+                                Placeholder.unparsed("duration", formatDuration(policy.maxDuration())))))
                 .build();
 
         gui.set(slot, GuiItem.display(card));

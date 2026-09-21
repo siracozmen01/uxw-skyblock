@@ -126,7 +126,8 @@ public final class EconomicWiring {
                         this.boosterService,
                         config.boosterConfig(),
                         authority.sessionCoordinator(),
-                        scheduler)
+                        scheduler,
+                        config.messages())
                 : null;
 
         ItemRewardDeliveryHandler itemDeliveryHandler = new ItemRewardDeliveryHandler(

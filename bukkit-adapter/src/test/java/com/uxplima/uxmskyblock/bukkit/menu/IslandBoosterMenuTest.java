@@ -17,6 +17,7 @@ import org.bukkit.entity.Player;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
@@ -50,7 +51,8 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
         configuration = BoosterConfiguration.defaultConfiguration();
         mockSessionCoordinator = mock(PlayerSessionCoordinator.class);
 
-        menu = new IslandBoosterMenu(mockStorage, mockBoosterService, configuration, mockSessionCoordinator);
+        menu = new IslandBoosterMenu(
+                mockStorage, mockBoosterService, configuration, mockSessionCoordinator, Messages.bundled());
 
         player = createPlayer("BoosterGuiPlayer");
         islandId = new IslandId(UUID.randomUUID());
