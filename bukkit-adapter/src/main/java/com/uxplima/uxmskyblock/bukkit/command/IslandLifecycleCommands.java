@@ -15,14 +15,14 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
@@ -63,6 +63,7 @@ public final class IslandLifecycleCommands {
     private final Supplier<@Nullable IslandRecycleService> recycleServiceProvider;
     private final Supplier<@Nullable IslandResetConfirmationMenu> resetMenuProvider;
     private final Supplier<@Nullable IslandNameService> nameServiceProvider;
+    private final Messages messages;
 
     public IslandLifecycleCommands(
             CreateIslandUseCase createIslandUseCase,
@@ -77,7 +78,8 @@ public final class IslandLifecycleCommands {
             Supplier<@Nullable IslandAntiAbuseService> antiAbuseServiceProvider,
             Supplier<@Nullable IslandRecycleService> recycleServiceProvider,
             Supplier<@Nullable IslandResetConfirmationMenu> resetMenuProvider,
-            Supplier<@Nullable IslandNameService> nameServiceProvider) {
+            Supplier<@Nullable IslandNameService> nameServiceProvider,
+            Messages messages) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -94,6 +96,7 @@ public final class IslandLifecycleCommands {
                 Objects.requireNonNull(recycleServiceProvider, "recycleServiceProvider must not be null");
         this.resetMenuProvider = Objects.requireNonNull(resetMenuProvider, "resetMenuProvider must not be null");
         this.nameServiceProvider = Objects.requireNonNull(nameServiceProvider, "nameServiceProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildCreate() {
@@ -135,6 +138,10 @@ public final class IslandLifecycleCommands {
         return activeProfile(player).flatMap(islandLocationService::findIslandId);
     }
 
+    private void send(Audience audience, String key, TagResolver... resolvers) {
+        send(audience, messages.render(audience, key, resolvers));
+    }
+
     private void send(Audience audience, Component component) {
         if (audience instanceof Player player) {
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
@@ -149,17 +156,14 @@ public final class IslandLifecycleCommands {
 
     private int executeCreate(CommandContext<CommandSourceStack> ctx, String presetId) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can create an island.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -209,34 +213,24 @@ public final class IslandLifecycleCommands {
                                 });
                                 send(
                                         player,
-                                        Component.text(
-                                                "Island created successfully with preset '"
-                                                        + success.preset().displayName() + "'!",
-                                                NamedTextColor.GREEN));
+                                        "create.success",
+                                        Placeholder.unparsed(
+                                                "preset", success.preset().displayName()));
                             });
                         });
                     } else {
-                        send(
-                                player,
-                                Component.text(
-                                        "Island created, but world '" + worldName + "' is not loaded on this node.",
-                                        NamedTextColor.YELLOW));
+                        send(player, "create.world_unloaded", Placeholder.unparsed("world", worldName));
                     }
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
-                    send(
-                            player,
-                            Component.text(
-                                    "You already own or belong to an island! Use /is home to visit it.",
-                                    NamedTextColor.RED));
+                    send(player, "create.already_has_island");
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.UnknownPreset unknown) {
                     send(
                             player,
-                            Component.text(
-                                    "Unknown preset '" + unknown.presetId()
-                                            + "'. Available: classic, desert, nether, cave.",
-                                    NamedTextColor.RED));
+                            "create.unknown_preset",
+                            Placeholder.unparsed("preset", unknown.presetId()),
+                            Placeholder.unparsed("presets", availablePresetIds()));
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.Failure failure) {
-                    send(player, Component.text("Failed to create island: " + failure.reason(), NamedTextColor.RED));
+                    send(player, "create.failed", Placeholder.unparsed("reason", failure.reason()));
                 }
             });
         });
@@ -247,25 +241,25 @@ public final class IslandLifecycleCommands {
     private int executeReset(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can reset islands.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandRecycleService recycleService = recycleServiceProvider.get();
         if (recycleService == null) {
-            send(player, Component.text("Island recycle service is disabled.", NamedTextColor.RED));
+            send(player, "reset.service_disabled");
             return Cmd.OK;
         }
 
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
         ProfileId profileId = optProfile.get();
         Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
         if (optIsland.isEmpty()) {
-            send(player, Component.text("You do not have an active island to reset.", NamedTextColor.RED));
+            send(player, "error.no_island");
             return Cmd.OK;
         }
 
@@ -277,20 +271,9 @@ public final class IslandLifecycleCommands {
 
         ResetChallenge challenge = recycleService.generateResetChallenge(profileId, islandId);
 
-        send(
-                player,
-                Component.text(
-                        "WARNING: ISLAND RESET CANNOT BE UNDONE!", NamedTextColor.DARK_RED, TextDecoration.BOLD));
-        send(
-                player,
-                Component.text(
-                        "All island blocks, chests, items, and bank balance will be permanently wiped.",
-                        NamedTextColor.GRAY));
-        send(
-                player,
-                Component.text("To confirm in chat, type: ", NamedTextColor.YELLOW)
-                        .append(Component.text(
-                                "/is reset confirm " + challenge.code(), NamedTextColor.GOLD, TextDecoration.BOLD)));
+        send(player, "reset.warning");
+        send(player, "reset.warning_detail");
+        send(player, "reset.confirm_hint", Placeholder.unparsed("code", challenge.code()));
 
         IslandResetConfirmationMenu resetMenu = resetMenuProvider.get();
         if (resetMenu != null) {
@@ -306,19 +289,14 @@ public final class IslandLifecycleCommands {
         boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
         ResetCheckResult check = antiAbuse.checkResetAllowed(new PlayerUuid(player.getUniqueId()), bypass);
         if (check instanceof ResetCheckResult.CooldownActive cd) {
-            send(
-                    player,
-                    Component.text(
-                            "Island reset is on cooldown. Remaining: " + formatDuration(cd.remaining()),
-                            NamedTextColor.RED));
+            send(player, "reset.cooldown", Placeholder.unparsed("remaining", formatDuration(cd.remaining())));
             return true;
         } else if (check instanceof ResetCheckResult.DailyLimitExceeded dl) {
             send(
                     player,
-                    Component.text(
-                            "You have reached the daily limit of " + dl.maxDailyResets()
-                                    + " island resets. Available in: " + formatDuration(dl.remaining()),
-                            NamedTextColor.RED));
+                    "reset.daily_limit",
+                    Placeholder.unparsed("max", Integer.toString(dl.maxDailyResets())),
+                    Placeholder.unparsed("remaining", formatDuration(dl.remaining())));
             return true;
         }
         return false;
@@ -327,26 +305,26 @@ public final class IslandLifecycleCommands {
     private int executeResetConfirm(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can confirm island resets.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandRecycleService recycleService = recycleServiceProvider.get();
         if (recycleService == null) {
-            send(player, Component.text("Island recycle service is disabled.", NamedTextColor.RED));
+            send(player, "reset.service_disabled");
             return Cmd.OK;
         }
 
         String code = StringArgumentType.getString(ctx, "code");
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
         ProfileId profileId = optProfile.get();
         Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
         if (optIsland.isEmpty()) {
-            send(player, Component.text("You do not have an active island to reset.", NamedTextColor.RED));
+            send(player, "error.no_island");
             return Cmd.OK;
         }
 
@@ -375,30 +353,15 @@ public final class IslandLifecycleCommands {
                                     }
                                 }
                                 player.teleport(player.getWorld().getSpawnLocation());
-                                send(
-                                        player,
-                                        Component.text(
-                                                "Your island has been reset and recycled successfully!",
-                                                NamedTextColor.GREEN,
-                                                TextDecoration.BOLD));
-                                send(
-                                        player,
-                                        Component.text("Create a new island with /is create.", NamedTextColor.GRAY));
+                                send(player, "reset.success");
+                                send(player, "reset.success_hint");
                             }
-                            case RecycleResult.NotOwner no ->
-                                send(
-                                        player,
-                                        Component.text(
-                                                "Only the island owner can reset this island!", NamedTextColor.RED));
+                            case RecycleResult.NotOwner no -> send(player, "reset.not_owner");
                             case RecycleResult.InvalidChallenge ic ->
-                                send(
-                                        player,
-                                        Component.text(
-                                                "Reset confirmation failed: " + ic.reason(), NamedTextColor.RED));
-                            case RecycleResult.IslandNotFound nf ->
-                                send(player, Component.text("Island not found.", NamedTextColor.RED));
+                                send(player, "reset.invalid_challenge", Placeholder.unparsed("reason", ic.reason()));
+                            case RecycleResult.IslandNotFound nf -> send(player, "reset.island_not_found");
                             case RecycleResult.Failure f ->
-                                send(player, Component.text("Reset failed: " + f.reason(), NamedTextColor.RED));
+                                send(player, "reset.failed", Placeholder.unparsed("reason", f.reason()));
                         }
                     });
                 });
@@ -407,57 +370,49 @@ public final class IslandLifecycleCommands {
 
     private int executeGetRename(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(
-                    ctx.getSource().getSender(),
-                    Component.text("Only players can view or rename islands.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         IslandNameService nameService = nameServiceProvider.get();
         if (nameService == null) {
-            send(player, Component.text("Island naming service is not enabled.", NamedTextColor.RED));
+            send(player, "name.service_disabled");
             return Cmd.OK;
         }
         Optional<IslandId> optIslandId = findIslandId(player);
         if (optIslandId.isEmpty()) {
-            send(player, Component.text("You must have an island to view its name.", NamedTextColor.RED));
+            send(player, "name.requires_island");
             return Cmd.OK;
         }
         Optional<IslandName> current = nameService.getIslandName(optIslandId.get());
         if (current.isPresent()) {
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize(
-                            "<green>Current island name: <gold>" + current.get().value()
-                                    + "</gold>. Use <gold>/is rename <new-name></gold> to change it.</green>"));
+            send(
+                    player,
+                    "name.current",
+                    Placeholder.unparsed("name", current.get().value()));
         } else {
-            player.sendMessage(
-                    MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<yellow>Your island has no custom name. Use <gold>/is rename <name></gold> to set one.</yellow>"));
+            send(player, "name.unset");
         }
         return Cmd.OK;
     }
 
     private int executeRename(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can rename islands.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         IslandNameService nameService = nameServiceProvider.get();
         if (nameService == null) {
-            send(player, Component.text("Island naming service is not enabled.", NamedTextColor.RED));
+            send(player, "name.service_disabled");
             return Cmd.OK;
         }
         Optional<IslandId> optIslandId = findIslandId(player);
         if (optIslandId.isEmpty()) {
-            send(player, Component.text("You must have an island to rename it.", NamedTextColor.RED));
+            send(player, "name.requires_island");
             return Cmd.OK;
         }
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -465,13 +420,18 @@ public final class IslandLifecycleCommands {
 
         try {
             IslandName newName = nameService.renameIsland(optIslandId.get(), profileId, rawName);
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize(
-                            "<green>Island successfully renamed to: <gold>" + newName.value() + "</gold>!</green>"));
+            send(player, "name.renamed", Placeholder.unparsed("name", newName.value()));
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
-            player.sendMessage(MiniMessage.miniMessage().deserialize("<red>" + e.getMessage() + "</red>"));
+            send(player, "name.rename_failed", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
         }
         return Cmd.OK;
+    }
+
+    /** The preset ids an operator can actually pass, read off the catalogue rather than typed. */
+    private String availablePresetIds() {
+        return presetCatalog.allPresets().stream()
+                .map(preset -> preset.id())
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     private static String formatDuration(Duration duration) {

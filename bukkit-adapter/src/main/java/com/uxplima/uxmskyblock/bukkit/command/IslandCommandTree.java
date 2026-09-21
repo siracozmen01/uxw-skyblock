@@ -309,7 +309,8 @@ public final class IslandCommandTree {
                 () -> antiAbuseService,
                 () -> recycleService,
                 () -> resetMenu,
-                () -> nameService);
+                () -> nameService,
+                messages);
 
         IslandNavigationCommands navigationCommands = new IslandNavigationCommands(
                 islandLocationService,
