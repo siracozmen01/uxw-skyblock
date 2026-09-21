@@ -204,14 +204,13 @@ public final class IslandMechanicsCommands {
         }
 
         ProfileId profileId = optProfile.get();
-        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
-        if (optIsland.isEmpty()) {
-            send(player, "error.no_island");
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
         schedulerPort.async(() -> {
+            Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+            if (optIsland.isEmpty()) {
+                send(player, "error.no_island");
+                return;
+            }
+            IslandId islandId = optIsland.get();
             Optional<Duration> optRemaining = antiAbuseService.getQuarantineRemaining(islandId, Instant.now());
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                 if (optRemaining.isPresent()) {
@@ -284,17 +283,17 @@ public final class IslandMechanicsCommands {
             return Cmd.OK;
         }
 
-        Optional<IslandId> optIsland = islandLocationService.findIslandId(optProfile.get());
-        if (optIsland.isEmpty()) {
-            send(player, "error.no_island");
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
-        Instant now = Instant.now();
-        BoosterApplyResult result = boosterService.applyBooster(islandId, optCategory.get(), multiplier, duration, now);
-
-        reportBoosterResult(player, optCategory.get(), result);
+        ProfileId boosterProfile = optProfile.get();
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIsland = islandLocationService.findIslandId(boosterProfile);
+            if (optIsland.isEmpty()) {
+                send(player, "error.no_island");
+                return;
+            }
+            BoosterApplyResult result = boosterService.applyBooster(
+                    optIsland.get(), optCategory.get(), multiplier, duration, Instant.now());
+            reportBoosterResult(player, optCategory.get(), result);
+        });
         return Cmd.OK;
     }
 

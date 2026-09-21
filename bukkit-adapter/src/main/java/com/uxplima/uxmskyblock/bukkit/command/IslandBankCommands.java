@@ -240,15 +240,23 @@ public final class IslandBankCommands {
                 send(player, "bank.deposit_success", Placeholder.unparsed("amount", Long.toString(amount)));
                 IslandBankruptcyService bService = bankruptcyServiceProvider.get();
                 if (bService != null && bService.policy().autoRemediateOnDeposit()) {
-                    islandLocationService.findIslandId(profileId).ifPresent(islandId -> {
-                        BankruptcyRemediationResult rem = bService.settleArrears(islandId, Instant.now(), serverNodeId);
-                        if (rem instanceof BankruptcyRemediationResult.Settled settled) {
-                            send(
-                                    player,
-                                    "bank.auto_settled",
-                                    Placeholder.unparsed("amount", money(settled.amountPaid())));
-                        }
-                    });
+                    // The bridge answers a refused deposit on the caller's own thread and a settled
+                    // one off it, so which thread this outcome arrives on depends on the branch
+                    // taken inside the bridge. Reading and settling arrears is two more round trips
+                    // to the database either way, so it asks for the scheduler itself rather than
+                    // trusting the thread it was handed.
+                    schedulerPort.async(() -> islandLocationService
+                            .findIslandId(profileId)
+                            .ifPresent(islandId -> {
+                                BankruptcyRemediationResult rem =
+                                        bService.settleArrears(islandId, Instant.now(), serverNodeId);
+                                if (rem instanceof BankruptcyRemediationResult.Settled settled) {
+                                    send(
+                                            player,
+                                            "bank.auto_settled",
+                                            Placeholder.unparsed("amount", money(settled.amountPaid())));
+                                }
+                            }));
                 }
             } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
                 send(player, "bank.wallet_insufficient");

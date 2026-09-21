@@ -273,36 +273,46 @@ public final class IslandLifecycleCommands {
         }
 
         ProfileId profileId = optProfile.get();
-        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
-        if (optIsland.isEmpty()) {
-            send(player, "error.no_island");
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         IslandAntiAbuseService antiAbuse = antiAbuseServiceProvider.get();
-        if (checkResetBlocked(player, antiAbuse)) {
-            return Cmd.OK;
-        }
+        // The permission is read here, on the thread that owns the player, and carried into the
+        // scheduler. Everything after it is storage.
+        boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
 
-        ResetChallenge challenge = recycleService.generateResetChallenge(profileId, islandId);
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+            if (optIsland.isEmpty()) {
+                send(player, "error.no_island");
+                return;
+            }
+            IslandId islandId = optIsland.get();
+            if (checkResetBlocked(player, antiAbuse, bypass)) {
+                return;
+            }
 
-        send(player, "reset.warning");
-        send(player, "reset.warning_detail");
-        send(player, "reset.confirm_hint", Placeholder.unparsed("code", challenge.code()));
+            ResetChallenge challenge = recycleService.generateResetChallenge(profileId, islandId);
 
-        IslandResetConfirmationMenu resetMenu = resetMenuProvider.get();
-        if (resetMenu != null) {
-            resetMenu.open(player, challenge.code());
-        }
+            send(player, "reset.warning");
+            send(player, "reset.warning_detail");
+            send(player, "reset.confirm_hint", Placeholder.unparsed("code", challenge.code()));
+
+            IslandResetConfirmationMenu resetMenu = resetMenuProvider.get();
+            if (resetMenu != null) {
+                // Opening an inventory belongs to the thread that owns the player.
+                schedulerPort.onEntity(playerUuid, () -> {
+                    if (player.isOnline()) {
+                        resetMenu.open(player, challenge.code());
+                    }
+                });
+            }
+        });
         return Cmd.OK;
     }
 
-    private boolean checkResetBlocked(Player player, @Nullable IslandAntiAbuseService antiAbuse) {
+    private boolean checkResetBlocked(Player player, @Nullable IslandAntiAbuseService antiAbuse, boolean bypass) {
         if (antiAbuse == null) {
             return false;
         }
-        boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
         ResetCheckResult check = antiAbuse.checkResetAllowed(new PlayerUuid(player.getUniqueId()), bypass);
         if (check instanceof ResetCheckResult.CooldownActive cd) {
             send(player, "reset.cooldown", Placeholder.unparsed("remaining", formatDuration(cd.remaining())));
@@ -338,18 +348,32 @@ public final class IslandLifecycleCommands {
         }
 
         ProfileId profileId = optProfile.get();
-        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
-        if (optIsland.isEmpty()) {
-            send(player, "error.no_island");
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
         IslandAntiAbuseService antiAbuse = antiAbuseServiceProvider.get();
-        if (checkResetBlocked(player, antiAbuse)) {
-            return Cmd.OK;
-        }
+        boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
 
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+            if (optIsland.isEmpty()) {
+                send(player, "error.no_island");
+                return;
+            }
+            IslandId islandId = optIsland.get();
+            if (checkResetBlocked(player, antiAbuse, bypass)) {
+                return;
+            }
+            confirmReset(player, recycleService, antiAbuse, profileId, islandId, code);
+        });
+        return Cmd.OK;
+    }
+
+    /** Erases the island and reports it, once the caller has been read off the database. */
+    private void confirmReset(
+            Player player,
+            IslandRecycleService recycleService,
+            @Nullable IslandAntiAbuseService antiAbuse,
+            ProfileId profileId,
+            IslandId islandId,
+            String code) {
         var unused = recycleService
                 .executeReset(profileId, islandId, code, false)
                 .thenAccept(result -> {
@@ -387,7 +411,6 @@ public final class IslandLifecycleCommands {
                         }
                     });
                 });
-        return Cmd.OK;
     }
 
     private int executeGetRename(CommandContext<CommandSourceStack> ctx) {
@@ -400,20 +423,22 @@ public final class IslandLifecycleCommands {
             send(player, "name.service_disabled");
             return Cmd.OK;
         }
-        Optional<IslandId> optIslandId = findIslandId(player);
-        if (optIslandId.isEmpty()) {
-            send(player, "name.requires_island");
-            return Cmd.OK;
-        }
-        Optional<IslandName> current = nameService.getIslandName(optIslandId.get());
-        if (current.isPresent()) {
-            send(
-                    player,
-                    "name.current",
-                    Placeholder.unparsed("name", current.get().value()));
-        } else {
-            send(player, "name.unset");
-        }
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = findIslandId(player);
+            if (optIslandId.isEmpty()) {
+                send(player, "name.requires_island");
+                return;
+            }
+            Optional<IslandName> current = nameService.getIslandName(optIslandId.get());
+            if (current.isPresent()) {
+                send(
+                        player,
+                        "name.current",
+                        Placeholder.unparsed("name", current.get().value()));
+            } else {
+                send(player, "name.unset");
+            }
+        });
         return Cmd.OK;
     }
 
@@ -427,11 +452,6 @@ public final class IslandLifecycleCommands {
             send(player, "name.service_disabled");
             return Cmd.OK;
         }
-        Optional<IslandId> optIslandId = findIslandId(player);
-        if (optIslandId.isEmpty()) {
-            send(player, "name.requires_island");
-            return Cmd.OK;
-        }
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
             send(player, "error.session_not_active");
@@ -440,16 +460,23 @@ public final class IslandLifecycleCommands {
         ProfileId profileId = optProfile.get();
         String rawName = StringArgumentType.getString(ctx, "name");
 
-        try {
-            IslandName newName = nameService.renameIsland(optIslandId.get(), profileId, rawName);
-            IslandMarkerSynchroniser markers = this.markerSynchroniser;
-            if (markers != null) {
-                markers.onIslandChanged(optIslandId.get());
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIslandId = findIslandId(player);
+            if (optIslandId.isEmpty()) {
+                send(player, "name.requires_island");
+                return;
             }
-            send(player, "name.renamed", Placeholder.unparsed("name", newName.value()));
-        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
-            send(player, "name.rename_failed", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
-        }
+            try {
+                IslandName newName = nameService.renameIsland(optIslandId.get(), profileId, rawName);
+                IslandMarkerSynchroniser markers = this.markerSynchroniser;
+                if (markers != null) {
+                    markers.onIslandChanged(optIslandId.get());
+                }
+                send(player, "name.renamed", Placeholder.unparsed("name", newName.value()));
+            } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+                send(player, "name.rename_failed", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
+            }
+        });
         return Cmd.OK;
     }
 

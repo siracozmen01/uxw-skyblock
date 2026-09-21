@@ -166,14 +166,16 @@ public final class IslandProgressionCommands {
         }
 
         ProfileId profileId = optProfile.get();
-        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
-        if (optIsland.isEmpty()) {
-            send(player, "error.no_island");
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
         schedulerPort.async(() -> {
+            // Which island the caller belongs to is a row in a table. Reading it here, before the
+            // scheduler, put a query on the thread Brigadier runs a command on, which is the thread
+            // running the game for everybody in the region.
+            Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+            if (optIsland.isEmpty()) {
+                send(player, "error.no_island");
+                return;
+            }
+            IslandId islandId = optIsland.get();
             long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
             // The finished missions really are counted. This used to pass a hardcoded zero, so
             // levels.quest-weight was a number an operator could set and never see applied: a player
@@ -216,16 +218,15 @@ public final class IslandProgressionCommands {
         }
 
         ProfileId profileId = optProfile.get();
-        Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
-        if (optIsland.isEmpty()) {
-            send(player, "error.no_island");
-            return Cmd.OK;
-        }
-
-        IslandId islandId = optIsland.get();
         send(player, "level.recalculating");
 
         schedulerPort.async(() -> {
+            Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
+            if (optIsland.isEmpty()) {
+                send(player, "error.no_island");
+                return;
+            }
+            IslandId islandId = optIsland.get();
             Optional<com.uxplima.uxmskyblock.core.domain.island.IslandLocation> optLoc =
                     islandLocationService.findLocation(islandId);
             if (optLoc.isEmpty()) {
