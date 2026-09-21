@@ -18,6 +18,11 @@ out/
 # Testing
 .jqwik-database
 
+# Internal documentation. The specifications and the board stay on the development
+# machine: the repository is public and the competitor analysis is not for it.
+docs/
+project-board.html
+
 # Agents & AI
 .agents/
 CLAUDE.md
