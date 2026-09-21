@@ -356,6 +356,12 @@ public final class IslandLifecycleCommands {
                     schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                         switch (result) {
                             case RecycleResult.Success s -> {
+                                // The island is gone, so its marker must go with it. A web map that
+                                // keeps drawing an island nobody can visit is worse than no map.
+                                IslandMarkerSynchroniser markers = this.markerSynchroniser;
+                                if (markers != null) {
+                                    markers.onIslandRemoved(islandId);
+                                }
                                 if (antiAbuse != null) {
                                     antiAbuse.recordReset(new PlayerUuid(player.getUniqueId()), Instant.now());
                                     if (antiAbuse.purgeInventoryOnReset()) {
@@ -436,6 +442,10 @@ public final class IslandLifecycleCommands {
 
         try {
             IslandName newName = nameService.renameIsland(optIslandId.get(), profileId, rawName);
+            IslandMarkerSynchroniser markers = this.markerSynchroniser;
+            if (markers != null) {
+                markers.onIslandChanged(optIslandId.get());
+            }
             send(player, "name.renamed", Placeholder.unparsed("name", newName.value()));
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             send(player, "name.rename_failed", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
