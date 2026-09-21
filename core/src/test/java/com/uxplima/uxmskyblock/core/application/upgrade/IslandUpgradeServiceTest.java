@@ -47,6 +47,21 @@ class IslandUpgradeServiceTest {
     }
 
     @Test
+    @DisplayName("A purchase that loses the race to another is refused and its charge is put back")
+    void aLostRaceIsRefunded() {
+        bankPort.balance = 100_000L;
+        IslandUpgradeService racing = new IslandUpgradeService(new RaceLosingStorage(), service.definitions());
+
+        UpgradePurchaseOutcome outcome =
+                racing.purchaseUpgrade(islandId, UpgradeId.SIZE, UUID.randomUUID(), bankPort, "node-1", 1L);
+
+        assertThat(outcome).isInstanceOf(UpgradePurchaseOutcome.PaymentFailed.class);
+        assertThat(bankPort.balance)
+                .describedAs("the cost was taken and given straight back")
+                .isEqualTo(100_000L);
+    }
+
+    @Test
     @DisplayName("purchaseUpgrade advances tier and charges bank account")
     void purchaseUpgradeSuccess() {
         bankPort.balance = 50_000L;
@@ -100,8 +115,25 @@ class IslandUpgradeServiceTest {
         }
 
         @Override
+        public boolean compareAndSetUpgradeTier(IslandId id, UpgradeId upgradeId, int expectedTier, int newTier) {
+            if (getUpgradeTier(id, upgradeId) != expectedTier) {
+                return false;
+            }
+            setUpgradeTier(id, upgradeId, newTier);
+            return true;
+        }
+
+        @Override
         public void setUpgradeTier(IslandId id, UpgradeId upgradeId, int tier) {
             tiers.put(upgradeId, tier);
+        }
+    }
+
+    /** A storage whose tier was moved by somebody else between the read and the write. */
+    private static final class RaceLosingStorage extends FakeUpgradeStorage {
+        @Override
+        public boolean compareAndSetUpgradeTier(IslandId id, UpgradeId upgradeId, int expectedTier, int newTier) {
+            return false;
         }
     }
 

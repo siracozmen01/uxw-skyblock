@@ -4,6 +4,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -19,6 +21,8 @@ import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeTier;
  */
 public final class IslandUpgradeService {
 
+    private static final Logger LOGGER = Logger.getLogger(IslandUpgradeService.class.getName());
+
     private final IslandUpgradeStoragePort storagePort;
     private final Map<UpgradeId, UpgradeDefinition> definitions;
     private final java.util.concurrent.ConcurrentMap<IslandId, java.util.concurrent.ConcurrentMap<UpgradeId, Integer>>
@@ -29,6 +33,11 @@ public final class IslandUpgradeService {
     public IslandUpgradeService(IslandUpgradeStoragePort storagePort, Map<UpgradeId, UpgradeDefinition> definitions) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort");
         this.definitions = (definitions == null) ? Map.of() : Map.copyOf(definitions);
+    }
+
+    /** The catalogue this service was built with, so a caller can build a second one over it. */
+    public Map<UpgradeId, UpgradeDefinition> definitions() {
+        return definitions;
     }
 
     public Optional<UpgradeDefinition> getDefinition(UpgradeId upgradeId) {
@@ -136,6 +145,7 @@ public final class IslandUpgradeService {
         int nextTierNum = currentTier + 1;
         UpgradeTier nextTier = definition.getTier(nextTierNum).orElseThrow();
 
+        boolean charged = false;
         if (nextTier.costMinorUnits() > 0) {
             IslandBank bank = bankPort.findBankByIslandId(islandId).orElseGet(() -> bankPort.createBank(islandId));
 
@@ -160,13 +170,68 @@ public final class IslandUpgradeService {
             } else if (!(bankOutcome instanceof BankTransactionOutcome.Success)) {
                 return new UpgradePurchaseOutcome.PaymentFailed("Bank transaction failed: " + bankOutcome);
             }
+            charged = true;
         }
 
-        // Apply new tier
-        storagePort.setUpgradeTier(islandId, upgradeId, nextTierNum);
+        // The tier moves only from the one that was read before the bank was charged. Without that
+        // condition two purchases can read the same tier, both pay, and both write the next one:
+        // the island pays twice and moves once.
+        boolean applied = storagePort.compareAndSetUpgradeTier(islandId, upgradeId, currentTier, nextTierNum);
+        if (!applied) {
+            if (charged) {
+                refund(islandId, upgradeId, actorUuid, bankPort, currentNode, expectedEpoch, nextTier, nextTierNum);
+            }
+            invalidateCache(islandId);
+            return new UpgradePurchaseOutcome.PaymentFailed(
+                    "Another purchase moved this upgrade first. Nothing was charged.");
+        }
         tierCache
                 .computeIfAbsent(islandId, k -> new java.util.concurrent.ConcurrentHashMap<>())
                 .put(upgradeId, nextTierNum);
         return new UpgradePurchaseOutcome.Success(upgradeId, nextTierNum, nextTier.costMinorUnits());
+    }
+
+    /**
+     * Puts the cost back when the tier could not be moved after the bank was charged. A refund that
+     * itself fails is logged with everything needed to settle it by hand: the alternative is money
+     * leaving an island with nothing to show for it and nobody knowing.
+     */
+    private void refund(
+            IslandId islandId,
+            UpgradeId upgradeId,
+            UUID actorUuid,
+            IslandBankPort bankPort,
+            String currentNode,
+            long expectedEpoch,
+            UpgradeTier tier,
+            int attemptedTier) {
+        try {
+            IslandBank bank = bankPort.findBankByIslandId(islandId).orElseGet(() -> bankPort.createBank(islandId));
+            UUID operationId = UUID.randomUUID();
+            BankTransactionOutcome outcome = bankPort.executeTransaction(
+                    islandId,
+                    actorUuid,
+                    tier.currencyId(),
+                    2,
+                    tier.costMinorUnits(),
+                    "Refund for upgrade " + upgradeId.key() + " tier " + attemptedTier,
+                    currentNode,
+                    expectedEpoch,
+                    bank.version(),
+                    operationId,
+                    "upg-refund-" + upgradeId.key() + "-" + attemptedTier + "-" + operationId);
+            if (!(outcome instanceof BankTransactionOutcome.Success)) {
+                LOGGER.log(
+                        Level.SEVERE,
+                        "Upgrade refund was refused. island={0} upgrade={1} tier={2} amount={3} outcome={4}",
+                        new Object[] {islandId, upgradeId.key(), attemptedTier, tier.costMinorUnits(), outcome});
+            }
+        } catch (RuntimeException e) {
+            LOGGER.log(
+                    Level.SEVERE,
+                    "Upgrade refund threw. island=" + islandId + " upgrade=" + upgradeId.key() + " amount="
+                            + tier.costMinorUnits(),
+                    e);
+        }
     }
 }

@@ -183,6 +183,19 @@ class UpgradeServiceWiringIntegrationTest {
         }
 
         @Override
+        public boolean compareAndSetUpgradeTier(IslandId id, UpgradeId upgradeId, int expectedTier, int newTier) {
+
+            if (getUpgradeTier(id, upgradeId) != expectedTier) {
+
+                return false;
+            }
+
+            setUpgradeTier(id, upgradeId, newTier);
+
+            return true;
+        }
+
+        @Override
         public void setUpgradeTier(IslandId islandId, UpgradeId upgradeId, int tier) {
             storage.computeIfAbsent(islandId, k -> new HashMap<>()).put(upgradeId, tier);
         }

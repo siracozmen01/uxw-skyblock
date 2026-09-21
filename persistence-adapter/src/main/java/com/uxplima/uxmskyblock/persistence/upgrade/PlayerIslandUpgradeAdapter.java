@@ -84,6 +84,51 @@ public final class PlayerIslandUpgradeAdapter implements IslandUpgradeStoragePor
     }
 
     @Override
+    public boolean compareAndSetUpgradeTier(IslandId islandId, UpgradeId upgradeId, int expectedTier, int newTier) {
+        Objects.requireNonNull(islandId, "islandId");
+        Objects.requireNonNull(upgradeId, "upgradeId");
+
+        // Two statements rather than a conditional upsert, because the three dialects spell that
+        // three different ways and the update carries the condition portably in all of them.
+        String update = """
+                UPDATE island_upgrades SET tier = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE island_id = ? AND upgrade_key = ? AND tier = ?
+                """;
+        String insert = """
+                INSERT INTO island_upgrades (island_id, upgrade_key, tier, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """;
+
+        try (Connection connection = database.connection()) {
+            try (PreparedStatement ps = connection.prepareStatement(update)) {
+                ps.setInt(1, newTier);
+                ps.setString(2, islandId.value().toString());
+                ps.setString(3, upgradeId.key());
+                ps.setInt(4, expectedTier);
+                if (ps.executeUpdate() > 0) {
+                    return true;
+                }
+            }
+            if (expectedTier != 0) {
+                // There was a row and it did not hold what the caller expected.
+                return false;
+            }
+            try (PreparedStatement ps = connection.prepareStatement(insert)) {
+                ps.setString(1, islandId.value().toString());
+                ps.setString(2, upgradeId.key());
+                ps.setInt(3, newTier);
+                return ps.executeUpdate() > 0;
+            } catch (SQLException duplicate) {
+                // Another node inserted the first tier between the update and this insert.
+                return false;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Failed to move upgrade " + upgradeId.key() + " for island " + islandId.value(), e);
+        }
+    }
+
+    @Override
     public void setUpgradeTier(IslandId islandId, UpgradeId upgradeId, int tier) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(upgradeId, "upgradeId");
