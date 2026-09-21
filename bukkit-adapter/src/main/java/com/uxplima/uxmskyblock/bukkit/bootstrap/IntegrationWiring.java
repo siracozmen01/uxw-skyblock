@@ -12,7 +12,9 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
@@ -60,6 +62,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final IslandNetworkRouter networkRouter;
     private final IslandDiscordWebhookService discordService;
     private final MessageProvider messageProvider;
+    private final Messages messages;
     private final IslandCommandTree commandTree;
     private final BukkitSkyblockApiBridge apiBridge;
 
@@ -90,7 +93,8 @@ public final class IntegrationWiring implements AutoCloseable {
         this.serverNodeId = config.nodeConfig().nodeId();
         String worldName = config.nodeConfig().worldName();
 
-        this.messageProvider = new MessageProvider("en");
+        LanguageConfiguration language = LanguageConfiguration.load(config.rootNode());
+        this.messageProvider = new MessageProvider(language.defaultLanguage());
         this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
         File messagesDir = new File(plugin.getDataFolder(), "messages");
         if (messagesDir.exists() && messagesDir.isDirectory()) {
@@ -108,6 +112,8 @@ public final class IntegrationWiring implements AutoCloseable {
                 }
             }
         }
+
+        this.messages = Messages.of(this.messageProvider, language);
 
         this.economyBridge = SkyblockEconomyBridge.createDefault(
                 gameplay.bankService(), gameplay.scheduler(), persistence.economySagaPort());
@@ -174,6 +180,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 gameplay.protectionListener(),
                 authority.sessionCoordinator(),
                 gameplay.scheduler(),
+                this.messages,
                 serverNodeId,
                 worldName,
                 this.economyBridge,
@@ -278,6 +285,10 @@ public final class IntegrationWiring implements AutoCloseable {
 
     public IslandDiscordWebhookService discordService() {
         return discordService;
+    }
+
+    public Messages messages() {
+        return messages;
     }
 
     public MessageProvider messageProvider() {

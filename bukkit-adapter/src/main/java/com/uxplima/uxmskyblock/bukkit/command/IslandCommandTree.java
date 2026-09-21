@@ -11,7 +11,6 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -19,6 +18,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
@@ -75,6 +75,7 @@ public final class IslandCommandTree {
     private final IslandProtectionListener protectionListener;
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
+    private final Messages messages;
     private final ServerNodeId serverNodeId;
     private final String worldName;
     private final SkyblockEconomyBridge economyBridge;
@@ -110,6 +111,7 @@ public final class IslandCommandTree {
             IslandProtectionListener protectionListener,
             PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
+            Messages messages,
             ServerNodeId serverNodeId,
             String worldName) {
         this(
@@ -124,6 +126,7 @@ public final class IslandCommandTree {
                 protectionListener,
                 sessionCoordinator,
                 schedulerPort,
+                messages,
                 serverNodeId,
                 worldName,
                 SkyblockEconomyBridge.createDefault(islandBankService, schedulerPort),
@@ -155,6 +158,7 @@ public final class IslandCommandTree {
             IslandProtectionListener protectionListener,
             PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
+            Messages messages,
             ServerNodeId serverNodeId,
             String worldName,
             SkyblockEconomyBridge economyBridge,
@@ -186,6 +190,7 @@ public final class IslandCommandTree {
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
@@ -275,7 +280,8 @@ public final class IslandCommandTree {
                 () -> bankruptcyService,
                 sessionCoordinator);
 
-        IslandChatCommands chatCommands = new IslandChatCommands(() -> chatService, schedulerPort, sessionCoordinator);
+        IslandChatCommands chatCommands =
+                new IslandChatCommands(() -> chatService, schedulerPort, messages, sessionCoordinator);
 
         IslandAdminCommands adminCommands = new IslandAdminCommands(
                 () -> inactivityService,
@@ -388,6 +394,10 @@ public final class IslandCommandTree {
         sendFeedback(audience, component);
     }
 
+    private void send(Audience audience, String key) {
+        sendFeedback(audience, messages.render(audience, key));
+    }
+
     private int executeRoot(CommandContext<CommandSourceStack> ctx) {
         if (ctx.getSource().getSender() instanceof Player player && controlMenu != null) {
             controlMenu.open(player);
@@ -398,82 +408,37 @@ public final class IslandCommandTree {
 
     private int executeMenu(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(
-                    ctx.getSource().getSender(),
-                    Component.text("Only players can open the island menu.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         if (controlMenu != null) {
             controlMenu.open(player);
         } else {
-            send(player, Component.text("Island menu is not enabled on this node.", NamedTextColor.RED));
+            send(player, "menu.not_enabled");
         }
         return Cmd.OK;
     }
 
     private int executeHelp(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack src = ctx.getSource();
-        CommandSender sender = src.getSender();
-        send(sender, Component.text("--- UXPLIMA Skyblock Commands ---", NamedTextColor.GOLD));
-        send(sender, Component.text("/is menu - Open interactive island panel", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is create [preset] - Create your island", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is home - Teleport to your island", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is nether - Teleport to your Nether island", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is end - Teleport to your End island", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is limits - View hardware & tile entity quotas", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is quarantine - View island quarantine status", NamedTextColor.YELLOW));
-        send(
-                sender,
-                Component.text("/is booster - View active island boosters and multipliers", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is setspawn - Set your island spawn", NamedTextColor.YELLOW));
-        send(
-                sender,
-                Component.text(
-                        "/is bank [deposit|withdraw|balance|status|paydebt] - Manage island bank & upkeep",
-                        NamedTextColor.YELLOW));
-        send(sender, Component.text("/is biome <type> - Change island biome", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is top [level|worth|bank] - View leaderboards", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is profile switch <uuid> - Switch active profile", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is chat - Toggle island team chat", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is level - View island level and block valuation score", NamedTextColor.YELLOW));
-        send(
-                sender,
-                Component.text(
-                        "/is level recalculate - Recalculate all island blocks and worth", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is worth - View island economic worth and valuation", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is reset - Reset and recycle your island", NamedTextColor.YELLOW));
-        send(
-                sender,
-                Component.text(
-                        "/is chat <message> (or /is c <msg>) - Send message to island team", NamedTextColor.YELLOW));
-        send(sender, Component.text("/is spy - Toggle island chat staff spy", NamedTextColor.YELLOW));
+        CommandSender sender = ctx.getSource().getSender();
+        send(sender, "help.header");
+        for (Component line : messages.renderAll(sender, "help.lines")) {
+            send(sender, line);
+        }
         if (sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                 || sender.hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
                 || sender.hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
                 || sender.isOp()) {
-            send(
-                    sender,
-                    Component.text("/is admin inactivity scan - Trigger manual inactivity scan", NamedTextColor.RED));
-            send(
-                    sender,
-                    Component.text(
-                            "/is admin freeze <target> [reason] - Quarantine and freeze island", NamedTextColor.RED));
-            send(
-                    sender,
-                    Component.text(
-                            "/is admin unfreeze <target> - Lift quarantine and unfreeze island", NamedTextColor.RED));
-            send(
-                    sender,
-                    Component.text(
-                            "/is admin inspect <target> - Inspect island dimensions and quarantine state",
-                            NamedTextColor.RED));
+            for (Component line : messages.renderAll(sender, "help.admin_lines")) {
+                send(sender, line);
+            }
         }
         return Cmd.OK;
     }
 
     private int executeProfileSwitch(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can switch profiles.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         String rawProf = StringArgumentType.getString(ctx, "profileId");
@@ -481,7 +446,7 @@ public final class IslandCommandTree {
             UUID profUuid = UUID.fromString(rawProf);
             sessionCoordinator.switchProfile(player, new ProfileId(profUuid));
         } catch (IllegalArgumentException e) {
-            send(player, Component.text("Invalid profile UUID format.", NamedTextColor.RED));
+            send(player, "profile.invalid_uuid");
         }
         return Cmd.OK;
     }

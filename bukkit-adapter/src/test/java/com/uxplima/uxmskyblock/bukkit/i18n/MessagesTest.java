@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Locale;
 
 import org.bukkit.command.ConsoleCommandSender;
@@ -15,6 +16,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import com.uxplima.uxmlib.text.message.LocaleSource;
+import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -109,6 +111,75 @@ class MessagesTest {
         assertThat(messages.has("error.no_such_key_exists")).isFalse();
         assertThat(PLAIN.serialize(messages.render(player, "error.no_such_key_exists")))
                 .isEqualTo("error.no_such_key_exists");
+    }
+
+    @Test
+    @DisplayName("A list valued key renders every line it holds, in file order")
+    void listKeyRendersEveryLine() {
+        Player player = playerSpeaking(Locale.US);
+
+        List<Component> lines = messages.renderAll(player, "help.lines");
+
+        assertThat(lines).isNotEmpty();
+        assertThat(PLAIN.serialize(lines.get(0))).contains("/is menu");
+        assertThat(lines).allSatisfy(line -> assertThat(PLAIN.serialize(line)).isNotBlank());
+    }
+
+    @Test
+    @DisplayName("A list the catalogue does not hold renders nothing rather than a key")
+    void missingListRendersNothing() {
+        Player player = playerSpeaking(Locale.US);
+
+        assertThat(messages.renderAll(player, "help.no_such_list")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A list valued key follows the reader into Turkish")
+    void listKeyFollowsTheReader() {
+        Player turkish = playerSpeaking(Locale.of("tr"));
+        Player english = playerSpeaking(Locale.US);
+
+        String turkishFirst =
+                PLAIN.serialize(messages.renderAll(turkish, "help.lines").get(0));
+        String englishFirst =
+                PLAIN.serialize(messages.renderAll(english, "help.lines").get(0));
+
+        assertThat(turkishFirst).isNotEqualTo(englishFirst);
+    }
+
+    @Test
+    @DisplayName("A command placeholder in a help line reaches the player as text, not as a tag")
+    void helpLinesKeepTheirAngleBrackets() {
+        Player player = playerSpeaking(Locale.US);
+
+        assertThat(messages.renderAll(player, "help.lines"))
+                .anySatisfy(line -> assertThat(PLAIN.serialize(line)).contains("<type>"));
+    }
+
+    @Test
+    @DisplayName("With follow-client off every player reads the server language")
+    void followClientOffPinsOneLanguage() {
+        MessageProvider provider = new MessageProvider("en");
+        provider.loadBundledDefaults(getClass().getClassLoader());
+        Messages pinned = Messages.of(provider, new LanguageConfiguration("en", false));
+
+        Player turkishClient = playerSpeaking(Locale.of("tr", "TR"));
+
+        assertThat(PLAIN.serialize(pinned.render(turkishClient, "error.no_island")))
+                .contains("do not currently belong to an island");
+    }
+
+    @Test
+    @DisplayName("With follow-client on the same player reads Turkish")
+    void followClientOnFollowsTheClient() {
+        MessageProvider provider = new MessageProvider("en");
+        provider.loadBundledDefaults(getClass().getClassLoader());
+        Messages following = Messages.of(provider, new LanguageConfiguration("en", true));
+
+        Player turkishClient = playerSpeaking(Locale.of("tr", "TR"));
+
+        assertThat(PLAIN.serialize(following.render(turkishClient, "error.no_island")))
+                .contains("adaya sahip değilsiniz");
     }
 
     private static Player playerSpeaking(Locale locale) {

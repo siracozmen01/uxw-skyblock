@@ -10,12 +10,12 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
@@ -36,14 +36,17 @@ public final class IslandChatCommands {
 
     private final Supplier<@Nullable IslandChatService> chatServiceProvider;
     private final SchedulerPort schedulerPort;
+    private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandChatCommands(
             Supplier<@Nullable IslandChatService> chatServiceProvider,
             SchedulerPort schedulerPort,
+            Messages messages,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
         this.chatServiceProvider = Objects.requireNonNull(chatServiceProvider, "chatServiceProvider must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
     }
 
@@ -65,21 +68,18 @@ public final class IslandChatCommands {
 
     private int executeChatToggle(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can use island chat.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         IslandChatService chatService = chatServiceProvider.get();
         if (chatService == null) {
-            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
+            send(player, "chat.not_enabled");
             return Cmd.OK;
         }
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -88,26 +88,13 @@ public final class IslandChatCommands {
                 IslandChatChannel newChannel = chatService.toggleChannel(profileId);
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (newChannel == IslandChatChannel.ISLAND) {
-                        send(
-                                player,
-                                Component.text(
-                                        "Island chat enabled. All chat messages will now go to your island team.",
-                                        NamedTextColor.GREEN));
+                        send(player, "chat.toggled_island");
                     } else {
-                        send(
-                                player,
-                                Component.text(
-                                        "Island chat disabled. Chat messages will now go to public chat.",
-                                        NamedTextColor.YELLOW));
+                        send(player, "chat.toggled_public");
                     }
                 });
             } catch (NoIslandForChatException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You must belong to an island to use island chat.", NamedTextColor.RED)));
+                schedulerPort.onEntity(playerUuid, () -> send(player, "chat.requires_island"));
             }
         });
         return Cmd.OK;
@@ -115,22 +102,19 @@ public final class IslandChatCommands {
 
     private int executeChatMessage(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can use island chat.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         IslandChatService chatService = chatServiceProvider.get();
         if (chatService == null) {
-            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
+            send(player, "chat.not_enabled");
             return Cmd.OK;
         }
         String message = StringArgumentType.getString(ctx, "message");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -138,28 +122,11 @@ public final class IslandChatCommands {
             try {
                 chatService.sendChat(profileId, player.getName(), message);
             } catch (NoIslandForChatException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You must belong to an island to use island chat.", NamedTextColor.RED)));
+                schedulerPort.onEntity(playerUuid, () -> send(player, "chat.requires_island"));
             } catch (IslandChatPermissionDeniedException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You do not have permission to send messages in island chat.",
-                                        NamedTextColor.RED)));
+                schedulerPort.onEntity(playerUuid, () -> send(player, "chat.send_denied"));
             } catch (ChatRateLimitExceededException e) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(
-                                player,
-                                Component.text(
-                                        "You are sending messages too quickly. Please slow down.",
-                                        NamedTextColor.RED)));
+                schedulerPort.onEntity(playerUuid, () -> send(player, "chat.rate_limited"));
             }
         });
         return Cmd.OK;
@@ -167,34 +134,29 @@ public final class IslandChatCommands {
 
     private int executeSpyToggle(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(
-                    ctx.getSource().getSender(),
-                    Component.text("Only players can spy on island chat.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
         IslandChatService chatService = chatServiceProvider.get();
         if (chatService == null) {
-            send(player, Component.text("Island chat is not enabled on this node.", NamedTextColor.RED));
+            send(player, "chat.not_enabled");
             return Cmd.OK;
         }
         if (!player.hasPermission(CatalogPermissions.CHAT_SPY.node()) && !player.hasPermission("skyblock.chat.spy")) {
-            send(player, Component.text("You do not have permission to spy on island chat.", NamedTextColor.RED));
+            send(player, "chat.spy_denied");
             return Cmd.OK;
         }
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
         boolean enabled = chatService.toggleSpy(profileId);
         if (enabled) {
-            send(player, Component.text("Island chat spy enabled.", NamedTextColor.GREEN));
+            send(player, "chat.spy_enabled");
         } else {
-            send(player, Component.text("Island chat spy disabled.", NamedTextColor.YELLOW));
+            send(player, "chat.spy_disabled");
         }
         return Cmd.OK;
     }
@@ -204,6 +166,10 @@ public final class IslandChatCommands {
             return Optional.empty();
         }
         return sessionCoordinator.activeProfile(player.getUniqueId());
+    }
+
+    private void send(Audience audience, String key) {
+        send(audience, messages.render(audience, key));
     }
 
     private void send(Audience audience, Component component) {

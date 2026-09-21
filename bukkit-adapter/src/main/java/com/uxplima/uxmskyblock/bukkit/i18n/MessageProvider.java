@@ -8,8 +8,10 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -37,6 +39,7 @@ public final class MessageProvider {
 
     private final String defaultLocale;
     private final Map<String, Map<String, String>> localeCatalogs = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<String>>> localeLists = new ConcurrentHashMap<>();
     private final Map<String, String> prefixes = new ConcurrentHashMap<>();
 
     public MessageProvider() {
@@ -115,21 +118,33 @@ public final class MessageProvider {
 
     private void loadNode(String locale, ConfigurationNode root) {
         Map<String, String> catalog = new HashMap<>();
+        Map<String, List<String>> lists = new HashMap<>();
         String prefix = root.node("prefix").getString("");
         prefixes.put(locale, prefix);
 
-        flattenNode("", root, catalog);
+        flattenNode("", root, catalog, lists);
         localeCatalogs.put(locale, Collections.unmodifiableMap(catalog));
+        localeLists.put(locale, Collections.unmodifiableMap(lists));
     }
 
-    private void flattenNode(String currentPath, ConfigurationNode node, Map<String, String> out) {
+    private void flattenNode(
+            String currentPath, ConfigurationNode node, Map<String, String> out, Map<String, List<String>> lists) {
         if (node.isMap()) {
             for (Map.Entry<Object, ? extends ConfigurationNode> entry :
                     node.childrenMap().entrySet()) {
                 String key = String.valueOf(entry.getKey());
                 String nextPath = currentPath.isEmpty() ? key : currentPath + "." + key;
-                flattenNode(nextPath, entry.getValue(), out);
+                flattenNode(nextPath, entry.getValue(), out, lists);
             }
+        } else if (node.isList()) {
+            List<String> values = new ArrayList<>();
+            for (ConfigurationNode child : node.childrenList()) {
+                String value = child.getString();
+                if (value != null) {
+                    values.add(value);
+                }
+            }
+            lists.put(currentPath, List.copyOf(values));
         } else {
             String value = node.getString();
             if (value != null) {
@@ -191,6 +206,45 @@ public final class MessageProvider {
      */
     public Component getComponentWithoutPrefix(String key, String locale, TagResolver... resolvers) {
         String template = getRaw(key, locale);
+        if (resolvers.length == 0) {
+            return MINI_MESSAGE.deserialize(template);
+        }
+        return MINI_MESSAGE.deserialize(template, TagResolver.resolver(resolvers));
+    }
+
+    /**
+     * Retrieves a list valued entry, such as the lines of a help screen, falling back to the default
+     * locale. A list is the shape an operator can add a line to without waiting for a release.
+     *
+     * @param key the dotted message key
+     * @param locale the requested locale, or null for default
+     * @return the raw MiniMessage templates in file order, empty when the key holds no list
+     */
+    public List<String> getRawList(String key, String locale) {
+        Objects.requireNonNull(key, "key must not be null");
+        String targetLocale = (locale != null && !locale.isBlank()) ? locale.toLowerCase(Locale.ROOT) : defaultLocale;
+
+        Map<String, List<String>> lists = localeLists.get(targetLocale);
+        if (lists != null && lists.containsKey(key)) {
+            return lists.get(key);
+        }
+
+        if (!targetLocale.equals(defaultLocale)) {
+            Map<String, List<String>> defaultLists = localeLists.get(defaultLocale);
+            if (defaultLists != null && defaultLists.containsKey(key)) {
+                return defaultLists.get(key);
+            }
+        }
+
+        return List.of();
+    }
+
+    /**
+     * Renders a raw MiniMessage template that a caller already took out of a catalog, used by the
+     * list valued entries where the key names many templates rather than one.
+     */
+    public Component renderTemplate(String template, TagResolver... resolvers) {
+        Objects.requireNonNull(template, "template must not be null");
         if (resolvers.length == 0) {
             return MINI_MESSAGE.deserialize(template);
         }

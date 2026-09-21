@@ -301,6 +301,9 @@ class BackupRestoreWiringTest {
                 mock(IslandProtectionListener.class),
                 mock(PlayerSessionCoordinator.class),
                 mock(SchedulerPort.class),
+                com.uxplima.uxmskyblock.bukkit.i18n.Messages.of(
+                        new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en"),
+                        com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration.defaults()),
                 ServerNodeId.of("node-1"),
                 "world");
 
