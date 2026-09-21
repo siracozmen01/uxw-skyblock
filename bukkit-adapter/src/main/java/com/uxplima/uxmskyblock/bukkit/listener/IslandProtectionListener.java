@@ -49,6 +49,15 @@ public final class IslandProtectionListener implements Listener {
     private volatile @Nullable IslandAdminFreezeService freezeService;
     private final SpatialIslandIndex spatialIndex;
     private final Map<PlayerUuid, ProfileId> activeProfiles = new ConcurrentHashMap<>();
+    /**
+     * Which island a profile belongs to, remembered rather than asked for.
+     *
+     * <p>The friendly fire check runs on every hit of every fight, and it used to ask the database
+     * twice each time, on the thread the damage event is delivered on. An empty answer is cached as
+     * well, because a player with no island is asked about just as often as one with an island.
+     */
+    private final Map<ProfileId, Optional<IslandId>> islandByProfile = new ConcurrentHashMap<>();
+
     private final Messages messages;
 
     private volatile @Nullable Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier;
@@ -138,7 +147,18 @@ public final class IslandProtectionListener implements Listener {
     }
 
     public void removeActiveProfile(PlayerUuid playerUuid) {
-        activeProfiles.remove(playerUuid);
+        ProfileId profileId = activeProfiles.remove(playerUuid);
+        if (profileId != null) {
+            islandByProfile.remove(profileId);
+        }
+    }
+
+    /**
+     * The island a profile belongs to, from memory after the first answer. Package private so the
+     * guard against the database call returning to this path can ask it directly.
+     */
+    Optional<IslandId> islandOf(ProfileId profileId) {
+        return islandByProfile.computeIfAbsent(profileId, islandStoragePort::findIslandIdByProfileId);
     }
 
     public void cacheIsland(Island island) {
@@ -159,6 +179,9 @@ public final class IslandProtectionListener implements Listener {
 
     public void invalidateIsland(IslandId islandId) {
         spatialIndex.removeIsland(islandId);
+        islandByProfile
+                .values()
+                .removeIf(cached -> cached.isPresent() && cached.get().equals(islandId));
     }
 
     /**
@@ -315,8 +338,8 @@ public final class IslandProtectionListener implements Listener {
                     ProfileId damagerProfile = activeProfiles.get(new PlayerUuid(damager.getUniqueId()));
                     ProfileId victimProfile = activeProfiles.get(new PlayerUuid(victim.getUniqueId()));
                     if (damagerProfile != null && victimProfile != null) {
-                        Optional<IslandId> damagerIsland = islandStoragePort.findIslandIdByProfileId(damagerProfile);
-                        Optional<IslandId> victimIsland = islandStoragePort.findIslandIdByProfileId(victimProfile);
+                        Optional<IslandId> damagerIsland = islandOf(damagerProfile);
+                        Optional<IslandId> victimIsland = islandOf(victimProfile);
                         if (damagerIsland.isPresent()
                                 && victimIsland.isPresent()
                                 && allianceService.areAllied(damagerIsland.get(), victimIsland.get())) {
