@@ -11,12 +11,14 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
@@ -45,6 +47,7 @@ public final class IslandBankCommands {
     private final SchedulerPort schedulerPort;
     private final ServerNodeId serverNodeId;
     private final Supplier<@Nullable IslandBankruptcyService> bankruptcyServiceProvider;
+    private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandBankCommands(
@@ -54,6 +57,7 @@ public final class IslandBankCommands {
             SchedulerPort schedulerPort,
             ServerNodeId serverNodeId,
             Supplier<@Nullable IslandBankruptcyService> bankruptcyServiceProvider,
+            Messages messages,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
         this.islandBankService = Objects.requireNonNull(islandBankService, "islandBankService must not be null");
         this.islandLocationService =
@@ -63,6 +67,7 @@ public final class IslandBankCommands {
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.bankruptcyServiceProvider =
                 Objects.requireNonNull(bankruptcyServiceProvider, "bankruptcyServiceProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
     }
 
@@ -89,10 +94,7 @@ public final class IslandBankCommands {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -101,12 +103,9 @@ public final class IslandBankCommands {
             Optional<Long> optBalance = islandBankService.getBalanceMinorUnits(profileId);
             schedulerPort.onEntity(playerUuid, () -> {
                 if (optBalance.isEmpty()) {
-                    send(player, Component.text("You do not have an island.", NamedTextColor.RED));
+                    send(player, "error.no_island");
                 } else {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island Bank Balance: $" + (optBalance.get() / 100.0), NamedTextColor.GREEN));
+                    send(player, "bank.balance", Placeholder.unparsed("balance", money(optBalance.get())));
                 }
             });
         });
@@ -122,10 +121,7 @@ public final class IslandBankCommands {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -134,38 +130,24 @@ public final class IslandBankCommands {
             Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
             schedulerPort.onEntity(playerUuid, () -> {
                 if (optIslandId.isEmpty()) {
-                    send(player, Component.text("You do not belong to an island.", NamedTextColor.RED));
+                    send(player, "error.no_island");
                     return;
                 }
                 IslandId islandId = optIslandId.get();
                 IslandBankruptcyService bankruptcyService = bankruptcyServiceProvider.get();
                 if (bankruptcyService == null) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island upkeep and bankruptcy subsystem is not active.", NamedTextColor.GRAY));
+                    send(player, "bank.upkeep_disabled");
                     return;
                 }
 
                 Instant now = Instant.now();
                 IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
-                NamedTextColor statusColor =
-                        switch (record.status()) {
-                            case SOLVENT -> NamedTextColor.GREEN;
-                            case GRACE -> NamedTextColor.YELLOW;
-                            case LOCKED -> NamedTextColor.RED;
-                        };
+                Component status = messages.renderPlain(
+                        player, "bank.status_" + record.status().name().toLowerCase(java.util.Locale.ROOT));
 
-                send(player, Component.text("--- Island Bank & Upkeep Status ---", NamedTextColor.GOLD));
-                send(
-                        player,
-                        Component.text("Bankruptcy Status: ", NamedTextColor.GRAY)
-                                .append(Component.text(record.status().name(), statusColor)));
-                send(
-                        player,
-                        Component.text(
-                                "Outstanding Debt: $" + String.format("%.2f", record.debtMinorUnits() / 100.0),
-                                NamedTextColor.GRAY));
+                send(player, "bank.status_header");
+                send(player, "bank.status_state", Placeholder.component("status", status));
+                send(player, "bank.status_debt", Placeholder.unparsed("debt", money(record.debtMinorUnits())));
 
                 if (record.status() == BankruptcyStatus.GRACE && record.graceUntil() != null) {
                     java.time.Duration remaining = java.time.Duration.between(now, record.graceUntil());
@@ -173,16 +155,12 @@ public final class IslandBankCommands {
                     long minutes = Math.max(0, remaining.toMinutesPart());
                     send(
                             player,
-                            Component.text(
-                                    "Grace Remaining: " + hours + "h " + minutes + "m (until lockout)",
-                                    NamedTextColor.YELLOW));
+                            "bank.status_grace_remaining",
+                            Placeholder.unparsed("hours", Long.toString(hours)),
+                            Placeholder.unparsed("minutes", Long.toString(minutes)));
                 } else if (record.status() == BankruptcyStatus.LOCKED) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island is LOCKED! Spawners, crops, and visitor entries are suppressed.",
-                                    NamedTextColor.RED));
-                    send(player, Component.text("Use /is bank paydebt or deposit to remediate.", NamedTextColor.AQUA));
+                    send(player, "bank.status_locked_notice");
+                    send(player, "bank.status_locked_hint");
                 }
             });
         });
@@ -198,10 +176,7 @@ public final class IslandBankCommands {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -210,15 +185,12 @@ public final class IslandBankCommands {
             Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
             schedulerPort.onEntity(playerUuid, () -> {
                 if (optIslandId.isEmpty()) {
-                    send(player, Component.text("You do not belong to an island.", NamedTextColor.RED));
+                    send(player, "error.no_island");
                     return;
                 }
                 IslandBankruptcyService bankruptcyService = bankruptcyServiceProvider.get();
                 if (bankruptcyService == null) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Island upkeep and bankruptcy subsystem is not active.", NamedTextColor.GRAY));
+                    send(player, "bank.upkeep_disabled");
                     return;
                 }
 
@@ -229,29 +201,17 @@ public final class IslandBankCommands {
                 if (result instanceof BankruptcyRemediationResult.Settled settled) {
                     send(
                             player,
-                            Component.text(
-                                    "Successfully settled $"
-                                            + String.format("%.2f", settled.amountPaid() / 100.0)
-                                            + " in arrears! New bank balance: $"
-                                            + String.format("%.2f", settled.remainingBalance() / 100.0)
-                                            + ". Island is now SOLVENT.",
-                                    NamedTextColor.GREEN));
+                            "bank.settled",
+                            Placeholder.unparsed("amount", money(settled.amountPaid())),
+                            Placeholder.unparsed("balance", money(settled.remainingBalance())));
                 } else if (result instanceof BankruptcyRemediationResult.InsufficientFunds ins) {
                     send(
                             player,
-                            Component.text(
-                                    "Insufficient bank funds to settle arrears! Debt: $"
-                                            + String.format("%.2f", ins.debtAmount() / 100.0)
-                                            + ", Available bank balance: $"
-                                            + String.format("%.2f", ins.currentBalance() / 100.0)
-                                            + ". Deposit more funds to clear debt.",
-                                    NamedTextColor.RED));
+                            "bank.settle_insufficient",
+                            Placeholder.unparsed("debt", money(ins.debtAmount())),
+                            Placeholder.unparsed("balance", money(ins.currentBalance())));
                 } else if (result instanceof BankruptcyRemediationResult.NotInArrears) {
-                    send(
-                            player,
-                            Component.text(
-                                    "Your island has no outstanding arrears and is fully SOLVENT.",
-                                    NamedTextColor.GREEN));
+                    send(player, "bank.not_in_arrears");
                 }
             });
         });
@@ -266,17 +226,14 @@ public final class IslandBankCommands {
         long amount = LongArgumentType.getLong(ctx, "amount");
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
 
         economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
-                send(player, Component.text("Deposited $" + amount + " into the island bank.", NamedTextColor.GREEN));
+                send(player, "bank.deposit_success", Placeholder.unparsed("amount", Long.toString(amount)));
                 IslandBankruptcyService bService = bankruptcyServiceProvider.get();
                 if (bService != null && bService.policy().autoRemediateOnDeposit()) {
                     islandLocationService.findIslandId(profileId).ifPresent(islandId -> {
@@ -284,20 +241,17 @@ public final class IslandBankCommands {
                         if (rem instanceof BankruptcyRemediationResult.Settled settled) {
                             send(
                                     player,
-                                    Component.text(
-                                            "Outstanding arrears of $"
-                                                    + String.format("%.2f", settled.amountPaid() / 100.0)
-                                                    + " were automatically settled from deposit! Island is now SOLVENT.",
-                                            NamedTextColor.GOLD));
+                                    "bank.auto_settled",
+                                    Placeholder.unparsed("amount", money(settled.amountPaid())));
                         }
                     });
                 }
             } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                send(player, Component.text("Insufficient funds in your personal wallet.", NamedTextColor.RED));
+                send(player, "bank.wallet_insufficient");
             } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
-                send(player, Component.text("Deposit rejected: " + rej.reason(), NamedTextColor.RED));
+                send(player, "bank.deposit_rejected", Placeholder.unparsed("reason", rej.reason()));
             } else {
-                send(player, Component.text("Deposit failed: " + outcome, NamedTextColor.RED));
+                send(player, "bank.deposit_failed", Placeholder.unparsed("reason", String.valueOf(outcome)));
             }
         });
 
@@ -311,23 +265,20 @@ public final class IslandBankCommands {
         long amount = LongArgumentType.getLong(ctx, "amount");
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
 
         economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
             if (outcome instanceof BankTransactionOutcome.Success) {
-                send(player, Component.text("Withdrew $" + amount + " from the island bank.", NamedTextColor.GREEN));
+                send(player, "bank.withdraw_success", Placeholder.unparsed("amount", Long.toString(amount)));
             } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                send(player, Component.text("Insufficient funds in the island bank.", NamedTextColor.RED));
+                send(player, "bank.withdraw_insufficient");
             } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
-                send(player, Component.text("Withdrawal rejected: " + rej.reason(), NamedTextColor.RED));
+                send(player, "bank.withdraw_rejected", Placeholder.unparsed("reason", rej.reason()));
             } else {
-                send(player, Component.text("Withdrawal failed: " + outcome, NamedTextColor.RED));
+                send(player, "bank.withdraw_failed", Placeholder.unparsed("reason", String.valueOf(outcome)));
             }
         });
 
@@ -339,6 +290,15 @@ public final class IslandBankCommands {
             return Optional.empty();
         }
         return sessionCoordinator.activeProfile(player.getUniqueId());
+    }
+
+    private void send(Audience audience, String key, TagResolver... resolvers) {
+        send(audience, messages.render(audience, key, resolvers));
+    }
+
+    /** Minor units are stored as an integer; a player reads them as money. */
+    private static String money(long minorUnits) {
+        return String.format(java.util.Locale.ROOT, "%.2f", minorUnits / 100.0);
     }
 
     private void send(Audience audience, Component component) {

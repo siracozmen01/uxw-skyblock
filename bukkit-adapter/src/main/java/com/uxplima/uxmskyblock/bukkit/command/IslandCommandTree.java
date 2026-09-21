@@ -278,6 +278,7 @@ public final class IslandCommandTree {
                 schedulerPort,
                 serverNodeId,
                 () -> bankruptcyService,
+                messages,
                 sessionCoordinator);
 
         IslandChatCommands chatCommands =

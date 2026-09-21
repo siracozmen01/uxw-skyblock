@@ -260,6 +260,12 @@ public final class MessageProvider {
         return catalog != null ? catalog.keySet() : Collections.emptySet();
     }
 
+    /** The list valued keys a locale holds, which {@link #getKeys(String)} does not report. */
+    public Set<String> getListKeys(String locale) {
+        Map<String, List<String>> lists = localeLists.get(locale.toLowerCase(Locale.ROOT));
+        return lists != null ? lists.keySet() : Collections.emptySet();
+    }
+
     public String defaultLocale() {
         return defaultLocale;
     }
