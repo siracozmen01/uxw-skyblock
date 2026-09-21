@@ -1,7 +1,9 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -22,6 +24,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.warp.BukkitSafeBlockInspector;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
@@ -29,9 +32,14 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.warp.IslandClosedToVisitorsException;
+import com.uxplima.uxmskyblock.core.domain.warp.IslandLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
+import com.uxplima.uxmskyblock.core.domain.warp.PlayerBannedFromIslandException;
+import com.uxplima.uxmskyblock.core.domain.warp.UnsafeTeleportDestinationException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpCategory;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLocation;
+import com.uxplima.uxmskyblock.core.domain.warp.WarpLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpName;
 import org.jspecify.annotations.Nullable;
 
@@ -72,6 +80,10 @@ public final class IslandWarpCommands {
                 .executes(this::executeList)
                 .then(Cmd.literal("list").executes(this::executeList))
                 .then(Cmd.literal("browse").executes(this::executeBrowse))
+                .then(Cmd.literal("visit")
+                        .then(Cmd.argument("owner", StringArgumentType.word())
+                                .then(Cmd.argument("name", StringArgumentType.word())
+                                        .executes(this::executeVisitWarp))))
                 .then(Cmd.literal("create")
                         .then(Cmd.argument("name", StringArgumentType.word())
                                 .executes(ctx -> executeCreate(ctx, WarpCategory.GENERAL))
@@ -113,6 +125,14 @@ public final class IslandWarpCommands {
                 ctx,
                 (player, service, profileId) -> schedulerPort.async(() -> {
                     List<IslandWarp> warps = service.getPublicWarps(PAGE_SIZE, 0);
+                    // The listing used to name the warp and nothing else, so a player who saw one
+                    // they liked had no word to type after /is warp visit. The owner is resolved
+                    // once per island rather than once per warp: a shop island with six public
+                    // warps is one read, not six.
+                    Map<IslandId, String> ownerNames = new HashMap<>();
+                    for (IslandWarp warp : warps) {
+                        ownerNames.computeIfAbsent(warp.islandId(), this::ownerNameOf);
+                    }
                     onEntity(player, () -> {
                         send(player, "warp.browse_header");
                         if (warps.isEmpty()) {
@@ -124,6 +144,7 @@ public final class IslandWarpCommands {
                                     player,
                                     "warp.browse_entry",
                                     Placeholder.unparsed("name", warp.name().value()),
+                                    Placeholder.unparsed("owner", ownerNames.getOrDefault(warp.islandId(), "?")),
                                     Placeholder.unparsed(
                                             "category", warp.category().name()));
                         }
@@ -229,6 +250,103 @@ public final class IslandWarpCommands {
                 send(player, "warp.travelled", Placeholder.unparsed("name", rawName));
             });
         });
+    }
+
+    /**
+     * {@code /is warp visit <owner> <name>}: travelling to somebody else's public warp.
+     *
+     * <p>{@code /is warp browse} has listed public warps since the warp work and a player could not
+     * go to a single one of them. The ban list, the island lock, the per warp lock and the anti trap
+     * safe spot search all sat behind {@code prepareVisit}, which nothing in the plugin ever called,
+     * so the whole visitor security surface was dead code around a listing nobody could act on.
+     *
+     * <p>The gate and the warp row are storage, so they are read on the scheduler thread. The safe
+     * spot search reads blocks, and under Folia a block belongs to the region thread that owns it,
+     * so that is a second hop rather than part of the first.
+     */
+    private int executeVisitWarp(CommandContext<CommandSourceStack> ctx) {
+        String owner = StringArgumentType.getString(ctx, "owner");
+        String rawName = StringArgumentType.getString(ctx, "name");
+
+        return withService(
+                ctx,
+                (player, service, profileId) -> schedulerPort.async(() -> {
+                    Optional<IslandId> optTarget =
+                            IslandAdminCommands.resolveIslandId(sessionCoordinator, islandLocationService, owner);
+                    Optional<Island> optIsland = optTarget.flatMap(islandLocationService::findIsland);
+                    if (optIsland.isEmpty()) {
+                        onEntity(
+                                player,
+                                () -> send(player, "warp.island_unknown", Placeholder.unparsed("owner", owner)));
+                        return;
+                    }
+
+                    IslandWarp warp;
+                    try {
+                        warp = service.resolveVisit(
+                                optIsland.get(), new PlayerUuid(player.getUniqueId()), profileId, WarpName.of(rawName));
+                    } catch (PlayerBannedFromIslandException banned) {
+                        onEntity(player, () -> send(player, "warp.visit_banned", Placeholder.unparsed("owner", owner)));
+                        return;
+                    } catch (IslandLockedException locked) {
+                        onEntity(player, () -> send(player, "warp.visit_locked", Placeholder.unparsed("owner", owner)));
+                        return;
+                    } catch (IslandClosedToVisitorsException closed) {
+                        onEntity(player, () -> send(player, "warp.visit_closed", Placeholder.unparsed("owner", owner)));
+                        return;
+                    } catch (WarpLockedException warpLocked) {
+                        onEntity(
+                                player,
+                                () -> send(player, "warp.visit_warp_locked", Placeholder.unparsed("name", rawName)));
+                        return;
+                    } catch (RuntimeException missing) {
+                        onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
+                        return;
+                    }
+
+                    travelToSafeSpot(player, service, warp, rawName);
+                }));
+    }
+
+    /** Finds the safe spot on the thread that owns the destination, then puts the player on it. */
+    private void travelToSafeSpot(Player player, IslandWarpService service, IslandWarp warp, String rawName) {
+        WarpLocation requested = warp.location();
+        schedulerPort.onRegion(
+                requested.worldName(),
+                (int) Math.floor(requested.x()) >> 4,
+                (int) Math.floor(requested.z()) >> 4,
+                () -> {
+                    WarpLocation safe;
+                    try {
+                        safe = service.safeSpotFor(warp, new BukkitSafeBlockInspector());
+                    } catch (UnsafeTeleportDestinationException unsafe) {
+                        onEntity(player, () -> send(player, "teleport.unsafe_destination"));
+                        return;
+                    }
+                    onEntity(player, () -> {
+                        org.bukkit.World world = org.bukkit.Bukkit.getWorld(safe.worldName());
+                        if (world == null) {
+                            send(player, "warp.world_unloaded", Placeholder.unparsed("world", safe.worldName()));
+                            return;
+                        }
+                        Location target = new Location(world, safe.x(), safe.y(), safe.z(), safe.yaw(), safe.pitch());
+                        var unused = player.teleportAsync(target);
+                        send(player, "warp.travelled", Placeholder.unparsed("name", rawName));
+                    });
+                });
+    }
+
+    /** The name a player types after {@code /is warp visit} to reach this island. */
+    private String ownerNameOf(IslandId islandId) {
+        return islandLocationService
+                .findIsland(islandId)
+                .map(island -> {
+                    String name = org.bukkit.Bukkit.getOfflinePlayer(
+                                    island.ownerPlayerUuid().value())
+                            .getName();
+                    return name == null ? islandId.value().toString() : name;
+                })
+                .orElseGet(() -> islandId.value().toString());
     }
 
     private static String categoryNames() {

@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -57,12 +58,20 @@ class IslandWarpCommandsTest {
     private static final ProfileId PROFILE = new ProfileId(UUID.randomUUID());
 
     private ServerMock server;
+    private SchedulerPort scheduler;
     private PlayerMock player;
     private IslandWarpService warps;
     private CommandDispatcher<CommandSourceStack> dispatcher;
+    private boolean teleportAttempted;
 
     private static SchedulerPort inlineScheduler() {
         SchedulerPort scheduler = mock(SchedulerPort.class);
+        doAnswer(invocation -> {
+                    invocation.getArgument(3, Runnable.class).run();
+                    return null;
+                })
+                .when(scheduler)
+                .onRegion(anyString(), anyInt(), anyInt(), any(Runnable.class));
         doAnswer(invocation -> {
                     invocation.getArgument(0, Runnable.class).run();
                     return null;
@@ -97,6 +106,7 @@ class IslandWarpCommandsTest {
         when(warps.getWarps(ISLAND)).thenReturn(List.of());
         when(warps.getMaxAllowedWarps(ISLAND)).thenReturn(3);
         when(warps.getPublicWarps(anyInt(), anyInt())).thenReturn(List.of());
+        when(warps.safeSpotFor(any(), any())).thenReturn(publicWarp().location());
 
         IslandLocationService locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
@@ -105,15 +115,17 @@ class IslandWarpCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
+        scheduler = inlineScheduler();
         IslandWarpCommands commands = new IslandWarpCommands(
                 () -> warps,
                 locations,
-                inlineScheduler(),
+                scheduler,
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
                 sessions);
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.build());
+        teleportAttempted = false;
     }
 
     @AfterEach
@@ -121,10 +133,25 @@ class IslandWarpCommandsTest {
         MockBukkit.unmock();
     }
 
+    /**
+     * Runs the line and records whether the command got as far as putting the player down.
+     *
+     * <p>MockBukkit does not implement {@code teleportAsync}. It raises an exception JUnit reads as
+     * an assumption failure, which turns the test into a silent skip rather than a failure: two
+     * tests here reported green that way before this caught it. The teleport is turned into a fact
+     * to assert on instead.
+     */
     private void run(String line, CommandSender sender) throws Exception {
         CommandSourceStack source = mock(CommandSourceStack.class);
         when(source.getSender()).thenReturn(sender);
-        dispatcher.execute(line, source);
+        try {
+            dispatcher.execute(line, source);
+        } catch (org.mockbukkit.mockbukkit.exception.UnimplementedOperationException unimplemented) {
+            assertThat(unimplemented.getStackTrace())
+                    .describedAs("only the teleport is allowed to be unimplemented here")
+                    .anyMatch(frame -> frame.getMethodName().contains("teleport"));
+            teleportAttempted = true;
+        }
     }
 
     @Test
@@ -198,5 +225,127 @@ class IslandWarpCommandsTest {
 
         verify(warps).getPublicWarps(anyInt(), anyInt());
         verify(warps, never()).getWarps(any());
+    }
+
+    @Test
+    @DisplayName("Visiting another island's warp asks the gate for that island, not the caller's own")
+    void visitingAsksTheGateForTheTargetIsland() throws Exception {
+        when(warps.resolveVisit(any(), any(), eq(PROFILE), eq(WarpName.of("shop"))))
+                .thenReturn(publicWarp());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        verify(warps).resolveVisit(any(), any(PlayerUuid.class), eq(PROFILE), eq(WarpName.of("shop")));
+        assertThat(teleportAttempted).isTrue();
+    }
+
+    @Test
+    @DisplayName("The safe spot is searched on the region thread that owns the destination")
+    void theSafeSpotIsSearchedOnTheOwningRegion() throws Exception {
+        when(warps.resolveVisit(any(), any(), any(), any())).thenReturn(publicWarp());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        // 40.5 and -72.5 sit in chunk 2 and chunk -5, and the block read belongs to that thread.
+        verify(scheduler).onRegion(eq("world"), eq(2), eq(-5), any(Runnable.class));
+        verify(warps).safeSpotFor(any(), any());
+        assertThat(teleportAttempted).isTrue();
+    }
+
+    @Test
+    @DisplayName("A banned visitor is refused before any block is read")
+    void aBannedVisitorNeverReachesTheSafeSpotSearch() throws Exception {
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.PlayerBannedFromIslandException(
+                        ISLAND, PlayerUuid.of(player.getUniqueId()), null))
+                .when(warps)
+                .resolveVisit(any(), any(), any(), any());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        verify(warps, never()).safeSpotFor(any(), any());
+        assertThat(teleportAttempted).isFalse();
+    }
+
+    @Test
+    @DisplayName("A locked island is refused before any block is read")
+    void aLockedIslandNeverReachesTheSafeSpotSearch() throws Exception {
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.IslandLockedException(ISLAND))
+                .when(warps)
+                .resolveVisit(any(), any(), any(), any());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        verify(warps, never()).safeSpotFor(any(), any());
+        assertThat(teleportAttempted).isFalse();
+    }
+
+    @Test
+    @DisplayName("An island closed to visitors is refused before any block is read")
+    void aClosedIslandNeverReachesTheSafeSpotSearch() throws Exception {
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.IslandClosedToVisitorsException(ISLAND))
+                .when(warps)
+                .resolveVisit(any(), any(), any(), any());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        verify(warps, never()).safeSpotFor(any(), any());
+        assertThat(teleportAttempted).isFalse();
+    }
+
+    @Test
+    @DisplayName("A warp locked to visitors is refused before any block is read")
+    void aLockedWarpNeverReachesTheSafeSpotSearch() throws Exception {
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.WarpLockedException(WarpName.of("shop")))
+                .when(warps)
+                .resolveVisit(any(), any(), any(), any());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        verify(warps, never()).safeSpotFor(any(), any());
+        assertThat(teleportAttempted).isFalse();
+    }
+
+    @Test
+    @DisplayName("A destination with nowhere safe to stand is an answer, not a teleport into lava")
+    void anUnsafeDestinationIsAnAnswer() throws Exception {
+        when(warps.resolveVisit(any(), any(), any(), any())).thenReturn(publicWarp());
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.UnsafeTeleportDestinationException(
+                        publicWarp().location(), "no_safe_spot"))
+                .when(warps)
+                .safeSpotFor(any(), any());
+
+        run("warp visit " + ISLAND.value() + " shop", player);
+
+        assertThat(teleportAttempted).isFalse();
+    }
+
+    @Test
+    @DisplayName("A name that belongs to no island never reaches the gate")
+    void anUnknownOwnerNeverReachesTheGate() throws Exception {
+        run("warp visit Nobody shop", player);
+
+        verify(warps, never()).resolveVisit(any(), any(), any(), any());
+        assertThat(teleportAttempted).isFalse();
+    }
+
+    @Test
+    @DisplayName("A visit with no warp name is refused by the parser")
+    void aVisitNeedsAWarpName() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> run("warp visit " + ISLAND.value(), player))
+                .isInstanceOf(Exception.class);
+    }
+
+    /** A public warp on the target island, at coordinates that sit in a chunk worth naming. */
+    private static com.uxplima.uxmskyblock.core.domain.warp.IslandWarp publicWarp() {
+        return new com.uxplima.uxmskyblock.core.domain.warp.IslandWarp(
+                com.uxplima.uxmskyblock.core.domain.warp.IslandWarpId.of(UUID.randomUUID()),
+                ISLAND,
+                WarpName.of("shop"),
+                new com.uxplima.uxmskyblock.core.domain.warp.WarpLocation("world", 40.5, 64.0, -72.5, 0.0f, 0.0f),
+                "OAK_SIGN",
+                WarpCategory.SHOPS,
+                false,
+                Instant.now(),
+                Instant.now());
     }
 }

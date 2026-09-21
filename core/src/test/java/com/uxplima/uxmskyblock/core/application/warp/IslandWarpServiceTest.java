@@ -21,6 +21,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
 import com.uxplima.uxmskyblock.core.domain.warp.DuplicateWarpNameException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandBan;
+import com.uxplima.uxmskyblock.core.domain.warp.IslandClosedToVisitorsException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarpId;
@@ -174,6 +175,23 @@ class IslandWarpServiceTest {
         WarpLocation dest =
                 warpService.prepareVisit(lockedIsland, memberUuid, memberProfileId, WarpName.of("public_w"), inspector);
         assertThat(dest).isNotNull();
+    }
+
+    @Test
+    @DisplayName("An island closed to visitors refuses the warp door too, which it never used to")
+    void visitorAccessOffBlocksTheWarpDoor() {
+        WarpLocation loc = new WarpLocation("world", 5.0, 64.0, 5.0, 0.0f, 0.0f);
+        warpService.createWarp(island, ownerProfileId, WarpName.of("shop"), loc, WarpCategory.GENERAL, "OAK_SIGN");
+
+        Island closedIsland = island.withFlags(island.flags().withFlag(IslandFlags.VISITOR_ACCESS, false));
+
+        assertThatThrownBy(() -> warpService.prepareVisit(
+                        closedIsland, visitorUuid, visitorProfileId, WarpName.of("shop"), inspector))
+                .isInstanceOf(IslandClosedToVisitorsException.class);
+
+        // A member is still let in, because the switch is theirs.
+        assertThat(warpService.prepareVisit(closedIsland, memberUuid, memberProfileId, WarpName.of("shop"), inspector))
+                .isNotNull();
     }
 
     @Test

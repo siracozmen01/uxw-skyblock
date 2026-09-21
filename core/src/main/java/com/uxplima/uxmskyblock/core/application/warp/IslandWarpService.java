@@ -7,17 +7,18 @@ import java.util.Optional;
 import java.util.function.BiPredicate;
 
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
+import com.uxplima.uxmskyblock.core.application.visit.IslandVisitRule;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
-import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeDefinition;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeTier;
 import com.uxplima.uxmskyblock.core.domain.warp.DuplicateWarpNameException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandBan;
+import com.uxplima.uxmskyblock.core.domain.warp.IslandClosedToVisitorsException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarpId;
@@ -347,33 +348,57 @@ public final class IslandWarpService {
         Objects.requireNonNull(warpName, "warpName must not be null");
         Objects.requireNonNull(inspector, "inspector must not be null");
 
-        // 1. Blacklist check
-        if (storagePort.isPlayerBanned(island.id(), visitorUuid)) {
-            throw new PlayerBannedFromIslandException(island.id(), visitorUuid, null);
-        }
+        return safeSpotFor(resolveVisit(island, visitorUuid, visitorProfileId, warpName), inspector);
+    }
 
-        // 2. Global island lock check
-        boolean isIslandLocked = island.flags().isEnabled(IslandFlags.LOCKED);
-        if (isIslandLocked) {
-            boolean isMember = island.isMember(visitorProfileId);
-            boolean isPrivilegedAlly =
-                    allyAccessChecker != null && allyAccessChecker.test(island.id(), visitorProfileId);
-            if (!isMember && !isPrivilegedAlly) {
-                throw new IslandLockedException(island.id());
+    /**
+     * The gate and the warp, without any block read.
+     *
+     * <p>This is the half a caller may run off the region thread: the ban list, the island's flags
+     * and the warp row are all storage. The safe spot search reads blocks, and under Folia a block
+     * belongs to the region thread that owns it, so {@link #safeSpotFor} is a second step rather
+     * than part of this one. {@link #prepareVisit} is the two together, for a caller that already
+     * holds the right thread.
+     */
+    public IslandWarp resolveVisit(
+            Island island,
+            PlayerUuid visitorUuid,
+            ProfileId visitorProfileId,
+            com.uxplima.uxmskyblock.core.domain.warp.WarpName warpName) {
+        Objects.requireNonNull(island, "island must not be null");
+        Objects.requireNonNull(visitorUuid, "visitorUuid must not be null");
+        Objects.requireNonNull(visitorProfileId, "visitorProfileId must not be null");
+        Objects.requireNonNull(warpName, "warpName must not be null");
+
+        boolean banned = storagePort.isPlayerBanned(island.id(), visitorUuid);
+        boolean privilegedAlly = allyAccessChecker != null && allyAccessChecker.test(island.id(), visitorProfileId);
+        switch (IslandVisitRule.decide(island, visitorProfileId, banned, privilegedAlly)) {
+            case IslandVisitRule.Decision.Allowed ignored -> {
+                // Carry on to the warp itself.
             }
+            case IslandVisitRule.Decision.Banned ignored ->
+                throw new PlayerBannedFromIslandException(island.id(), visitorUuid, null);
+            case IslandVisitRule.Decision.Locked ignored -> throw new IslandLockedException(island.id());
+            case IslandVisitRule.Decision.ClosedToVisitors ignored ->
+                throw new IslandClosedToVisitorsException(island.id());
         }
 
-        // 3. Resolve warp
         IslandWarp warp = storagePort
                 .findWarpByName(island.id(), warpName)
                 .orElseThrow(() -> new WarpNotFoundException(island.id(), warpName.value()));
-
-        // 4. Granular warp lock check
         if (warp.isLocked() && !island.isMember(visitorProfileId)) {
             throw new WarpLockedException(warpName);
         }
+        return warp;
+    }
 
-        // 5. Anti-trap safe-spot destination verification
+    /**
+     * The safe spot for a warp, which is the half that reads blocks and belongs to the region
+     * thread that owns them.
+     */
+    public WarpLocation safeSpotFor(IslandWarp warp, SafeBlockInspector inspector) {
+        Objects.requireNonNull(warp, "warp must not be null");
+        Objects.requireNonNull(inspector, "inspector must not be null");
         return safeTeleportEngine.verifyOrFindSafeSpot(warp.location(), inspector);
     }
 
