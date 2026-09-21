@@ -274,9 +274,18 @@ public final class IslandCommandTree {
     }
 
     public void register(JavaPlugin plugin) {
-        CommandGroups groups = buildGroups();
-        LiteralArgumentBuilder<CommandSourceStack> root = assembleRoot(groups);
-        CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
+        CommandRegistrar.register(plugin, buildRoot(), "Main Skyblock command tree", "is");
+    }
+
+    /**
+     * The whole command tree, assembled but not registered.
+     *
+     * <p>Exposed so a test can hand it to Brigadier and ask whether a line parses. A guard that reads
+     * the source instead can only guess at the shape, and one that guesses is believed until the day
+     * a player types the line it guessed about.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildRoot() {
+        return assembleRoot(buildGroups());
     }
 
     /**
