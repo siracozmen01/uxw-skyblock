@@ -23,14 +23,18 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.RouteOutcome;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.visit.IslandVisitRule;
+import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import org.jspecify.annotations.Nullable;
 
@@ -46,6 +50,8 @@ public final class IslandNavigationCommands {
     private final String worldName;
     private final Supplier<@Nullable IslandDimensionListener> dimensionListenerProvider;
     private final Supplier<@Nullable IslandNetworkRouter> networkRouterProvider;
+    private final Supplier<@Nullable IslandWarpService> warpServiceProvider;
+    private final Supplier<@Nullable IslandAllianceService> allianceServiceProvider;
     private final Messages messages;
 
     public IslandNavigationCommands(
@@ -55,6 +61,8 @@ public final class IslandNavigationCommands {
             String worldName,
             Supplier<@Nullable IslandDimensionListener> dimensionListenerProvider,
             Supplier<@Nullable IslandNetworkRouter> networkRouterProvider,
+            Supplier<@Nullable IslandWarpService> warpServiceProvider,
+            Supplier<@Nullable IslandAllianceService> allianceServiceProvider,
             Messages messages) {
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -65,6 +73,9 @@ public final class IslandNavigationCommands {
                 Objects.requireNonNull(dimensionListenerProvider, "dimensionListenerProvider must not be null");
         this.networkRouterProvider =
                 Objects.requireNonNull(networkRouterProvider, "networkRouterProvider must not be null");
+        this.warpServiceProvider = Objects.requireNonNull(warpServiceProvider, "warpServiceProvider must not be null");
+        this.allianceServiceProvider =
+                Objects.requireNonNull(allianceServiceProvider, "allianceServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
@@ -197,6 +208,13 @@ public final class IslandNavigationCommands {
             }
 
             IslandId islandId = optIsland.get();
+            Optional<ProfileId> optVisitor = activeProfile(player);
+            String refusal = refuseVisit(islandId, playerUuid, optVisitor.orElse(null));
+            if (refusal != null) {
+                send(player, refusal, Placeholder.unparsed("target", target));
+                return;
+            }
+
             IslandNetworkRouter networkRouter = networkRouterProvider.get();
             if (networkRouter == null) {
                 Optional<IslandLocation> optLoc = islandLocationService.findLocation(islandId);
@@ -250,6 +268,44 @@ public final class IslandNavigationCommands {
             });
         });
         return Cmd.OK;
+    }
+
+    /**
+     * The message key that refuses this visit, or null when the visitor may go.
+     *
+     * <p>{@code /is visit} used to ask nothing. The warp path has always refused a banned player
+     * and a locked island, so one island answered a visitor two different ways depending on which
+     * command they typed, and an island the inactivity service archived and locked was open to
+     * anybody who knew the owner's name. VISITOR_ACCESS was offered in the settings form, stored,
+     * read back into the form, and consulted by nothing at all.
+     *
+     * <p>This runs on the scheduler thread, which is where the two reads belong.
+     */
+    private @Nullable String refuseVisit(
+            IslandId islandId, PlayerUuid visitorUuid, @Nullable ProfileId visitorProfile) {
+        Optional<Island> optIsland = islandLocationService.findIsland(islandId);
+        if (optIsland.isEmpty()) {
+            return "error.island_not_found";
+        }
+
+        IslandWarpService warpService = warpServiceProvider.get();
+        boolean banned = warpService != null && warpService.isPlayerBanned(islandId, visitorUuid);
+
+        IslandAllianceService allianceService = allianceServiceProvider.get();
+        boolean privilegedAlly = false;
+        if (allianceService != null && visitorProfile != null) {
+            privilegedAlly = islandLocationService
+                    .findIslandId(visitorProfile)
+                    .map(ownIsland -> allianceService.canPrivilegedVisit(ownIsland, islandId))
+                    .orElse(false);
+        }
+
+        return switch (IslandVisitRule.decide(optIsland.get(), visitorProfile, banned, privilegedAlly)) {
+            case IslandVisitRule.Decision.Allowed ignored -> null;
+            case IslandVisitRule.Decision.Banned ignored -> "navigation.visit_banned";
+            case IslandVisitRule.Decision.Locked ignored -> "navigation.visit_locked";
+            case IslandVisitRule.Decision.ClosedToVisitors ignored -> "navigation.visit_closed";
+        };
     }
 
     private int executeSetSpawn(CommandContext<CommandSourceStack> ctx) {

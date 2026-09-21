@@ -93,6 +93,8 @@ final class CommandGroupBuilder {
                 tree.worldName,
                 () -> tree.features.dimensionListener(),
                 () -> tree.networkRouter,
+                () -> tree.warpService,
+                () -> tree.allianceService,
                 tree.messages);
 
         IslandProgressionCommands progressionCommands = new IslandProgressionCommands(
