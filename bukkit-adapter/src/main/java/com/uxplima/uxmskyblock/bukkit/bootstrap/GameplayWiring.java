@@ -59,6 +59,8 @@ import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
+import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
+import com.uxplima.uxmskyblock.core.application.membership.MemberAllowance;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
@@ -99,6 +101,7 @@ public final class GameplayWiring {
     private final GameplayCreationWiring creationWiring;
     private final AdminWiring adminWiring;
     private final StorageBucket backupBucket;
+    private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
     private final SocialWiring socialWiring;
     private final GameplayProtectionWiring protectionWiring;
@@ -200,6 +203,12 @@ public final class GameplayWiring {
                 scheduler,
                 this.backpressureController,
                 objectStorage);
+
+        // A skyblock with no way to make a team. The cap is the member limit upgrade's own tier
+        // property, so an operator raises it by editing upgrades.conf rather than by asking for a
+        // release.
+        this.membershipService = new IslandMembershipService(
+                persistence.islandStoragePort(), new MemberAllowance(this.economicWiring.upgradeService()));
 
         this.environmentWiring = new GameplayEnvironmentWiring(
                 config,
@@ -522,5 +531,9 @@ public final class GameplayWiring {
 
     public IslandBackupService islandBackupService() {
         return adminWiring.islandBackupService();
+    }
+
+    public IslandMembershipService membershipService() {
+        return membershipService;
     }
 }

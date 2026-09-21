@@ -41,7 +41,8 @@ final class CommandGroupBuilder {
             IslandAllianceCommands allianceCommands,
             IslandRewardCommands rewardCommands,
             IslandFlagCommands flagCommands,
-            IslandVisitorCommands visitorCommands) {}
+            IslandVisitorCommands visitorCommands,
+            IslandMembershipCommands membershipCommands) {}
 
     CommandGroups build() {
 
@@ -186,6 +187,16 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
 
+        // A skyblock with no way to make a team. The domain carried addMember and removeMember, the
+        // roles carried the four member permissions, the MEMBERS upgrade raised a cap, and the
+        // members menu had an invite button that sent a hint message.
+        IslandMembershipCommands membershipCommands = new IslandMembershipCommands(
+                () -> tree.membershipService,
+                tree.islandLocationService,
+                tree.schedulerPort,
+                tree.messages,
+                tree.sessionCoordinator);
+
         return new CommandGroups(
                 bankCommands,
                 chatCommands,
@@ -201,6 +212,7 @@ final class CommandGroupBuilder {
                 allianceCommands,
                 rewardCommands,
                 flagCommands,
-                visitorCommands);
+                visitorCommands,
+                membershipCommands);
     }
 }

@@ -221,6 +221,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setBackupService(gameplay.backupService());
         this.commandTree.setBackupBucket(gameplay.backupBucket());
         this.commandTree.setIslandBackupService(gameplay.islandBackupService());
+        this.commandTree.setMembershipService(gameplay.membershipService());
         // Four subsystems that were running with no door. Every one of them had a service, a table
         // and a feature module, and no command a player could type.
         this.commandTree.setWarpService(gameplay.warpService());
@@ -307,15 +308,22 @@ public final class IntegrationWiring implements AutoCloseable {
         });
         engine.action("skyblock:members", ctx -> {
             ctx.player().closeInventory();
-            messages.send(ctx.player(), "menu.control.members_hint");
+            ctx.player().performCommand("is members");
         });
         engine.action("skyblock:settings", ctx -> {
             ctx.player().closeInventory();
             messages.send(ctx.player(), "menu.control.settings_hint");
         });
+        // The invite button sent a hint message, because there was no command behind it. The name
+        // the player types is the verb's argument, so one slot serves every invite.
         engine.action("skyblock:invite", ctx -> {
+            String name = ctx.arg().strip();
             ctx.player().closeInventory();
-            messages.send(ctx.player(), "menu.control.members_hint");
+            if (name.isEmpty()) {
+                messages.send(ctx.player(), "menu.control.members_hint");
+                return;
+            }
+            ctx.player().performCommand("is invite " + name);
         });
         engine.action("skyblock:permissions", ctx -> {
             ctx.player().closeInventory();

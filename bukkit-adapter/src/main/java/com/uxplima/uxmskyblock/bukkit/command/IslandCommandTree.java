@@ -41,6 +41,7 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
+import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
@@ -100,6 +101,7 @@ public final class IslandCommandTree {
     volatile @Nullable BackupService backupService;
     volatile @Nullable StorageBucket backupBucket;
     volatile @Nullable IslandBackupService islandBackupService;
+    volatile @Nullable IslandMembershipService membershipService;
     volatile @Nullable IslandWarpService warpService;
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
@@ -300,6 +302,11 @@ public final class IslandCommandTree {
         this.islandBackupService = islandBackupService;
     }
 
+    /** Who belongs to an island, and what they may do on it. */
+    public void setMembershipService(@Nullable IslandMembershipService membershipService) {
+        this.membershipService = membershipService;
+    }
+
     public @Nullable BackupService backupService() {
         return backupService;
     }
@@ -377,6 +384,13 @@ public final class IslandCommandTree {
                 .then(groups.visitorCommands().buildBans())
                 .then(groups.visitorCommands().buildLock())
                 .then(groups.visitorCommands().buildUnlock())
+                .then(groups.membershipCommands().buildInvite())
+                .then(groups.membershipCommands().buildAccept())
+                .then(groups.membershipCommands().buildDeny())
+                .then(groups.membershipCommands().buildKick())
+                .then(groups.membershipCommands().buildLeave())
+                .then(groups.membershipCommands().buildMembers())
+                .then(groups.membershipCommands().buildRole())
                 .then(vaultBranch("vault"))
                 // The design document publishes /is chest for the same window. A command an
                 // operator reads about and types is either there or the document is wrong, and the
