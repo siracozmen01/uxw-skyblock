@@ -86,7 +86,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         coordinator.handlePlayerJoin(player);
 
         eventually(() -> {
-            PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
+            ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
             assertThat(session).isNotNull();
             assertThat(Objects.requireNonNull(session).sessionEpoch()).isEqualTo(1L);
             assertThat(session.lastDurableVersion()).isGreaterThanOrEqualTo(1L);
@@ -106,7 +106,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         coordinator.checkpointPlayer(new PlayerUuid(player.getUniqueId()));
 
         eventuallyTick(() -> {
-            PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
+            ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
             assertThat(session).isNotNull();
             Optional<ProfileInventoryRecord> inv = persistenceBootstrap
                     .inventoryPort()
@@ -156,7 +156,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         eventuallyTick(() ->
                 assertThat(coordinator.getActiveSession(player.getUniqueId())).isNotNull());
 
-        PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
+        ActiveSession session = coordinator.getActiveSession(player.getUniqueId());
         assertThat(session).isNotNull();
         ProfileId profileA = Objects.requireNonNull(session).activeProfileId();
         ProfileId profileB = new ProfileId(UUID.randomUUID());
@@ -178,7 +178,7 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
         coordinator.switchProfile(player, profileB);
 
         eventuallyTick(() -> {
-            PlayerSessionCoordinator.ActiveSession currentSession = coordinator.getActiveSession(player.getUniqueId());
+            ActiveSession currentSession = coordinator.getActiveSession(player.getUniqueId());
             assertThat(currentSession).isNotNull();
             assertThat(Objects.requireNonNull(currentSession).activeProfileId()).isEqualTo(profileB);
             assertThat(player.getInventory().getItem(0)).isEqualTo(new ItemStack(Material.EMERALD, 64));

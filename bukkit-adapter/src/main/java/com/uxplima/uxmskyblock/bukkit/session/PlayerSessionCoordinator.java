@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -43,90 +42,6 @@ import org.jspecify.annotations.Nullable;
 public final class PlayerSessionCoordinator {
 
     private static final Logger LOGGER = Logger.getLogger(PlayerSessionCoordinator.class.getName());
-
-    public static final class ActiveSession {
-        private final PlayerUuid playerUuid;
-        private volatile ProfileId activeProfileId;
-        private final AtomicLong sessionEpoch;
-        private final AtomicLong lastDurableVersion;
-        private final AtomicReference<SessionState> state = new AtomicReference<>(SessionState.ACTIVE);
-        private final AtomicReference<@Nullable AutoCloseable> heartbeatTask = new AtomicReference<>(null);
-        private final AtomicReference<@Nullable AutoCloseable> checkpointTask = new AtomicReference<>(null);
-
-        public ActiveSession(
-                PlayerUuid playerUuid, ProfileId activeProfileId, long sessionEpoch, long lastDurableVersion) {
-            this(playerUuid, activeProfileId, sessionEpoch, lastDurableVersion, SessionState.ACTIVE);
-        }
-
-        public ActiveSession(
-                PlayerUuid playerUuid,
-                ProfileId activeProfileId,
-                long sessionEpoch,
-                long lastDurableVersion,
-                SessionState initialState) {
-            this.playerUuid = Objects.requireNonNull(playerUuid, "playerUuid");
-            this.activeProfileId = Objects.requireNonNull(activeProfileId, "activeProfileId");
-            this.sessionEpoch = new AtomicLong(sessionEpoch);
-            this.lastDurableVersion = new AtomicLong(lastDurableVersion);
-            this.state.set(Objects.requireNonNull(initialState, "initialState"));
-        }
-
-        public PlayerUuid playerUuid() {
-            return playerUuid;
-        }
-
-        public ProfileId activeProfileId() {
-            return activeProfileId;
-        }
-
-        public void setActiveProfileId(ProfileId activeProfileId) {
-            this.activeProfileId = Objects.requireNonNull(activeProfileId, "activeProfileId");
-        }
-
-        public long sessionEpoch() {
-            return sessionEpoch.get();
-        }
-
-        public long lastDurableVersion() {
-            return lastDurableVersion.get();
-        }
-
-        public void setLastDurableVersion(long version) {
-            this.lastDurableVersion.set(version);
-        }
-
-        public boolean isFenced() {
-            return state.get() == SessionState.LOCAL_FENCED;
-        }
-
-        public SessionState state() {
-            SessionState s = state.get();
-            return s != null ? s : SessionState.ACTIVE;
-        }
-
-        public void fence() {
-            state.set(SessionState.LOCAL_FENCED);
-            closeTasks();
-        }
-
-        @SuppressWarnings("EmptyCatch")
-        public void closeTasks() {
-            AutoCloseable hb = heartbeatTask.getAndSet(null);
-            if (hb != null) {
-                try {
-                    hb.close();
-                } catch (Exception ignored) {
-                }
-            }
-            AutoCloseable cp = checkpointTask.getAndSet(null);
-            if (cp != null) {
-                try {
-                    cp.close();
-                } catch (Exception ignored) {
-                }
-            }
-        }
-    }
 
     private final ServerNodeId nodeId;
     private final PlayerSessionAuthorityPort sessionAuthorityPort;
@@ -283,12 +198,12 @@ public final class PlayerSessionCoordinator {
                         },
                         heartbeatInterval,
                         heartbeatInterval);
-                session.heartbeatTask.set(hbTask);
 
                 // Start async periodic checkpoint task
                 AutoCloseable cpTask = schedulerPort.repeatAsync(
                         () -> checkpointPlayer(playerUuid), checkpointInterval, checkpointInterval);
-                session.checkpointTask.set(cpTask);
+
+                session.attachTasks(hbTask, cpTask);
 
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Unexpected error during player join for " + playerUuid, e);

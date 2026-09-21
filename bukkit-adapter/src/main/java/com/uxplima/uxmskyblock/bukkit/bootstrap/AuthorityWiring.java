@@ -9,6 +9,7 @@ import java.util.function.Function;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
+import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -84,7 +85,7 @@ public final class AuthorityWiring implements AutoCloseable {
         // Wire node identity and session record providers into protection listener
         protectionListener.setNodeIdentitySupplier(() -> identity);
         protectionListener.setSessionRecordProvider(uuid -> {
-            PlayerSessionCoordinator.ActiveSession session = coordinator.getActiveSession(uuid.value());
+            ActiveSession session = coordinator.getActiveSession(uuid.value());
             if (session == null || session.isFenced()) {
                 return Optional.empty();
             }

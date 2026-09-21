@@ -19,6 +19,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Item;
 import org.bukkit.inventory.ItemStack;
 
+import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler.DeliveryResult;
@@ -87,8 +88,7 @@ class ItemRewardDeliveryHandlerCrashTest {
         ItemStack[] initialInventory = player.getInventory().getContents().clone();
 
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         when(journalPort.recordIntent(
@@ -128,8 +128,7 @@ class ItemRewardDeliveryHandlerCrashTest {
         int initialDiamondCount = countItems(player, Material.DIAMOND);
 
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         when(journalPort.recordIntent(
@@ -183,8 +182,7 @@ class ItemRewardDeliveryHandlerCrashTest {
         player.getInventory().addItem(new ItemStack(Material.GOLD_INGOT, 3));
 
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         when(journalPort.recordIntent(
@@ -224,8 +222,7 @@ class ItemRewardDeliveryHandlerCrashTest {
         player.getInventory().addItem(new ItemStack(Material.DIAMOND, 5));
 
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         RewardGrantComponent component = new RewardGrantComponent(
@@ -281,8 +278,7 @@ class ItemRewardDeliveryHandlerCrashTest {
         player.getInventory().setItem(0, new ItemStack(Material.IRON_INGOT, 10));
 
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         when(journalPort.recordIntent(
@@ -324,8 +320,7 @@ class ItemRewardDeliveryHandlerCrashTest {
         }
 
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         ItemRewardDeliveryHandler handler = new ItemRewardDeliveryHandler(sessionCoordinator, journalPort, nodeId);

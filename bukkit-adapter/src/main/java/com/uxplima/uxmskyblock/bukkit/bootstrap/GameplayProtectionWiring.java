@@ -8,7 +8,7 @@ import com.uxplima.uxmskyblock.bukkit.performance.IslandRedstoneOptimizationList
 import com.uxplima.uxmskyblock.bukkit.protection.CategoricalInteractablesListener;
 import com.uxplima.uxmskyblock.bukkit.protection.ObsidianRecoveryListener;
 import com.uxplima.uxmskyblock.bukkit.protection.VoidProtectionListener;
-import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.ward.KineticWardListener;
 import com.uxplima.uxmskyblock.bukkit.world.AsyncStructureSuppressionListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
@@ -66,8 +66,7 @@ public final class GameplayProtectionWiring {
                 config.messages());
         this.categoricalInteractablesListener.setNodeIdentitySupplier(authority::nodeProcessIdentity);
         this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
-            PlayerSessionCoordinator.ActiveSession session =
-                    authority.sessionCoordinator().getActiveSession(uuid.value());
+            ActiveSession session = authority.sessionCoordinator().getActiveSession(uuid.value());
             if (session == null || session.isFenced()) {
                 return Optional.empty();
             }

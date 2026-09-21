@@ -15,6 +15,7 @@ import java.util.UUID;
 import org.bukkit.OfflinePlayer;
 
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
+import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
@@ -111,8 +112,7 @@ class ProductionRewardDeliveryHandlersTest {
     void itemDeliverySucceedsWhenPlayerOnline() {
         PlayerMock player = server.addPlayer();
         when(sessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(recipientProfile));
-        PlayerSessionCoordinator.ActiveSession session = new PlayerSessionCoordinator.ActiveSession(
-                new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), recipientProfile, 1L, 1L);
         when(sessionCoordinator.getActiveSession(player.getUniqueId())).thenReturn(session);
 
         when(journalPort.recordIntent(
