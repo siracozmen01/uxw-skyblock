@@ -27,6 +27,9 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("chat") && gameplayWiring.chatListener() != null) {
             pm.registerEvents(gameplayWiring.chatListener(), plugin);
         }
+        if (gameplayWiring.vaultListener() != null) {
+            pm.registerEvents(gameplayWiring.vaultListener(), plugin);
+        }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("missions")
                 && gameplayWiring.missionListener() != null) {
             pm.registerEvents(gameplayWiring.missionListener(), plugin);

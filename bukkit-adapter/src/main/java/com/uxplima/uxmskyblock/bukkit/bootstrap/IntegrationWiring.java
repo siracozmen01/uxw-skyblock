@@ -188,6 +188,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 gameplay.boosterMenu());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
+        this.commandTree.setVaultWindow(gameplay.vaultWindow());
         this.commandTree.setNameService(gameplay.islandNameService());
         this.commandTree.setNetworkRouter(this.networkRouter);
         this.commandTree.setRestoreService(gameplay.islandRestoreService());

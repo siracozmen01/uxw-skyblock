@@ -5,11 +5,14 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
+import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultListener;
+import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.home.HomeService;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
@@ -34,6 +37,8 @@ public final class SocialWiring {
     private final IslandWarpService warpService;
     private final IslandVaultService vaultService;
     private final HomeService homeService;
+    private final @Nullable IslandVaultWindow vaultWindow;
+    private final @Nullable IslandVaultListener vaultListener;
 
     public SocialWiring(
             ConfigurationWiring config,
@@ -42,7 +47,8 @@ public final class SocialWiring {
             IslandAllianceService allianceService,
             TemporaryAccessService temporaryAccessService,
             IslandUpgradeService upgradeService,
-            IslandChatTransportPort chatTransport) {
+            IslandChatTransportPort chatTransport,
+            SchedulerPort scheduler) {
         this.allianceService = Objects.requireNonNull(allianceService, "allianceService must not be null");
         this.temporaryAccessService =
                 Objects.requireNonNull(temporaryAccessService, "temporaryAccessService must not be null");
@@ -98,6 +104,20 @@ public final class SocialWiring {
 
         this.homeService = new HomeService(
                 persistence.homeStoragePort(), config.homeConfig().limitPolicy());
+
+        if (config.vaultConfig().enabled()) {
+            this.vaultWindow = new IslandVaultWindow(
+                    this.vaultService,
+                    persistence.islandStoragePort(),
+                    scheduler,
+                    config.vaultConfig(),
+                    config.messages(),
+                    authority.sessionCoordinator());
+            this.vaultListener = new IslandVaultListener(this.vaultWindow);
+        } else {
+            this.vaultWindow = null;
+            this.vaultListener = null;
+        }
     }
 
     public HomeService homeService() {
@@ -130,6 +150,14 @@ public final class SocialWiring {
 
     public IslandWarpService warpService() {
         return warpService;
+    }
+
+    public @Nullable IslandVaultWindow vaultWindow() {
+        return vaultWindow;
+    }
+
+    public @Nullable IslandVaultListener vaultListener() {
+        return vaultListener;
     }
 
     public IslandVaultService vaultService() {

@@ -31,6 +31,8 @@ import com.uxplima.uxmskyblock.bukkit.recycle.FoliaIslandVoidingAdapter;
 import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.upgrade.OreGeneratorListener;
+import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultListener;
+import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
 import com.uxplima.uxmskyblock.bukkit.ward.KineticWardListener;
 import com.uxplima.uxmskyblock.bukkit.world.AsyncStructureSuppressionListener;
 import com.uxplima.uxmskyblock.bukkit.worth.FoliaIslandChunkScanner;
@@ -176,7 +178,8 @@ public final class GameplayWiring {
                 allianceService,
                 temporaryAccessService,
                 this.economicWiring.upgradeService(),
-                chatTransport);
+                chatTransport,
+                scheduler);
 
         this.adminWiring = new AdminWiring(
                 plugin,
@@ -262,6 +265,14 @@ public final class GameplayWiring {
 
     public IslandSeasonService seasonService() {
         return creationWiring.seasonService();
+    }
+
+    public @Nullable IslandVaultWindow vaultWindow() {
+        return socialWiring.vaultWindow();
+    }
+
+    public @Nullable IslandVaultListener vaultListener() {
+        return socialWiring.vaultListener();
     }
 
     public HomeService homeService() {

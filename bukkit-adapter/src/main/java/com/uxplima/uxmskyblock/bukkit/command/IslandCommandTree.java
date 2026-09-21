@@ -29,6 +29,7 @@ import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
@@ -80,6 +81,7 @@ public final class IslandCommandTree {
     private final Messages messages;
     private final HomeConfiguration homeConfiguration;
     private volatile @Nullable HomeService homeService;
+    private volatile @Nullable IslandVaultWindow vaultWindow;
     private final ServerNodeId serverNodeId;
     private final String worldName;
     private final SkyblockEconomyBridge economyBridge;
@@ -246,6 +248,10 @@ public final class IslandCommandTree {
         return antiAbuseService;
     }
 
+    public void setVaultWindow(@Nullable IslandVaultWindow vaultWindow) {
+        this.vaultWindow = vaultWindow;
+    }
+
     public void setHomeService(@Nullable HomeService homeService) {
         this.homeService = homeService;
     }
@@ -391,6 +397,12 @@ public final class IslandCommandTree {
                 .then(homeCommands.buildTravelHome())
                 .then(homeCommands.buildNamedHome())
                 .then(homeCommands.buildDeleteHome())
+                .then(Cmd.literal("vault")
+                        .executes(ctx -> executeVault(ctx, 1))
+                        .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                                .executes(ctx -> executeVault(
+                                        ctx,
+                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page")))))
                 .then(lifecycleCommands.buildRename())
                 .then(adminCommands.buildRestore())
                 .then(bankCommands.build())
@@ -463,6 +475,20 @@ public final class IslandCommandTree {
                 send(sender, line);
             }
         }
+        return Cmd.OK;
+    }
+
+    private int executeVault(CommandContext<CommandSourceStack> ctx, int page) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        IslandVaultWindow window = this.vaultWindow;
+        if (window == null) {
+            send(player, "vault.disabled");
+            return Cmd.OK;
+        }
+        window.open(player, page);
         return Cmd.OK;
     }
 
