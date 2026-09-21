@@ -11,7 +11,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 
+import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterApplyResult;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCalculation;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
@@ -31,6 +33,14 @@ public final class IslandBoosterService {
     private final Function<BoosterCategory, CategoryBoosterPolicy> policyProvider;
     private final boolean pauseWhenEmptyEnabled;
     private final Set<IslandId> pausedIslands = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Holds one island to one pause or resume at a time.
+     *
+     * <p>The two arrive from a join and a quit on the same island in the same second, and both used
+     * to read the boosters, decide, and write with nothing held.
+     */
+    private final KeyedMutationLock<IslandId> boosterLock = new KeyedMutationLock<>();
 
     public IslandBoosterService(
             IslandBoosterStoragePort storagePort,
@@ -250,12 +260,41 @@ public final class IslandBoosterService {
     }
 
     /**
-     * Pauses all active boosters for the specified island.
+     * Pauses or resumes the island's boosters to match who is actually on it.
+     *
+     * <p>A join and a quit on one island arrive on the same pool and used to race. The quit counted
+     * nobody left and started pausing; the join counted somebody and found nothing paused yet, so it
+     * resumed nothing and left; the pause then landed on an occupied island. Its boosters stopped
+     * applying and stopped counting down, and the island's own record of whether it was paused said
+     * the opposite of its rows. The other order burns paid booster time on an empty island, which is
+     * the thing pause-when-empty exists to prevent.
+     *
+     * <p>So the count is taken again here, inside the lock, rather than carried in from whenever the
+     * event fired. Whichever of the two runs second sees the truth and is the one that decides.
+     *
+     * @param onlineMembers how many members are on the island, asked inside the lock
      */
+    public void followOccupancy(IslandId islandId, IntSupplier onlineMembers, Instant now) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(onlineMembers, "onlineMembers must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+
+        boosterLock.inside(islandId, () -> {
+            if (onlineMembers.getAsInt() > 0) {
+                resumeInside(islandId, now);
+            } else {
+                pauseInside(islandId, now);
+            }
+        });
+    }
+
     public void pauseBoosters(IslandId islandId, Instant now) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(now, "now must not be null");
+        boosterLock.inside(islandId, () -> pauseInside(islandId, now));
+    }
 
+    private void pauseInside(IslandId islandId, Instant now) {
         if (!pauseWhenEmptyEnabled) {
             return;
         }
@@ -273,13 +312,14 @@ public final class IslandBoosterService {
         }
     }
 
-    /**
-     * Resumes all paused boosters for the specified island.
-     */
+    /** Resumes every paused booster on the island, held against a pause arriving at the same moment. */
     public void resumeBoosters(IslandId islandId, Instant now) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(now, "now must not be null");
+        boosterLock.inside(islandId, () -> resumeInside(islandId, now));
+    }
 
+    private void resumeInside(IslandId islandId, Instant now) {
         pausedIslands.remove(islandId);
         List<IslandBooster> boosters = storagePort.findByIsland(islandId);
         List<IslandBooster> toSave = new ArrayList<>();

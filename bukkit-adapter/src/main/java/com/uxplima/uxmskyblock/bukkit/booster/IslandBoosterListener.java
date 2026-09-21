@@ -118,10 +118,11 @@ public final class IslandBoosterListener implements Listener {
         Runnable task = () -> {
             findIslandIdForPlayer(playerUuid).ifPresent(islandId -> {
                 playerIslandCache.put(playerUuid, islandId);
-                int onlineMembers = countOnlineIslandMembers(islandId, null);
-                if (onlineMembers == 1) {
-                    boosterService.resumeBoosters(islandId, clock.instant());
-                }
+                // The count is handed over rather than taken here, so the service can ask it again
+                // inside its lock. A join and a quit on one island arrive on this same pool, and
+                // whichever of them runs second has to be the one that decides.
+                boosterService.followOccupancy(
+                        islandId, () -> countOnlineIslandMembers(islandId, null), clock.instant());
             });
         };
 
@@ -146,10 +147,9 @@ public final class IslandBoosterListener implements Listener {
                 islandId = findIslandIdForPlayer(playerUuid).orElse(null);
             }
             if (islandId != null) {
-                int remainingOnline = countOnlineIslandMembers(islandId, playerUuid);
-                if (remainingOnline == 0) {
-                    boosterService.pauseBoosters(islandId, clock.instant());
-                }
+                IslandId island = islandId;
+                boosterService.followOccupancy(
+                        island, () -> countOnlineIslandMembers(island, playerUuid), clock.instant());
             }
             invalidatePlayer(playerUuid);
         };

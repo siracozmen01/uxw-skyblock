@@ -82,23 +82,56 @@ class IslandBoosterListenerTest extends MockBukkitHarness {
         when(mockStoragePort.findIslandById(islandId)).thenReturn(Optional.of(sampleIsland));
     }
 
-    @Test
-    @DisplayName("Resumes island boosters when first member joins")
-    void resumesBoostersOnFirstMemberJoin() {
-        PlayerJoinEvent event = new PlayerJoinEvent(testPlayer, net.kyori.adventure.text.Component.empty());
-        listener.onPlayerJoin(event);
-
-        verify(mockBoosterService).resumeBoosters(islandId, fixedNow);
+    /** The count the listener hands to the service, which the service asks again inside its lock. */
+    private java.util.function.IntSupplier handedOverCount() {
+        org.mockito.ArgumentCaptor<java.util.function.IntSupplier> captor =
+                org.mockito.ArgumentCaptor.forClass(java.util.function.IntSupplier.class);
+        verify(mockBoosterService)
+                .followOccupancy(
+                        org.mockito.ArgumentMatchers.eq(islandId),
+                        captor.capture(),
+                        org.mockito.ArgumentMatchers.eq(fixedNow));
+        return captor.getValue();
     }
 
     @Test
-    @DisplayName("Pauses island boosters when last member leaves")
-    void pausesBoostersOnLastMemberQuit() {
+    @DisplayName("A join hands over a count that reports the joining member as on the island")
+    void aJoinReportsSomebodyOn() {
+        PlayerJoinEvent event = new PlayerJoinEvent(testPlayer, net.kyori.adventure.text.Component.empty());
+        listener.onPlayerJoin(event);
+
+        assertThat(handedOverCount().getAsInt())
+                .describedAs("members the service will see on the island")
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("A quit hands over a count that leaves the quitting member out")
+    void aQuitLeavesTheQuitterOut() {
         PlayerQuitEvent event = new PlayerQuitEvent(
                 testPlayer, net.kyori.adventure.text.Component.empty(), PlayerQuitEvent.QuitReason.DISCONNECTED);
         listener.onPlayerQuit(event);
 
-        verify(mockBoosterService).pauseBoosters(islandId, fixedNow);
+        assertThat(handedOverCount().getAsInt())
+                .describedAs("members the service will see on the island once this one is gone")
+                .isZero();
+    }
+
+    @Test
+    @DisplayName("The count is handed over rather than taken, so the service decides from the truth")
+    void theCountIsHandedOverNotTaken() {
+        PlayerQuitEvent event = new PlayerQuitEvent(
+                testPlayer, net.kyori.adventure.text.Component.empty(), PlayerQuitEvent.QuitReason.DISCONNECTED);
+        listener.onPlayerQuit(event);
+
+        // A join arriving in the same second used to decide against a count the quit had already
+        // made stale. The listener now hands over the question, not the answer, and the service asks
+        // it inside its lock.
+        java.util.function.IntSupplier count = handedOverCount();
+        assertThat(count.getAsInt()).isZero();
+        assertThat(count.getAsInt())
+                .describedAs("asking twice is allowed, because the service asks when it is ready")
+                .isZero();
     }
 
     /** Builds one mob death by this player, with {@code exp} experience to drop. */
