@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.listener.PlayerSessionListener;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -51,7 +52,9 @@ public final class AuthorityWiring implements AutoCloseable {
             PlayerStateDurabilityConfig playerStateConfig,
             PersistenceBootstrap persistenceBootstrap,
             SchedulerPort scheduler,
-            IslandProtectionListener protectionListener) {
+            IslandProtectionListener protectionListener,
+            Messages messages) {
+        Objects.requireNonNull(messages, "messages must not be null");
         Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         Objects.requireNonNull(playerStateConfig, "playerStateConfig must not be null");
         Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
@@ -72,7 +75,8 @@ public final class AuthorityWiring implements AutoCloseable {
                 scheduler,
                 protectionListener,
                 Duration.ofSeconds(5),
-                playerStateConfig.ambientCheckpointInterval());
+                playerStateConfig.ambientCheckpointInterval(),
+                messages);
 
         PlayerSessionListener listener = new PlayerSessionListener(coordinator);
         CurrentNodeProcessIdentity identity = CurrentNodeProcessIdentity.create(serverNodeId.value());

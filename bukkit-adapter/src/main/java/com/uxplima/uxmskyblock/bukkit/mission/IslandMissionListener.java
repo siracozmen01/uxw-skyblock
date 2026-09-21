@@ -22,8 +22,9 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
@@ -57,16 +58,19 @@ public final class IslandMissionListener implements Listener {
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final ConcurrentMap<ProfileId, IslandId> profileIslandCache = new ConcurrentHashMap<>();
+    private final Messages messages;
 
     public IslandMissionListener(
             IslandMissionService missionService,
             IslandStoragePort islandStoragePort,
             PlayerSessionCoordinator sessionCoordinator,
-            SchedulerPort schedulerPort) {
+            SchedulerPort schedulerPort,
+            Messages messages) {
         this.missionService = Objects.requireNonNull(missionService, "missionService must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -172,8 +176,8 @@ public final class IslandMissionListener implements Listener {
             if (!player.isOnline()) {
                 return;
             }
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize("<gold><b>[MISSION COMPLETED]</b></gold> <yellow>" + def.displayName() + "</yellow>"));
+            player.sendMessage(messages.render(
+                    player, "missions.completed_announce", Placeholder.unparsed("mission", def.displayName())));
             try {
                 Location loc = player.getLocation();
                 if (loc != null) {

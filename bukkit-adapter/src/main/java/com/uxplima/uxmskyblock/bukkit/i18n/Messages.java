@@ -42,6 +42,16 @@ public final class Messages {
         return new Messages(provider, source);
     }
 
+    /**
+     * The shipped catalogs with no operator file over them. This is what a test wants, and what a
+     * caller that has no configuration to read can fall back to.
+     */
+    public static Messages bundled() {
+        MessageProvider provider = new MessageProvider(LanguageConfiguration.DEFAULT_LANGUAGE);
+        provider.loadBundledDefaults(Messages.class.getClassLoader());
+        return of(provider, LanguageConfiguration.defaults());
+    }
+
     /** Renders {@code key} for {@code viewer} with the catalog prefix, as a chat line carries it. */
     public Component render(Audience viewer, String key, TagResolver... resolvers) {
         return provider.getComponent(key, languageOf(viewer), resolvers);

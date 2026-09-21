@@ -11,6 +11,7 @@ import java.util.Optional;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
@@ -33,7 +34,7 @@ class IslandChatListenerTest extends MockBukkitHarness {
         chatService = mock(IslandChatService.class);
         player = createPlayer("TestPlayer");
         profileId = ProfileId.of(player.getUniqueId());
-        listener = new IslandChatListener(chatService, uuid -> Optional.of(profileId));
+        listener = new IslandChatListener(chatService, uuid -> Optional.of(profileId), Messages.bundled());
     }
 
     @Test

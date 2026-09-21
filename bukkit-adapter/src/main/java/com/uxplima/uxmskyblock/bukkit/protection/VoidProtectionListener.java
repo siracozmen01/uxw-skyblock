@@ -21,10 +21,9 @@ import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.util.Vector;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
-
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SettingsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 
 /**
@@ -41,23 +40,26 @@ public final class VoidProtectionListener implements Listener {
 
     private final Map<UUID, Instant> fallDamageShields = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> pvpInvulnerabilityShields = new ConcurrentHashMap<>();
+    private final Messages messages;
 
     public VoidProtectionListener(
             ProtectionConfiguration protectionConfig,
             SettingsConfiguration settingsConfig,
             Function<Location, Optional<Island>> islandLookup) {
-        this(protectionConfig, settingsConfig, islandLookup, Clock.systemUTC());
+        this(protectionConfig, settingsConfig, islandLookup, Clock.systemUTC(), Messages.bundled());
     }
 
     public VoidProtectionListener(
             ProtectionConfiguration protectionConfig,
             SettingsConfiguration settingsConfig,
             Function<Location, Optional<Island>> islandLookup,
-            Clock clock) {
+            Clock clock,
+            Messages messages) {
         this.protectionConfig = Objects.requireNonNull(protectionConfig, "protectionConfig must not be null");
         this.settingsConfig = Objects.requireNonNull(settingsConfig, "settingsConfig must not be null");
         this.islandLookup = Objects.requireNonNull(islandLookup, "islandLookup must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -114,9 +116,7 @@ public final class VoidProtectionListener implements Listener {
             if (Instant.now(clock).isBefore(pvpShieldUntil)) {
                 event.setCancelled(true);
                 if (event.getDamager() instanceof Player damager) {
-                    damager.sendMessage(MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<yellow>That player has temporary teleport/void PvP invulnerability!</yellow>"));
+                    damager.sendMessage(messages.render(damager, "protection.void_pvp_immune"));
                 }
             } else {
                 pvpInvulnerabilityShields.remove(victim.getUniqueId());
@@ -170,8 +170,7 @@ public final class VoidProtectionListener implements Listener {
             pvpInvulnerabilityShields.put(player.getUniqueId(), now.plus(settingsConfig.pvpTeleportInvulnerability()));
         }
 
-        player.sendMessage(MiniMessage.miniMessage()
-                .deserialize("<green>Void recovery activated! Velocity reset and fall shield granted.</green>"));
+        player.sendMessage(messages.render(player, "protection.void_recovery"));
 
         return true;
     }

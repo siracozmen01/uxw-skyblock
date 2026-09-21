@@ -57,7 +57,8 @@ public final class GameplayEnvironmentWiring {
         this.worldBorderAdapter = new WorldBorderPacketAdapter(scheduler);
         this.boundaryService = new IslandBoundaryService(worldBorderAdapter);
         if (config.moduleSettings().isModuleEnabled("boundary")) {
-            this.boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, scheduler);
+            this.boundaryListener =
+                    new IslandBoundaryListener(boundaryService, protectionListener, scheduler, config.messages());
             this.boundaryListener.setStopBorderCrossing(config.settingsConfig().stopBorderCrossing());
         } else {
             this.boundaryListener = null;
@@ -84,7 +85,8 @@ public final class GameplayEnvironmentWiring {
                 ? new IslandLimitListener(
                         this.limitService,
                         protectionListener,
-                        config.limitConfig().bypassPermission())
+                        config.limitConfig().bypassPermission(),
+                        config.messages())
                 : null;
         this.limitReconciler = limitsEnabled ? new IslandLimitReconciler(scheduler, this.limitService) : null;
     }

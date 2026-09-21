@@ -14,10 +14,9 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.domain.chat.ChatRateLimitExceededException;
@@ -35,20 +34,28 @@ public final class IslandChatListener implements Listener {
 
     private final IslandChatService chatService;
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
+    private final Messages messages;
 
     public IslandChatListener(
-            IslandChatService chatService, Function<UUID, Optional<ProfileId>> activeProfileProvider) {
+            IslandChatService chatService,
+            Function<UUID, Optional<ProfileId>> activeProfileProvider,
+            Messages messages) {
         this.chatService = Objects.requireNonNull(chatService, "chatService must not be null");
         this.activeProfileProvider =
                 Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
-    public IslandChatListener(IslandChatService chatService, @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this(chatService, sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty());
+    public IslandChatListener(
+            IslandChatService chatService, @Nullable PlayerSessionCoordinator sessionCoordinator, Messages messages) {
+        this(
+                chatService,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
+                messages);
     }
 
-    public IslandChatListener(IslandChatService chatService) {
-        this(chatService, (PlayerSessionCoordinator) null);
+    public IslandChatListener(IslandChatService chatService, Messages messages) {
+        this(chatService, (PlayerSessionCoordinator) null, messages);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -66,14 +73,11 @@ public final class IslandChatListener implements Listener {
             try {
                 chatService.sendChat(profileId, player.getName(), message);
             } catch (NoIslandForChatException e) {
-                player.sendMessage(
-                        Component.text("You must belong to an island to use island chat.", NamedTextColor.RED));
+                messages.send(player, "chat.requires_island");
             } catch (IslandChatPermissionDeniedException e) {
-                player.sendMessage(Component.text(
-                        "You do not have permission to send messages in island chat.", NamedTextColor.RED));
+                messages.send(player, "chat.send_denied");
             } catch (ChatRateLimitExceededException e) {
-                player.sendMessage(
-                        Component.text("You are sending messages too quickly. Please slow down.", NamedTextColor.RED));
+                messages.send(player, "chat.rate_limited");
             }
         }
     }
@@ -93,14 +97,11 @@ public final class IslandChatListener implements Listener {
             try {
                 chatService.sendChat(profileId, player.getName(), event.getMessage());
             } catch (NoIslandForChatException e) {
-                player.sendMessage(
-                        Component.text("You must belong to an island to use island chat.", NamedTextColor.RED));
+                messages.send(player, "chat.requires_island");
             } catch (IslandChatPermissionDeniedException e) {
-                player.sendMessage(Component.text(
-                        "You do not have permission to send messages in island chat.", NamedTextColor.RED));
+                messages.send(player, "chat.send_denied");
             } catch (ChatRateLimitExceededException e) {
-                player.sendMessage(
-                        Component.text("You are sending messages too quickly. Please slow down.", NamedTextColor.RED));
+                messages.send(player, "chat.rate_limited");
             }
         }
     }

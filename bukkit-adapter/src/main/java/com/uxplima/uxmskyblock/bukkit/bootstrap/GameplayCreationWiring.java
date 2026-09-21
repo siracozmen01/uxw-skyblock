@@ -83,7 +83,11 @@ public final class GameplayCreationWiring {
             this.missionsMenu = new IslandMissionsMenu(
                     missionService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
             this.missionListener = new IslandMissionListener(
-                    missionService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
+                    missionService,
+                    persistence.islandStoragePort(),
+                    authority.sessionCoordinator(),
+                    scheduler,
+                    config.messages());
         } else {
             this.missionsMenu = null;
             this.missionListener = null;

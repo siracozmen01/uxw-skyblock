@@ -14,6 +14,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -53,7 +54,7 @@ class CategoricalInteractablesListenerTest extends MockBukkitHarness {
     @DisplayName("Allows owner to interact with doors and containers")
     void allowsOwnerInteraction() {
         CategoricalInteractablesListener listener = new CategoricalInteractablesListener(
-                config, loc -> Optional.of(island), uuid -> new ProfileId(uuid.value()), null);
+                config, loc -> Optional.of(island), uuid -> new ProfileId(uuid.value()), null, Messages.bundled());
 
         Block door = world.getBlockAt(0, 64, 0);
         door.setType(Material.OAK_DOOR);
@@ -69,7 +70,7 @@ class CategoricalInteractablesListenerTest extends MockBukkitHarness {
     @DisplayName("Blocks unpermitted visitor from interacting with doors and containers")
     void blocksVisitorWithoutPermission() {
         CategoricalInteractablesListener listener = new CategoricalInteractablesListener(
-                config, loc -> Optional.of(island), uuid -> new ProfileId(uuid.value()), null);
+                config, loc -> Optional.of(island), uuid -> new ProfileId(uuid.value()), null, Messages.bundled());
 
         Block door = world.getBlockAt(0, 64, 0);
         door.setType(Material.OAK_DOOR);
@@ -85,7 +86,7 @@ class CategoricalInteractablesListenerTest extends MockBukkitHarness {
     @DisplayName("Allows staff with admin bypass to interact with any category")
     void allowsAdminBypass() {
         CategoricalInteractablesListener listener = new CategoricalInteractablesListener(
-                config, loc -> Optional.of(island), uuid -> new ProfileId(uuid.value()), null);
+                config, loc -> Optional.of(island), uuid -> new ProfileId(uuid.value()), null, Messages.bundled());
 
         visitorPlayer.addAttachment(
                 org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), "uxmskyblock.admin.bypass", true);

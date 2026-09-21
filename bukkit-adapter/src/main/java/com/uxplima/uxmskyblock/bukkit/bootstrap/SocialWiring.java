@@ -91,7 +91,7 @@ public final class SocialWiring {
                 chatMemberProvider,
                 config.chatConfig().rateLimitMessagesPerSecond());
         this.chatListener = config.moduleSettings().isModuleEnabled("chat")
-                ? new IslandChatListener(this.chatService, authority.activeProfileProvider())
+                ? new IslandChatListener(this.chatService, authority.activeProfileProvider(), config.messages())
                 : null;
     }
 

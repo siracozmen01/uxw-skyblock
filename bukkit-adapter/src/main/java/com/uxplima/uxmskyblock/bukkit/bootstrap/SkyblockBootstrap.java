@@ -106,7 +106,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 configWiring.playerStateConfig(),
                 persistenceWiring.bootstrap(),
                 scheduler,
-                protectionListener);
+                protectionListener,
+                configWiring.messages());
 
         ClusterTransportWiring clusterTransportWiring =
                 ClusterTransportWiring.create(plugin, configWiring.nodeConfig());

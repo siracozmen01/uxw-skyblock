@@ -81,7 +81,8 @@ public final class EconomicWiring {
                         protectionListener,
                         persistence.islandStoragePort(),
                         authority.sessionCoordinator(),
-                        scheduler)
+                        scheduler,
+                        config.messages())
                 : null;
 
         boolean worthEnabled = config.moduleSettings().isModuleEnabled("worth");

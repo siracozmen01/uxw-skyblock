@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.logging.Logger;
 
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -18,6 +19,7 @@ import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LimitConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
@@ -36,6 +38,8 @@ import com.uxplima.uxmskyblock.bukkit.config.UpgradesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -60,6 +64,8 @@ import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
  * </pre>
  */
 public final class ConfigurationWiring {
+
+    private static final Logger LOGGER = Logger.getLogger(ConfigurationWiring.class.getName());
 
     private final Path dataDir;
     private final @Nullable CommentedConfigurationNode rootNode;
@@ -91,6 +97,7 @@ public final class ConfigurationWiring {
     private final WorldConfiguration worldConfig;
     private final UpgradesConfiguration upgradesConfig;
     private final GeneratorsConfiguration generatorsConfig;
+    private final Messages messages;
 
     private ConfigurationWiring(
             Path dataDir,
@@ -154,6 +161,38 @@ public final class ConfigurationWiring {
         this.worldConfig = Objects.requireNonNull(worldConfig, "worldConfig must not be null");
         this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
+        this.messages = buildMessages(rootNode, dataDir);
+    }
+
+    /**
+     * The catalog is configuration, so it is built here rather than in a later wiring step. The
+     * listeners are constructed before the integration layer exists, and they answer a player too.
+     */
+    private static Messages buildMessages(@Nullable CommentedConfigurationNode rootNode, Path dataDir) {
+        LanguageConfiguration language = LanguageConfiguration.load(rootNode);
+        MessageProvider provider = new MessageProvider(language.defaultLanguage());
+        provider.loadBundledDefaults(ConfigurationWiring.class.getClassLoader());
+
+        Path messagesDir = dataDir.resolve("messages");
+        if (Files.isDirectory(messagesDir)) {
+            try (java.util.stream.Stream<Path> files = Files.list(messagesDir)) {
+                for (Path file : files.toList()) {
+                    String name = file.getFileName().toString();
+                    if (!name.startsWith("messages_") || !name.endsWith(".conf")) {
+                        continue;
+                    }
+                    String locale = name.substring("messages_".length(), name.length() - ".conf".length());
+                    try {
+                        provider.loadFromFile(locale, file);
+                    } catch (IOException e) {
+                        LOGGER.warning("Failed loading the message catalog " + file + ": " + e.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                LOGGER.warning("Failed listing the messages folder " + messagesDir + ": " + e.getMessage());
+            }
+        }
+        return Messages.of(provider, language);
     }
 
     /**
@@ -529,6 +568,11 @@ public final class ConfigurationWiring {
 
     public Path dataDir() {
         return dataDir;
+    }
+
+    /** The words this server answers in, in every language it ships. */
+    public Messages messages() {
+        return messages;
     }
 
     public @Nullable CommentedConfigurationNode rootNode() {

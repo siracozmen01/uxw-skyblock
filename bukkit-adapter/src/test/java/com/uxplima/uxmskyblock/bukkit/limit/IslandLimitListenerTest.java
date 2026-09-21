@@ -24,6 +24,7 @@ import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
@@ -55,7 +56,7 @@ class IslandLimitListenerTest extends MockBukkitHarness {
         world = server.addSimpleWorld("skyblock_world");
         mockLimitService = mock(IslandLimitService.class);
         mockProtectionListener = mock(IslandProtectionListener.class);
-        listener = new IslandLimitListener(mockLimitService, mockProtectionListener, BYPASS_PERM);
+        listener = new IslandLimitListener(mockLimitService, mockProtectionListener, BYPASS_PERM, Messages.bundled());
 
         player = createPlayer("LimitPlayer");
         islandId = new IslandId(UUID.randomUUID());

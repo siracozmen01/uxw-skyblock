@@ -13,6 +13,7 @@ import java.util.UUID;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
@@ -64,7 +65,8 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
                 scheduler,
                 protectionListener,
                 Duration.ofSeconds(1),
-                Duration.ofSeconds(2));
+                Duration.ofSeconds(2),
+                Messages.bundled());
     }
 
     @AfterEach

@@ -19,8 +19,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
-
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
@@ -50,6 +49,7 @@ public final class IslandProtectionListener implements Listener {
     private volatile @Nullable IslandAdminFreezeService freezeService;
     private final SpatialIslandIndex spatialIndex;
     private final Map<PlayerUuid, ProfileId> activeProfiles = new ConcurrentHashMap<>();
+    private final Messages messages;
 
     private volatile @Nullable Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier;
     private volatile @Nullable Function<PlayerUuid, Optional<PlayerSessionRecord>> sessionRecordProvider;
@@ -61,7 +61,9 @@ public final class IslandProtectionListener implements Listener {
             @Nullable IslandAllianceService allianceService,
             @Nullable TemporaryAccessService temporaryAccessService,
             @Nullable IslandAdminFreezeService freezeService,
-            @Nullable SpatialIslandIndex spatialIndex) {
+            @Nullable SpatialIslandIndex spatialIndex,
+            Messages messages) {
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort");
         this.accessService = Objects.requireNonNull(accessService, "accessService");
         this.allianceService = allianceService;
@@ -76,7 +78,14 @@ public final class IslandProtectionListener implements Listener {
             @Nullable IslandAllianceService allianceService,
             @Nullable TemporaryAccessService temporaryAccessService,
             @Nullable IslandAdminFreezeService freezeService) {
-        this(islandStoragePort, accessService, allianceService, temporaryAccessService, freezeService, null);
+        this(
+                islandStoragePort,
+                accessService,
+                allianceService,
+                temporaryAccessService,
+                freezeService,
+                null,
+                Messages.bundled());
     }
 
     public IslandProtectionListener(
@@ -84,18 +93,18 @@ public final class IslandProtectionListener implements Listener {
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService,
             @Nullable TemporaryAccessService temporaryAccessService) {
-        this(islandStoragePort, accessService, allianceService, temporaryAccessService, null, null);
+        this(islandStoragePort, accessService, allianceService, temporaryAccessService, null, null, Messages.bundled());
     }
 
     public IslandProtectionListener(
             IslandStoragePort islandStoragePort,
             IslandAccessService accessService,
             @Nullable IslandAllianceService allianceService) {
-        this(islandStoragePort, accessService, allianceService, null, null, null);
+        this(islandStoragePort, accessService, allianceService, null, null, null, Messages.bundled());
     }
 
     public IslandProtectionListener(IslandStoragePort islandStoragePort, IslandAccessService accessService) {
-        this(islandStoragePort, accessService, null, null, null, null);
+        this(islandStoragePort, accessService, null, null, null, null, Messages.bundled());
     }
 
     public void setFreezeService(@Nullable IslandAdminFreezeService freezeService) {
@@ -214,9 +223,7 @@ public final class IslandProtectionListener implements Listener {
             if (isIslandFrozen(island)) {
                 if (!isStaffInspector(player)) {
                     event.setCancelled(true);
-                    player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                    player.sendMessage(messages.render(player, "protection.frozen"));
                 }
                 return;
             }
@@ -242,9 +249,7 @@ public final class IslandProtectionListener implements Listener {
             if (isIslandFrozen(island)) {
                 if (!isStaffInspector(player)) {
                     event.setCancelled(true);
-                    player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                    player.sendMessage(messages.render(player, "protection.frozen"));
                 }
                 return;
             }
@@ -273,9 +278,7 @@ public final class IslandProtectionListener implements Listener {
             if (isIslandFrozen(island)) {
                 if (!isStaffInspector(player)) {
                     event.setCancelled(true);
-                    player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                    player.sendMessage(messages.render(player, "protection.frozen"));
                 }
                 return;
             }
@@ -300,10 +303,7 @@ public final class IslandProtectionListener implements Listener {
                 if (isIslandFrozen(island)) {
                     if (!isStaffInspector(damager)) {
                         event.setCancelled(true);
-                        damager.sendMessage(
-                                MiniMessage.miniMessage()
-                                        .deserialize(
-                                                "<red>This island is under administrative freeze and cannot be modified.</red>"));
+                        damager.sendMessage(messages.render(damager, "protection.frozen"));
                     }
                     return;
                 }
@@ -341,8 +341,7 @@ public final class IslandProtectionListener implements Listener {
         findIslandAt(loc).ifPresent(island -> {
             if (isIslandFrozen(island)) {
                 event.setCancelled(true);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize("<red>This island is under administrative freeze and cannot be modified.</red>"));
+                player.sendMessage(messages.render(player, "protection.frozen"));
             }
         });
     }

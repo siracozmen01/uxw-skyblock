@@ -49,7 +49,11 @@ public final class GameplayProtectionWiring {
 
         this.obsidianRecoveryListener = new ObsidianRecoveryListener(config.protectionConfig());
         this.voidProtectionListener = new VoidProtectionListener(
-                config.protectionConfig(), config.settingsConfig(), protectionListener::findIslandAt);
+                config.protectionConfig(),
+                config.settingsConfig(),
+                protectionListener::findIslandAt,
+                java.time.Clock.systemUTC(),
+                config.messages());
 
         this.categoricalInteractablesListener = new CategoricalInteractablesListener(
                 config.interactablesConfig(),
@@ -58,7 +62,8 @@ public final class GameplayProtectionWiring {
                         .sessionCoordinator()
                         .activeProfile(uuid.value())
                         .orElse(null),
-                temporaryAccessService);
+                temporaryAccessService,
+                config.messages());
         this.categoricalInteractablesListener.setNodeIdentitySupplier(authority::nodeProcessIdentity);
         this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
             PlayerSessionCoordinator.ActiveSession session =

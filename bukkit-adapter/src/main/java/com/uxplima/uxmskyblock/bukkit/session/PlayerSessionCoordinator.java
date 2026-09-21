@@ -17,6 +17,7 @@ import org.bukkit.entity.Player;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinalizationPort;
@@ -139,6 +140,7 @@ public final class PlayerSessionCoordinator {
     private final Duration checkpointInterval;
 
     private final ConcurrentMap<UUID, ActiveSession> activeSessions = new ConcurrentHashMap<>();
+    private final Messages messages;
 
     public PlayerSessionCoordinator(
             ServerNodeId nodeId,
@@ -149,7 +151,8 @@ public final class PlayerSessionCoordinator {
             SchedulerPort schedulerPort,
             IslandProtectionListener protectionListener,
             Duration heartbeatInterval,
-            Duration checkpointInterval) {
+            Duration checkpointInterval,
+            Messages messages) {
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId");
         this.sessionAuthorityPort = Objects.requireNonNull(sessionAuthorityPort, "sessionAuthorityPort");
         this.inventoryCheckpointPort = Objects.requireNonNull(inventoryCheckpointPort, "inventoryCheckpointPort");
@@ -159,6 +162,7 @@ public final class PlayerSessionCoordinator {
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener");
         this.heartbeatInterval = Objects.requireNonNull(heartbeatInterval, "heartbeatInterval");
         this.checkpointInterval = Objects.requireNonNull(checkpointInterval, "checkpointInterval");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public @Nullable ActiveSession getActiveSession(UUID playerUuid) {
@@ -295,7 +299,7 @@ public final class PlayerSessionCoordinator {
                 LOGGER.log(Level.SEVERE, "Unexpected error during player join for " + playerUuid, e);
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (player.isOnline()) {
-                        player.kick(Component.text("Internal session initialization error.", NamedTextColor.RED));
+                        player.kick(messages.render(player, "session.init_error"));
                     }
                 });
             }
@@ -407,12 +411,12 @@ public final class PlayerSessionCoordinator {
         UUID rawUuid = player.getUniqueId();
         ActiveSession session = activeSessions.get(rawUuid);
         if (session == null || session.isFenced()) {
-            player.sendMessage(Component.text("No active session found.", NamedTextColor.RED));
+            messages.send(player, "session.none_active");
             return;
         }
 
         if (session.activeProfileId().equals(targetProfileId)) {
-            player.sendMessage(Component.text("You are already on this profile.", NamedTextColor.YELLOW));
+            messages.send(player, "session.already_on_profile");
             return;
         }
 

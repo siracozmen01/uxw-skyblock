@@ -16,6 +16,7 @@ import org.bukkit.util.Vector;
 
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SettingsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -54,8 +55,8 @@ class VoidProtectionListenerTest extends MockBukkitHarness {
     @DisplayName("Intercepts void damage, cancels it, resets velocity and teleports to safety")
     void interceptsVoidDamage() {
         Clock clock = Clock.fixed(Instant.parse("2026-09-19T12:00:00Z"), ZoneOffset.UTC);
-        VoidProtectionListener listener =
-                new VoidProtectionListener(protectionConfig, settingsConfig, loc -> Optional.of(island), clock);
+        VoidProtectionListener listener = new VoidProtectionListener(
+                protectionConfig, settingsConfig, loc -> Optional.of(island), clock, Messages.bundled());
 
         player.setVelocity(new Vector(0, -5, 0));
         player.setFallDistance(25.0f);
@@ -75,8 +76,8 @@ class VoidProtectionListenerTest extends MockBukkitHarness {
     @DisplayName("Shields player from fall damage within 10-second post-void window")
     void shieldsFallDamageAfterVoid() {
         MutableClock clock = new MutableClock(Instant.parse("2026-09-19T12:00:00Z"), ZoneOffset.UTC);
-        VoidProtectionListener listener =
-                new VoidProtectionListener(protectionConfig, settingsConfig, loc -> Optional.of(island), clock);
+        VoidProtectionListener listener = new VoidProtectionListener(
+                protectionConfig, settingsConfig, loc -> Optional.of(island), clock, Messages.bundled());
 
         // Trigger void recovery
         EntityDamageEvent voidDamage = new EntityDamageEvent(player, DamageCause.VOID, 10.0);
@@ -101,8 +102,8 @@ class VoidProtectionListenerTest extends MockBukkitHarness {
     @DisplayName("Shields player from PvP attacks within 10-second post-void window")
     void shieldsPvpAfterVoid() {
         MutableClock clock = new MutableClock(Instant.parse("2026-09-19T12:00:00Z"), ZoneOffset.UTC);
-        VoidProtectionListener listener =
-                new VoidProtectionListener(protectionConfig, settingsConfig, loc -> Optional.of(island), clock);
+        VoidProtectionListener listener = new VoidProtectionListener(
+                protectionConfig, settingsConfig, loc -> Optional.of(island), clock, Messages.bundled());
 
         PlayerMock attacker = createPlayer("Attacker");
 

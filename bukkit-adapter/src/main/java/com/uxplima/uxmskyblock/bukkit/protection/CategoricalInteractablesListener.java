@@ -15,9 +15,10 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -39,6 +40,7 @@ public final class CategoricalInteractablesListener implements Listener {
     private final Function<Location, Optional<Island>> islandLookup;
     private final Function<PlayerUuid, @Nullable ProfileId> profileLookup;
     private final @Nullable TemporaryAccessService temporaryAccessService;
+    private final Messages messages;
     private volatile @Nullable Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier;
     private volatile @Nullable Function<PlayerUuid, Optional<PlayerSessionRecord>> sessionRecordProvider;
     private volatile @Nullable Function<ProfileId, ProfileType> profileTypeProvider;
@@ -47,11 +49,13 @@ public final class CategoricalInteractablesListener implements Listener {
             InteractablesConfiguration config,
             Function<Location, Optional<Island>> islandLookup,
             Function<PlayerUuid, @Nullable ProfileId> profileLookup,
-            @Nullable TemporaryAccessService temporaryAccessService) {
+            @Nullable TemporaryAccessService temporaryAccessService,
+            Messages messages) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.islandLookup = Objects.requireNonNull(islandLookup, "islandLookup must not be null");
         this.profileLookup = Objects.requireNonNull(profileLookup, "profileLookup must not be null");
         this.temporaryAccessService = temporaryAccessService;
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public void setNodeIdentitySupplier(Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier) {
@@ -117,12 +121,15 @@ public final class CategoricalInteractablesListener implements Listener {
 
             // Disallowed visitor interaction
             event.setCancelled(true);
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize("<red>You lack permission to use "
-                            + clicked.getType()
+            player.sendMessage(messages.render(
+                    player,
+                    "protection.interact_type_denied",
+                    Placeholder.unparsed(
+                            "block",
+                            clicked.getType()
                                     .name()
                                     .toLowerCase(java.util.Locale.ROOT)
-                                    .replace('_', ' ') + " here.</red>"));
+                                    .replace('_', ' '))));
         });
     }
 

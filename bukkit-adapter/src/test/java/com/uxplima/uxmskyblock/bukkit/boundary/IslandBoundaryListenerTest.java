@@ -19,6 +19,7 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
@@ -53,7 +54,7 @@ class IslandBoundaryListenerTest extends MockBukkitHarness {
         protectionListener = new IslandProtectionListener(storagePort, new IslandAccessService());
         worldBorderPort = mock(WorldBorderPacketPort.class);
         boundaryService = new IslandBoundaryService(worldBorderPort);
-        boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener);
+        boundaryListener = new IslandBoundaryListener(boundaryService, protectionListener, Messages.bundled());
 
         PlayerUuid ownerUuid = new PlayerUuid(UUID.randomUUID());
         ProfileId ownerProfile = new ProfileId(ownerUuid.value());

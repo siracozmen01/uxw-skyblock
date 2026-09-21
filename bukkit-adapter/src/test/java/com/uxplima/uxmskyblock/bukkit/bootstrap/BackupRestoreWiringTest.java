@@ -36,6 +36,7 @@ import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
@@ -144,6 +145,7 @@ class BackupRestoreWiringTest {
 
         ConfigurationWiring config = mock(ConfigurationWiring.class);
         when(config.moduleSettings()).thenReturn(moduleSettings);
+        when(config.messages()).thenReturn(Messages.bundled());
         when(config.nodeConfig()).thenReturn(ServerNodeConfiguration.of(ServerNodeId.of("node-1"), "world", false, ""));
 
         SocialConfiguration social = mock(SocialConfiguration.class);

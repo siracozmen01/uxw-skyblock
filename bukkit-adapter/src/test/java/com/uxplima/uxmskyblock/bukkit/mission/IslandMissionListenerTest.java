@@ -16,6 +16,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockBreakEvent;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
@@ -48,7 +49,8 @@ class IslandMissionListenerTest {
         sessionCoordinator = mock(PlayerSessionCoordinator.class);
         scheduler = new ImmediateScheduler();
 
-        listener = new IslandMissionListener(missionService, islandStoragePort, sessionCoordinator, scheduler);
+        listener = new IslandMissionListener(
+                missionService, islandStoragePort, sessionCoordinator, scheduler, Messages.bundled());
 
         playerUuid = UUID.randomUUID();
         profileId = new ProfileId(UUID.randomUUID());

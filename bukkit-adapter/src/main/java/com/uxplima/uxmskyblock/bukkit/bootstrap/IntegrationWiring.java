@@ -1,6 +1,5 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
-import java.io.File;
 import java.util.List;
 import java.util.Objects;
 
@@ -12,7 +11,6 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
-import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
@@ -93,27 +91,9 @@ public final class IntegrationWiring implements AutoCloseable {
         this.serverNodeId = config.nodeConfig().nodeId();
         String worldName = config.nodeConfig().worldName();
 
-        LanguageConfiguration language = LanguageConfiguration.load(config.rootNode());
-        this.messageProvider = new MessageProvider(language.defaultLanguage());
-        this.messageProvider.loadBundledDefaults(plugin.getClass().getClassLoader());
-        File messagesDir = new File(plugin.getDataFolder(), "messages");
-        if (messagesDir.exists() && messagesDir.isDirectory()) {
-            File[] files = messagesDir.listFiles((dir, name) -> name.startsWith("messages_") && name.endsWith(".conf"));
-            if (files != null) {
-                for (File file : files) {
-                    String name = file.getName();
-                    String locale = name.substring("messages_".length(), name.length() - ".conf".length());
-                    try {
-                        this.messageProvider.loadFromFile(locale, file.toPath());
-                    } catch (Exception e) {
-                        plugin.getLogger()
-                                .warning("Failed loading custom message file " + file + ": " + e.getMessage());
-                    }
-                }
-            }
-        }
-
-        this.messages = Messages.of(this.messageProvider, language);
+        // The catalogue is built once, where the rest of the configuration is read.
+        this.messages = config.messages();
+        this.messageProvider = this.messages.provider();
 
         this.economyBridge = SkyblockEconomyBridge.createDefault(
                 gameplay.bankService(), gameplay.scheduler(), persistence.economySagaPort());

@@ -24,8 +24,9 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -43,12 +44,17 @@ public final class IslandLimitListener implements Listener {
     private final IslandLimitService limitService;
     private final IslandProtectionListener protectionListener;
     private final String bypassPermission;
+    private final Messages messages;
 
     public IslandLimitListener(
-            IslandLimitService limitService, IslandProtectionListener protectionListener, String bypassPermission) {
+            IslandLimitService limitService,
+            IslandProtectionListener protectionListener,
+            String bypassPermission,
+            Messages messages) {
         this.limitService = Objects.requireNonNull(limitService, "limitService must not be null");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
         this.bypassPermission = Objects.requireNonNull(bypassPermission, "bypassPermission must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -73,14 +79,12 @@ public final class IslandLimitListener implements Listener {
             int current = limitService.getCount(islandId, limitType);
             int max = limitService.getEffectiveLimit(islandId, limitType);
 
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize("<red>Island limit reached for <yellow>"
-                            + limitType.name()
-                            + "</yellow> (<gray>"
-                            + current
-                            + "/"
-                            + max
-                            + "</gray>)!</red>"));
+            player.sendMessage(messages.render(
+                    player,
+                    "limits.reached",
+                    Placeholder.unparsed("type", limitType.name()),
+                    Placeholder.unparsed("count", Integer.toString(current)),
+                    Placeholder.unparsed("max", Integer.toString(max))));
             Location pLoc = player.getLocation();
             if (pLoc != null) {
                 player.playSound(pLoc, Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.5f);

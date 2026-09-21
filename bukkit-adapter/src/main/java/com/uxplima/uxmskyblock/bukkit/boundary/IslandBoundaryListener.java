@@ -20,8 +20,7 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
-
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryPoint;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
@@ -41,18 +40,22 @@ public final class IslandBoundaryListener implements Listener {
 
     private final IslandBoundaryService boundaryService;
     private final IslandProtectionListener protectionListener;
+    private final Messages messages;
     private volatile boolean stopBorderCrossing = false;
 
-    public IslandBoundaryListener(IslandBoundaryService boundaryService, IslandProtectionListener protectionListener) {
+    public IslandBoundaryListener(
+            IslandBoundaryService boundaryService, IslandProtectionListener protectionListener, Messages messages) {
         this.boundaryService = Objects.requireNonNull(boundaryService, "boundaryService must not be null");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public IslandBoundaryListener(
             IslandBoundaryService boundaryService,
             IslandProtectionListener protectionListener,
-            @SuppressWarnings("unused") SchedulerPort schedulerPort) {
-        this(boundaryService, protectionListener);
+            @SuppressWarnings("unused") SchedulerPort schedulerPort,
+            Messages messages) {
+        this(boundaryService, protectionListener, messages);
     }
 
     public void setStopBorderCrossing(boolean stopBorderCrossing) {
@@ -138,9 +141,7 @@ public final class IslandBoundaryListener implements Listener {
 
         if (fromIsland.isPresent() && toIsland.isEmpty()) {
             event.setCancelled(true);
-            event.getPlayer()
-                    .sendMessage(MiniMessage.miniMessage()
-                            .deserialize("<red>Ender pearls cannot be thrown beyond island boundaries!</red>"));
+            messages.send(event.getPlayer(), "navigation.pearl_blocked");
         }
     }
 
@@ -161,9 +162,7 @@ public final class IslandBoundaryListener implements Listener {
         } else if (fromIsland.isPresent() && toIsland.isEmpty()) {
             if (stopBorderCrossing && !event.getPlayer().hasPermission("uxmskyblock.admin.bypass")) {
                 event.setCancelled(true);
-                event.getPlayer()
-                        .sendMessage(MiniMessage.miniMessage()
-                                .deserialize("<red>You cannot cross the island boundary into the void!</red>"));
+                messages.send(event.getPlayer(), "navigation.void_blocked");
                 return;
             }
             boundaryService.handlePlayerExitIsland(playerUuid);

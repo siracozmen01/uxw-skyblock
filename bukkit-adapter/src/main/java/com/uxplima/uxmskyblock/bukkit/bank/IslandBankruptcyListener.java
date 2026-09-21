@@ -21,8 +21,9 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
@@ -53,27 +54,30 @@ public final class IslandBankruptcyListener implements Listener {
     private final @Nullable SchedulerPort schedulerPort;
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final Clock clock;
+    private final Messages messages;
 
     public IslandBankruptcyListener(
             IslandBankruptcyService bankruptcyService,
             IslandProtectionListener protectionListener,
             @Nullable IslandStoragePort islandStoragePort,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
-            @Nullable SchedulerPort schedulerPort) {
+            @Nullable SchedulerPort schedulerPort,
+            Messages messages) {
         this(
                 bankruptcyService,
                 Objects.requireNonNull(protectionListener, "protectionListener must not be null")::findIslandAt,
                 islandStoragePort,
                 schedulerPort,
                 sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                messages);
     }
 
     public IslandBankruptcyListener(
             IslandBankruptcyService bankruptcyService,
             IslandProtectionListener protectionListener,
             @Nullable IslandStoragePort islandStoragePort) {
-        this(bankruptcyService, protectionListener, islandStoragePort, null, null);
+        this(bankruptcyService, protectionListener, islandStoragePort, null, null, Messages.bundled());
     }
 
     public IslandBankruptcyListener(
@@ -81,7 +85,14 @@ public final class IslandBankruptcyListener implements Listener {
             Function<Location, Optional<Island>> islandLookup,
             @Nullable IslandStoragePort islandStoragePort,
             Clock clock) {
-        this(bankruptcyService, islandLookup, islandStoragePort, null, uuid -> Optional.empty(), clock);
+        this(
+                bankruptcyService,
+                islandLookup,
+                islandStoragePort,
+                null,
+                uuid -> Optional.empty(),
+                clock,
+                Messages.bundled());
     }
 
     public IslandBankruptcyListener(
@@ -90,7 +101,9 @@ public final class IslandBankruptcyListener implements Listener {
             @Nullable IslandStoragePort islandStoragePort,
             @Nullable SchedulerPort schedulerPort,
             Function<UUID, Optional<ProfileId>> activeProfileProvider,
-            Clock clock) {
+            Clock clock,
+            Messages messages) {
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.bankruptcyService = Objects.requireNonNull(bankruptcyService, "bankruptcyService must not be null");
         this.islandLookup = Objects.requireNonNull(islandLookup, "islandLookup must not be null");
         this.islandStoragePort = islandStoragePort;
@@ -149,9 +162,7 @@ public final class IslandBankruptcyListener implements Listener {
         islandLookup.apply(loc).ifPresent(island -> {
             if (bankruptcyService.isIslandLocked(island.id(), Instant.now(clock))) {
                 event.setCancelled(true);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize(
-                                "<red>Island actions are disabled while this island is locked in bankruptcy.</red>"));
+                player.sendMessage(messages.render(player, "bank.locked_actions"));
             }
         });
     }
@@ -173,9 +184,7 @@ public final class IslandBankruptcyListener implements Listener {
         islandLookup.apply(loc).ifPresent(island -> {
             if (bankruptcyService.isIslandLocked(island.id(), Instant.now(clock))) {
                 event.setCancelled(true);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize(
-                                "<red>Island actions are disabled while this island is locked in bankruptcy.</red>"));
+                player.sendMessage(messages.render(player, "bank.locked_actions"));
             }
         });
     }
@@ -197,9 +206,7 @@ public final class IslandBankruptcyListener implements Listener {
         islandLookup.apply(loc).ifPresent(island -> {
             if (bankruptcyService.isIslandLocked(island.id(), Instant.now(clock))) {
                 event.setCancelled(true);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize(
-                                "<red>Interactions are disabled while this island is locked in bankruptcy.</red>"));
+                player.sendMessage(messages.render(player, "bank.locked_interactions"));
             }
         });
     }
@@ -219,8 +226,7 @@ public final class IslandBankruptcyListener implements Listener {
         islandLookup.apply(to).ifPresent(island -> {
             if (bankruptcyService.isIslandLocked(island.id(), Instant.now(clock)) && !isMember(island, player)) {
                 event.setCancelled(true);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize("<red>Visitors cannot enter this island while it is locked in bankruptcy.</red>"));
+                player.sendMessage(messages.render(player, "bank.locked_visitors"));
             }
         });
     }
@@ -243,8 +249,7 @@ public final class IslandBankruptcyListener implements Listener {
         islandLookup.apply(to).ifPresent(island -> {
             if (bankruptcyService.isIslandLocked(island.id(), Instant.now(clock)) && !isMember(island, player)) {
                 event.setCancelled(true);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize("<red>Visitors cannot enter this island while it is locked in bankruptcy.</red>"));
+                player.sendMessage(messages.render(player, "bank.locked_visitors"));
             }
         });
     }
@@ -274,19 +279,16 @@ public final class IslandBankruptcyListener implements Listener {
                     }
                     if (record.status() == BankruptcyStatus.GRACE) {
                         double debt = record.debtMinorUnits() / 100.0;
-                        player.sendMessage(
-                                MiniMessage.miniMessage()
-                                        .deserialize(
-                                                "<yellow>[Warning] Your island is in bankruptcy grace! Outstanding debt: $"
-                                                        + String.format("%.2f", debt)
-                                                        + ". Settle debt via <gold>/is bank paydebt</gold> before grace expires.</yellow>"));
+                        messages.send(
+                                player,
+                                "bank.grace_warning",
+                                Placeholder.unparsed("debt", String.format(java.util.Locale.ROOT, "%.2f", debt)));
                     } else if (record.status() == BankruptcyStatus.LOCKED) {
                         double debt = record.debtMinorUnits() / 100.0;
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<red>[Alert] Your island is locked due to bankruptcy! Spawners and crops are disabled. Pay off debt ($"
-                                                + String.format("%.2f", debt)
-                                                + ") via <gold>/is bank paydebt</gold> to restore operations.</red>"));
+                        messages.send(
+                                player,
+                                "bank.locked_warning",
+                                Placeholder.unparsed("debt", String.format(java.util.Locale.ROOT, "%.2f", debt)));
                     }
                 };
 
