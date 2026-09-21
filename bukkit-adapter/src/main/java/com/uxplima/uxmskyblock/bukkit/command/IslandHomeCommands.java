@@ -162,9 +162,14 @@ public final class IslandHomeCommands {
     }
 
     private int executeListHomes(CommandContext<CommandSourceStack> ctx) {
+        // How many homes the caller may hold is read off their permissions here, on the thread that
+        // owns them, the same way executeSetHome reads it. It used to be read inside the scheduler
+        // block, which is the one thread a permission lookup does not belong on.
+        int allowance = ctx.getSource().getSender() instanceof Player standing
+                ? configuration.allowanceFor(standing::hasPermission)
+                : 0;
         return withHome(ctx, (player, service, profileId) -> {
             List<Home> homes = service.listHomes(profileId);
-            int allowance = configuration.allowanceFor(player::hasPermission);
             send(
                     player,
                     "home.list_header",
