@@ -144,13 +144,13 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
             sb.append(medal)
                     .append(" **")
                     .append(entry.islandName())
-                    .append("** — ")
+                    .append("**: ")
                     .append(entry.formattedScore())
                     .append("\n");
         }
 
         DiscordEmbed embed = DiscordEmbed.builder()
-                .title("🏆 Top Islands Leaderboard — " + metricName)
+                .title("🏆 Top Islands Leaderboard: " + metricName)
                 .description(sb.length() > 0 ? sb.toString() : "No leaderboard entries recorded.")
                 .color(0xFFA500) // Amber / Orange
                 .timestamp(Instant.now())
@@ -193,7 +193,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
                 };
 
         DiscordEmbed.Builder builder = DiscordEmbed.builder()
-                .title("🛡️ Staff Audit Alert [" + severity.toUpperCase(Locale.ROOT) + "] — " + eventType)
+                .title("🛡️ Staff Audit Alert [" + severity.toUpperCase(Locale.ROOT) + "]: " + eventType)
                 .description(description)
                 .color(color)
                 .timestamp(Instant.now())

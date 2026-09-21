@@ -27,7 +27,7 @@ for module in $modules; do
         echo "  $hit"
         offences=$((offences + 1))
     done < <(grep -rn -- "$module" docs --include='*.md' 2>/dev/null \
-        | grep -E 'NOT IMPLEMENTED|PLANNED —' || true)
+        | grep -E "NOT IMPLEMENTED|PLANNED $(printf '\u2014')" || true)
 done
 
 # 2. A command a document tells an operator to type must be one the tree declares.
