@@ -11,6 +11,7 @@ import java.util.Set;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -34,6 +35,12 @@ public final class IslandNameService {
     private final IslandAccessService accessService;
     private final @Nullable OutboxPort outboxPort;
     private final Set<String> profanityFilter;
+
+    /**
+     * Keyed on the name rather than on the island, because the two callers who collide are two
+     * different islands reaching for one name.
+     */
+    private final KeyedMutationLock<String> nameLock = new KeyedMutationLock<>();
 
     public IslandNameService(
             IslandNameStoragePort nameStoragePort,
@@ -96,7 +103,19 @@ public final class IslandNameService {
             }
         }
 
-        // Uniqueness check
+        nameLock.inside(normalized, () -> takeName(islandId, callerProfile, islandName));
+
+        return islandName;
+    }
+
+    /**
+     * Reads who holds the name and takes it, with nobody else able to do the same at the same time.
+     *
+     * <p>Two islands that read the name as free and then both wrote it left the server with one name
+     * on two islands. The lock holds one server to one claimant, and the storage port takes the name
+     * in a single statement so a second server cannot slip between the read and the write either.
+     */
+    private void takeName(IslandId islandId, ProfileId callerProfile, IslandName islandName) {
         Optional<IslandId> existing = nameStoragePort.findIslandIdByName(islandName.value());
         if (existing.isPresent() && !existing.get().equals(islandId)) {
             throw new IllegalStateException("Island name '" + islandName.value() + "' is already taken");
@@ -112,9 +131,9 @@ public final class IslandNameService {
                                 islandId.value(), callerProfile.value(), islandName.value(), Instant.now()))
                 : null;
 
-        nameStoragePort.updateCustomName(islandId, islandName, renameEvent);
-
-        return islandName;
+        if (!nameStoragePort.claimCustomName(islandId, islandName, renameEvent)) {
+            throw new IllegalStateException("Island name '" + islandName.value() + "' is already taken");
+        }
     }
 
     /**

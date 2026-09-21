@@ -80,6 +80,72 @@ public final class SqlIslandNameStorageAdapter implements IslandNameStoragePort 
         }
     }
 
+    /**
+     * Takes the name in one statement, so nothing can slip between the check and the write.
+     *
+     * <p>The row is only updated when no other active island holds the name, and the derived table
+     * keeps the form legal on MariaDB, which refuses a bare subquery over the table being updated.
+     * The outbox event is staged in the same transaction and only when the name was actually taken.
+     */
+    @Override
+    public boolean claimCustomName(IslandId islandId, IslandName name, @Nullable StagedOutboxEvent outboxEvent) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(name, "name must not be null");
+
+        String sql = """
+                UPDATE islands
+                SET custom_name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM (
+                          SELECT id FROM islands
+                          WHERE LOWER(custom_name) = ? AND lifecycle = 'ACTIVE'
+                      ) AS holder
+                      WHERE holder.id <> ?
+                  )
+                """;
+
+        String islandKey = islandId.value().toString();
+        try (Connection conn = dataSource.getConnection()) {
+            boolean prevAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                int written;
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, name.value());
+                    stmt.setString(2, islandKey);
+                    stmt.setString(3, name.value().toLowerCase(Locale.ROOT).trim());
+                    stmt.setString(4, islandKey);
+                    written = stmt.executeUpdate();
+                }
+                if (written == 0) {
+                    conn.rollback();
+                    return false;
+                }
+                if (outboxEvent != null) {
+                    com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(conn, outboxEvent);
+                }
+                conn.commit();
+                return true;
+            } catch (Exception e) {
+                try {
+                    conn.rollback();
+                } catch (SQLException expected) {
+                    // best-effort cleanup
+                }
+                throw new RuntimeException("Failed to claim custom name for island " + islandId, e);
+            } finally {
+                try {
+                    conn.setAutoCommit(prevAutoCommit);
+                } catch (SQLException expected) {
+                    // best-effort cleanup
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to claim custom name for island " + islandId, e);
+        }
+    }
+
     @Override
     public Optional<IslandName> findCustomName(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");

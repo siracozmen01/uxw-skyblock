@@ -57,6 +57,11 @@ class IslandNameServiceTest {
                 Instant.parse("2026-09-19T12:00:00Z"));
 
         when(mockIslandStorage.findIslandById(islandId)).thenReturn(Optional.of(testIsland));
+        when(mockStorage.claimCustomName(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
 
         nameService = new IslandNameService(
                 mockStorage, mockIslandStorage, accessService, mockOutbox, Set.of("vulgarity", "offensive"));
@@ -71,11 +76,26 @@ class IslandNameServiceTest {
 
         assertThat(result.value()).isEqualTo("SkyCitadel");
         verify(mockStorage)
-                .updateCustomName(
+                .claimCustomName(
                         eq(islandId),
                         eq(result),
                         org.mockito.ArgumentMatchers.argThat(
                                 event -> event != null && "ISLAND_RENAMED".equals(event.eventType())));
+    }
+
+    @Test
+    @DisplayName("A name another server took between the read and the write is still refused")
+    void renameFailsWhenTheClaimIsRefused() {
+        when(mockStorage.findIslandIdByName("SkyCitadel")).thenReturn(Optional.empty());
+        when(mockStorage.claimCustomName(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> nameService.renameIsland(islandId, ownerProfileId, "SkyCitadel"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already taken");
     }
 
     @Test
