@@ -18,13 +18,14 @@ import org.bukkit.plugin.Plugin;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
+import com.uxplima.uxmskyblock.core.application.inventory.JournaledInventoryMutationService;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
-import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalOutcome;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalRecord;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
+import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrant;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardGrantComponent;
@@ -49,6 +50,7 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
 
     private final PlayerSessionCoordinator sessionCoordinator;
     private final InventoryMutationJournalPort journalPort;
+    private final JournaledInventoryMutationService mutations;
     private final ServerNodeId nodeId;
 
     public ItemRewardDeliveryHandler(
@@ -65,6 +67,7 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             ServerNodeId nodeId) {
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.journalPort = Objects.requireNonNull(journalPort, "journalPort must not be null");
+        this.mutations = new JournaledInventoryMutationService(this.journalPort);
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId must not be null");
     }
 
@@ -138,8 +141,13 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         byte[] simulatedAfterNbt = BukkitInventorySerializer.serializeItemStacks(simulatedContents);
         String afterFingerprint = computeSha256(simulatedAfterNbt);
 
-        // 5. Record write-ahead intent before live mutation begins
-        InventoryMutationJournalOutcome intentOutcome = journalPort.recordIntent(
+        // 5. Run the two phase protocol: intent, mutate, commit, and undo the world if the commit
+        // is refused. The protocol itself lives in JournaledInventoryMutationService; what is left
+        // here is what only this handler knows, which is how to put an item into an inventory and
+        // how to take it back out of the slots it landed in.
+        Map<Integer, ItemStack> mutatedSlots = new java.util.HashMap<>();
+
+        Result<JournaledInventoryMutationService.MutationSuccess<Boolean>, String> outcome = mutations.execute(
                 playerUuid,
                 recipient,
                 nodeId,
@@ -150,69 +158,54 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
                 beforeFingerprint,
                 afterFingerprint,
                 component.payloadData(),
-                Duration.ofSeconds(60));
+                Duration.ofSeconds(60),
+                () -> applyItem(player, itemToDeliver, mutatedSlots),
+                () -> rollbackMutatedSlots(player, mutatedSlots));
 
-        if (!intentOutcome.isSuccess()) {
-            return DeliveryResult.failure("Journal intent rejected: "
-                    + intentOutcome.rejectionReason().orElse("unknown"));
+        if (outcome.isErr()) {
+            return DeliveryResult.failure(outcome.errorOrThrow());
         }
 
-        // 6. Snapshot current inventory and apply live mutation
-        ItemStack[] beforeContents = cloneContents(player.getInventory().getContents());
-        Map<Integer, ItemStack> mutatedSlots = new java.util.HashMap<>();
-        byte[] updatedInventoryNbt;
-
-        try {
-            // Apply live item mutation
-            player.getInventory().addItem(itemToDeliver);
-            ItemStack[] afterContents = player.getInventory().getContents();
-            for (int i = 0; i < beforeContents.length; i++) {
-                ItemStack b = beforeContents[i];
-                ItemStack a = afterContents[i];
-                boolean changed;
-                if (b == null && a == null) {
-                    changed = false;
-                } else if (b == null || a == null) {
-                    changed = true;
-                } else {
-                    changed = !b.isSimilar(a) || b.getAmount() != a.getAmount();
-                }
-                if (changed) {
-                    mutatedSlots.put(i, b != null ? b.clone() : null);
-                }
-            }
-            updatedInventoryNbt = BukkitInventorySerializer.serializeItemStacks(afterContents);
-        } catch (Exception e) {
-            journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
-            return DeliveryResult.failure("Live inventory mutation failed: " + e.getMessage());
-        }
-
-        // 7. Commit journal mutation
-        InventoryMutationJournalOutcome commitOutcome;
-        try {
-            commitOutcome = journalPort.commitMutation(
-                    playerUuid, recipient, nodeId, sessionEpoch, expectedVersion, opId, updatedInventoryNbt);
-        } catch (Exception e) {
-            // Rollback ONLY mutated slots on commit exception, preserving unrelated slots (e.g. Slot 12)
-            rollbackMutatedSlots(player, mutatedSlots);
-            journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
-            return DeliveryResult.failure("Commit exception; rolled back inventory: " + e.getMessage());
-        }
-
-        if (!commitOutcome.isSuccess()) {
-            // Rollback ONLY mutated slots on commit rejection, preserving unrelated slots (e.g. Slot 12)
-            rollbackMutatedSlots(player, mutatedSlots);
-            journalPort.abortIntent(playerUuid, recipient, nodeId, sessionEpoch, opId);
-            return DeliveryResult.failure("Failed to commit journal mutation: "
-                    + commitOutcome.rejectionReason().orElse("unknown") + "; inventory rolled back.");
-        }
-
-        if (commitOutcome.version().isPresent()) {
-            activeSession.setLastDurableVersion(commitOutcome.version().getAsLong());
-        }
+        activeSession.setLastDurableVersion(outcome.orElseThrow().committedVersion());
 
         sessionCoordinator.checkpointPlayer(playerUuid);
         return DeliveryResult.success(opUuid);
+    }
+
+    /**
+     * Puts the item into the inventory and records which slots it changed.
+     *
+     * <p>Only the changed slots are recorded, so an undo puts back what this delivery touched and
+     * leaves everything the player did in the meantime alone.
+     */
+    private static Result<JournaledInventoryMutationService.MutationExecution<Boolean>, String> applyItem(
+            Player player, ItemStack itemToDeliver, Map<Integer, ItemStack> mutatedSlots) {
+        ItemStack[] beforeContents = cloneContents(player.getInventory().getContents());
+        try {
+            player.getInventory().addItem(itemToDeliver);
+            ItemStack[] afterContents = player.getInventory().getContents();
+            for (int i = 0; i < beforeContents.length; i++) {
+                if (slotChanged(beforeContents[i], afterContents[i])) {
+                    mutatedSlots.put(i, beforeContents[i] != null ? beforeContents[i].clone() : null);
+                }
+            }
+            // The protocol carries a value through; this delivery has none, so it carries the fact
+            // that the item landed. What matters is the inventory bytes beside it.
+            return Result.ok(new JournaledInventoryMutationService.MutationExecution<>(
+                    Boolean.TRUE, BukkitInventorySerializer.serializeItemStacks(afterContents)));
+        } catch (RuntimeException e) {
+            return Result.err("Live inventory mutation failed: " + e.getMessage());
+        }
+    }
+
+    private static boolean slotChanged(@Nullable ItemStack before, @Nullable ItemStack after) {
+        if (before == null && after == null) {
+            return false;
+        }
+        if (before == null || after == null) {
+            return true;
+        }
+        return !before.isSimilar(after) || before.getAmount() != after.getAmount();
     }
 
     private static void rollbackMutatedSlots(Player player, Map<Integer, ItemStack> mutatedSlots) {

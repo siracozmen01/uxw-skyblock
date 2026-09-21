@@ -32,22 +32,18 @@ class EveryServiceIsWiredTest {
      *
      * <p>Each names the board card that called it complete:
      *
-     * <ul>
-     *   <li>{@code JournaledInventoryMutationService}: WP2-005
-     * </ul>
+     * <p>The list is empty, and it stays here so a new name cannot join it quietly.
      *
-     * <p>{@code GameModeHierarchyService} left this list when island creation began binding each new
-     * island into its owner's game mode instance. Until then every backup fell through to an
-     * instance id synthesised from the owner's profile: a reference to a row that had never existed.
+     * <p>{@code GameModeHierarchyService} left it when island creation began binding each new island
+     * into its owner's game mode instance. Until then every backup fell through to an instance id
+     * synthesised from the owner's profile: a reference to a row that had never existed.
+     *
+     * <p>{@code JournaledInventoryMutationService} left it when the reward delivery handler stopped
+     * writing the two phase protocol out by hand and called the service instead. That could not
+     * happen until the service could undo the world as well as the ledger, because a rollback that
+     * undoes only the ledger leaves the item in the player's hands and is a duplication.
      */
-    private static final Set<String> NOT_WIRED_YET = Set.of("JournaledInventoryMutationService");
-
-    // JournaledInventoryMutationService is not unused by accident. The reward delivery handler runs
-    // the same two phase protocol inline, and it does one thing more: on a failed commit it puts the
-    // slots it changed back. The service could not do that until it was given a compensation hook,
-    // and routing the handler through it before that would have turned a rollback into a
-    // duplication. The hook exists now, so the move is a change of its own rather than something
-    // buried in a wiring commit.
+    private static final Set<String> NOT_WIRED_YET = Set.of();
 
     private static final Path CORE_SERVICES = Path.of("../core/src/main/java/com/uxplima/uxmskyblock/core/application");
 

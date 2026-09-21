@@ -104,14 +104,24 @@ public final class JournaledInventoryMutationService {
         }
 
         MutationExecution<T> execution = execResult.orElseThrow();
-        InventoryMutationJournalOutcome commitOutcome = journalPort.commitMutation(
-                playerUuid,
-                profileId,
-                nodeId,
-                sessionEpoch,
-                expectedVersion,
-                operationId,
-                execution.updatedInventoryNbt());
+        InventoryMutationJournalOutcome commitOutcome;
+        try {
+            commitOutcome = journalPort.commitMutation(
+                    playerUuid,
+                    profileId,
+                    nodeId,
+                    sessionEpoch,
+                    expectedVersion,
+                    operationId,
+                    execution.updatedInventoryNbt());
+        } catch (RuntimeException e) {
+            // A commit that throws is a commit that did not happen, and the mutation already did.
+            // The same undo a refused commit needs, for the same reason: leaving the item out there
+            // with the ledger saying it was never given is a duplication, not a rollback.
+            compensation.run();
+            journalPort.abortIntent(playerUuid, profileId, nodeId, sessionEpoch, operationId);
+            return Result.err("Failed to commit mutation: " + e.getMessage());
+        }
 
         if (!commitOutcome.isSuccess()) {
             // The mutation already happened out there. Undoing the journal without undoing the world
