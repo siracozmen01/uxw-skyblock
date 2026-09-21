@@ -1,5 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.vault;
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -43,14 +45,23 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandVaultWindow {
 
-    /** Marks an open vault window and carries what the close handler needs to commit it. */
-    public record VaultHolder(IslandId islandId, int page, ProfileId profileId, String sessionId)
+    /**
+     * Marks an open vault window and carries what the close handler needs to commit it.
+     *
+     * <p>{@code openedWith} is the page as it stood when the window opened. A refused commit leaves
+     * the stored page exactly that, so the difference between it and what the window holds at close
+     * is what the player put in, and that is what has to go back to them.
+     */
+    public record VaultHolder(
+            IslandId islandId, int page, ProfileId profileId, String sessionId, List<ItemStack> openedWith)
             implements InventoryHolder {
 
         public VaultHolder {
             Objects.requireNonNull(islandId, "islandId must not be null");
             Objects.requireNonNull(profileId, "profileId must not be null");
             Objects.requireNonNull(sessionId, "sessionId must not be null");
+            Objects.requireNonNull(openedWith, "openedWith must not be null");
+            openedWith = List.copyOf(openedWith);
         }
 
         @Override
@@ -140,14 +151,14 @@ public final class IslandVaultWindow {
             return;
         }
         VaultPage vaultPage = opened.page();
+        ItemStack[] stored = BukkitInventorySerializer.deserializeItemStacks(vaultPage.contentsNbt());
         VaultHolder holder = new VaultHolder(
-                islandId, page, profileId, opened.session().sessionId().value().toString());
+                islandId, page, profileId, opened.session().sessionId().value().toString(), snapshotOf(stored));
         Inventory inventory = Bukkit.createInventory(
                 holder,
                 configuration.slotsPerPage(),
                 messages.renderPlain(player, "vault.title", Placeholder.unparsed("page", Integer.toString(page))));
 
-        ItemStack[] stored = BukkitInventorySerializer.deserializeItemStacks(vaultPage.contentsNbt());
         for (int slot = 0; slot < Math.min(stored.length, inventory.getSize()); slot++) {
             inventory.setItem(slot, stored[slot]);
         }
@@ -171,8 +182,13 @@ public final class IslandVaultWindow {
                         holder.profileId(),
                         List.of());
             } catch (RuntimeException e) {
-                schedulerPort.onEntity(
-                        new PlayerUuid(player.getUniqueId()), () -> messages.send(player, "vault.commit_refused"));
+                // The window is already closed and what it held is nowhere: not in the page, because
+                // the commit was refused, and not with the player, because they put it in the vault.
+                // Telling them it was refused and keeping the items is losing them.
+                schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                    messages.send(player, "vault.commit_refused");
+                    returnWhatThePlayerAdded(player, holder.openedWith(), contents);
+                });
             }
         });
     }
@@ -187,5 +203,59 @@ public final class IslandVaultWindow {
             return Optional.empty();
         }
         return sessionCoordinator.activeProfile(player.getUniqueId());
+    }
+
+    /**
+     * Gives back everything the window held that the stored page did not.
+     *
+     * <p>A refused commit leaves the page as it was when the window opened, so the difference is
+     * exactly what the player put in and nothing that is already safely stored. Handing back the
+     * whole window instead would duplicate every stack that never moved.
+     *
+     * <p>What does not fit is dropped where they stand. An item on the ground can be picked up; an
+     * item that was never written and never returned cannot.
+     */
+    private void returnWhatThePlayerAdded(Player player, List<ItemStack> openedWith, ItemStack[] atClose) {
+        List<ItemStack> alreadyStored = new ArrayList<>();
+        for (ItemStack stack : openedWith) {
+            alreadyStored.add(stack.clone());
+        }
+
+        for (ItemStack stack : atClose) {
+            if (stack == null || stack.getType().isAir()) {
+                continue;
+            }
+            ItemStack owed = stack.clone();
+            // Take this stack's amount out of what the page still holds, stack by stack, so a player
+            // who added ten to a stack of five gets ten back and not fifteen.
+            for (Iterator<ItemStack> stored = alreadyStored.iterator(); stored.hasNext() && owed.getAmount() > 0; ) {
+                ItemStack candidate = stored.next();
+                if (!candidate.isSimilar(owed)) {
+                    continue;
+                }
+                int settled = Math.min(candidate.getAmount(), owed.getAmount());
+                owed.setAmount(owed.getAmount() - settled);
+                candidate.setAmount(candidate.getAmount() - settled);
+                if (candidate.getAmount() <= 0) {
+                    stored.remove();
+                }
+            }
+            if (owed.getAmount() > 0) {
+                for (ItemStack overflow : player.getInventory().addItem(owed).values()) {
+                    player.getWorld().dropItemNaturally(player.getLocation(), overflow);
+                }
+            }
+        }
+    }
+
+    /** The page as it stood when the window opened, with the empty slots left out. */
+    private static List<ItemStack> snapshotOf(ItemStack[] stored) {
+        List<ItemStack> snapshot = new ArrayList<>();
+        for (ItemStack stack : stored) {
+            if (stack != null && !stack.getType().isAir()) {
+                snapshot.add(stack.clone());
+            }
+        }
+        return snapshot;
     }
 }
