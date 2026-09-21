@@ -233,7 +233,10 @@ public final class IslandChatService {
                 continue;
             }
             Island reached = optReached.get();
-            for (ProfileId memberId : onlineMemberProvider.getOnlineMembers(reachedId)) {
+            // The island is already in hand, so the provider is asked about its members rather than
+            // reading the island again and walking every player on the server for each line of chat.
+            for (ProfileId memberId :
+                    onlineMemberProvider.onlineAmong(reached.members().keySet())) {
                 if (reached.roleOf(memberId).hasPermission(IslandPermission.CHAT_VIEW)) {
                     recipientMembers.add(memberId);
                 }

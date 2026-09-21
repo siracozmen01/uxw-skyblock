@@ -20,7 +20,8 @@ class BukkitVelocityBridgeTest extends MockBukkitHarness {
 
     @BeforeEach
     void setUp() {
-        velocityBridge = new BukkitVelocityBridge(MockBukkit.createMockPlugin());
+        velocityBridge = new BukkitVelocityBridge(
+                MockBukkit.createMockPlugin(), new com.uxplima.uxmskyblock.bukkit.test.InlineSchedulerPort());
     }
 
     @Test

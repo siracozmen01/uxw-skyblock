@@ -12,8 +12,10 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatDeliveryPort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatFrame;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 
 /**
@@ -24,9 +26,11 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
 
     private final ChatConfiguration configuration;
     private final MiniMessage miniMessage;
+    private final SchedulerPort schedulerPort;
 
-    public BukkitIslandChatDeliveryAdapter(ChatConfiguration configuration) {
+    public BukkitIslandChatDeliveryAdapter(ChatConfiguration configuration, SchedulerPort schedulerPort) {
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.miniMessage = MiniMessage.miniMessage();
     }
 
@@ -43,12 +47,7 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
                 Placeholder.parsed("player", frame.senderName()),
                 Placeholder.unparsed("message", frame.message()));
 
-        for (ProfileId recipient : recipients) {
-            Player player = Bukkit.getPlayer(recipient.value());
-            if (player != null && player.isOnline()) {
-                player.sendMessage(component);
-            }
-        }
+        deliver(recipients, component);
     }
 
     @Override
@@ -64,11 +63,26 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
                 Placeholder.parsed("island_name", islandName),
                 Placeholder.unparsed("message", frame.message()));
 
-        for (ProfileId spy : spies) {
-            Player player = Bukkit.getPlayer(spy.value());
-            if (player != null && player.isOnline()) {
-                player.sendMessage(component);
-            }
+        deliver(spies, component);
+    }
+
+    /**
+     * Puts one line in front of each recipient, on the thread that owns them.
+     *
+     * <p>This runs wherever the message arrived: the scheduler pool on one node, a Redis subscriber
+     * thread across a cluster. Neither of those owns a player, and looking one up and writing to
+     * them from a thread that does not own them is the thing Folia exists to stop. The lookup and
+     * the write both happen on the hop.
+     */
+    private void deliver(Set<ProfileId> recipients, Component component) {
+        for (ProfileId recipient : recipients) {
+            PlayerUuid playerUuid = new PlayerUuid(recipient.value());
+            schedulerPort.onEntity(playerUuid, () -> {
+                Player player = Bukkit.getPlayer(recipient.value());
+                if (player != null && player.isOnline()) {
+                    player.sendMessage(component);
+                }
+            });
         }
     }
 }

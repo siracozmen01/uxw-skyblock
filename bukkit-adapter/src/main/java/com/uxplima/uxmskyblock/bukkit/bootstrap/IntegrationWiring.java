@@ -160,7 +160,7 @@ public final class IntegrationWiring implements AutoCloseable {
             this.eventTransport.publish("uxmskyblock:stream:domain_events", event);
         });
 
-        this.velocityBridge = new BukkitVelocityBridge(plugin);
+        this.velocityBridge = new BukkitVelocityBridge(plugin, gameplay.scheduler());
         this.clusterRoutingDirectory = this.clusterTransport.clusterRoutingDirectory();
         this.networkRouter = new IslandNetworkRouter(
                 serverNodeId,

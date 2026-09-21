@@ -95,9 +95,9 @@ public final class SocialWiring {
 
         IslandChatTransportPort actualChatTransport =
                 Objects.requireNonNull(chatTransport, "chatTransport must not be null");
-        BukkitIslandChatDeliveryAdapter chatDelivery = new BukkitIslandChatDeliveryAdapter(config.chatConfig());
-        BukkitIslandOnlineMemberProvider chatMemberProvider = new BukkitIslandOnlineMemberProvider(
-                persistence.islandStoragePort(), authority.activeProfileProvider());
+        BukkitIslandChatDeliveryAdapter chatDelivery =
+                new BukkitIslandChatDeliveryAdapter(config.chatConfig(), scheduler);
+        BukkitIslandOnlineMemberProvider chatMemberProvider = new BukkitIslandOnlineMemberProvider();
         this.chatService = new IslandChatService(
                 persistence.islandStoragePort(),
                 actualChatTransport,
@@ -109,7 +109,8 @@ public final class SocialWiring {
                 // switch off has no ally lookup, so the alliance channel is not offered at all.
                 allianceService.isAllianceChatEnabled() ? allianceService::getAllies : null);
         this.chatListener = config.moduleSettings().isModuleEnabled("chat")
-                ? new IslandChatListener(this.chatService, authority.activeProfileProvider(), config.messages())
+                ? new IslandChatListener(
+                        this.chatService, authority.activeProfileProvider(), config.messages(), chatMemberProvider)
                 : null;
 
         this.homeService = new HomeService(

@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -27,9 +28,11 @@ public final class BukkitVelocityBridge implements VelocityBridgePort {
     public static final String BUNGEE_CHANNEL = "BungeeCord";
 
     private final Plugin plugin;
+    private final SchedulerPort schedulerPort;
 
-    public BukkitVelocityBridge(Plugin plugin) {
+    public BukkitVelocityBridge(Plugin plugin, SchedulerPort schedulerPort) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         try {
             if (!Bukkit.getMessenger().isOutgoingChannelRegistered(plugin, BUNGEE_CHANNEL)) {
                 Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, BUNGEE_CHANNEL);
@@ -61,11 +64,21 @@ public final class BukkitVelocityBridge implements VelocityBridgePort {
             out.writeUTF("ConnectOther");
             out.writeUTF(player.getName());
             out.writeUTF(targetNode.value());
+            byte[] packet = bytes.toByteArray();
 
-            player.sendPluginMessage(plugin, BUNGEE_CHANNEL, bytes.toByteArray());
-            LOGGER.info(() ->
-                    "Dispatched routing request for player " + player.getName() + " to server " + targetNode.value());
-            future.complete(true);
+            // A plugin message goes out through the player's own connection, so it belongs to the
+            // thread that owns them. The visit that asks for this runs on the scheduler, and this
+            // used to write the packet from there.
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (!player.isOnline()) {
+                    future.complete(false);
+                    return;
+                }
+                player.sendPluginMessage(plugin, BUNGEE_CHANNEL, packet);
+                LOGGER.info(() -> "Dispatched routing request for player " + player.getName() + " to server "
+                        + targetNode.value());
+                future.complete(true);
+            });
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to encode Velocity routing packet for player " + playerUuid.value(), e);
             future.complete(false);

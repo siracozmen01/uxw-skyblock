@@ -16,6 +16,7 @@ import io.papermc.paper.event.player.AsyncChatEvent;
 
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
+import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
@@ -35,23 +36,42 @@ public final class IslandChatListener implements Listener {
     private final IslandChatService chatService;
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final Messages messages;
+    private final @Nullable BukkitIslandOnlineMemberProvider onlineMembers;
+
+    public IslandChatListener(
+            IslandChatService chatService,
+            Function<UUID, Optional<ProfileId>> activeProfileProvider,
+            Messages messages,
+            @Nullable BukkitIslandOnlineMemberProvider onlineMembers) {
+        this.chatService = Objects.requireNonNull(chatService, "chatService must not be null");
+        this.activeProfileProvider =
+                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.onlineMembers = onlineMembers;
+    }
 
     public IslandChatListener(
             IslandChatService chatService,
             Function<UUID, Optional<ProfileId>> activeProfileProvider,
             Messages messages) {
-        this.chatService = Objects.requireNonNull(chatService, "chatService must not be null");
-        this.activeProfileProvider =
-                Objects.requireNonNull(activeProfileProvider, "activeProfileProvider must not be null");
-        this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this(chatService, activeProfileProvider, messages, null);
+    }
+
+    public IslandChatListener(
+            IslandChatService chatService,
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            Messages messages,
+            @Nullable BukkitIslandOnlineMemberProvider onlineMembers) {
+        this(
+                chatService,
+                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
+                messages,
+                onlineMembers);
     }
 
     public IslandChatListener(
             IslandChatService chatService, @Nullable PlayerSessionCoordinator sessionCoordinator, Messages messages) {
-        this(
-                chatService,
-                sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
-                messages);
+        this(chatService, sessionCoordinator, messages, null);
     }
 
     public IslandChatListener(IslandChatService chatService, Messages messages) {
@@ -106,8 +126,27 @@ public final class IslandChatListener implements Listener {
         }
     }
 
+    /**
+     * Records that this profile is playing here.
+     *
+     * <p>The online set is kept as players arrive and leave, so a chat message never has to walk
+     * every player on the server from a thread that does not own the list.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+        if (onlineMembers == null) {
+            return;
+        }
+        activeProfileProvider.apply(event.getPlayer().getUniqueId()).ifPresent(onlineMembers::arrived);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        activeProfileProvider.apply(event.getPlayer().getUniqueId()).ifPresent(chatService::handlePlayerQuit);
+        Optional<ProfileId> optProfile =
+                activeProfileProvider.apply(event.getPlayer().getUniqueId());
+        optProfile.ifPresent(chatService::handlePlayerQuit);
+        if (onlineMembers != null) {
+            optProfile.ifPresent(onlineMembers::left);
+        }
     }
 }

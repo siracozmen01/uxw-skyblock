@@ -58,7 +58,16 @@ class IslandChatServiceTest {
         deliveryPort = new RecordingDeliveryPort();
         onlineMembers = new HashSet<>();
 
-        chatService = new IslandChatService(storage, transport, deliveryPort, id -> onlineMembers, 3);
+        chatService = new IslandChatService(
+                storage,
+                transport,
+                deliveryPort,
+                candidates -> {
+                    Set<ProfileId> here = new HashSet<>(candidates);
+                    here.retainAll(onlineMembers);
+                    return here;
+                },
+                3);
 
         IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 100);
         PlayerUuid ownerUuid = PlayerUuid.of(OWNER_ID.value());
@@ -79,22 +88,22 @@ class IslandChatServiceTest {
     }
 
     /** A service whose alliance lookup says these two islands are allied and nothing else is. */
-    private IslandChatService alliedChatService(Map<IslandId, Set<ProfileId>> onlineByIsland) {
+    private IslandChatService alliedChatService(Set<ProfileId> present) {
         return new IslandChatService(
                 storage,
                 new LocalIslandChatTransportAdapter(),
                 deliveryPort,
-                islandId -> onlineByIsland.getOrDefault(islandId, Set.of()),
+                candidates -> {
+                    Set<ProfileId> here = new HashSet<>(candidates);
+                    here.retainAll(present);
+                    return here;
+                },
                 3,
                 islandId -> ISLAND_ID.equals(islandId) ? List.of(ALLY_ISLAND_ID) : List.of());
     }
 
-    private static Map<IslandId, Set<ProfileId>> everybodyOnline() {
-        Map<IslandId, Set<ProfileId>> online = new HashMap<>();
-        online.put(ISLAND_ID, Set.of(OWNER_ID, MEMBER_ID));
-        online.put(ALLY_ISLAND_ID, Set.of(ALLY_OWNER_ID));
-        online.put(STRANGER_ISLAND_ID, Set.of(STRANGER_OWNER_ID));
-        return online;
+    private static Set<ProfileId> everybodyOnline() {
+        return new HashSet<>(Set.of(OWNER_ID, MEMBER_ID, ALLY_OWNER_ID, STRANGER_OWNER_ID));
     }
 
     @Test
@@ -177,8 +186,8 @@ class IslandChatServiceTest {
         storage.saveIsland(ally.addMember(
                 new IslandMember(PlayerUuid.of(quietOne.value()), quietOne, IslandRole.VISITOR, Instant.now())));
 
-        Map<IslandId, Set<ProfileId>> online = everybodyOnline();
-        online.put(ALLY_ISLAND_ID, Set.of(ALLY_OWNER_ID, quietOne));
+        Set<ProfileId> online = everybodyOnline();
+        online.add(quietOne);
         IslandChatService allied = alliedChatService(online);
         allied.setChannel(OWNER_ID, IslandChatChannel.ALLIANCE);
 
