@@ -96,6 +96,11 @@ public final class RestServer implements AutoCloseable {
         // 4. Leaderboards
         app.get("/api/v1/leaderboards/{metric}", this::handleGetLeaderboard);
 
+        // The same board under the path the enterprise foundation document publishes. A web store
+        // written against the documented path used to get a 404, because the route was renamed in
+        // code and the document was not.
+        app.get("/api/v1/top/{metric}", this::handleGetLeaderboard);
+
         // 5. Bank Deposit (Tebex / CraftingStore Webstore)
         app.post("/api/v1/islands/{id}/bank/deposit", this::handleBankDeposit);
 
@@ -164,14 +169,13 @@ public final class RestServer implements AutoCloseable {
     }
 
     private void handleGetLeaderboard(Context ctx) {
-        String metric = ctx.pathParam("metric").toUpperCase(Locale.ROOT);
-        LeaderboardCategory category;
-        try {
-            category = LeaderboardCategory.valueOf(metric);
-        } catch (IllegalArgumentException e) {
+        String metric = ctx.pathParam("metric");
+        Optional<LeaderboardCategory> optCategory = resolveCategory(metric);
+        if (optCategory.isEmpty()) {
             ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", "Unknown leaderboard metric: " + metric));
             return;
         }
+        LeaderboardCategory category = optCategory.get();
 
         int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(10);
         List<LeaderboardEntry> entries = leaderboardService.getTop(category, limit);
@@ -185,6 +189,22 @@ public final class RestServer implements AutoCloseable {
                 .toList();
 
         ctx.status(HttpStatus.OK).json(response);
+    }
+
+    /**
+     * The metric a caller named, in either spelling. The document publishes the boards as
+     * {@code top/levels} while the enum constant is {@code LEVEL}, and refusing one of the two
+     * spellings buys nothing at all.
+     */
+    private static Optional<LeaderboardCategory> resolveCategory(String raw) {
+        String name = raw.trim().toUpperCase(Locale.ROOT);
+        String singular = name.endsWith("S") ? name.substring(0, name.length() - 1) : name;
+        for (LeaderboardCategory category : LeaderboardCategory.values()) {
+            if (category.name().equals(name) || category.name().equals(singular)) {
+                return Optional.of(category);
+            }
+        }
+        return Optional.empty();
     }
 
     private static final java.util.regex.Pattern UUID_V4_PATTERN = java.util.regex.Pattern.compile(

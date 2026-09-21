@@ -621,6 +621,40 @@ class RestServerTest {
     }
 
     @Test
+    @DisplayName("The board answers on the documented path as well as the code's own")
+    void testLeaderboardAnswersOnBothPaths() throws Exception {
+        when(leaderboardService.getTop(LeaderboardCategory.LEVEL, 10))
+                .thenReturn(List.of(new LeaderboardEntry(1, testIslandId, "Sky", 42L, "42")));
+
+        for (String path : List.of("/api/v1/leaderboards/level", "/api/v1/top/levels", "/api/v1/top/level")) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + path))
+                    .header("Authorization", "Bearer " + TEST_TOKEN)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            assertThat(response.statusCode()).describedAs("path %s", path).isEqualTo(200);
+            assertThat(response.body()).describedAs("path %s", path).contains("\"islandName\":\"Sky\"");
+        }
+    }
+
+    @Test
+    @DisplayName("A metric no board holds is still refused rather than guessed at")
+    void testUnknownLeaderboardMetricIsRefused() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/top/reputation"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(400);
+    }
+
+    @Test
     @DisplayName("POST /api/v1/islands/{id}/bank/deposit invalid numeric amount string returns stable error message")
     void testBankDepositInvalidNumericAmountStableMessage() throws Exception {
         String idempKey = UUID.randomUUID().toString();
