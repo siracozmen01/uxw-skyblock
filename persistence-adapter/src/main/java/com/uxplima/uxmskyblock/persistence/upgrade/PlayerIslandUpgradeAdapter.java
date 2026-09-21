@@ -14,6 +14,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
 /**
  * Production SQL persistence adapter for Island Upgrades.
@@ -26,17 +27,7 @@ public final class PlayerIslandUpgradeAdapter implements IslandUpgradeStoragePor
     public PlayerIslandUpgradeAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock island upgrade persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
+        SupportedDialects.require(dialect, "island upgrade persistence");
     }
 
     @Override

@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
@@ -26,6 +25,7 @@ import com.uxplima.uxmskyblock.core.domain.season.SeasonPayoutState;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonRecord;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonSnapshotEntry;
 import com.uxplima.uxmskyblock.core.domain.season.SeasonState;
+import com.uxplima.uxmskyblock.persistence.sql.DialectTransactions;
 
 /**
  * Production SQL implementation of {@link IslandSeasonStoragePort} managing seasons,
@@ -35,10 +35,12 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
 
     private final Database database;
     private final Dialect dialect;
+    private final DialectTransactions tx;
 
     public PlayerIslandSeasonAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database must not be null");
         this.dialect = database.dialect();
+        this.tx = new DialectTransactions(this.dialect);
     }
 
     @Override
@@ -170,7 +172,7 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
         try (Connection conn = database.connection();
                 PreparedStatement ps = conn.prepareStatement(sql)) {
             boolean prevAutoCommit = conn.getAutoCommit();
-            beginTransaction(conn);
+            tx.begin(conn);
             try {
                 for (SeasonSnapshotEntry entry : entries) {
                     ps.setInt(1, entry.seasonId().number());
@@ -183,12 +185,12 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
                     ps.addBatch();
                 }
                 ps.executeBatch();
-                commitTransaction(conn);
+                tx.commit(conn);
             } catch (Exception e) {
-                rollbackTransaction(conn);
+                tx.rollbackQuietly(conn);
                 throw new SeasonPersistenceException("Failed to execute snapshot batch", e);
             } finally {
-                resetAutoCommitQuietly(conn, prevAutoCommit);
+                tx.resetAutoCommitQuietly(conn, prevAutoCommit);
             }
         } catch (SQLException e) {
             throw new SeasonPersistenceException("Failed to acquire connection for snapshots batch", e);
@@ -353,49 +355,5 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
                 rs.getTimestamp("starts_at").toInstant(),
                 rs.getTimestamp("ends_at").toInstant(),
                 SeasonState.valueOf(rs.getString("state")));
-    }
-
-    private void beginTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("BEGIN IMMEDIATE");
-            }
-        } else {
-            connection.setAutoCommit(false);
-        }
-    }
-
-    private void commitTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("COMMIT");
-            }
-        } else {
-            connection.commit();
-        }
-    }
-
-    private void rollbackTransaction(Connection connection) {
-        try {
-            if (dialect == Dialect.SQLITE) {
-                try (Statement statement = connection.createStatement()) {
-                    statement.execute("ROLLBACK");
-                }
-            } else {
-                connection.rollback();
-            }
-        } catch (SQLException expected) {
-            // Best-effort cleanup
-        }
-    }
-
-    private void resetAutoCommitQuietly(Connection connection, boolean autoCommit) {
-        if (dialect != Dialect.SQLITE) {
-            try {
-                connection.setAutoCommit(autoCommit);
-            } catch (SQLException expected) {
-                // Best-effort cleanup
-            }
-        }
     }
 }

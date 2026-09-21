@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,6 +23,8 @@ import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.persistence.sql.DialectTransactions;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,55 +44,13 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
 
     private final Database database;
     private final Dialect dialect;
+    private final DialectTransactions tx;
 
     public PlayerIslandBankAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock island bank persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
-    }
-
-    private void beginTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("BEGIN IMMEDIATE");
-            }
-        } else {
-            connection.setAutoCommit(false);
-        }
-    }
-
-    private void commitTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("COMMIT");
-            }
-        } else {
-            connection.commit();
-        }
-    }
-
-    private void rollbackTransaction(Connection connection) {
-        try {
-            if (dialect == Dialect.SQLITE) {
-                try (Statement statement = connection.createStatement()) {
-                    statement.execute("ROLLBACK");
-                }
-            } else {
-                connection.rollback();
-            }
-        } catch (SQLException ignored) {
-            // best-effort rollback
-        }
+        this.tx = new DialectTransactions(this.dialect);
+        SupportedDialects.require(dialect, "island bank persistence");
     }
 
     @Override
@@ -120,7 +79,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
     public IslandBank createBank(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId");
         try (Connection connection = database.connection()) {
-            beginTransaction(connection);
+            tx.begin(connection);
             try {
                 String selectSql = """
                         SELECT island_id, primary_balance_minor_units, crystals_balance, exp_balance, version, updated_at
@@ -132,7 +91,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             IslandBank bank = mapIslandBank(rs, islandId);
-                            commitTransaction(connection);
+                            tx.commit(connection);
                             return bank;
                         }
                     }
@@ -160,10 +119,10 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     }
                 }
 
-                commitTransaction(connection);
+                tx.commit(connection);
                 return bank;
             } catch (SQLException e) {
-                rollbackTransaction(connection);
+                tx.rollbackQuietly(connection);
                 throw e;
             }
         } catch (SQLException e) {
@@ -262,7 +221,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
         }
 
         try (Connection connection = database.connection()) {
-            beginTransaction(connection);
+            tx.begin(connection);
             try {
                 // Step 1: Idempotency check on processed_operations
                 String checkOpSql = """
@@ -282,7 +241,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                             String status = rs.getString("status");
                             String resultCode = rs.getString("result_code");
                             String resultPayload = rs.getString("result_payload");
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return new BankTransactionOutcome.DuplicateOperation(
                                     existingOpId,
                                     "Operation already recorded with status " + status + " (" + resultCode + ")",
@@ -319,7 +278,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next()) {
                             updateProcessedOp(connection, operationId, "REJECTED", "AUTHORITY_NOT_FOUND");
-                            commitTransaction(connection);
+                            tx.commit(connection);
                             return new BankTransactionOutcome.AuthorityRejected("Island authority record not found");
                         }
 
@@ -330,21 +289,21 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
 
                         if (!authoritativeNode.equals(currentNode)) {
                             updateProcessedOp(connection, operationId, "REJECTED", "AUTHORITY_NODE_MISMATCH");
-                            commitTransaction(connection);
+                            tx.commit(connection);
                             return new BankTransactionOutcome.AuthorityRejected(
                                     "Authority lease held by node: " + authoritativeNode);
                         }
 
                         if (authorityEpoch != expectedEpoch) {
                             updateProcessedOp(connection, operationId, "REJECTED", "STALE_AUTHORITY_EPOCH");
-                            commitTransaction(connection);
+                            tx.commit(connection);
                             return new BankTransactionOutcome.AuthorityRejected(
                                     "Stale authority epoch: expected " + expectedEpoch + " but was " + authorityEpoch);
                         }
 
                         if (leaseExpiresAt == null || leaseExpiresAt.before(dbNow)) {
                             updateProcessedOp(connection, operationId, "REJECTED", "AUTHORITY_LEASE_EXPIRED");
-                            commitTransaction(connection);
+                            tx.commit(connection);
                             return new BankTransactionOutcome.AuthorityRejected("Authority lease has expired");
                         }
                     }
@@ -365,7 +324,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next()) {
                             updateProcessedOp(connection, operationId, "REJECTED", "BANK_NOT_FOUND");
-                            commitTransaction(connection);
+                            tx.commit(connection);
                             return new BankTransactionOutcome.BankNotFound("Bank not found for island " + islandId);
                         }
                         primary = rs.getLong("primary_balance_minor_units");
@@ -378,7 +337,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 // Check OCC version
                 if (actualVersion != expectedVersion) {
                     updateProcessedOp(connection, operationId, "REJECTED", "STALE_OCC_VERSION");
-                    commitTransaction(connection);
+                    tx.commit(connection);
                     return new BankTransactionOutcome.StaleVersion(expectedVersion, actualVersion);
                 }
 
@@ -394,7 +353,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 long newBal = currentBal + deltaAmountMinorUnits;
                 if (newBal < 0) {
                     updateProcessedOp(connection, operationId, "REJECTED", "INSUFFICIENT_FUNDS");
-                    commitTransaction(connection);
+                    tx.commit(connection);
                     return new BankTransactionOutcome.InsufficientFunds(currentBal, deltaAmountMinorUnits);
                 }
 
@@ -420,7 +379,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     ps.setLong(5, expectedVersion);
                     int updated = ps.executeUpdate();
                     if (updated != 1) {
-                        rollbackTransaction(connection);
+                        tx.rollbackQuietly(connection);
                         return new BankTransactionOutcome.StaleVersion(expectedVersion, actualVersion);
                     }
                 }
@@ -467,7 +426,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 }
 
                 // Step 8: Commit transaction
-                commitTransaction(connection);
+                tx.commit(connection);
 
                 IslandBank updatedBank =
                         new IslandBank(islandId, newPrimary, newCrystals, newExp, expectedVersion + 1, Instant.now());
@@ -486,7 +445,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 return new BankTransactionOutcome.Success(updatedBank, transaction);
 
             } catch (SQLException e) {
-                rollbackTransaction(connection);
+                tx.rollbackQuietly(connection);
                 throw e;
             }
         } catch (SQLException e) {

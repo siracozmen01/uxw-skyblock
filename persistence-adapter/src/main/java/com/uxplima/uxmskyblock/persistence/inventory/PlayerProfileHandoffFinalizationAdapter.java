@@ -15,6 +15,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
 /**
  * Canonical SQL persistence adapter implementing {@link ProfileHandoffFinalizationPort}.
@@ -52,22 +53,12 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
     public PlayerProfileHandoffFinalizationAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
+        SupportedDialects.require(dialect, "inventory persistence");
 
         this.selectSessionAuthoritySql = buildSelectSessionAuthoritySql(this.dialect);
         this.updateInventoryOccSql = buildUpdateInventoryOccSql();
         this.updateSessionLastDurableVersionSql = buildUpdateSessionLastDurableVersionSql();
         this.selectLastDurableVersionSql = buildSelectLastDurableVersionSql();
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock inventory persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
     }
 
     private static String buildSelectSessionAuthoritySql(Dialect dialect) {

@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,6 +21,8 @@ import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxClaim;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxEventRecord;
 import com.uxplima.uxmskyblock.core.domain.event.OutboxStatus;
+import com.uxplima.uxmskyblock.persistence.sql.DialectTransactions;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
 /**
  * Production SQL persistence adapter for the Transactional Outbox Pipeline.
@@ -30,54 +31,13 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
 
     private final Database database;
     private final Dialect dialect;
+    private final DialectTransactions tx;
 
     public TransactionalOutboxAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException("Unsupported SQL dialect: " + dialect
-                        + ". Skyblock outbox persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
-    }
-
-    private void beginTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("BEGIN IMMEDIATE");
-            }
-        } else {
-            connection.setAutoCommit(false);
-        }
-    }
-
-    private void commitTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("COMMIT");
-            }
-        } else {
-            connection.commit();
-        }
-    }
-
-    private void rollbackTransaction(Connection connection) {
-        try {
-            if (dialect == Dialect.SQLITE) {
-                try (Statement statement = connection.createStatement()) {
-                    statement.execute("ROLLBACK");
-                }
-            } else {
-                connection.rollback();
-            }
-        } catch (SQLException ignored) {
-            // best-effort rollback
-        }
+        this.tx = new DialectTransactions(this.dialect);
+        SupportedDialects.require(dialect, "outbox persistence");
     }
 
     @Override
@@ -193,7 +153,7 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
                 """;
 
         try (Connection conn = database.connection()) {
-            beginTransaction(conn);
+            tx.begin(conn);
             List<OutboxEventRecord> claimedList = new ArrayList<>();
             try {
                 try (PreparedStatement selectPs = conn.prepareStatement(selectSql)) {
@@ -221,9 +181,9 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
                     }
                 }
 
-                commitTransaction(conn);
+                tx.commit(conn);
             } catch (Exception e) {
-                rollbackTransaction(conn);
+                tx.rollbackQuietly(conn);
                 throw e;
             }
 

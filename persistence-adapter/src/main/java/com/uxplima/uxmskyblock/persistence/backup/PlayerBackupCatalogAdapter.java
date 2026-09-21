@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupLifecycleState;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -32,17 +33,7 @@ public final class PlayerBackupCatalogAdapter implements BackupCatalogPort {
     public PlayerBackupCatalogAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock backup catalog persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
+        SupportedDialects.require(dialect, "backup catalog persistence");
     }
 
     @Override

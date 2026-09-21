@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,6 +21,8 @@ import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchState;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.persistence.sql.DialectTransactions;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,64 +36,13 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
 
     private final Database database;
     private final Dialect dialect;
+    private final DialectTransactions tx;
 
     public PlayerProfileSwitchAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException("Unsupported SQL dialect: " + dialect
-                        + ". Skyblock persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
-    }
-
-    private void beginTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("BEGIN IMMEDIATE");
-            }
-        } else {
-            connection.setAutoCommit(false);
-        }
-    }
-
-    private void commitTransaction(Connection connection) throws SQLException {
-        if (dialect == Dialect.SQLITE) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("COMMIT");
-            }
-        } else {
-            connection.commit();
-        }
-    }
-
-    private void rollbackTransaction(Connection connection) {
-        try {
-            if (dialect == Dialect.SQLITE) {
-                try (Statement statement = connection.createStatement()) {
-                    statement.execute("ROLLBACK");
-                }
-            } else {
-                connection.rollback();
-            }
-        } catch (SQLException ignored) {
-            // best-effort cleanup
-        }
-    }
-
-    private void resetAutoCommitQuietly(Connection connection, boolean autoCommit) {
-        if (dialect != Dialect.SQLITE) {
-            try {
-                connection.setAutoCommit(autoCommit);
-            } catch (SQLException expected) {
-                // best-effort connection state restoration on connection close
-            }
-        }
+        this.tx = new DialectTransactions(this.dialect);
+        SupportedDialects.require(dialect, "profile switch persistence");
     }
 
     @Override
@@ -112,7 +62,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
 
         try (Connection connection = database.connection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
-            beginTransaction(connection);
+            tx.begin(connection);
             try {
                 // Step 1: Validate session authority on canonical player_sessions row
                 String sessionLockSql = "SELECT authoritative_node, session_epoch, state, "
@@ -125,7 +75,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.setString(1, playerId.toString());
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next()) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("SESSION_NOT_FOUND");
                         }
                         String activeNode = rs.getString("authoritative_node");
@@ -135,15 +85,15 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                         String activeProfile = rs.getString("active_profile_id");
 
                         if (!currentNode.value().equals(activeNode) || epoch != expectedEpoch) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("AUTHORITY_MISMATCH");
                         }
                         if (!"ACTIVE".equals(state) || leaseValid != 1) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("INVALID_SESSION_STATE_OR_LEASE");
                         }
                         if (!fromProfileId.toString().equals(activeProfile)) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("ACTIVE_PROFILE_MISMATCH");
                         }
                     }
@@ -159,7 +109,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.setString(2, playerId.toString());
                     int rows = ps.executeUpdate();
                     if (rows != 1) {
-                        rollbackTransaction(connection);
+                        tx.rollbackQuietly(connection);
                         return Result.err("PROFILE_SWITCH_ALREADY_IN_PROGRESS");
                     }
                 }
@@ -177,14 +127,14 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.executeUpdate();
                 }
 
-                commitTransaction(connection);
+                tx.commit(connection);
                 return Result.ok(new ProfileSwitchOperation.Preparing(
                         operationId, playerId, fromProfileId, toProfileId, Instant.now()));
             } catch (Exception e) {
-                rollbackTransaction(connection);
+                tx.rollbackQuietly(connection);
                 throw new StorageException("Failed to reserve profile switch operation " + operationId, e);
             } finally {
-                resetAutoCommitQuietly(connection, previousAutoCommit);
+                tx.resetAutoCommitQuietly(connection, previousAutoCommit);
             }
         } catch (SQLException e) {
             throw new StorageException("Database error during profile switch reservation", e);
@@ -329,7 +279,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
 
         try (Connection connection = database.connection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
-            beginTransaction(connection);
+            tx.begin(connection);
             try {
                 // 1. Lock and validate session authority
                 String sessionLockSql = "SELECT authoritative_node, session_epoch, state, "
@@ -341,7 +291,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.setString(1, playerId.toString());
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next()) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("SESSION_NOT_FOUND");
                         }
                         String activeNode = rs.getString("authoritative_node");
@@ -350,11 +300,11 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                         int leaseValid = rs.getInt("lease_valid");
 
                         if (!currentNode.value().equals(activeNode) || epoch != expectedEpoch) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("AUTHORITY_MISMATCH");
                         }
                         if (!"ACTIVE".equals(state) || leaseValid != 1) {
-                            rollbackTransaction(connection);
+                            tx.rollbackQuietly(connection);
                             return Result.err("INVALID_SESSION_STATE_OR_LEASE");
                         }
                     }
@@ -372,7 +322,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.setLong(4, expectedEpoch);
                     int rows = ps.executeUpdate();
                     if (rows != 1) {
-                        rollbackTransaction(connection);
+                        tx.rollbackQuietly(connection);
                         return Result.err("FAILED_SESSION_ACTIVE_PROFILE_UPDATE");
                     }
                 }
@@ -388,7 +338,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.setString(3, operationId.toString());
                     int rows = ps.executeUpdate();
                     if (rows != 1) {
-                        rollbackTransaction(connection);
+                        tx.rollbackQuietly(connection);
                         return Result.err("FAILED_ACCOUNT_ACTIVE_PROFILE_UPDATE");
                     }
                 }
@@ -402,7 +352,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.setString(1, operationId.toString());
                     int rows = ps.executeUpdate();
                     if (rows != 1) {
-                        rollbackTransaction(connection);
+                        tx.rollbackQuietly(connection);
                         return Result.err("FAILED_OPERATION_STATE_UPDATE");
                     }
                 }
@@ -410,17 +360,17 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(connection, outboxEvent);
                 }
 
-                commitTransaction(connection);
+                tx.commit(connection);
                 Optional<ProfileSwitchOperation> op = findOperation(connection, operationId);
                 if (op.isPresent() && op.get() instanceof ProfileSwitchOperation.Committed c) {
                     return Result.ok(c);
                 }
                 return Result.err("COMMITTED_RECORD_NOT_FOUND");
             } catch (Exception e) {
-                rollbackTransaction(connection);
+                tx.rollbackQuietly(connection);
                 throw new StorageException("Failed to commit profile switch " + operationId, e);
             } finally {
-                resetAutoCommitQuietly(connection, previousAutoCommit);
+                tx.resetAutoCommitQuietly(connection, previousAutoCommit);
             }
         } catch (SQLException e) {
             throw new StorageException("Database error during profile switch commit", e);
@@ -436,7 +386,7 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
 
         try (Connection connection = database.connection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
-            beginTransaction(connection);
+            tx.begin(connection);
             try {
                 // 1. Clear active_switch_operation_id from player_accounts
                 String clearCasSql = "UPDATE player_accounts "
@@ -460,13 +410,13 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     ps.executeUpdate();
                 }
 
-                commitTransaction(connection);
+                tx.commit(connection);
                 return Result.ok(Unit.INSTANCE);
             } catch (Exception e) {
-                rollbackTransaction(connection);
+                tx.rollbackQuietly(connection);
                 throw new StorageException("Failed to abort profile switch " + operationId, e);
             } finally {
-                resetAutoCommitQuietly(connection, previousAutoCommit);
+                tx.resetAutoCommitQuietly(connection, previousAutoCommit);
             }
         } catch (SQLException e) {
             throw new StorageException("Database error during profile switch abort", e);

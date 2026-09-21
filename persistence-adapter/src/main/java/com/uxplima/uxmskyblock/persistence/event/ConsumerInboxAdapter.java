@@ -10,6 +10,7 @@ import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.event.ConsumerInboxPort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
 /**
  * Production SQL persistence adapter for the idempotent Consumer Inbox.
@@ -22,17 +23,7 @@ public final class ConsumerInboxAdapter implements ConsumerInboxPort {
     public ConsumerInboxAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock consumer inbox persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
+        SupportedDialects.require(dialect, "consumer inbox persistence");
     }
 
     @Override

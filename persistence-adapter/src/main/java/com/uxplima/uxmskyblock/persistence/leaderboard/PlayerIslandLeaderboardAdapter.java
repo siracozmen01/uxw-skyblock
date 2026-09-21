@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPor
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
 /**
  * Production SQL persistence adapter for querying competitive leaderboards.
@@ -28,17 +29,7 @@ public final class PlayerIslandLeaderboardAdapter implements IslandLeaderboardPo
     public PlayerIslandLeaderboardAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock island leaderboard persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
+        SupportedDialects.require(dialect, "island leaderboard persistence");
     }
 
     @Override
