@@ -47,6 +47,9 @@ public final class IslandRecycleService {
         record InvalidChallenge(String reason) implements RecycleResult {}
 
         record Failure(String reason) implements RecycleResult {}
+
+        /** The island is already being erased, by this caller's earlier attempt or by another. */
+        record AlreadyRunning(IslandId islandId) implements RecycleResult {}
     }
 
     private record ChallengeEntry(IslandId islandId, ResetChallenge challenge) {}
@@ -66,6 +69,9 @@ public final class IslandRecycleService {
     private final IslandCacheEviction cacheEviction;
     private final SecureRandom secureRandom;
     private final Map<ProfileId, ChallengeEntry> pendingChallenges = new ConcurrentHashMap<>();
+
+    /** The islands being erased right now, so a second erasure of one island is refused. */
+    private final java.util.Set<IslandId> resetsInFlight = ConcurrentHashMap.newKeySet();
 
     public IslandRecycleService(
             IslandStoragePort islandStoragePort,
@@ -297,6 +303,26 @@ public final class IslandRecycleService {
             pendingChallenges.remove(requester);
         }
 
+        // One erasure per island, whoever asked for it.
+        //
+        // The confirmation code is removed after it is checked, not with it, so two confirmations
+        // arriving together both passed. An administrator's reset carries no code at all, so two of
+        // those never had anything between them either. Two erasures of one island at once take a
+        // backup of a world the other is deleting, release the same grid slot twice and write two
+        // recycle operations for one island.
+        if (!resetsInFlight.add(islandId)) {
+            return CompletableFuture.completedFuture(new RecycleResult.AlreadyRunning(islandId));
+        }
+        try {
+            return runReset(island, islandId).whenComplete((result, error) -> resetsInFlight.remove(islandId));
+        } catch (RuntimeException e) {
+            resetsInFlight.remove(islandId);
+            throw e;
+        }
+    }
+
+    /** The erasure itself, with the island's slot already taken. */
+    private CompletableFuture<RecycleResult> runReset(Island island, IslandId islandId) {
         Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(islandId);
         if (optLocation.isEmpty()) {
             return CompletableFuture.completedFuture(

@@ -449,6 +449,7 @@ public final class IslandLifecycleCommands {
                             case RecycleResult.InvalidChallenge ic ->
                                 send(player, "reset.invalid_challenge", Placeholder.unparsed("reason", ic.reason()));
                             case RecycleResult.IslandNotFound nf -> send(player, "reset.island_not_found");
+                            case RecycleResult.AlreadyRunning ar -> send(player, "reset.already_running");
                             case RecycleResult.Failure f ->
                                 send(player, "reset.failed", Placeholder.unparsed("reason", f.reason()));
                         }

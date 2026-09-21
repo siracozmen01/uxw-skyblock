@@ -36,6 +36,7 @@ public final class ResetAnnouncer {
             case RecycleResult.InvalidChallenge invalid ->
                 messages.send(viewer, "reset.invalid_challenge", Placeholder.unparsed("reason", invalid.reason()));
             case RecycleResult.IslandNotFound notFound -> messages.send(viewer, "reset.island_not_found");
+            case RecycleResult.AlreadyRunning alreadyRunning -> messages.send(viewer, "reset.already_running");
             case RecycleResult.Failure failure ->
                 messages.send(viewer, "reset.failed", Placeholder.unparsed("reason", failure.reason()));
         }
