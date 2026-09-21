@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiPredicate;
 
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.visit.IslandVisitRule;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -44,12 +45,22 @@ public final class IslandWarpService {
     private final int baseWarpLimit;
     private final @Nullable BiPredicate<IslandId, ProfileId> allyAccessChecker;
 
+    /**
+     * Makes counting the warps and writing the next one one thing.
+     *
+     * <p>The count is read, compared to what the island's upgrade allows, and then a warp is
+     * written. Two of those at once both read one below the limit, both pass, and both write: the
+     * island ends up with one more warp than the upgrade an operator sold them allows.
+     */
+    private final IslandMutationLock mutationLock;
+
     public IslandWarpService(
             IslandWarpStoragePort storagePort,
             SafeTeleportEngine safeTeleportEngine,
             @Nullable IslandUpgradeService upgradeService,
             int baseWarpLimit,
-            @Nullable BiPredicate<IslandId, ProfileId> allyAccessChecker) {
+            @Nullable BiPredicate<IslandId, ProfileId> allyAccessChecker,
+            IslandMutationLock mutationLock) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
         this.safeTeleportEngine = Objects.requireNonNull(safeTeleportEngine, "safeTeleportEngine must not be null");
         this.upgradeService = upgradeService;
@@ -58,13 +69,30 @@ public final class IslandWarpService {
         }
         this.baseWarpLimit = baseWarpLimit;
         this.allyAccessChecker = allyAccessChecker;
+        this.mutationLock = java.util.Objects.requireNonNull(mutationLock, "mutationLock must not be null");
     }
 
     public IslandWarpService(
             IslandWarpStoragePort storagePort,
             SafeTeleportEngine safeTeleportEngine,
             @Nullable IslandUpgradeService upgradeService) {
-        this(storagePort, safeTeleportEngine, upgradeService, DEFAULT_BASE_WARPS, null);
+        this(storagePort, safeTeleportEngine, upgradeService, DEFAULT_BASE_WARPS, null, new IslandMutationLock());
+    }
+
+    /** The shape the tests and the older callers use, with a lock of its own. */
+    public IslandWarpService(
+            IslandWarpStoragePort storagePort,
+            SafeTeleportEngine safeTeleportEngine,
+            @Nullable IslandUpgradeService upgradeService,
+            int baseWarpLimit,
+            @Nullable BiPredicate<IslandId, ProfileId> allyAccessChecker) {
+        this(
+                storagePort,
+                safeTeleportEngine,
+                upgradeService,
+                baseWarpLimit,
+                allyAccessChecker,
+                new IslandMutationLock());
     }
 
     /**
@@ -125,6 +153,18 @@ public final class IslandWarpService {
                     + ") is outside island bounds: " + island.bounds());
         }
 
+        // Counting and writing is one thing. Without that the count is a number two callers can
+        // both read one below the limit, and the island gets one more warp than it paid for.
+        return mutationLock.inside(island.id(), () -> writeWarp(island, warpName, location, category, iconMaterial));
+    }
+
+    /** Counts what is there, refuses or writes. Runs inside the island's mutation lock. */
+    private IslandWarp writeWarp(
+            Island island,
+            com.uxplima.uxmskyblock.core.domain.warp.WarpName warpName,
+            WarpLocation location,
+            WarpCategory category,
+            String iconMaterial) {
         int currentCount = storagePort.countWarpsByIsland(island.id());
         int maxAllowed = getMaxAllowedWarps(island.id());
         if (currentCount >= maxAllowed) {

@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceId;
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteExpiredException;
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteId;
@@ -53,6 +54,15 @@ public final class IslandAllianceService {
      * event thread. An alliance is formed once and asked about constantly.
      */
     private final Map<AlliancePair, CachedAnswer> allianceAnswers = new ConcurrentHashMap<>();
+
+    /**
+     * Makes counting the allies and writing the next alliance one thing.
+     *
+     * <p>Both islands are counted against the cap and then an alliance is written. Two acceptances
+     * at once both read one below the cap, both pass, and both write: an island ends up with more
+     * allies than the server allows.
+     */
+    private final IslandMutationLock mutationLock = new IslandMutationLock();
 
     /** Two islands in a fixed order, so A against B and B against A are one question. */
     private record AlliancePair(String first, String second) {
@@ -147,6 +157,17 @@ public final class IslandAllianceService {
             throw new AllianceInviteExpiredException(senderIsland, targetIsland, invite.expiresAt());
         }
 
+        // Both islands are counted, so both are held, and always in the same order so two
+        // acceptances that name the same pair the other way round cannot wait on each other.
+        AlliancePair pair = AlliancePair.of(senderIsland, targetIsland);
+        IslandId first = IslandId.fromString(pair.first());
+        IslandId second = IslandId.fromString(pair.second());
+        return mutationLock.inside(
+                first, () -> mutationLock.inside(second, () -> writeAlliance(senderIsland, targetIsland, now)));
+    }
+
+    /** Counts both islands against the cap and writes the alliance. Runs inside both locks. */
+    private IslandAlliance writeAlliance(IslandId senderIsland, IslandId targetIsland, Instant now) {
         int senderCount = storagePort.countAlliances(senderIsland);
         if (senderCount >= maxAllies) {
             throw new AllianceLimitExceededException(senderIsland, senderCount, maxAllies);
