@@ -74,7 +74,11 @@ class IslandMembershipServiceTest {
         when(storage.findLocationByIslandId(ISLAND)).thenReturn(Optional.of(location()));
 
         service = new IslandMembershipService(
-                storage, id -> allowance, Duration.ofMinutes(5), Clock.fixed(NOW, ZoneOffset.UTC));
+                storage,
+                new com.uxplima.uxmskyblock.core.application.island.IslandMutationLock(),
+                id -> allowance,
+                Duration.ofMinutes(5),
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -91,11 +95,19 @@ class IslandMembershipServiceTest {
     @DisplayName("An invite nobody answered in time is gone, rather than good for ever")
     void anExpiredInviteIsGone() {
         IslandMembershipService shortLived = new IslandMembershipService(
-                storage, id -> allowance, Duration.ofMinutes(5), Clock.fixed(NOW, ZoneOffset.UTC));
+                storage,
+                new com.uxplima.uxmskyblock.core.application.island.IslandMutationLock(),
+                id -> allowance,
+                Duration.ofMinutes(5),
+                Clock.fixed(NOW, ZoneOffset.UTC));
         shortLived.invite(OWNER, MATE);
 
         IslandMembershipService later = new IslandMembershipService(
-                storage, id -> allowance, Duration.ofMinutes(5), Clock.fixed(NOW.plusSeconds(600), ZoneOffset.UTC));
+                storage,
+                new com.uxplima.uxmskyblock.core.application.island.IslandMutationLock(),
+                id -> allowance,
+                Duration.ofMinutes(5),
+                Clock.fixed(NOW.plusSeconds(600), ZoneOffset.UTC));
 
         assertThat(shortLived.pendingInvite(MATE))
                 .describedAs("the same service, later")

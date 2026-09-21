@@ -95,6 +95,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 configWiring.messages());
         IslandAdminFreezeService freezeService = new IslandAdminFreezeService(
                 persistenceWiring.bootstrap().islandStoragePort(),
+                persistenceWiring.bootstrap().islandMutationLock(),
                 persistenceWiring.bootstrap().islandAdminFreezePort(),
                 visitorEvictionAdapter,
                 persistenceWiring.bootstrap().outboxPort());

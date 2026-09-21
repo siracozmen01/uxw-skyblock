@@ -14,9 +14,15 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 public final class IslandLocationService {
 
     private final IslandStoragePort islandStoragePort;
+    private final IslandMutationLock mutationLock;
+
+    public IslandLocationService(IslandStoragePort islandStoragePort, IslandMutationLock mutationLock) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.mutationLock = Objects.requireNonNull(mutationLock, "mutationLock must not be null");
+    }
 
     public IslandLocationService(IslandStoragePort islandStoragePort) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this(islandStoragePort, new IslandMutationLock());
     }
 
     public Optional<IslandLocation> resolveHome(ProfileId profileId) {
@@ -57,16 +63,21 @@ public final class IslandLocationService {
         }
 
         IslandId islandId = optIslandId.get();
-        Optional<Island> optIsland = islandStoragePort.findIslandById(islandId);
-        Optional<IslandLocation> optLoc = islandStoragePort.findLocationByIslandId(islandId);
-        if (optIsland.isEmpty() || optLoc.isEmpty()) {
-            return false;
-        }
+        // saveIsland writes the whole aggregate, so moving the spawn point writes the members, the
+        // roles and the flags back with it. Reading them outside the lock means writing back
+        // whatever they were before somebody else's change.
+        return mutationLock.inside(islandId, () -> {
+            Optional<Island> optIsland = islandStoragePort.findIslandById(islandId);
+            Optional<IslandLocation> optLoc = islandStoragePort.findLocationByIslandId(islandId);
+            if (optIsland.isEmpty() || optLoc.isEmpty()) {
+                return false;
+            }
 
-        IslandLocation updatedLocation =
-                new IslandLocation(islandId, worldName, optLoc.get().bounds(), x, y, z, yaw, pitch);
+            IslandLocation updatedLocation =
+                    new IslandLocation(islandId, worldName, optLoc.get().bounds(), x, y, z, yaw, pitch);
 
-        islandStoragePort.saveIsland(optIsland.get(), updatedLocation);
-        return true;
+            islandStoragePort.saveIsland(optIsland.get(), updatedLocation);
+            return true;
+        });
     }
 }

@@ -208,7 +208,9 @@ public final class GameplayWiring {
         // property, so an operator raises it by editing upgrades.conf rather than by asking for a
         // release.
         this.membershipService = new IslandMembershipService(
-                persistence.islandStoragePort(), new MemberAllowance(this.economicWiring.upgradeService()));
+                persistence.islandStoragePort(),
+                persistence.islandMutationLock(),
+                new MemberAllowance(this.economicWiring.upgradeService()));
 
         this.environmentWiring = new GameplayEnvironmentWiring(
                 config,

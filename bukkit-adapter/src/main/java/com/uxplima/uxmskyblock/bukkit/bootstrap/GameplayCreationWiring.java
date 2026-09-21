@@ -76,7 +76,8 @@ public final class GameplayCreationWiring {
                 persistence.worldGridAllocationPort(),
                 persistence.outboxPort(),
                 this.gameModeHierarchyService);
-        this.locationService = new IslandLocationService(persistence.islandStoragePort());
+        this.locationService =
+                new IslandLocationService(persistence.islandStoragePort(), persistence.islandMutationLock());
         this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());
 
         this.seasonService = new IslandSeasonService(

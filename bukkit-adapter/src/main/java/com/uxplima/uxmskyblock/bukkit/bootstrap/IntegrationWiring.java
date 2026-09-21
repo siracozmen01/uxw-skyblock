@@ -180,7 +180,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree = new IslandCommandTree(
                 gameplay.createIslandUseCase(),
                 gameplay.locationService(),
-                new IslandFlagService(persistence.islandStoragePort()),
+                new IslandFlagService(persistence.islandStoragePort(), persistence.islandMutationLock()),
                 gameplay.bankService(),
                 persistence.islandUpgradeStoragePort(),
                 gameplay.leaderboardService(),

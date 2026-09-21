@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
@@ -24,22 +25,39 @@ import org.jspecify.annotations.Nullable;
 public final class IslandAdminFreezeService {
 
     private final IslandStoragePort islandStoragePort;
+    private final IslandMutationLock mutationLock;
     private final IslandAdminFreezePort freezeStoragePort;
     private final @Nullable IslandVisitorEvictionPort visitorEvictionPort;
     private final @Nullable OutboxPort outboxPort;
 
     public IslandAdminFreezeService(
             IslandStoragePort islandStoragePort,
+            IslandMutationLock mutationLock,
             IslandAdminFreezePort freezeStoragePort,
             @Nullable IslandVisitorEvictionPort visitorEvictionPort,
             @Nullable OutboxPort outboxPort) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.mutationLock = Objects.requireNonNull(mutationLock, "mutationLock must not be null");
         this.freezeStoragePort = Objects.requireNonNull(freezeStoragePort, "freezeStoragePort must not be null");
         this.visitorEvictionPort = visitorEvictionPort;
         this.outboxPort = outboxPort;
     }
 
+    public IslandAdminFreezeService(
+            IslandStoragePort islandStoragePort,
+            IslandAdminFreezePort freezeStoragePort,
+            @Nullable IslandVisitorEvictionPort visitorEvictionPort,
+            @Nullable OutboxPort outboxPort) {
+        this(islandStoragePort, new IslandMutationLock(), freezeStoragePort, visitorEvictionPort, outboxPort);
+    }
+
     public boolean freezeIsland(IslandId islandId, String reason, String actor) {
+        // Read, change and write is one thing on one island. Two of these running at once
+        // on the same island both read it as it was and the second write erases the first.
+        return mutationLock.inside(islandId, () -> freezeIslandInside(islandId, reason, actor));
+    }
+
+    private boolean freezeIslandInside(IslandId islandId, String reason, String actor) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(reason, "reason must not be null");
         Objects.requireNonNull(actor, "actor must not be null");
@@ -78,6 +96,12 @@ public final class IslandAdminFreezeService {
     }
 
     public boolean unfreezeIsland(IslandId islandId, String actor) {
+        // Read, change and write is one thing on one island. Two of these running at once
+        // on the same island both read it as it was and the second write erases the first.
+        return mutationLock.inside(islandId, () -> unfreezeIslandInside(islandId, actor));
+    }
+
+    private boolean unfreezeIslandInside(IslandId islandId, String actor) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(actor, "actor must not be null");
 
@@ -127,6 +151,12 @@ public final class IslandAdminFreezeService {
     }
 
     public void transitionEconomicState(IslandId islandId, EconomicState targetState) {
+        // Read, change and write is one thing on one island. Two of these running at once
+        // on the same island both read it as it was and the second write erases the first.
+        mutationLock.inside(islandId, () -> transitionEconomicStateInside(islandId, targetState));
+    }
+
+    private void transitionEconomicStateInside(IslandId islandId, EconomicState targetState) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(targetState, "targetState must not be null");
 
@@ -163,6 +193,12 @@ public final class IslandAdminFreezeService {
     }
 
     public void transitionLifecycle(IslandId islandId, IslandLifecycle targetLifecycle) {
+        // Read, change and write is one thing on one island. Two of these running at once
+        // on the same island both read it as it was and the second write erases the first.
+        mutationLock.inside(islandId, () -> transitionLifecycleInside(islandId, targetLifecycle));
+    }
+
+    private void transitionLifecycleInside(IslandId islandId, IslandLifecycle targetLifecycle) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(targetLifecycle, "targetLifecycle must not be null");
 

@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.ToIntFunction;
 
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -140,6 +141,7 @@ public final class IslandMembershipService {
     }
 
     private final IslandStoragePort islandStoragePort;
+    private final IslandMutationLock mutationLock;
     private final ToIntFunction<IslandId> memberAllowance;
     private final Duration inviteTimeout;
     private final Clock clock;
@@ -149,17 +151,22 @@ public final class IslandMembershipService {
 
     public IslandMembershipService(
             IslandStoragePort islandStoragePort,
+            IslandMutationLock mutationLock,
             ToIntFunction<IslandId> memberAllowance,
             Duration inviteTimeout,
             Clock clock) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.mutationLock = Objects.requireNonNull(mutationLock, "mutationLock must not be null");
         this.memberAllowance = Objects.requireNonNull(memberAllowance, "memberAllowance must not be null");
         this.inviteTimeout = Objects.requireNonNull(inviteTimeout, "inviteTimeout must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
-    public IslandMembershipService(IslandStoragePort islandStoragePort, ToIntFunction<IslandId> memberAllowance) {
-        this(islandStoragePort, memberAllowance, DEFAULT_INVITE_TIMEOUT, Clock.systemUTC());
+    public IslandMembershipService(
+            IslandStoragePort islandStoragePort,
+            IslandMutationLock mutationLock,
+            ToIntFunction<IslandId> memberAllowance) {
+        this(islandStoragePort, mutationLock, memberAllowance, DEFAULT_INVITE_TIMEOUT, Clock.systemUTC());
     }
 
     /** Invites {@code target} to the island {@code actor} belongs to. */
@@ -219,24 +226,28 @@ public final class IslandMembershipService {
         }
 
         PendingInvite invite = optInvite.get();
-        Optional<Island> optIsland = islandStoragePort.findIslandById(invite.islandId());
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(invite.islandId());
-        if (optIsland.isEmpty() || optLocation.isEmpty()) {
+        // The island is read inside the lock, so two players answering at the same moment do not
+        // both read it as it was and both write themselves in, losing one of the two.
+        return mutationLock.inside(invite.islandId(), () -> {
+            Optional<Island> optIsland = islandStoragePort.findIslandById(invite.islandId());
+            Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(invite.islandId());
+            if (optIsland.isEmpty() || optLocation.isEmpty()) {
+                invites.remove(target, invite);
+                return new JoinOutcome.IslandMissing();
+            }
+
+            Island island = optIsland.get();
+            int allowed = memberAllowance.applyAsInt(island.id());
+            if (island.members().size() >= allowed) {
+                return new JoinOutcome.IslandFull(allowed);
+            }
+
+            IslandRole memberRole = island.roles().getOrDefault(IslandRole.MEMBER.id(), IslandRole.MEMBER);
+            Island joined = island.addMember(new IslandMember(targetPlayerUuid, target, memberRole, clock.instant()));
+            islandStoragePort.saveIsland(joined, optLocation.get());
             invites.remove(target, invite);
-            return new JoinOutcome.IslandMissing();
-        }
-
-        Island island = optIsland.get();
-        int allowed = memberAllowance.applyAsInt(island.id());
-        if (island.members().size() >= allowed) {
-            return new JoinOutcome.IslandFull(allowed);
-        }
-
-        IslandRole memberRole = island.roles().getOrDefault(IslandRole.MEMBER.id(), IslandRole.MEMBER);
-        Island joined = island.addMember(new IslandMember(targetPlayerUuid, target, memberRole, clock.instant()));
-        islandStoragePort.saveIsland(joined, optLocation.get());
-        invites.remove(target, invite);
-        return new JoinOutcome.Joined(island.id());
+            return new JoinOutcome.Joined(island.id());
+        });
     }
 
     /** Throws the invite away without joining. Returns whether there was one to throw away. */
@@ -316,13 +327,21 @@ public final class IslandMembershipService {
             return new RoleOutcome.NotAllowed();
         }
 
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
-        if (optLocation.isEmpty()) {
-            return new RoleOutcome.NoIsland();
-        }
-        Island updated = island.addMember(new IslandMember(member.playerUuid(), target, role, member.joinedAt()));
-        islandStoragePort.saveIsland(updated, optLocation.get());
-        return new RoleOutcome.Changed(target, roleId.toLowerCase(Locale.ROOT));
+        return mutationLock.inside(island.id(), () -> {
+            Optional<Island> optFresh = islandStoragePort.findIslandById(island.id());
+            Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
+            if (optFresh.isEmpty() || optLocation.isEmpty()) {
+                return new RoleOutcome.NoIsland();
+            }
+            Island fresh = optFresh.get();
+            IslandMember current = fresh.members().get(target);
+            if (current == null) {
+                return new RoleOutcome.NotAMember();
+            }
+            Island updated = fresh.addMember(new IslandMember(current.playerUuid(), target, role, current.joinedAt()));
+            islandStoragePort.saveIsland(updated, optLocation.get());
+            return new RoleOutcome.Changed(target, roleId.toLowerCase(Locale.ROOT));
+        });
     }
 
     /** What a request to move a permission on a role came back with. */
@@ -396,14 +415,18 @@ public final class IslandMembershipService {
             permissions.remove(permission);
         }
 
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
-        if (optLocation.isEmpty()) {
-            return new PermissionOutcome.NoIsland();
-        }
-        IslandRole updated = new IslandRole(role.id(), role.weight(), role.displayName(), permissions, role.isSystem());
-        islandStoragePort.saveIsland(withRole(island, updated), optLocation.get());
-        return new PermissionOutcome.Changed(
-                roleId.toLowerCase(Locale.ROOT), permission.name().toLowerCase(Locale.ROOT), allowed);
+        return mutationLock.inside(island.id(), () -> {
+            Optional<Island> optFresh = islandStoragePort.findIslandById(island.id());
+            Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
+            if (optFresh.isEmpty() || optLocation.isEmpty()) {
+                return new PermissionOutcome.NoIsland();
+            }
+            IslandRole updated =
+                    new IslandRole(role.id(), role.weight(), role.displayName(), permissions, role.isSystem());
+            islandStoragePort.saveIsland(withRole(optFresh.get(), updated), optLocation.get());
+            return new PermissionOutcome.Changed(
+                    roleId.toLowerCase(Locale.ROOT), permission.name().toLowerCase(Locale.ROOT), allowed);
+        });
     }
 
     /** Every permission a caller may name, lower case and comma separated. */
@@ -466,13 +489,20 @@ public final class IslandMembershipService {
         if (!island.isMember(target)) {
             return new RemovalOutcome.NotAMember();
         }
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
-        if (optLocation.isEmpty()) {
-            return new RemovalOutcome.NoIsland();
-        }
-        islandStoragePort.saveIsland(island.removeMember(target), optLocation.get());
-        invites.remove(target);
-        return new RemovalOutcome.Removed(island.id(), target);
+        return mutationLock.inside(island.id(), () -> {
+            Optional<Island> optFresh = islandStoragePort.findIslandById(island.id());
+            Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
+            if (optFresh.isEmpty() || optLocation.isEmpty()) {
+                return new RemovalOutcome.NoIsland();
+            }
+            Island fresh = optFresh.get();
+            if (!fresh.isMember(target)) {
+                return new RemovalOutcome.NotAMember();
+            }
+            islandStoragePort.saveIsland(fresh.removeMember(target), optLocation.get());
+            invites.remove(target);
+            return new RemovalOutcome.Removed(island.id(), target);
+        });
     }
 
     private Optional<Island> islandOf(ProfileId profileId) {

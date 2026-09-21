@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -13,6 +14,7 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reading and moving the switches that decide what may happen on an island.
@@ -38,9 +40,15 @@ public final class IslandFlagService {
     }
 
     private final IslandStoragePort islandStoragePort;
+    private final IslandMutationLock mutationLock;
+
+    public IslandFlagService(IslandStoragePort islandStoragePort, IslandMutationLock mutationLock) {
+        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this.mutationLock = Objects.requireNonNull(mutationLock, "mutationLock must not be null");
+    }
 
     public IslandFlagService(IslandStoragePort islandStoragePort) {
-        this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
+        this(islandStoragePort, new IslandMutationLock());
     }
 
     /** Every flag on the island and where it stands, in an order a reader can scan. */
@@ -79,14 +87,10 @@ public final class IslandFlagService {
             return new FlagChange.NotAllowed();
         }
 
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
-        if (optLocation.isEmpty()) {
-            return new FlagChange.IslandMissing();
-        }
-
-        boolean enabled = !Boolean.TRUE.equals(island.flags().values().get(flag));
-        islandStoragePort.saveIsland(island.withFlags(island.flags().withFlag(flag, enabled)), optLocation.get());
-        return new FlagChange.Changed(flag.toLowerCase(Locale.ROOT), enabled);
+        // The island the caller handed in was read before they asked, and everything between then
+        // and now is somebody else's change. The write is built on a read taken inside the lock, so
+        // a flag toggled while a member is joining does not erase the membership.
+        return mutationLock.inside(island.id(), () -> write(island.id(), flag, null));
     }
 
     /**
@@ -109,13 +113,29 @@ public final class IslandFlagService {
             return new FlagChange.NotAllowed();
         }
 
-        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
-        if (optLocation.isEmpty()) {
+        return mutationLock.inside(island.id(), () -> write(island.id(), flag, enabled));
+    }
+
+    /**
+     * Reads the island fresh, moves one flag on it and writes it back.
+     *
+     * <p>Runs inside the mutation lock. A null {@code enabled} means the other way from wherever the
+     * flag is now, which is what a toggle is, and reading that inside the lock is the whole reason
+     * this is a second read rather than a change to the island the caller already held.
+     */
+    private FlagChange write(IslandId islandId, String flag, @Nullable Boolean enabled) {
+        Optional<Island> optFresh = islandStoragePort.findIslandById(islandId);
+        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(islandId);
+        if (optFresh.isEmpty() || optLocation.isEmpty()) {
             return new FlagChange.IslandMissing();
         }
 
-        islandStoragePort.saveIsland(island.withFlags(island.flags().withFlag(flag, enabled)), optLocation.get());
-        return new FlagChange.Changed(flag.toLowerCase(Locale.ROOT), enabled);
+        Island fresh = optFresh.get();
+        boolean target = enabled != null
+                ? enabled
+                : !Boolean.TRUE.equals(fresh.flags().values().get(flag));
+        islandStoragePort.saveIsland(fresh.withFlags(fresh.flags().withFlag(flag, target)), optLocation.get());
+        return new FlagChange.Changed(flag.toLowerCase(Locale.ROOT), target);
     }
 
     /** Reads the island fresh, for a caller that holds only its id. */

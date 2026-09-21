@@ -25,6 +25,7 @@ import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJourn
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinalizationPort;
 import com.uxplima.uxmskyblock.core.application.inventory.ProfileInventoryCheckpointPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardPort;
 import com.uxplima.uxmskyblock.core.application.notification.NotificationStoragePort;
@@ -91,6 +92,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     private final Database database;
     private final PlayerIslandStorageAdapter islandStorageAdapter;
+    private final IslandMutationLock islandMutationLock = new IslandMutationLock();
     private final PlayerIslandBankAdapter islandBankAdapter;
     private final CachingIslandUpgradeStorage islandUpgradeAdapter;
     private final PlayerIslandLeaderboardAdapter islandLeaderboardAdapter;
@@ -214,6 +216,16 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public IslandStoragePort islandStoragePort() {
         return islandStorageAdapter;
+    }
+
+    /**
+     * The one lock every service that changes an island goes through.
+     *
+     * <p>It lives beside the storage port because it guards writes to that port, and it has to be
+     * one instance: two services holding two locks is two services holding nothing.
+     */
+    public IslandMutationLock islandMutationLock() {
+        return islandMutationLock;
     }
 
     public IslandAuthorityPort islandAuthorityPort() {
