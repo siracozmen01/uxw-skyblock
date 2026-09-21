@@ -65,38 +65,43 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandCommandTree {
 
-    private final CreateIslandUseCase createIslandUseCase;
-    private final IslandLocationService islandLocationService;
-    private final IslandFlagService flagService;
-    private final IslandBankService islandBankService;
+    // The fields below carry no modifier on purpose. CommandGroupBuilder is this class's other half,
+    // split out only because holding both what the verbs are and where they hang put one file back
+    // over the size the standards draw a line at. It lives in this package and nowhere else, and it
+    // reads these directly rather than through thirty accessors that would exist for nothing.
+
+    final CreateIslandUseCase createIslandUseCase;
+    final IslandLocationService islandLocationService;
+    final IslandFlagService flagService;
+    final IslandBankService islandBankService;
     private final IslandUpgradeStoragePort islandUpgradePort;
-    private final IslandLeaderboardService islandLeaderboardService;
-    private final BiomeModificationPort biomeModificationPort;
-    private final StarterPresetCatalog presetCatalog;
-    private final StarterSchematicEngine schematicEngine;
-    private final IslandProtectionListener protectionListener;
-    private final PlayerSessionCoordinator sessionCoordinator;
-    private final SchedulerPort schedulerPort;
-    private final Messages messages;
-    private final HomeConfiguration homeConfiguration;
-    private volatile @Nullable HomeService homeService;
+    final IslandLeaderboardService islandLeaderboardService;
+    final BiomeModificationPort biomeModificationPort;
+    final StarterPresetCatalog presetCatalog;
+    final StarterSchematicEngine schematicEngine;
+    final IslandProtectionListener protectionListener;
+    final PlayerSessionCoordinator sessionCoordinator;
+    final SchedulerPort schedulerPort;
+    final Messages messages;
+    final HomeConfiguration homeConfiguration;
+    volatile @Nullable HomeService homeService;
     private volatile @Nullable IslandVaultWindow vaultWindow;
-    private volatile @Nullable ActivityFeedService activityFeedService;
-    private final ServerNodeId serverNodeId;
-    private final String worldName;
-    private final SkyblockEconomyBridge economyBridge;
-    private final IslandFeatures features;
-    private volatile @Nullable IslandBankruptcyService bankruptcyService;
-    private volatile @Nullable IslandNameService nameService;
-    private volatile @Nullable IslandNetworkRouter networkRouter;
-    private volatile @Nullable IslandRestoreService restoreService;
-    private volatile @Nullable BackupService backupService;
-    private volatile @Nullable IslandWarpService warpService;
-    private volatile @Nullable IslandSocialService socialService;
-    private volatile @Nullable IslandAllianceService allianceService;
-    private volatile @Nullable RewardInboxService rewardInboxService;
-    private volatile @Nullable IslandMarkerSynchroniser markerSynchroniser;
-    private volatile @Nullable IslandMissionService missionService;
+    volatile @Nullable ActivityFeedService activityFeedService;
+    final ServerNodeId serverNodeId;
+    final String worldName;
+    final SkyblockEconomyBridge economyBridge;
+    final IslandFeatures features;
+    volatile @Nullable IslandBankruptcyService bankruptcyService;
+    volatile @Nullable IslandNameService nameService;
+    volatile @Nullable IslandNetworkRouter networkRouter;
+    volatile @Nullable IslandRestoreService restoreService;
+    volatile @Nullable BackupService backupService;
+    volatile @Nullable IslandWarpService warpService;
+    volatile @Nullable IslandSocialService socialService;
+    volatile @Nullable IslandAllianceService allianceService;
+    volatile @Nullable RewardInboxService rewardInboxService;
+    volatile @Nullable IslandMarkerSynchroniser markerSynchroniser;
+    volatile @Nullable IslandMissionService missionService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -292,159 +297,10 @@ public final class IslandCommandTree {
      * a player types the line it guessed about.
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildRoot() {
-        return assembleRoot(buildGroups());
+        return assembleRoot(new CommandGroupBuilder(this).build());
     }
 
-    /**
-     * The command groups this tree is made of.
-     *
-     * <p>Building nine of them and assembling the tree out of them were one method, which is how
-     * that method reached the size the standards draw a line at. The two halves answer different
-     * questions: what the verbs are, and where they hang.
-     */
-    private record CommandGroups(
-            IslandBankCommands bankCommands,
-            IslandChatCommands chatCommands,
-            IslandAdminCommands adminCommands,
-            IslandLifecycleCommands lifecycleCommands,
-            IslandNavigationCommands navigationCommands,
-            IslandProgressionCommands progressionCommands,
-            IslandMechanicsCommands mechanicsCommands,
-            IslandActivityCommands activityCommands,
-            IslandHomeCommands homeCommands,
-            IslandWarpCommands warpCommands,
-            IslandSocialCommands socialCommands,
-            IslandAllianceCommands allianceCommands,
-            IslandRewardCommands rewardCommands,
-            IslandFlagCommands flagCommands) {}
-
-    private CommandGroups buildGroups() {
-
-        IslandBankCommands bankCommands = new IslandBankCommands(
-                islandBankService,
-                islandLocationService,
-                economyBridge,
-                schedulerPort,
-                serverNodeId,
-                () -> bankruptcyService,
-                messages,
-                sessionCoordinator);
-
-        IslandChatCommands chatCommands =
-                new IslandChatCommands(() -> features.chatService(), schedulerPort, messages, sessionCoordinator);
-
-        IslandAdminCommands adminCommands = new IslandAdminCommands(
-                () -> features.inactivityService(),
-                () -> features.freezeService(),
-                () -> restoreService,
-                () -> backupService,
-                () -> features.recycleService(),
-                protectionListener,
-                islandLocationService,
-                sessionCoordinator,
-                schedulerPort,
-                worldName,
-                messages);
-
-        IslandLifecycleCommands lifecycleCommands = new IslandLifecycleCommands(
-                createIslandUseCase,
-                islandLocationService,
-                presetCatalog,
-                schematicEngine,
-                protectionListener,
-                sessionCoordinator,
-                schedulerPort,
-                serverNodeId,
-                worldName,
-                () -> features.antiAbuseService(),
-                () -> features.recycleService(),
-                () -> features.resetMenu(),
-                () -> nameService,
-                messages);
-
-        IslandNavigationCommands navigationCommands = new IslandNavigationCommands(
-                islandLocationService,
-                sessionCoordinator,
-                schedulerPort,
-                worldName,
-                () -> features.dimensionListener(),
-                () -> networkRouter,
-                messages);
-
-        IslandProgressionCommands progressionCommands = new IslandProgressionCommands(
-                islandLocationService,
-                islandBankService,
-                islandLeaderboardService,
-                biomeModificationPort,
-                sessionCoordinator,
-                schedulerPort,
-                () -> features.worthService(),
-                () -> missionService,
-                messages);
-
-        IslandMechanicsCommands mechanicsCommands = new IslandMechanicsCommands(
-                islandLocationService,
-                sessionCoordinator,
-                schedulerPort,
-                () -> features.limitService(),
-                () -> features.antiAbuseService(),
-                () -> features.boosterService(),
-                () -> features.boosterMenu(),
-                () -> features.missionsMenu(),
-                () -> features.boundaryService(),
-                messages);
-
-        lifecycleCommands.useMarkerSynchroniser(markerSynchroniser);
-
-        IslandActivityCommands activityCommands = new IslandActivityCommands(
-                () -> activityFeedService, islandLocationService, schedulerPort, messages, sessionCoordinator);
-
-        IslandHomeCommands homeCommands = new IslandHomeCommands(
-                () -> homeService,
-                islandLocationService,
-                schedulerPort,
-                homeConfiguration,
-                messages,
-                sessionCoordinator);
-
-        // Four subsystems were built, wired and running with no command to reach them: warps, the
-        // social system, alliances and the reward inbox. Rewards were being issued into a table a
-        // player had no way to open.
-        IslandWarpCommands warpCommands = new IslandWarpCommands(
-                () -> warpService, islandLocationService, schedulerPort, messages, sessionCoordinator);
-
-        IslandSocialCommands socialCommands = new IslandSocialCommands(
-                () -> socialService, protectionListener.spatialIndex(), schedulerPort, messages, sessionCoordinator);
-
-        IslandAllianceCommands allianceCommands = new IslandAllianceCommands(
-                () -> allianceService, islandLocationService, schedulerPort, messages, sessionCoordinator);
-
-        IslandRewardCommands rewardCommands =
-                new IslandRewardCommands(() -> rewardInboxService, schedulerPort, messages, sessionCoordinator);
-
-        // Sixteen island flags, read by the protection listener on every event, and nothing could
-        // change one. PvP was on or off according to a default nobody could move.
-        IslandFlagCommands flagCommands =
-                new IslandFlagCommands(flagService, islandLocationService, schedulerPort, messages, sessionCoordinator);
-
-        return new CommandGroups(
-                bankCommands,
-                chatCommands,
-                adminCommands,
-                lifecycleCommands,
-                navigationCommands,
-                progressionCommands,
-                mechanicsCommands,
-                activityCommands,
-                homeCommands,
-                warpCommands,
-                socialCommands,
-                allianceCommands,
-                rewardCommands,
-                flagCommands);
-    }
-
-    private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroups groups) {
+    private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroupBuilder.CommandGroups groups) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
                 .then(Cmd.literal("help").executes(this::executeHelp))
