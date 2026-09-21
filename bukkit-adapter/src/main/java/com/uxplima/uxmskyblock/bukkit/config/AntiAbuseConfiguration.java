@@ -16,6 +16,7 @@ public record AntiAbuseConfiguration(
         int maxResetsPerDay,
         Duration resetWindowDuration,
         Duration coopJoinCooldown,
+        Duration quarantineLookupTtl,
         String resetBypassPermission,
         String coopBypassPermission,
         String quarantineBypassPermission) {
@@ -26,6 +27,16 @@ public record AntiAbuseConfiguration(
     public static final int DEFAULT_MAX_RESETS_PER_DAY = 3;
     public static final Duration DEFAULT_RESET_WINDOW_DURATION = Duration.ofHours(24);
     public static final Duration DEFAULT_COOP_JOIN_COOLDOWN = Duration.ofHours(24);
+
+    /**
+     * How long this node trusts its own answer that an island is not quarantined.
+     *
+     * <p>Movement is checked against the quarantine list, and every player sends many movement
+     * packets a second. This node knows every quarantine it set itself; the lookup exists to notice
+     * one another node set, and it is worth at most one query this often, never one per step.
+     */
+    public static final Duration DEFAULT_QUARANTINE_LOOKUP_TTL = Duration.ofSeconds(30);
+
     public static final String DEFAULT_RESET_BYPASS_PERMISSION = "uxmskyblock.bypass.resetlimits";
     public static final String DEFAULT_COOP_BYPASS_PERMISSION = "uxmskyblock.bypass.coopcooldown";
     public static final String DEFAULT_QUARANTINE_BYPASS_PERMISSION = "uxmskyblock.bypass.quarantine";
@@ -35,6 +46,7 @@ public record AntiAbuseConfiguration(
         Objects.requireNonNull(resetCooldown, "resetCooldown must not be null");
         Objects.requireNonNull(resetWindowDuration, "resetWindowDuration must not be null");
         Objects.requireNonNull(coopJoinCooldown, "coopJoinCooldown must not be null");
+        Objects.requireNonNull(quarantineLookupTtl, "quarantineLookupTtl must not be null");
         Objects.requireNonNull(resetBypassPermission, "resetBypassPermission must not be null");
         Objects.requireNonNull(coopBypassPermission, "coopBypassPermission must not be null");
         Objects.requireNonNull(quarantineBypassPermission, "quarantineBypassPermission must not be null");
@@ -48,6 +60,7 @@ public record AntiAbuseConfiguration(
                 DEFAULT_MAX_RESETS_PER_DAY,
                 DEFAULT_RESET_WINDOW_DURATION,
                 DEFAULT_COOP_JOIN_COOLDOWN,
+                DEFAULT_QUARANTINE_LOOKUP_TTL,
                 DEFAULT_RESET_BYPASS_PERMISSION,
                 DEFAULT_COOP_BYPASS_PERMISSION,
                 DEFAULT_QUARANTINE_BYPASS_PERMISSION);
@@ -66,6 +79,7 @@ public record AntiAbuseConfiguration(
         int maxResetsPerDay = node.node("max-resets-per-day").getInt(DEFAULT_MAX_RESETS_PER_DAY);
         Duration resetWindowDuration = parseDuration(node.node("reset-window-duration"), DEFAULT_RESET_WINDOW_DURATION);
         Duration coopJoinCooldown = parseDuration(node.node("coop-join-cooldown"), DEFAULT_COOP_JOIN_COOLDOWN);
+        Duration quarantineLookupTtl = parseDuration(node.node("quarantine-lookup-ttl"), DEFAULT_QUARANTINE_LOOKUP_TTL);
         String resetBypass = node.node("reset-bypass-permission").getString(DEFAULT_RESET_BYPASS_PERMISSION);
         String coopBypass = node.node("coop-bypass-permission").getString(DEFAULT_COOP_BYPASS_PERMISSION);
         String quarantineBypass =
@@ -78,6 +92,7 @@ public record AntiAbuseConfiguration(
                 maxResetsPerDay,
                 resetWindowDuration,
                 coopJoinCooldown,
+                quarantineLookupTtl,
                 resetBypass,
                 coopBypass,
                 quarantineBypass);

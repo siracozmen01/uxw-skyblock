@@ -30,6 +30,9 @@ public final class IslandAntiAbuseService {
     public static final Duration DEFAULT_RESET_WINDOW_DURATION = Duration.ofHours(24);
     public static final Duration DEFAULT_COOP_JOIN_COOLDOWN = Duration.ofHours(24);
 
+    /** How long this node trusts its own answer that an island is not quarantined. */
+    public static final Duration DEFAULT_QUARANTINE_LOOKUP_TTL = Duration.ofSeconds(30);
+
     private final AntiAbuseStoragePort storagePort;
     private final boolean purgeInventoryOnReset;
     private final Duration quarantineDuration;
@@ -37,10 +40,25 @@ public final class IslandAntiAbuseService {
     private final int maxResetsPerDay;
     private final Duration resetWindowDuration;
     private final Duration coopJoinCooldown;
+    private final Duration quarantineLookupTtl;
     private final Clock clock;
 
     private final Map<PlayerUuid, PlayerAntiAbuseRecord> playerRecords = new ConcurrentHashMap<>();
     private final Map<IslandId, IslandQuarantineRecord> activeQuarantines = new ConcurrentHashMap<>();
+
+    /**
+     * Islands this node has looked up and found clean, and when it last looked.
+     *
+     * <p>Every movement packet asked whether the island was quarantined, and an island with no
+     * quarantine row is not in {@link #activeQuarantines}, so every one of those asks went to the
+     * database. The common case was the uncached case: a player walking on a healthy island ran a
+     * query per step.
+     *
+     * <p>This node already knows every quarantine it set itself, and loads the active ones at
+     * startup. The lookup is only there to notice one another node set, so a bounded staleness is
+     * the right price and a query per step is not.
+     */
+    private final Map<IslandId, Instant> knownClean = new ConcurrentHashMap<>();
 
     public IslandAntiAbuseService(
             AntiAbuseStoragePort storagePort,
@@ -50,6 +68,7 @@ public final class IslandAntiAbuseService {
             int maxResetsPerDay,
             Duration resetWindowDuration,
             Duration coopJoinCooldown,
+            Duration quarantineLookupTtl,
             Clock clock) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
         this.purgeInventoryOnReset = purgeInventoryOnReset;
@@ -58,6 +77,7 @@ public final class IslandAntiAbuseService {
         this.maxResetsPerDay = maxResetsPerDay;
         this.resetWindowDuration = Objects.requireNonNull(resetWindowDuration, "resetWindowDuration must not be null");
         this.coopJoinCooldown = Objects.requireNonNull(coopJoinCooldown, "coopJoinCooldown must not be null");
+        this.quarantineLookupTtl = Objects.requireNonNull(quarantineLookupTtl, "quarantineLookupTtl must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
 
         // Warm up active quarantines on startup
@@ -77,6 +97,7 @@ public final class IslandAntiAbuseService {
                 DEFAULT_MAX_RESETS_PER_DAY,
                 DEFAULT_RESET_WINDOW_DURATION,
                 DEFAULT_COOP_JOIN_COOLDOWN,
+                DEFAULT_QUARANTINE_LOOKUP_TTL,
                 Clock.systemUTC());
     }
 
@@ -216,6 +237,7 @@ public final class IslandAntiAbuseService {
         Instant expiresAt = now.plus(quarantineDuration);
         IslandQuarantineRecord record = new IslandQuarantineRecord(islandId, expiresAt, "NEW_ISLAND_CREATION");
         activeQuarantines.put(islandId, record);
+        knownClean.remove(islandId);
         storagePort.saveQuarantine(record);
     }
 
@@ -232,10 +254,16 @@ public final class IslandAntiAbuseService {
 
         IslandQuarantineRecord record = activeQuarantines.get(islandId);
         if (record == null) {
+            if (recentlyFoundClean(islandId, now)) {
+                return false;
+            }
             Optional<IslandQuarantineRecord> opt = storagePort.findQuarantine(islandId);
             if (opt.isPresent()) {
                 record = opt.get();
                 activeQuarantines.put(islandId, record);
+                knownClean.remove(islandId);
+            } else {
+                knownClean.put(islandId, now);
             }
         }
 
@@ -244,11 +272,25 @@ public final class IslandAntiAbuseService {
                 return true;
             } else {
                 activeQuarantines.remove(islandId);
+                knownClean.put(islandId, now);
                 storagePort.deleteQuarantine(islandId);
                 return false;
             }
         }
         return false;
+    }
+
+    /** Whether this node looked recently enough to trust that the island has no quarantine. */
+    private boolean recentlyFoundClean(IslandId islandId, Instant now) {
+        Instant lookedAt = knownClean.get(islandId);
+        if (lookedAt == null) {
+            return false;
+        }
+        if (lookedAt.plus(quarantineLookupTtl).isBefore(now)) {
+            knownClean.remove(islandId);
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -277,6 +319,7 @@ public final class IslandAntiAbuseService {
     public void liftQuarantine(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         activeQuarantines.remove(islandId);
+        knownClean.put(islandId, clock.instant());
         storagePort.deleteQuarantine(islandId);
     }
 

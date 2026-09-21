@@ -111,6 +111,7 @@ class IslandAntiAbuseServiceTest {
                 3,
                 Duration.ofHours(24),
                 Duration.ofHours(24),
+                IslandAntiAbuseService.DEFAULT_QUARANTINE_LOOKUP_TTL,
                 clock);
         playerUuid = new PlayerUuid(UUID.randomUUID());
         islandId = new IslandId(UUID.randomUUID());
@@ -161,6 +162,7 @@ class IslandAntiAbuseServiceTest {
                 3,
                 Duration.ofHours(24),
                 Duration.ofHours(24),
+                IslandAntiAbuseService.DEFAULT_QUARANTINE_LOOKUP_TTL,
                 clock);
 
         // Reset 1 at 0h

@@ -114,6 +114,7 @@ public final class AdminWiring {
                 config.antiAbuseConfig().maxResetsPerDay(),
                 config.antiAbuseConfig().resetWindowDuration(),
                 config.antiAbuseConfig().coopJoinCooldown(),
+                config.antiAbuseConfig().quarantineLookupTtl(),
                 java.time.Clock.systemUTC());
         this.antiAbuseListener = config.moduleSettings().isModuleEnabled("anti-abuse")
                 ? new IslandAntiAbuseListener(
