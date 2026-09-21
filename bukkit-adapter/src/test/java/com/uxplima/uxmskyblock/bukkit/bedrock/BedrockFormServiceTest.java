@@ -44,7 +44,7 @@ class BedrockFormServiceTest {
     void setUp() {
         detector = mock(BedrockDetector.class);
         screen = mock(BedrockScreen.class);
-        service = new BedrockFormService(detector, screen);
+        service = new BedrockFormService(detector, screen, com.uxplima.uxmskyblock.bukkit.i18n.Messages.bundled());
 
         player = mock(Player.class);
         playerUuid = UUID.randomUUID();
@@ -130,12 +130,10 @@ class BedrockFormServiceTest {
     }
 
     @Test
-    @DisplayName("openIslandControlForm uses MessageProvider localization based on player locale")
+    @DisplayName("openIslandControlForm draws its buttons in the language the player reads")
     void testLocalizedBedrockForms() {
-        com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider messageProvider =
-                new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en");
-        messageProvider.loadBundledDefaults(getClass().getClassLoader());
-        BedrockFormService localizedService = new BedrockFormService(detector, screen, messageProvider);
+        BedrockFormService localizedService =
+                new BedrockFormService(detector, screen, com.uxplima.uxmskyblock.bukkit.i18n.Messages.bundled());
 
         Player trPlayer = mock(Player.class);
         when(trPlayer.getUniqueId()).thenReturn(UUID.randomUUID());

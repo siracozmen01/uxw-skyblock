@@ -9,14 +9,15 @@ import java.util.function.Consumer;
 
 import org.bukkit.entity.Player;
 
-import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.bedrock.BedrockButton;
 import com.uxplima.uxmlib.bedrock.BedrockDetector;
 import com.uxplima.uxmlib.bedrock.BedrockScreen;
 import com.uxplima.uxmlib.bedrock.BedrockWidget;
-import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
@@ -30,48 +31,51 @@ public final class BedrockFormService {
 
     private final BedrockDetector detector;
     private final BedrockScreen screen;
-    private final MessageProvider messageProvider;
+    private final Messages messages;
 
-    public BedrockFormService(BedrockDetector detector, BedrockScreen screen) {
-        this(detector, screen, new MessageProvider("en"));
-    }
-
-    public BedrockFormService(BedrockDetector detector, BedrockScreen screen, MessageProvider messageProvider) {
+    public BedrockFormService(BedrockDetector detector, BedrockScreen screen, Messages messages) {
         this.detector = Objects.requireNonNull(detector, "detector must not be null");
         this.screen = Objects.requireNonNull(screen, "screen must not be null");
-        this.messageProvider = Objects.requireNonNull(messageProvider, "messageProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
-    public MessageProvider messageProvider() {
-        return messageProvider;
+    public Messages messages() {
+        return messages;
     }
 
-    @SuppressWarnings("EmptyCatch")
-    private String resolveLocale(Player player) {
-        if (player == null) {
-            return messageProvider.defaultLocale();
+    /**
+     * A Floodgate form takes a legacy string rather than a component, so a catalogue line is drawn
+     * for this viewer and then flattened. The catalogue is the only source: a fallback written here
+     * would be a second copy of the words, in one language, that no translator can reach.
+     */
+    private String text(Player player, String key, TagResolver... resolvers) {
+        return LegacyComponentSerializer.legacySection().serialize(messages.renderPlain(player, key, resolvers));
+    }
+
+    /** One button of a generic form: what it says, and what it does when it is pressed. */
+    public record Choice(String label, Runnable action) {
+        public Choice {
+            Objects.requireNonNull(label, "label must not be null");
+            Objects.requireNonNull(action, "action must not be null");
         }
-        try {
-            if (player.locale() != null) {
-                return player.locale().getLanguage();
+    }
+
+    /**
+     * The form every window that is a list of buttons can use, so a new window does not need a new
+     * method here. The chest version of the window decides what the buttons are; this decides
+     * nothing but how they are drawn.
+     */
+    public void openChoiceForm(Player player, String titleKey, String bodyKey, List<Choice> choices) {
+        Objects.requireNonNull(player, "player must not be null");
+        Objects.requireNonNull(choices, "choices must not be null");
+        List<BedrockButton> buttons = choices.stream()
+                .map(choice -> new BedrockButton(choice.label(), null))
+                .toList();
+        screen.sendSimpleForm(player, text(player, titleKey), text(player, bodyKey), buttons, index -> {
+            if (index >= 0 && index < choices.size()) {
+                choices.get(index).action().run();
             }
-        } catch (Throwable ignored) {
-        }
-        return messageProvider.defaultLocale();
-    }
-
-    @SuppressWarnings("EmptyCatch")
-    private String text(String key, String locale, String fallback) {
-        String val = messageProvider.getRaw(key, locale);
-        if (val == null || val.equals(key)) {
-            return fallback;
-        }
-        try {
-            Component comp = messageProvider.getComponentWithoutPrefix(key, locale);
-            return LegacyComponentSerializer.legacySection().serialize(comp);
-        } catch (Throwable ignored) {
-            return val;
-        }
+        });
     }
 
     public boolean isBedrock(Player player) {
@@ -95,19 +99,17 @@ public final class BedrockFormService {
             @Nullable Runnable onSettings) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(island, "island must not be null");
-
-        String locale = resolveLocale(player);
         List<BedrockButton> buttons = List.of(
-                new BedrockButton(text("bedrock.button_home", locale, "§aIsland Home"), null),
-                new BedrockButton(text("bedrock.button_warps", locale, "§bWarps"), null),
-                new BedrockButton(text("bedrock.button_bank", locale, "§6Bank Treasury"), null),
-                new BedrockButton(text("bedrock.button_members", locale, "§dMembers & Roles"), null),
-                new BedrockButton(text("bedrock.button_settings", locale, "§eSettings"), null));
+                new BedrockButton(text(player, "bedrock.button_home"), null),
+                new BedrockButton(text(player, "bedrock.button_warps"), null),
+                new BedrockButton(text(player, "bedrock.button_bank"), null),
+                new BedrockButton(text(player, "bedrock.button_members"), null),
+                new BedrockButton(text(player, "bedrock.button_settings"), null));
 
         screen.sendSimpleForm(
                 player,
-                text("bedrock.control_title", locale, "Island Control Panel"),
-                text("bedrock.control_content", locale, "Manage your island settings, treasury, and warps."),
+                text(player, "bedrock.control_title"),
+                text(player, "bedrock.control_content"),
                 buttons,
                 index -> {
                     switch (index) {
@@ -149,20 +151,19 @@ public final class BedrockFormService {
     public void openWarpDirectoryForm(Player player, List<IslandWarp> warps, @Nullable Consumer<IslandWarp> onSelect) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(warps, "warps must not be null");
-
-        String locale = resolveLocale(player);
         List<BedrockButton> buttons = new ArrayList<>();
         for (IslandWarp warp : warps) {
             buttons.add(new BedrockButton(
-                    "§b" + warp.name().value() + " §7[" + warp.category().name() + "]", null));
+                    text(
+                            player,
+                            "bedrock.warp_button",
+                            Placeholder.unparsed("name", warp.name().value()),
+                            Placeholder.unparsed("category", warp.category().name())),
+                    null));
         }
 
         screen.sendSimpleForm(
-                player,
-                text("bedrock.warps_title", locale, "Island Warps"),
-                text("bedrock.warps_content", locale, "Select a warp destination to teleport:"),
-                buttons,
-                index -> {
+                player, text(player, "bedrock.warps_title"), text(player, "bedrock.warps_content"), buttons, index -> {
                     if (index >= 0 && index < warps.size() && onSelect != null) {
                         onSelect.accept(warps.get(index));
                     }
@@ -182,10 +183,8 @@ public final class BedrockFormService {
             @Nullable Runnable onCancel) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(title, "title must not be null");
-
-        String locale = resolveLocale(player);
-        String defaultConfirm = text("bedrock.modal_confirm", locale, "§aConfirm");
-        String defaultCancel = text("bedrock.modal_cancel", locale, "§cCancel");
+        String defaultConfirm = text(player, "bedrock.modal_confirm");
+        String defaultCancel = text(player, "bedrock.modal_cancel");
         screen.sendModalForm(
                 player,
                 title,
@@ -206,37 +205,34 @@ public final class BedrockFormService {
             @Nullable Runnable onClose) {
         Objects.requireNonNull(player, "player must not be null");
         Objects.requireNonNull(currentFlags, "currentFlags must not be null");
-
-        String locale = resolveLocale(player);
         List<BedrockWidget> widgets = List.of(
-                new BedrockWidget.Label(text(
-                        "bedrock.settings_label", locale, "Configure island protection and environmental policies:")),
+                new BedrockWidget.Label(text(player, "bedrock.settings_label")),
                 new BedrockWidget.Toggle(
-                        "PVP", text("bedrock.flag_pvp", locale, "PvP Combat"), currentFlags.isEnabled(IslandFlags.PVP)),
+                        "PVP", text(player, "bedrock.flag_pvp"), currentFlags.isEnabled(IslandFlags.PVP)),
                 new BedrockWidget.Toggle(
                         "FIRE_SPREAD",
-                        text("bedrock.flag_fire_spread", locale, "Fire Spread"),
+                        text(player, "bedrock.flag_fire_spread"),
                         currentFlags.isEnabled(IslandFlags.FIRE_SPREAD)),
                 new BedrockWidget.Toggle(
                         "MONSTER_SPAWN",
-                        text("bedrock.flag_monster_spawn", locale, "Monster Spawning"),
+                        text(player, "bedrock.flag_monster_spawn"),
                         currentFlags.isEnabled(IslandFlags.MONSTER_SPAWN)),
                 new BedrockWidget.Toggle(
                         "ANIMAL_SPAWN",
-                        text("bedrock.flag_animal_spawn", locale, "Animal Spawning"),
+                        text(player, "bedrock.flag_animal_spawn"),
                         currentFlags.isEnabled(IslandFlags.ANIMAL_SPAWN)),
                 new BedrockWidget.Toggle(
                         "VISITOR_ACCESS",
-                        text("bedrock.flag_visitor_access", locale, "Visitor Access"),
+                        text(player, "bedrock.flag_visitor_access"),
                         currentFlags.isEnabled(IslandFlags.VISITOR_ACCESS)),
                 new BedrockWidget.Toggle(
                         "EXPLOSION_DAMAGE",
-                        text("bedrock.flag_explosion_damage", locale, "Explosion Damage"),
+                        text(player, "bedrock.flag_explosion_damage"),
                         currentFlags.isEnabled(IslandFlags.EXPLOSION_DAMAGE)));
 
         screen.sendCustomForm(
                 player,
-                text("bedrock.settings_title", locale, "Island Settings"),
+                text(player, "bedrock.settings_title"),
                 null,
                 widgets,
                 submittedMap -> {

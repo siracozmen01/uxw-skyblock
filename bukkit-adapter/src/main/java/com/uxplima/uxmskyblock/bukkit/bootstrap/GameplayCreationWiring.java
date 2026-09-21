@@ -85,7 +85,8 @@ public final class GameplayCreationWiring {
                     persistence.islandStoragePort(),
                     authority.sessionCoordinator(),
                     scheduler,
-                    config.messages());
+                    config.messages(),
+                    null);
             this.missionListener = new IslandMissionListener(
                     missionService,
                     persistence.islandStoragePort(),

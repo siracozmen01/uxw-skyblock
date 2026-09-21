@@ -16,11 +16,13 @@ import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -45,18 +47,29 @@ public final class IslandMissionsMenu {
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
+    private @Nullable BedrockFormService bedrockFormService;
 
     public IslandMissionsMenu(
             IslandMissionService missionService,
             IslandStoragePort islandStoragePort,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
-            Messages messages) {
+            Messages messages,
+            @Nullable BedrockFormService bedrockFormService) {
         this.missionService = Objects.requireNonNull(missionService, "missionService must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.sessionCoordinator = sessionCoordinator;
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.bedrockFormService = bedrockFormService;
+    }
+
+    /**
+     * The Bedrock screen is built after this window is, so it arrives here rather than in the
+     * constructor. Until it does, a Bedrock player gets the chest window.
+     */
+    public void setBedrockFormService(@Nullable BedrockFormService bedrockFormService) {
+        this.bedrockFormService = bedrockFormService;
     }
 
     public void open(Player player) {
@@ -93,10 +106,55 @@ public final class IslandMissionsMenu {
                 if (!player.isOnline()) {
                     return;
                 }
+                BedrockFormService forms = this.bedrockFormService;
+                if (forms != null && forms.isBedrock(player)) {
+                    openForm(forms, player, islandId, profileId, progressMap, all);
+                    return;
+                }
                 SimpleGui gui = buildGui(player, islandId, profileId, progressMap, all);
                 gui.open(player);
             });
         });
+    }
+
+    /**
+     * The same window for a Bedrock player, as a native form rather than a chest they cannot use
+     * properly. The buttons are the same missions in the same order, and a mission that takes items
+     * submits them from here too.
+     */
+    private void openForm(
+            BedrockFormService forms,
+            Player player,
+            IslandId islandId,
+            ProfileId profileId,
+            Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap,
+            List<MissionDefinition> all) {
+        List<BedrockFormService.Choice> choices = new ArrayList<>();
+        for (MissionDefinition def : all) {
+            MissionProgress progress = progressMap.get(def.id());
+            long count = progress != null ? progress.progressCount() : 0L;
+            boolean completed = progress != null && progress.completed();
+            Component status = completed
+                    ? messages.renderPlain(player, "menu.missions.status_completed")
+                    : messages.renderPlain(
+                            player,
+                            "menu.missions.status_open",
+                            Placeholder.unparsed("count", Long.toString(count)),
+                            Placeholder.unparsed("required", Long.toString(def.requiredAmount())));
+            String label = LegacyComponentSerializer.legacySection()
+                    .serialize(messages.renderPlain(
+                            player,
+                            "menu.missions.form_button",
+                            Placeholder.unparsed("mission", def.displayName()),
+                            Placeholder.component("status", status)));
+            boolean submittable = !completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT;
+            choices.add(new BedrockFormService.Choice(label, () -> {
+                if (submittable) {
+                    handleManualItemSubmission(player, islandId, profileId, def);
+                }
+            }));
+        }
+        forms.openChoiceForm(player, "menu.missions.title", "menu.missions.form_body", choices);
     }
 
     public SimpleGui buildGui(

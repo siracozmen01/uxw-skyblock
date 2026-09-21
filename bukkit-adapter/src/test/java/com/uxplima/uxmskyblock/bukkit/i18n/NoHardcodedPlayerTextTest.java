@@ -56,6 +56,24 @@ class NoHardcodedPlayerTextTest {
         }
     }
 
+    @Test
+    @DisplayName("No legacy section sign is written into a string")
+    void noLegacyColourCodes() throws IOException {
+        List<String> found = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(Path.of("src/main/java"))) {
+            for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                String body = Files.readString(file, StandardCharsets.UTF_8);
+                if (body.contains("\u00a7")) {
+                    found.add(file.getFileName().toString());
+                }
+            }
+        }
+
+        assertThat(found)
+                .describedAs("files holding a legacy section sign, which the text standard forbids")
+                .isEmpty();
+    }
+
     private static List<String> offences(Pattern pattern) throws IOException {
         List<String> found = new ArrayList<>();
         try (Stream<Path> files = Files.walk(Path.of("src/main/java"))) {

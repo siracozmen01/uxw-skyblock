@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.menu;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -14,11 +15,13 @@ import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -45,6 +48,7 @@ public final class IslandBoosterMenu {
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final @Nullable SchedulerPort schedulerPort;
     private final Messages messages;
+    private @Nullable BedrockFormService bedrockFormService;
 
     public IslandBoosterMenu(
             IslandStoragePort islandStoragePort,
@@ -68,6 +72,11 @@ public final class IslandBoosterMenu {
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             Messages messages) {
         this(islandStoragePort, boosterService, configuration, sessionCoordinator, null, messages);
+    }
+
+    /** The Bedrock screen is built after this window is, so it arrives here rather than in the constructor. */
+    public void setBedrockFormService(@Nullable BedrockFormService bedrockFormService) {
+        this.bedrockFormService = bedrockFormService;
     }
 
     public void open(Player player) {
@@ -102,10 +111,16 @@ public final class IslandBoosterMenu {
 
             IslandId islandId = optIslandId.get();
             Runnable show = () -> {
-                if (player.isOnline()) {
-                    SimpleGui gui = buildGui(player, islandId, Instant.now());
-                    gui.open(player);
+                if (!player.isOnline()) {
+                    return;
                 }
+                BedrockFormService forms = this.bedrockFormService;
+                if (forms != null && forms.isBedrock(player)) {
+                    openForm(forms, player, islandId, Instant.now());
+                    return;
+                }
+                SimpleGui gui = buildGui(player, islandId, Instant.now());
+                gui.open(player);
             };
             if (schedulerPort != null) {
                 schedulerPort.onEntity(playerUuid, show);
@@ -119,6 +134,50 @@ public final class IslandBoosterMenu {
         } else {
             asyncTask.run();
         }
+    }
+
+    /**
+     * The same overview for a Bedrock player, as a native form. The window is read only on both
+     * sides, so every button closes it: what matters is that the numbers are readable at all, which
+     * they are not in a chest a Bedrock client renders as a list of icons.
+     */
+    private void openForm(BedrockFormService forms, Player player, IslandId islandId, Instant now) {
+        List<BedrockFormService.Choice> choices = new ArrayList<>();
+        for (BoosterCategory category : BoosterCategory.values()) {
+            CategoryBoosterPolicy policy = configuration.policy(category);
+            List<IslandBooster> active = boosterService.getActiveBoosters(islandId, category, now);
+            boolean hasActive = !active.isEmpty();
+            boolean paused = hasActive && active.stream().anyMatch(IslandBooster::isPaused);
+            String statusKey;
+            if (!policy.enabled()) {
+                statusKey = "menu.booster.status_disabled";
+            } else if (paused) {
+                statusKey = "menu.booster.status_paused";
+            } else if (hasActive) {
+                statusKey = "menu.booster.status_active";
+            } else {
+                statusKey = "menu.booster.status_inactive";
+            }
+            long remainingSeconds = 0;
+            for (IslandBooster booster : active) {
+                remainingSeconds += booster.effectiveRemainingSeconds(now);
+            }
+            String label = LegacyComponentSerializer.legacySection()
+                    .serialize(messages.renderPlain(
+                            player,
+                            "menu.booster.form_button",
+                            Placeholder.unparsed("category", category.displayName()),
+                            Placeholder.component("status", messages.renderPlain(player, statusKey)),
+                            Placeholder.unparsed(
+                                    "multiplier",
+                                    String.format(
+                                            java.util.Locale.ROOT,
+                                            "%.2f",
+                                            boosterService.getEffectiveMultiplier(islandId, category, now))),
+                            Placeholder.unparsed("remaining", formatDuration(Duration.ofSeconds(remainingSeconds)))));
+            choices.add(new BedrockFormService.Choice(label, () -> {}));
+        }
+        forms.openChoiceForm(player, "menu.booster.title", "menu.booster.form_body", choices);
     }
 
     public SimpleGui buildGui(Player player, IslandId islandId, Instant now) {
