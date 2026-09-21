@@ -156,13 +156,12 @@ public final class IslandMissionService {
                 continue;
             }
 
-            MissionProgress current = playerProgress.computeIfAbsent(def.id(), MissionProgress::initial);
-            if (current.completed()) {
+            Advance advance = advance(playerProgress, def, amount, now);
+            if (advance == null) {
                 continue;
             }
 
-            MissionProgress next = current.increment(amount, def.requiredAmount(), now);
-            playerProgress.put(def.id(), next);
+            MissionProgress next = advance.progress();
             if (next.completed()) {
                 dirtyEntries.remove(dirtyKey(islandId, profileId, def.id()));
                 storagePort.saveProgress(islandId, profileId, next);
@@ -172,7 +171,7 @@ public final class IslandMissionService {
             }
             updated.add(next);
 
-            if (!current.completed() && next.completed() && rewardPort != null) {
+            if (advance.finishedItNow() && rewardPort != null) {
                 rewardPort.dispatchReward(islandId, profileId, def);
             }
         }
@@ -195,20 +194,55 @@ public final class IslandMissionService {
         }
 
         Map<MissionId, MissionProgress> playerProgress = findAllProgress(islandId, profileId);
-        MissionProgress current = playerProgress.computeIfAbsent(def.id(), MissionProgress::initial);
-        if (current.completed()) {
-            return Optional.of(current);
+        Advance advance = advance(playerProgress, def, amount, now);
+        if (advance == null) {
+            return Optional.ofNullable(playerProgress.get(def.id()));
         }
 
-        MissionProgress next = current.increment(amount, def.requiredAmount(), now);
-        playerProgress.put(def.id(), next);
+        MissionProgress next = advance.progress();
         dirtyEntries.remove(dirtyKey(islandId, profileId, def.id()));
         storagePort.saveProgress(islandId, profileId, next);
 
-        if (next.completed() && rewardPort != null) {
+        if (advance.finishedItNow() && rewardPort != null) {
             rewardPort.dispatchReward(islandId, profileId, def);
         }
         return Optional.of(next);
+    }
+
+    /** One mission moved: where it now stands, and whether this caller is the one that finished it. */
+    private record Advance(MissionProgress progress, boolean finishedItNow) {}
+
+    /**
+     * Moves one mission on by {@code amount}, atomically for that mission.
+     *
+     * <p>Reading the progress, adding to it and writing it back leaves a window, and the triggers
+     * arrive on a pool: every block a player breaks is one. Two of them read the same count and both
+     * wrote the same one back, so the player mined two and the mission counted one. Worse, two that
+     * read one short of the target both crossed it, and both saw themselves cross it, so the reward
+     * was handed out twice.
+     *
+     * <p>The progress map is keyed by mission, so one {@code compute} does the whole move under that
+     * key. Only the caller whose own increment crossed the line is told it finished it, and the
+     * storage write and the reward stay outside the map, where slow work belongs.
+     *
+     * @return where the mission now stands, or null when it was already finished
+     */
+    private @Nullable Advance advance(
+            Map<MissionId, MissionProgress> playerProgress, MissionDefinition def, long amount, Instant now) {
+        boolean[] finishedItNow = {false};
+        MissionProgress next = playerProgress.compute(def.id(), (missionId, existing) -> {
+            MissionProgress before = existing != null ? existing : MissionProgress.initial(missionId);
+            if (before.completed()) {
+                return before;
+            }
+            MissionProgress after = before.increment(amount, def.requiredAmount(), now);
+            finishedItNow[0] = after.completed();
+            return after;
+        });
+        if (next == null || (next.completed() && !finishedItNow[0])) {
+            return null;
+        }
+        return new Advance(next, finishedItNow[0]);
     }
 
     /**
