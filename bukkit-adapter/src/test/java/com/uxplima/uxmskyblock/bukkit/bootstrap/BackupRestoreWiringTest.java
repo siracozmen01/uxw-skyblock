@@ -252,7 +252,7 @@ class BackupRestoreWiringTest {
             when(authority.nodeProcessIdentity())
                     .thenReturn(com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity.create("node-1"));
 
-            IslandProtectionListener protectionListener = mock(IslandProtectionListener.class);
+            IslandProtectionListener protectionListener = protectionListenerWithIndex();
             when(protectionListener.spatialIndex()).thenReturn(mock(SpatialIslandIndex.class));
 
             IslandAccessService accessService = mock(IslandAccessService.class);
@@ -303,7 +303,7 @@ class BackupRestoreWiringTest {
                 mock(com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort.class),
                 new com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog(),
                 mock(com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine.class),
-                mock(IslandProtectionListener.class),
+                protectionListenerWithIndex(),
                 mock(PlayerSessionCoordinator.class),
                 mock(SchedulerPort.class),
                 com.uxplima.uxmskyblock.bukkit.i18n.Messages.of(
@@ -321,5 +321,19 @@ class BackupRestoreWiringTest {
 
         assertThat(commandTree.restoreService()).isSameAs(restoreService);
         assertThat(commandTree.backupService()).isSameAs(backupService);
+    }
+
+    /**
+     * A protection listener whose spatial index is real.
+     *
+     * <p>The command tree asks it where an island is, and a bare mock answers null: the tree then
+     * refuses to build and the test fails for a reason that has nothing to do with what it checks.
+     */
+    private static IslandProtectionListener protectionListenerWithIndex() {
+        IslandProtectionListener listener = mock(IslandProtectionListener.class);
+        when(listener.spatialIndex())
+                .thenReturn(new com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex(
+                        mock(com.uxplima.uxmskyblock.core.application.island.IslandStoragePort.class), null));
+        return listener;
     }
 }

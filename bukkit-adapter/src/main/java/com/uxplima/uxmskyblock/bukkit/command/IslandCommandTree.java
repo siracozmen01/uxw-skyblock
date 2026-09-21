@@ -414,7 +414,7 @@ public final class IslandCommandTree {
                 () -> warpService, islandLocationService, schedulerPort, messages, sessionCoordinator);
 
         IslandSocialCommands socialCommands = new IslandSocialCommands(
-                () -> socialService, islandLocationService, schedulerPort, messages, sessionCoordinator);
+                () -> socialService, protectionListener.spatialIndex(), schedulerPort, messages, sessionCoordinator);
 
         IslandAllianceCommands allianceCommands = new IslandAllianceCommands(
                 () -> allianceService, islandLocationService, schedulerPort, messages, sessionCoordinator);

@@ -83,7 +83,7 @@ class EveryMenuCommandParsesTest {
                 mock(BiomeModificationPort.class),
                 new StarterPresetCatalog(),
                 mock(StarterSchematicEngine.class),
-                mock(IslandProtectionListener.class),
+                protectionListenerWithIndex(),
                 mock(PlayerSessionCoordinator.class),
                 mock(SchedulerPort.class),
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
@@ -154,5 +154,19 @@ class EveryMenuCommandParsesTest {
                 .describedAs("a menu slot that runs a line Brigadier cannot parse reads to a player "
                         + "exactly like a broken plugin")
                 .isEmpty();
+    }
+
+    /**
+     * A protection listener whose spatial index is real.
+     *
+     * <p>The command tree asks it where an island is, and a bare mock answers null: the tree then
+     * refuses to build and the test fails for a reason that has nothing to do with what it checks.
+     */
+    private static IslandProtectionListener protectionListenerWithIndex() {
+        IslandProtectionListener listener = mock(IslandProtectionListener.class);
+        when(listener.spatialIndex())
+                .thenReturn(new com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex(
+                        mock(com.uxplima.uxmskyblock.core.application.island.IslandStoragePort.class), null));
+        return listener;
     }
 }

@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -23,12 +24,13 @@ import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
-import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
+import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.social.GuestbookEntry;
 import com.uxplima.uxmskyblock.core.domain.social.RatingSummary;
 import com.uxplima.uxmskyblock.core.domain.social.SocialSubjectRef;
@@ -49,21 +51,20 @@ public final class IslandSocialCommands {
     private static final int MAX_SCORE = 5;
 
     private final Supplier<@Nullable IslandSocialService> socialServiceProvider;
-    private final IslandLocationService islandLocationService;
+    private final SpatialIslandIndex spatialIndex;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandSocialCommands(
             Supplier<@Nullable IslandSocialService> socialServiceProvider,
-            IslandLocationService islandLocationService,
+            SpatialIslandIndex spatialIndex,
             SchedulerPort schedulerPort,
             Messages messages,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
         this.socialServiceProvider =
                 Objects.requireNonNull(socialServiceProvider, "socialServiceProvider must not be null");
-        this.islandLocationService =
-                Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
+        this.spatialIndex = Objects.requireNonNull(spatialIndex, "spatialIndex must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
@@ -217,22 +218,39 @@ public final class IslandSocialCommands {
     }
 
     /**
-     * Resolves the island this command is about.
+     * Resolves the island this command is about: the one the caller is standing on.
      *
-     * <p>Today that is the caller's own island, because resolving the one under their feet needs the
-     * spatial index and this is the seam where that would go. A guestbook entry on your own island
-     * is still an entry, and it is the first thing a server owner tries.
+     * <p>A guestbook you can only sign on your own island is a guestbook nobody signs, and a rating
+     * you can only give your own island is worth nothing. The island under the player's feet is what
+     * these three verbs are for.
+     *
+     * <p>Where they stand is read here, on the thread that owns them, and the lookup happens off it.
+     * The spatial index answers from memory and never queries on the hot path; a miss means the
+     * chunk has not been indexed yet, and the caller is told rather than made to wait.
      */
     private int onIslandHere(CommandContext<CommandSourceStack> ctx, SubjectAction action) {
+        if (!(ctx.getSource().getSender() instanceof Player standing)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        Location at = standing.getLocation();
+        if (at == null || at.getWorld() == null) {
+            send(standing, "social.nowhere");
+            return Cmd.OK;
+        }
+        String worldName = at.getWorld().getName();
+        int blockX = at.getBlockX();
+        int blockZ = at.getBlockZ();
+
         return withService(
                 ctx,
                 (player, service, profileId) -> schedulerPort.async(() -> {
-                    Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
-                    if (optIsland.isEmpty()) {
-                        onEntity(player, () -> send(player, "error.no_island"));
+                    Optional<Island> here = spatialIndex.findIslandAt(worldName, blockX, blockZ);
+                    if (here.isEmpty()) {
+                        onEntity(player, () -> send(player, "social.not_on_an_island"));
                         return;
                     }
-                    action.run(player, service, optIsland.get(), profileId);
+                    action.run(player, service, here.get().id(), profileId);
                 }));
     }
 
