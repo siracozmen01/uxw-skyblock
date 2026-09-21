@@ -294,7 +294,8 @@ public final class IslandCommandTree {
                 islandLocationService,
                 sessionCoordinator,
                 schedulerPort,
-                worldName);
+                worldName,
+                messages);
 
         IslandLifecycleCommands lifecycleCommands = new IslandLifecycleCommands(
                 createIslandUseCase,

@@ -15,13 +15,14 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -61,6 +62,7 @@ public final class IslandAdminCommands {
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final String worldName;
+    private final Messages messages;
 
     public IslandAdminCommands(
             Supplier<@Nullable IslandInactivityService> inactivityServiceProvider,
@@ -72,7 +74,8 @@ public final class IslandAdminCommands {
             IslandLocationService islandLocationService,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
-            String worldName) {
+            String worldName,
+            Messages messages) {
         this.inactivityServiceProvider =
                 Objects.requireNonNull(inactivityServiceProvider, "inactivityServiceProvider must not be null");
         this.freezeServiceProvider =
@@ -89,6 +92,7 @@ public final class IslandAdminCommands {
         this.sessionCoordinator = sessionCoordinator;
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildAdmin() {
@@ -170,27 +174,27 @@ public final class IslandAdminCommands {
         CommandSourceStack src = ctx.getSource();
         IslandInactivityService inactivityService = inactivityServiceProvider.get();
         if (inactivityService == null) {
-            send(src.getSender(), Component.text("Inactivity service is not enabled.", NamedTextColor.RED));
+            send(src.getSender(), "admin.inactivity_disabled");
             return Cmd.OK;
         }
 
-        send(src.getSender(), Component.text("Starting asynchronous island inactivity scan...", NamedTextColor.YELLOW));
+        send(src.getSender(), "admin.inactivity_scanning");
         schedulerPort.async(() -> {
             try {
                 IslandInactivityScanReport report = inactivityService.scanWorld(worldName, Instant.now());
                 send(
                         src.getSender(),
-                        Component.text(
-                                String.format(
-                                        "Inactivity scan complete: %d evaluated, %d successions, %d archived, %d deleted, %d skipped.",
-                                        report.totalEvaluated(),
-                                        report.successionsExecuted(),
-                                        report.islandsArchived(),
-                                        report.islandsDeleted(),
-                                        report.islandsSkipped()),
-                                NamedTextColor.GREEN));
+                        "admin.inactivity_report",
+                        Placeholder.unparsed("evaluated", Integer.toString(report.totalEvaluated())),
+                        Placeholder.unparsed("successions", Integer.toString(report.successionsExecuted())),
+                        Placeholder.unparsed("archived", Integer.toString(report.islandsArchived())),
+                        Placeholder.unparsed("deleted", Integer.toString(report.islandsDeleted())),
+                        Placeholder.unparsed("skipped", Integer.toString(report.islandsSkipped())));
             } catch (Exception e) {
-                send(src.getSender(), Component.text("Inactivity scan failed: " + e.getMessage(), NamedTextColor.RED));
+                send(
+                        src.getSender(),
+                        "admin.inactivity_failed",
+                        Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
             }
         });
         return Cmd.OK;
@@ -200,7 +204,7 @@ public final class IslandAdminCommands {
         CommandSourceStack src = ctx.getSource();
         IslandAdminFreezeService freezeService = freezeServiceProvider.get();
         if (freezeService == null) {
-            send(src.getSender(), Component.text("Freeze service is not enabled.", NamedTextColor.RED));
+            send(src.getSender(), "admin.freeze_disabled");
             return Cmd.OK;
         }
 
@@ -210,9 +214,7 @@ public final class IslandAdminCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optId = resolveIslandId(sessionCoordinator, islandLocationService, target);
             if (optId.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
+                send(src.getSender(), "admin.island_unresolved", Placeholder.unparsed("target", target));
                 return;
             }
 
@@ -222,12 +224,14 @@ public final class IslandAdminCommands {
                 protectionListener.invalidateIsland(islandId);
                 send(
                         src.getSender(),
-                        MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<green>Successfully quarantined and froze island <yellow>" + islandId.value()
-                                                + "</yellow> with reason: <aqua>" + reason + "</aqua></green>"));
+                        "admin.frozen",
+                        Placeholder.unparsed("island", islandId.value().toString()),
+                        Placeholder.unparsed("reason", reason));
             } catch (Exception e) {
-                send(src.getSender(), Component.text("Failed to freeze island: " + e.getMessage(), NamedTextColor.RED));
+                send(
+                        src.getSender(),
+                        "admin.freeze_failed",
+                        Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
             }
         });
         return Cmd.OK;
@@ -237,7 +241,7 @@ public final class IslandAdminCommands {
         CommandSourceStack src = ctx.getSource();
         IslandAdminFreezeService freezeService = freezeServiceProvider.get();
         if (freezeService == null) {
-            send(src.getSender(), Component.text("Freeze service is not enabled.", NamedTextColor.RED));
+            send(src.getSender(), "admin.freeze_disabled");
             return Cmd.OK;
         }
 
@@ -247,9 +251,7 @@ public final class IslandAdminCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optId = resolveIslandId(sessionCoordinator, islandLocationService, target);
             if (optId.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
+                send(src.getSender(), "admin.island_unresolved", Placeholder.unparsed("target", target));
                 return;
             }
 
@@ -259,14 +261,13 @@ public final class IslandAdminCommands {
                 protectionListener.invalidateIsland(islandId);
                 send(
                         src.getSender(),
-                        MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<green>Successfully lifted administrative quarantine and unfroze island <yellow>"
-                                                + islandId.value() + "</yellow></green>"));
+                        "admin.unfrozen",
+                        Placeholder.unparsed("island", islandId.value().toString()));
             } catch (Exception e) {
                 send(
                         src.getSender(),
-                        Component.text("Failed to unfreeze island: " + e.getMessage(), NamedTextColor.RED));
+                        "admin.unfreeze_failed",
+                        Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
             }
         });
         return Cmd.OK;
@@ -279,76 +280,71 @@ public final class IslandAdminCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optId = resolveIslandId(sessionCoordinator, islandLocationService, target);
             if (optId.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not resolve island for target: " + target, NamedTextColor.RED));
+                send(src.getSender(), "admin.island_unresolved", Placeholder.unparsed("target", target));
                 return;
             }
 
             IslandId islandId = optId.get();
             IslandAdminFreezeService fService = freezeServiceProvider.get();
             if (fService == null) {
-                send(
-                        src.getSender(),
-                        Component.text("Island admin freeze service is not configured.", NamedTextColor.RED));
+                send(src.getSender(), "admin.freeze_not_configured");
                 return;
             }
             Optional<Island> optIsland = fService.findIsland(islandId);
             if (optIsland.isEmpty()) {
                 send(
                         src.getSender(),
-                        Component.text("Island record not found: " + islandId.value(), NamedTextColor.RED));
+                        "admin.island_record_missing",
+                        Placeholder.unparsed("island", islandId.value().toString()));
                 return;
             }
 
             Island island = optIsland.get();
             Optional<IslandLocation> optLoc = fService.findLocation(islandId);
 
+            Audience audience = src.getSender();
             send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gold>--- Island Inspection: <yellow>" + islandId.value()
-                                    + "</yellow> ---</gold>"));
+                    audience,
+                    "admin.inspect_header",
+                    Placeholder.unparsed("island", islandId.value().toString()));
             send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Owner UUID: <white>"
-                                    + island.ownerPlayerUuid().value() + "</white></gray>"));
+                    audience,
+                    "admin.inspect_owner",
+                    Placeholder.unparsed(
+                            "owner", island.ownerPlayerUuid().value().toString()));
             send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Lifecycle: <green>"
-                                    + island.lifecycle().name() + "</green></gray>"));
+                    audience,
+                    "admin.inspect_lifecycle",
+                    Placeholder.unparsed("state", island.lifecycle().name()));
             send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Economic State: <aqua>"
-                                    + island.economicState().name() + "</aqua></gray>"));
-            String adminColor = island.isFrozen() ? "<red><bold>FROZEN</bold></red>" : "<green>NORMAL</green>";
-            send(
-                    src.getSender(),
-                    MiniMessage.miniMessage().deserialize("<gray>Administrative State: " + adminColor + "</gray>"));
+                    audience,
+                    "admin.inspect_economic",
+                    Placeholder.unparsed("state", island.economicState().name()));
+            Component administrative = messages.renderPlain(
+                    audience, island.isFrozen() ? "admin.inspect_state_frozen" : "admin.inspect_state_normal");
+            send(audience, "admin.inspect_administrative", Placeholder.component("state", administrative));
             if (island.isFrozen()) {
-                send(
-                        src.getSender(),
-                        MiniMessage.miniMessage()
-                                .deserialize("<gray>Freeze Reason: <yellow>"
-                                        + (island.freezeReason() != null ? island.freezeReason() : "None")
-                                        + "</yellow></gray>"));
+                String reason = island.freezeReason();
+                TagResolver reasonTag = reason != null
+                        ? Placeholder.unparsed("reason", reason)
+                        : Placeholder.component(
+                                "reason", messages.renderPlain(audience, "admin.inspect_no_freeze_reason"));
+                send(audience, "admin.inspect_freeze_reason", reasonTag);
             }
             send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<gray>Members: <white>" + island.members().size() + "</white> | Roles: <white>"
-                                            + island.roles().size() + "</white></gray>"));
+                    audience,
+                    "admin.inspect_membership",
+                    Placeholder.unparsed(
+                            "members", Integer.toString(island.members().size())),
+                    Placeholder.unparsed(
+                            "roles", Integer.toString(island.roles().size())));
             optLoc.ifPresent(loc -> send(
-                    src.getSender(),
-                    MiniMessage.miniMessage()
-                            .deserialize("<gray>Location: <white>" + loc.worldName() + " ("
-                                    + loc.bounds().centerX() + ", "
-                                    + loc.bounds().centerZ() + ") radius="
-                                    + loc.bounds().radius() + "</white></gray>")));
+                    audience,
+                    "admin.inspect_location",
+                    Placeholder.unparsed("world", loc.worldName()),
+                    Placeholder.unparsed("x", Integer.toString(loc.bounds().centerX())),
+                    Placeholder.unparsed("z", Integer.toString(loc.bounds().centerZ())),
+                    Placeholder.unparsed("radius", Integer.toString(loc.bounds().radius()))));
         });
         return Cmd.OK;
     }
@@ -358,18 +354,18 @@ public final class IslandAdminCommands {
         if (!sender.hasPermission("uxmskyblock.admin.restore")
                 && !sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                 && !sender.isOp()) {
-            send(sender, Component.text("You do not have permission to restore island backups.", NamedTextColor.RED));
+            send(sender, "admin.restore_no_permission");
             return Cmd.OK;
         }
 
         IslandRestoreService rService = restoreServiceProvider.get();
         if (rService == null) {
-            send(sender, Component.text("Island restore service is not configured on this node.", NamedTextColor.RED));
+            send(sender, "admin.restore_not_configured");
             return Cmd.OK;
         }
 
         String backupIdStr = StringArgumentType.getString(ctx, "backupId");
-        send(sender, Component.text("Initiating restore for backup ID: " + backupIdStr + "...", NamedTextColor.YELLOW));
+        send(sender, "admin.restore_starting", Placeholder.unparsed("backup", backupIdStr));
 
         schedulerPort.async(() -> {
             try {
@@ -398,11 +394,7 @@ public final class IslandAdminCommands {
                 }
 
                 if (optManifest.isEmpty()) {
-                    send(
-                            sender,
-                            Component.text(
-                                    "Failed to locate valid backup manifest for " + backupIdStr + " in storage.",
-                                    NamedTextColor.RED));
+                    send(sender, "admin.restore_manifest_missing", Placeholder.unparsed("backup", backupIdStr));
                     return;
                 }
 
@@ -412,19 +404,18 @@ public final class IslandAdminCommands {
                 if (outcome instanceof IslandRestoreService.RestoreOutcome.Success success) {
                     send(
                             sender,
-                            Component.text(
-                                    "Successfully restored backup " + backupIdStr + " (" + success.artifactsRestored()
-                                            + " artifacts restored).",
-                                    NamedTextColor.GREEN));
+                            "admin.restore_success",
+                            Placeholder.unparsed("backup", backupIdStr),
+                            Placeholder.unparsed("artifacts", Integer.toString(success.artifactsRestored())));
                 } else if (outcome instanceof IslandRestoreService.RestoreOutcome.Failure failure) {
                     send(
                             sender,
-                            Component.text(
-                                    "Failed to restore backup " + backupIdStr + ": " + failure.reason(),
-                                    NamedTextColor.RED));
+                            "admin.restore_failed",
+                            Placeholder.unparsed("backup", backupIdStr),
+                            Placeholder.unparsed("reason", failure.reason()));
                 }
             } catch (Exception e) {
-                send(sender, Component.text("Error executing restore: " + e.getMessage(), NamedTextColor.RED));
+                send(sender, "admin.restore_error", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
             }
         });
 
@@ -435,7 +426,7 @@ public final class IslandAdminCommands {
         CommandSourceStack src = ctx.getSource();
         IslandRecycleService recycleService = recycleServiceProvider.get();
         if (recycleService == null) {
-            send(src.getSender(), Component.text("Island recycle service is disabled.", NamedTextColor.RED));
+            send(src.getSender(), "admin.recycle_disabled");
             return Cmd.OK;
         }
 
@@ -443,18 +434,15 @@ public final class IslandAdminCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = resolveIslandId(sessionCoordinator, islandLocationService, target);
             if (optIsland.isEmpty()) {
-                send(
-                        src.getSender(),
-                        Component.text("Could not find island for target: " + target, NamedTextColor.RED));
+                send(src.getSender(), "admin.island_unresolved", Placeholder.unparsed("target", target));
                 return;
             }
 
             IslandId islandId = optIsland.get();
             send(
                     src.getSender(),
-                    Component.text(
-                            "Initiating administrative deletion of island " + islandId.value() + "...",
-                            NamedTextColor.YELLOW));
+                    "admin.delete_starting",
+                    Placeholder.unparsed("island", islandId.value().toString()));
             var unusedAdminReset = recycleService
                     .executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true)
                     .thenAccept(result -> {
@@ -462,21 +450,24 @@ public final class IslandAdminCommands {
                             if (result instanceof IslandRecycleService.RecycleResult.Success) {
                                 send(
                                         src.getSender(),
-                                        Component.text(
-                                                "Island " + islandId.value()
-                                                        + " was deleted and recycled successfully.",
-                                                NamedTextColor.GREEN));
+                                        "admin.delete_success",
+                                        Placeholder.unparsed(
+                                                "island", islandId.value().toString()));
                             } else {
                                 send(
                                         src.getSender(),
-                                        Component.text(
-                                                "Administrative deletion failed for island " + islandId.value(),
-                                                NamedTextColor.RED));
+                                        "admin.delete_failed",
+                                        Placeholder.unparsed(
+                                                "island", islandId.value().toString()));
                             }
                         });
                     });
         });
         return Cmd.OK;
+    }
+
+    private void send(Audience audience, String key, TagResolver... resolvers) {
+        send(audience, messages.render(audience, key, resolvers));
     }
 
     private void send(Audience audience, Component component) {
