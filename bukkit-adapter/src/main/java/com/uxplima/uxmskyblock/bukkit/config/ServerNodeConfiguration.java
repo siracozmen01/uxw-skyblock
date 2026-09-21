@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.config;
 
+import java.time.Duration;
 import java.util.Objects;
 
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -12,7 +13,16 @@ import org.spongepowered.configurate.ConfigurationNode;
  * <p>Fails fast at bootstrap if server node identity is missing or unconfigured, preventing
  * split-brain or node collision issues in multi-server distributed deployments.
  */
-public record ServerNodeConfiguration(ServerNodeId nodeId, String worldName, boolean clustered, String redisUri) {
+public record ServerNodeConfiguration(
+        ServerNodeId nodeId, String worldName, boolean clustered, String redisUri, Duration routeCacheTtl) {
+
+    /**
+     * How long a route to another node stays cached, when the operator names no other number.
+     *
+     * <p>It bounds how long a visitor can be sent to a node that has since lost authority over the
+     * island they asked for. Fifteen seconds is the shipped answer; a busy cluster may want less.
+     */
+    public static final Duration DEFAULT_ROUTE_CACHE_TTL = Duration.ofSeconds(15);
 
     public static final String DEFAULT_WORLD_NAME = "world";
     public static final String DEFAULT_REDIS_URI = "redis://localhost:6379";
@@ -21,6 +31,7 @@ public record ServerNodeConfiguration(ServerNodeId nodeId, String worldName, boo
         Objects.requireNonNull(nodeId, "nodeId must not be null");
         Objects.requireNonNull(worldName, "worldName must not be null");
         Objects.requireNonNull(redisUri, "redisUri must not be null");
+        Objects.requireNonNull(routeCacheTtl, "routeCacheTtl must not be null");
         if (worldName.isBlank()) {
             throw new IllegalArgumentException("world-name must not be blank");
         }
@@ -30,20 +41,21 @@ public record ServerNodeConfiguration(ServerNodeId nodeId, String worldName, boo
     }
 
     public ServerNodeConfiguration(ServerNodeId nodeId, String worldName) {
-        this(nodeId, worldName, false, "");
+        this(nodeId, worldName, false, "", DEFAULT_ROUTE_CACHE_TTL);
     }
 
     public static ServerNodeConfiguration of(ServerNodeId nodeId, String worldName) {
-        return new ServerNodeConfiguration(nodeId, worldName, false, "");
+        return new ServerNodeConfiguration(nodeId, worldName, false, "", DEFAULT_ROUTE_CACHE_TTL);
     }
 
     public static ServerNodeConfiguration of(String nodeId, String worldName) {
-        return new ServerNodeConfiguration(ServerNodeId.of(nodeId), worldName, false, "");
+        return new ServerNodeConfiguration(ServerNodeId.of(nodeId), worldName, false, "", DEFAULT_ROUTE_CACHE_TTL);
     }
 
     public static ServerNodeConfiguration of(
             ServerNodeId nodeId, String worldName, boolean clustered, String redisUri) {
-        return new ServerNodeConfiguration(nodeId, worldName, clustered, redisUri != null ? redisUri : "");
+        return new ServerNodeConfiguration(
+                nodeId, worldName, clustered, redisUri != null ? redisUri : "", DEFAULT_ROUTE_CACHE_TTL);
     }
 
     public boolean isClustered() {
@@ -104,6 +116,35 @@ public record ServerNodeConfiguration(ServerNodeId nodeId, String worldName, boo
                 ? rawRedisUri.trim()
                 : (clustered ? DEFAULT_REDIS_URI : "");
 
-        return new ServerNodeConfiguration(ServerNodeId.of(rawNodeId.trim()), worldName, clustered, redisUri);
+        Duration routeCacheTtl = parseSeconds(nodeConfig.node("route-cache-ttl"), DEFAULT_ROUTE_CACHE_TTL);
+        return new ServerNodeConfiguration(
+                ServerNodeId.of(rawNodeId.trim()), worldName, clustered, redisUri, routeCacheTtl);
+    }
+
+    /**
+     * Reads a window written either as a plain number of seconds or with a unit suffix.
+     *
+     * <p>An unreadable value falls back rather than refusing to start: a server that will not boot
+     * over a cache window is a worse outcome than one that boots with the shipped number.
+     */
+    private static Duration parseSeconds(ConfigurationNode node, Duration fallback) {
+        String raw = node.getString();
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        String trimmed = raw.strip().toLowerCase(java.util.Locale.ROOT);
+        try {
+            if (trimmed.endsWith("m")) {
+                return Duration.ofMinutes(Long.parseLong(
+                        trimmed.substring(0, trimmed.length() - 1).strip()));
+            }
+            if (trimmed.endsWith("s")) {
+                return Duration.ofSeconds(Long.parseLong(
+                        trimmed.substring(0, trimmed.length() - 1).strip()));
+            }
+            return Duration.ofSeconds(Long.parseLong(trimmed));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 }

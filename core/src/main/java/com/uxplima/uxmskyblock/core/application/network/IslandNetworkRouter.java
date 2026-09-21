@@ -18,7 +18,9 @@ import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
  */
 public final class IslandNetworkRouter {
 
-    private static final Duration ROUTE_CACHE_TTL = Duration.ofSeconds(15);
+    /** How long a route stays cached, when the caller names no window. */
+    public static final Duration DEFAULT_ROUTE_CACHE_TTL = Duration.ofSeconds(15);
+
     public static final String ERROR_CLUSTER_UNAVAILABLE = "error.network.cluster_unavailable";
     public static final String ERROR_ISLAND_NOT_FOUND = "error.network.island_not_found";
 
@@ -26,12 +28,34 @@ public final class IslandNetworkRouter {
     private final IslandAuthorityPort islandAuthorityPort;
     private final VelocityBridgePort velocityBridgePort;
     private final ClusterRoutingDirectoryPort clusterRoutingDirectoryPort;
+    private final Duration routeCacheTtl;
 
     public IslandNetworkRouter(
             ServerNodeId localNodeId,
             IslandAuthorityPort islandAuthorityPort,
             VelocityBridgePort velocityBridgePort,
             ClusterRoutingDirectoryPort clusterRoutingDirectoryPort) {
+        this(
+                localNodeId,
+                islandAuthorityPort,
+                velocityBridgePort,
+                clusterRoutingDirectoryPort,
+                DEFAULT_ROUTE_CACHE_TTL);
+    }
+
+    /**
+     * The canonical constructor, carrying how long a route stays cached.
+     *
+     * <p>That window bounds how long a visitor can be sent to a node that has since lost authority
+     * over the island they asked for. It was fifteen seconds written in the code.
+     */
+    public IslandNetworkRouter(
+            ServerNodeId localNodeId,
+            IslandAuthorityPort islandAuthorityPort,
+            VelocityBridgePort velocityBridgePort,
+            ClusterRoutingDirectoryPort clusterRoutingDirectoryPort,
+            Duration routeCacheTtl) {
+        this.routeCacheTtl = Objects.requireNonNull(routeCacheTtl, "routeCacheTtl must not be null");
         this.localNodeId = Objects.requireNonNull(localNodeId, "localNodeId must not be null");
         this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
         this.velocityBridgePort = Objects.requireNonNull(velocityBridgePort, "velocityBridgePort must not be null");
@@ -80,7 +104,7 @@ public final class IslandNetworkRouter {
         IslandAuthorityRecord authority = optAuthority.get();
         ServerNodeId targetNode = authority.authoritativeNode();
         // Update routing directory cache
-        clusterRoutingDirectoryPort.cacheRoute(targetIslandId, targetNode, authority.authorityEpoch(), ROUTE_CACHE_TTL);
+        clusterRoutingDirectoryPort.cacheRoute(targetIslandId, targetNode, authority.authorityEpoch(), routeCacheTtl);
 
         if (targetNode.equals(localNodeId)) {
             return CompletableFuture.completedFuture(new RouteOutcome.Local(targetIslandId));

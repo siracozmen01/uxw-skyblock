@@ -156,7 +156,11 @@ public final class IntegrationWiring implements AutoCloseable {
         this.velocityBridge = new BukkitVelocityBridge(plugin);
         this.clusterRoutingDirectory = this.clusterTransport.clusterRoutingDirectory();
         this.networkRouter = new IslandNetworkRouter(
-                serverNodeId, persistence.islandAuthorityPort(), velocityBridge, clusterRoutingDirectory);
+                serverNodeId,
+                persistence.islandAuthorityPort(),
+                velocityBridge,
+                clusterRoutingDirectory,
+                config.nodeConfig().routeCacheTtl());
 
         this.discordService = new IslandDiscordWebhookService(
                 new JavaHttpClientDiscordAdapter(),
