@@ -340,7 +340,8 @@ public final class IslandCommandTree {
                 () -> boosterService,
                 () -> boosterMenu,
                 () -> missionsMenu,
-                () -> boundaryService);
+                () -> boundaryService,
+                messages);
 
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)

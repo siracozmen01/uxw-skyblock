@@ -14,14 +14,15 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -55,6 +56,7 @@ public final class IslandMechanicsCommands {
     private final Supplier<@Nullable IslandBoosterMenu> boosterMenuProvider;
     private final Supplier<@Nullable IslandMissionsMenu> missionsMenuProvider;
     private final Supplier<@Nullable IslandBoundaryService> boundaryServiceProvider;
+    private final Messages messages;
 
     public IslandMechanicsCommands(
             IslandLocationService islandLocationService,
@@ -65,7 +67,8 @@ public final class IslandMechanicsCommands {
             Supplier<@Nullable IslandBoosterService> boosterServiceProvider,
             Supplier<@Nullable IslandBoosterMenu> boosterMenuProvider,
             Supplier<@Nullable IslandMissionsMenu> missionsMenuProvider,
-            Supplier<@Nullable IslandBoundaryService> boundaryServiceProvider) {
+            Supplier<@Nullable IslandBoundaryService> boundaryServiceProvider,
+            Messages messages) {
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
@@ -81,6 +84,7 @@ public final class IslandMechanicsCommands {
                 Objects.requireNonNull(missionsMenuProvider, "missionsMenuProvider must not be null");
         this.boundaryServiceProvider =
                 Objects.requireNonNull(boundaryServiceProvider, "boundaryServiceProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildLimits() {
@@ -124,6 +128,10 @@ public final class IslandMechanicsCommands {
         return sessionCoordinator.activeProfile(player.getUniqueId());
     }
 
+    private void send(Audience audience, String key, TagResolver... resolvers) {
+        send(audience, messages.render(audience, key, resolvers));
+    }
+
     private void send(Audience audience, Component component) {
         if (audience instanceof Player player) {
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
@@ -139,19 +147,19 @@ public final class IslandMechanicsCommands {
     private int executeLimits(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can view island limits.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
 
         IslandLimitService limitService = limitServiceProvider.get();
         if (limitService == null) {
-            send(player, Component.text("Island limits subsystem is not currently enabled.", NamedTextColor.RED));
+            send(player, "limits.disabled");
             return Cmd.OK;
         }
 
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You must have an active profile to view island limits.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
@@ -159,7 +167,7 @@ public final class IslandMechanicsCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
             if (optIslandId.isEmpty()) {
-                send(player, Component.text("You do not belong to an active island.", NamedTextColor.RED));
+                send(player, "error.no_island");
                 return;
             }
 
@@ -167,42 +175,11 @@ public final class IslandMechanicsCommands {
             java.util.Map<LimitType, Integer> counts = limitService.getCounts(islandId);
             java.util.Map<LimitType, Integer> limits = limitService.getLimits(islandId);
 
-            send(
-                    player,
-                    MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<gradient:#00e5ff:#0077ff><bold>--- Island Hardware & Anti-Lag Limits ---</bold></gradient>"));
-            send(
-                    player,
-                    MiniMessage.miniMessage().deserialize("<yellow><bold>Tile Entities & Redstone:</bold></yellow>"));
-            for (LimitType type : LimitType.values()) {
-                if (type.category() == LimitCategory.TILE_ENTITY && limits.containsKey(type)) {
-                    int c = counts.getOrDefault(type, 0);
-                    int m = limits.get(type);
-                    String color = c >= m ? "<red>" : (c >= m * 0.8 ? "<gold>" : "<aqua>");
-                    send(
-                            player,
-                            MiniMessage.miniMessage()
-                                    .deserialize(" <gray>•</gray> <white>" + type.name() + "</white>: " + color + c
-                                            + "</color><gray> / </gray><green>" + m + "</green>"));
-                }
-            }
-
-            send(
-                    player,
-                    MiniMessage.miniMessage().deserialize("<yellow><bold>Living Entities & Vehicles:</bold></yellow>"));
-            for (LimitType type : LimitType.values()) {
-                if (type.category() == LimitCategory.ENTITY && limits.containsKey(type)) {
-                    int c = counts.getOrDefault(type, 0);
-                    int m = limits.get(type);
-                    String color = c >= m ? "<red>" : (c >= m * 0.8 ? "<gold>" : "<aqua>");
-                    send(
-                            player,
-                            MiniMessage.miniMessage()
-                                    .deserialize(" <gray>•</gray> <white>" + type.name() + "</white>: " + color + c
-                                            + "</color><gray> / </gray><green>" + m + "</green>"));
-                }
-            }
+            send(player, "limits.header");
+            send(player, "limits.tile_header");
+            sendLimitRows(player, LimitCategory.TILE_ENTITY, counts, limits);
+            send(player, "limits.entity_header");
+            sendLimitRows(player, LimitCategory.ENTITY, counts, limits);
         });
 
         return Cmd.OK;
@@ -211,25 +188,25 @@ public final class IslandMechanicsCommands {
     private int executeQuarantine(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can check quarantine status.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandAntiAbuseService antiAbuseService = antiAbuseServiceProvider.get();
         if (antiAbuseService == null) {
-            send(player, Component.text("Starter quarantine protection is disabled on this node.", NamedTextColor.RED));
+            send(player, "quarantine.disabled");
             return Cmd.OK;
         }
 
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
         ProfileId profileId = optProfile.get();
         Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
         if (optIsland.isEmpty()) {
-            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            send(player, "error.no_island");
             return Cmd.OK;
         }
 
@@ -238,22 +215,12 @@ public final class IslandMechanicsCommands {
             Optional<Duration> optRemaining = antiAbuseService.getQuarantineRemaining(islandId, Instant.now());
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                 if (optRemaining.isPresent()) {
-                    Duration remaining = optRemaining.get();
                     send(
                             player,
-                            MiniMessage.miniMessage()
-                                    .deserialize(
-                                            "<gold>Island Starter Quarantine:</gold> <yellow><bold>ACTIVE</bold></yellow> "
-                                                    + "(<white>" + formatDuration(remaining)
-                                                    + "</white> remaining)<newline>"
-                                                    + "<gray>Visitor access and dropping starter items are prohibited during quarantine.</gray>"));
+                            "quarantine.active",
+                            Placeholder.unparsed("remaining", formatDuration(optRemaining.get())));
                 } else {
-                    send(
-                            player,
-                            MiniMessage.miniMessage()
-                                    .deserialize(
-                                            "<gold>Island Starter Quarantine:</gold> <green><bold>INACTIVE</bold></green> "
-                                                    + "<gray>(Full visitor access and trade enabled)</gray>"));
+                    send(player, "quarantine.inactive");
                 }
             });
         });
@@ -263,12 +230,12 @@ public final class IslandMechanicsCommands {
     private int executeBooster(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can access the booster menu.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandBoosterMenu boosterMenu = boosterMenuProvider.get();
         if (boosterMenu == null) {
-            send(player, Component.text("Island boosters are disabled on this node.", NamedTextColor.RED));
+            send(player, "booster.disabled");
             return Cmd.OK;
         }
         boosterMenu.open(player);
@@ -279,11 +246,11 @@ public final class IslandMechanicsCommands {
         CommandSender sender = ctx.getSource().getSender();
         IslandBoosterService boosterService = boosterServiceProvider.get();
         if (boosterService == null) {
-            send(sender, Component.text("Island boosters are disabled on this node.", NamedTextColor.RED));
+            send(sender, "booster.disabled");
             return Cmd.OK;
         }
         if (!sender.hasPermission("uxmskyblock.admin.booster")) {
-            send(sender, Component.text("You do not have permission to apply boosters.", NamedTextColor.RED));
+            send(sender, "booster.no_permission");
             return Cmd.OK;
         }
 
@@ -292,10 +259,9 @@ public final class IslandMechanicsCommands {
         if (optCategory.isEmpty()) {
             send(
                     sender,
-                    Component.text(
-                            "Invalid booster category: " + catStr
-                                    + ". Available: SPAWNER_RATE, CROP_GROWTH, ORE_GENERATOR, MOB_EXP, ISLAND_WORTH, MISSION_REWARDS",
-                            NamedTextColor.RED));
+                    "booster.invalid_category",
+                    Placeholder.unparsed("category", catStr),
+                    Placeholder.unparsed("categories", availableBoosterCategories()));
             return Cmd.OK;
         }
 
@@ -303,24 +269,24 @@ public final class IslandMechanicsCommands {
         String durStr = StringArgumentType.getString(ctx, "duration");
         Duration duration = parseDurationString(durStr);
         if (duration.isZero() || duration.isNegative()) {
-            send(sender, Component.text("Invalid duration: " + durStr, NamedTextColor.RED));
+            send(sender, "booster.invalid_duration", Placeholder.unparsed("duration", durStr));
             return Cmd.OK;
         }
 
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Console must specify an island to apply boosters.", NamedTextColor.RED));
+            send(sender, "booster.console_needs_island");
             return Cmd.OK;
         }
 
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
         Optional<IslandId> optIsland = islandLocationService.findIslandId(optProfile.get());
         if (optIsland.isEmpty()) {
-            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            send(player, "error.no_island");
             return Cmd.OK;
         }
 
@@ -328,26 +294,19 @@ public final class IslandMechanicsCommands {
         Instant now = Instant.now();
         BoosterApplyResult result = boosterService.applyBooster(islandId, optCategory.get(), multiplier, duration, now);
 
-        send(
-                player,
-                MiniMessage.miniMessage()
-                        .deserialize(
-                                "<green>Successfully applied <yellow>" + multiplier + "x</yellow> booster to <gold>"
-                                        + optCategory.get().displayName() + "</gold> for <white>"
-                                        + formatDuration(duration) + "</white>! Result: "
-                                        + result.getClass().getSimpleName() + "</green>"));
+        reportBoosterResult(player, optCategory.get(), result);
         return Cmd.OK;
     }
 
     private int executeMissions(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can view missions.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandMissionsMenu missionsMenu = missionsMenuProvider.get();
         if (missionsMenu == null) {
-            send(player, Component.text("Missions are not currently enabled.", NamedTextColor.RED));
+            send(player, "missions.disabled");
             return Cmd.OK;
         }
         schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> missionsMenu.open(player));
@@ -357,26 +316,116 @@ public final class IslandMechanicsCommands {
     private int executeBorder(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can toggle border view.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandBoundaryService boundaryService = boundaryServiceProvider.get();
         if (boundaryService == null) {
-            send(player, Component.text("Island boundary visualization is not currently enabled.", NamedTextColor.RED));
+            send(player, "border.disabled");
             return Cmd.OK;
         }
         PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
         boolean active = boundaryService.togglePerimeter(uuid);
         if (active) {
-            send(
-                    player,
-                    Component.text(
-                            "Perimeter particle projection enabled. Outlines will project around your island boundary.",
-                            NamedTextColor.AQUA));
+            send(player, "border.enabled");
         } else {
-            send(player, Component.text("Perimeter particle projection disabled.", NamedTextColor.YELLOW));
+            send(player, "border.turned_off");
         }
         return Cmd.OK;
+    }
+
+    /**
+     * A row per limit, coloured by how close the island is to it. The colour is three catalogue
+     * keys rather than a tag glued onto the number, because a tag glued onto a number cannot be
+     * closed correctly and the old code closed it with the wrong tag.
+     */
+    private void sendLimitRows(
+            Player player,
+            LimitCategory category,
+            java.util.Map<LimitType, Integer> counts,
+            java.util.Map<LimitType, Integer> limits) {
+        for (LimitType type : LimitType.values()) {
+            if (type.category() != category || !limits.containsKey(type)) {
+                continue;
+            }
+            int used = counts.getOrDefault(type, 0);
+            int max = limits.get(type);
+            String countKey =
+                    used >= max ? "limits.count_full" : (used >= max * 0.8 ? "limits.count_near" : "limits.count_free");
+            Component count =
+                    messages.renderPlain(player, countKey, Placeholder.unparsed("count", Integer.toString(used)));
+            send(
+                    player,
+                    "limits.entry",
+                    Placeholder.unparsed("type", type.name()),
+                    Placeholder.component("count", count),
+                    Placeholder.unparsed("max", Integer.toString(max)));
+        }
+    }
+
+    /**
+     * Every outcome of applying a booster says what happened. The old line reported the result
+     * class name inside a green sentence, so a rejected booster and a disabled category both read
+     * as a success with a Java class name at the end of them.
+     */
+    private void reportBoosterResult(Player player, BoosterCategory category, BoosterApplyResult result) {
+        TagResolver categoryName = Placeholder.unparsed("category", category.displayName());
+        switch (result) {
+            case BoosterApplyResult.Success success ->
+                send(
+                        player,
+                        "booster.applied",
+                        categoryName,
+                        multiplierOf(success.effectiveMultiplier()),
+                        Placeholder.unparsed("duration", formatDuration(success.remainingDuration())));
+            case BoosterApplyResult.DurationExtended extended ->
+                send(
+                        player,
+                        extended.capped() ? "booster.duration_extended_capped" : "booster.duration_extended",
+                        categoryName,
+                        multiplierOf(extended.effectiveMultiplier()),
+                        Placeholder.unparsed("duration", formatDuration(extended.totalDuration())));
+            case BoosterApplyResult.MultiplierStacked stacked ->
+                send(
+                        player,
+                        stacked.capped() ? "booster.multiplier_stacked_capped" : "booster.multiplier_stacked",
+                        categoryName,
+                        multiplierOf(stacked.effectiveMultiplier()),
+                        Placeholder.unparsed("duration", formatDuration(stacked.remainingDuration())));
+            case BoosterApplyResult.Replaced replaced ->
+                send(
+                        player,
+                        "booster.replaced",
+                        categoryName,
+                        multiplierOf(replaced.newBooster().multiplier()));
+            case BoosterApplyResult.RejectedLowerTier rejected ->
+                send(
+                        player,
+                        "booster.rejected_lower_tier",
+                        categoryName,
+                        Placeholder.unparsed("current", formatMultiplier(rejected.currentMultiplier())),
+                        Placeholder.unparsed("attempted", formatMultiplier(rejected.attemptedMultiplier())));
+            case BoosterApplyResult.CategoryDisabled disabled ->
+                send(
+                        player,
+                        "booster.category_disabled",
+                        Placeholder.unparsed("category", disabled.category().displayName()));
+        }
+    }
+
+    private static TagResolver multiplierOf(double multiplier) {
+        return Placeholder.unparsed("multiplier", formatMultiplier(multiplier));
+    }
+
+    private static String formatMultiplier(double multiplier) {
+        return String.format(Locale.ROOT, "%.2f", multiplier);
+    }
+
+    /** The booster categories an operator can actually pass, read off the enum rather than typed. */
+    private static String availableBoosterCategories() {
+        return java.util.Arrays.stream(BoosterCategory.values())
+                .map(Enum::name)
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     private static Duration parseDurationString(String raw) {
