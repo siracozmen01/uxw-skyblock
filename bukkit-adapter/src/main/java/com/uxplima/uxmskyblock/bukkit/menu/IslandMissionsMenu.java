@@ -16,11 +16,13 @@ import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
@@ -43,16 +45,19 @@ public final class IslandMissionsMenu {
     private final IslandStoragePort islandStoragePort;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
+    private final Messages messages;
 
     public IslandMissionsMenu(
             IslandMissionService missionService,
             IslandStoragePort islandStoragePort,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
-            SchedulerPort schedulerPort) {
+            SchedulerPort schedulerPort,
+            Messages messages) {
         this.missionService = Objects.requireNonNull(missionService, "missionService must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.sessionCoordinator = sessionCoordinator;
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public void open(Player player) {
@@ -105,7 +110,7 @@ public final class IslandMissionsMenu {
             Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap,
             List<MissionDefinition> all) {
         SimpleGui gui = Guis.gui()
-                .title(Component.text("Island Missions & Challenges", NamedTextColor.GOLD))
+                .title(messages.renderPlain(player, "menu.missions.title"))
                 .rows(6)
                 .build();
 
@@ -128,37 +133,59 @@ public final class IslandMissionsMenu {
                     ? Material.ENCHANTED_BOOK
                     : (def.triggerType() == MissionTriggerType.ITEM_SUBMIT ? Material.CHEST : Material.BOOK);
 
-            NamedTextColor statusColor = completed ? NamedTextColor.GREEN : NamedTextColor.YELLOW;
-            String statusText = completed ? "COMPLETED" : count + " / " + def.requiredAmount();
+            Component status = completed
+                    ? messages.renderPlain(player, "menu.missions.status_completed")
+                    : messages.renderPlain(
+                            player,
+                            "menu.missions.status_open",
+                            Placeholder.unparsed("count", Long.toString(count)),
+                            Placeholder.unparsed("required", Long.toString(def.requiredAmount())));
 
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text(def.description(), NamedTextColor.GRAY));
+            lore.add(messages.renderPlain(
+                    player, "menu.missions.tile_description", Placeholder.unparsed("description", def.description())));
             lore.add(Component.empty());
-            lore.add(Component.text("Branch: ", NamedTextColor.WHITE)
-                    .append(Component.text(def.branch().name(), NamedTextColor.AQUA)));
-            lore.add(
-                    Component.text("Progress: ", NamedTextColor.WHITE).append(Component.text(statusText, statusColor)));
+            lore.add(messages.renderPlain(
+                    player,
+                    "menu.missions.tile_branch",
+                    Placeholder.unparsed("branch", def.branch().name())));
+            lore.add(messages.renderPlain(
+                    player, "menu.missions.tile_progress", Placeholder.component("status", status)));
             lore.add(Component.empty());
-            lore.add(Component.text("Rewards:", NamedTextColor.GOLD));
+            lore.add(messages.renderPlain(player, "menu.missions.tile_rewards"));
             if (def.reward().crystals() > 0) {
-                lore.add(Component.text(" + " + def.reward().crystals() + " Crystals", NamedTextColor.LIGHT_PURPLE));
+                lore.add(messages.renderPlain(
+                        player,
+                        "menu.missions.reward_crystals",
+                        Placeholder.unparsed(
+                                "amount", Long.toString(def.reward().crystals()))));
             }
             if (def.reward().currencyMinorUnits() > 0) {
-                lore.add(Component.text(
-                        " + $" + String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0),
-                        NamedTextColor.GREEN));
+                lore.add(messages.renderPlain(
+                        player,
+                        "menu.missions.reward_currency",
+                        Placeholder.unparsed(
+                                "amount",
+                                String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0))));
             }
             if (def.reward().islandExp() > 0) {
-                lore.add(Component.text(" + " + def.reward().islandExp() + " Island Exp", NamedTextColor.AQUA));
+                lore.add(messages.renderPlain(
+                        player,
+                        "menu.missions.reward_island_exp",
+                        Placeholder.unparsed(
+                                "amount", Long.toString(def.reward().islandExp()))));
             }
 
             if (!completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT) {
                 lore.add(Component.empty());
-                lore.add(Component.text("[Click with items in inventory to submit]", NamedTextColor.GREEN));
+                lore.add(messages.renderPlain(player, "menu.missions.tile_submit_hint"));
             }
 
             ItemStack item = ItemBuilder.of(icon)
-                    .name(Component.text(def.displayName(), completed ? NamedTextColor.GREEN : NamedTextColor.GOLD)
+                    .name(messages.renderPlain(
+                                    player,
+                                    completed ? "menu.missions.tile_name_done" : "menu.missions.tile_name_open",
+                                    Placeholder.unparsed("mission", def.displayName()))
                             .decoration(TextDecoration.ITALIC, false))
                     .lore(lore)
                     .build();
@@ -181,7 +208,7 @@ public final class IslandMissionsMenu {
         String filter = def.targetFilter();
         Material requiredMat = Material.matchMaterial(filter);
         if (requiredMat == null) {
-            player.sendMessage(Component.text("Invalid item requirement: " + filter, NamedTextColor.RED));
+            messages.send(player, "menu.missions.invalid_requirement", Placeholder.unparsed("filter", filter));
             return;
         }
 
@@ -193,8 +220,7 @@ public final class IslandMissionsMenu {
         }
 
         if (count <= 0) {
-            player.sendMessage(Component.text(
-                    "You do not have any " + requiredMat.name() + " in your inventory!", NamedTextColor.RED));
+            messages.send(player, "menu.missions.nothing_to_submit", Placeholder.unparsed("item", requiredMat.name()));
             return;
         }
 
@@ -230,8 +256,11 @@ public final class IslandMissionsMenu {
         schedulerPort.async(() -> {
             missionService.submitManualItem(islandId, profileId, def.id(), taken, Instant.now());
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                player.sendMessage(
-                        Component.text("Submitted " + taken + "x " + requiredMat.name() + "!", NamedTextColor.GREEN));
+                messages.send(
+                        player,
+                        "menu.missions.submitted",
+                        Placeholder.unparsed("amount", Integer.toString(taken)),
+                        Placeholder.unparsed("item", requiredMat.name()));
                 open(player);
             });
         });

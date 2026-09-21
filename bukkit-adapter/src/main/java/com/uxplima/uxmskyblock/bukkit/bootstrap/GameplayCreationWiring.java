@@ -81,7 +81,11 @@ public final class GameplayCreationWiring {
         if (config.moduleSettings().isModuleEnabled("missions")) {
             this.missionService.registerMissions(config.missionConfig().missions());
             this.missionsMenu = new IslandMissionsMenu(
-                    missionService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
+                    missionService,
+                    persistence.islandStoragePort(),
+                    authority.sessionCoordinator(),
+                    scheduler,
+                    config.messages());
             this.missionListener = new IslandMissionListener(
                     missionService,
                     persistence.islandStoragePort(),
