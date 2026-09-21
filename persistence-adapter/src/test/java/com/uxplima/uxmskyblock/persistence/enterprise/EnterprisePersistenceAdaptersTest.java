@@ -304,7 +304,8 @@ class EnterprisePersistenceAdaptersTest {
         assertThat(homeAdapter.findHome(profileId, "spawn")).isEmpty();
 
         // Restore snapshot
-        snapshotAdapter.restoreRelationalSnapshot(rootRef, snapshot);
+        snapshotAdapter.restoreRelationalSnapshot(
+                rootRef, snapshot, com.uxplima.uxmskyblock.core.domain.snapshot.RestoreMode.FULL_ISLAND);
 
         // Verify home is restored
         Optional<Home> restoredHome = homeAdapter.findHome(profileId, "spawn");

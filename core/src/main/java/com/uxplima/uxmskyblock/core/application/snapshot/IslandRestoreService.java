@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
 import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
+import com.uxplima.uxmskyblock.core.domain.snapshot.RestoreMode;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 
 /**
@@ -47,8 +48,26 @@ public final class IslandRestoreService {
                 Objects.requireNonNull(worldDimensionSnapshotPort, "worldDimensionSnapshotPort must not be null");
     }
 
+    /** The old shape, which now means the mode that changes least. */
     public RestoreOutcome executeRestore(
             BackupManifest manifest, StorageBucket bucket, String rootPrefix, boolean disasterRecoveryConfirmed) {
+        return executeRestore(manifest, bucket, rootPrefix, disasterRecoveryConfirmed, RestoreMode.safeDefault());
+    }
+
+    /**
+     * Puts a backup back, as far as {@code mode} allows.
+     *
+     * <p>The mode is the whole point of the boundary the persistence specification draws. Before it
+     * existed this method restored every table the snapshot held, including the island bank, so an
+     * administrator restoring last night's file handed back money that had already been spent.
+     */
+    public RestoreOutcome executeRestore(
+            BackupManifest manifest,
+            StorageBucket bucket,
+            String rootPrefix,
+            boolean disasterRecoveryConfirmed,
+            RestoreMode mode) {
+        Objects.requireNonNull(mode, "mode must not be null");
 
         Objects.requireNonNull(manifest, "manifest must not be null");
         Objects.requireNonNull(bucket, "bucket must not be null");
@@ -101,7 +120,10 @@ public final class IslandRestoreService {
 
             // 4. Dispatch restoration based on artifact role
             if (filename.contains("relational") || filename.endsWith(".sql") || filename.endsWith(".json")) {
-                relationalSnapshotPort.restoreRelationalSnapshot(rootRef, data);
+                if (!mode.restoresRelationalState()) {
+                    continue;
+                }
+                relationalSnapshotPort.restoreRelationalSnapshot(rootRef, data, mode);
                 restoredCount++;
             } else if (filename.contains("world") || filename.endsWith(".dat") || filename.endsWith(".zst")) {
                 DimensionId dimId = filename.contains("nether")

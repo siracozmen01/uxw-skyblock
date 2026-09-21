@@ -42,6 +42,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inactivity.IslandInactivityScanReport;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import com.uxplima.uxmskyblock.core.domain.snapshot.RestoreMode;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import org.jspecify.annotations.Nullable;
 
@@ -124,7 +125,9 @@ public final class IslandAdminCommands {
                                 || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                 || src.getSender().isOp())
                         .then(Cmd.argument("backupId", StringArgumentType.word())
-                                .executes(this::executeAdminRestore)))
+                                .executes(ctx -> executeAdminRestore(ctx, RestoreMode.safeDefault()))
+                                .then(Cmd.argument("mode", StringArgumentType.word())
+                                        .executes(this::executeAdminRestoreWithMode))))
                 .then(Cmd.literal("delete")
                         .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                 || src.getSender().isOp())
@@ -136,7 +139,10 @@ public final class IslandAdminCommands {
                 .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
                         || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                         || src.getSender().isOp())
-                .then(Cmd.argument("backupId", StringArgumentType.word()).executes(this::executeAdminRestore));
+                .then(Cmd.argument("backupId", StringArgumentType.word())
+                        .executes(ctx -> executeAdminRestore(ctx, RestoreMode.safeDefault()))
+                        .then(Cmd.argument("mode", StringArgumentType.word())
+                                .executes(this::executeAdminRestoreWithMode)));
     }
 
     public static Optional<IslandId> resolveIslandId(
@@ -349,7 +355,32 @@ public final class IslandAdminCommands {
         return Cmd.OK;
     }
 
-    private int executeAdminRestore(CommandContext<CommandSourceStack> ctx) {
+    /**
+     * The mode decides how much comes back. A caller who names none gets the one that changes
+     * least, because the destructive default is the one nobody meant to pick.
+     */
+    private int executeAdminRestoreWithMode(CommandContext<CommandSourceStack> ctx) {
+        String raw = StringArgumentType.getString(ctx, "mode");
+        for (RestoreMode mode : RestoreMode.values()) {
+            if (mode.name().equalsIgnoreCase(raw)) {
+                return executeAdminRestore(ctx, mode);
+            }
+        }
+        send(
+                ctx.getSource().getSender(),
+                "admin.restore_unknown_mode",
+                Placeholder.unparsed("mode", raw),
+                Placeholder.unparsed("modes", availableRestoreModes()));
+        return Cmd.OK;
+    }
+
+    private static String availableRestoreModes() {
+        return java.util.Arrays.stream(RestoreMode.values())
+                .map(Enum::name)
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private int executeAdminRestore(CommandContext<CommandSourceStack> ctx, RestoreMode mode) {
         CommandSender sender = ctx.getSource().getSender();
         if (!sender.hasPermission("uxmskyblock.admin.restore")
                 && !sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
@@ -365,7 +396,11 @@ public final class IslandAdminCommands {
         }
 
         String backupIdStr = StringArgumentType.getString(ctx, "backupId");
-        send(sender, "admin.restore_starting", Placeholder.unparsed("backup", backupIdStr));
+        send(
+                sender,
+                "admin.restore_starting",
+                Placeholder.unparsed("backup", backupIdStr),
+                Placeholder.unparsed("mode", mode.name()));
 
         schedulerPort.async(() -> {
             try {
@@ -400,7 +435,7 @@ public final class IslandAdminCommands {
 
                 BackupManifest manifest = optManifest.get();
                 IslandRestoreService.RestoreOutcome outcome =
-                        rService.executeRestore(manifest, bucket, rootPrefix, true);
+                        rService.executeRestore(manifest, bucket, rootPrefix, true, mode);
                 if (outcome instanceof IslandRestoreService.RestoreOutcome.Success success) {
                     send(
                             sender,

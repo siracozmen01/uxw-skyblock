@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import javax.sql.DataSource;
 
@@ -23,6 +24,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.uxplima.uxmskyblock.core.application.snapshot.RootRelationalSnapshotPort;
 import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
+import com.uxplima.uxmskyblock.core.domain.snapshot.RestoreMode;
 
 /**
  * SQL persistence adapter for capturing and restoring root-scoped relational data snapshots (Section 2.29).
@@ -47,6 +49,32 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
             new TableSpec("island_boosters", "island_id"),
             new TableSpec("island_bankruptcies", "island_id"),
             new TableSpec("island_homes", "island_id"));
+
+    /**
+     * Tables a restore never writes back, whatever the payload holds and whatever mode was asked
+     * for. Money a player has already spent cannot be un-spent by restoring last night's file, and
+     * a bankruptcy that was settled cannot be reinstated.
+     */
+    private static final Set<String> NEVER_RESTORED = Set.of("island_banks", "island_bankruptcies", "island_boosters");
+
+    /** Tables that say who belongs to the island and what they may do. */
+    private static final Set<String> MEMBERSHIP_TABLES =
+            Set.of("island_members", "island_roles", "island_role_permissions");
+
+    /** The tables {@code mode} is allowed to write, in the order the foreign keys want them. */
+    private static List<TableSpec> tablesFor(RestoreMode mode) {
+        List<TableSpec> allowed = new ArrayList<>();
+        for (TableSpec spec : TABLES) {
+            if (NEVER_RESTORED.contains(spec.tableName())) {
+                continue;
+            }
+            if (!mode.restoresMembership() && MEMBERSHIP_TABLES.contains(spec.tableName())) {
+                continue;
+            }
+            allowed.add(spec);
+        }
+        return List.copyOf(allowed);
+    }
 
     private record TableSpec(String tableName, String rootColumn) {}
 
@@ -83,9 +111,14 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
     }
 
     @Override
-    public void restoreRelationalSnapshot(PrimaryGameplayRootRef rootRef, byte[] snapshotPayload) {
+    public void restoreRelationalSnapshot(PrimaryGameplayRootRef rootRef, byte[] snapshotPayload, RestoreMode mode) {
         Objects.requireNonNull(rootRef, "rootRef must not be null");
         Objects.requireNonNull(snapshotPayload, "snapshotPayload must not be null");
+        Objects.requireNonNull(mode, "mode must not be null");
+        if (!mode.restoresRelationalState()) {
+            return;
+        }
+        List<TableSpec> restorable = tablesFor(mode);
 
         String jsonStr = new String(snapshotPayload, StandardCharsets.UTF_8);
         JsonObject rootJson = JsonParser.parseString(jsonStr).getAsJsonObject();
@@ -108,8 +141,8 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
                 }
 
                 // Delete child tables first (reverse order)
-                for (int i = TABLES.size() - 1; i >= 0; i--) {
-                    TableSpec spec = TABLES.get(i);
+                for (int i = restorable.size() - 1; i >= 0; i--) {
+                    TableSpec spec = restorable.get(i);
                     String deleteSql = "DELETE FROM " + spec.tableName() + " WHERE " + spec.rootColumn() + " = ?";
                     try (PreparedStatement delStmt = conn.prepareStatement(deleteSql)) {
                         delStmt.setString(1, rootRef.rootId());
@@ -118,7 +151,7 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
                 }
 
                 // Insert saved rows in forward order
-                for (TableSpec spec : TABLES) {
+                for (TableSpec spec : restorable) {
                     if (tablesJson.has(spec.tableName())) {
                         JsonArray rowsArray = tablesJson.getAsJsonArray(spec.tableName());
                         insertTableRows(conn, spec.tableName(), rowsArray);

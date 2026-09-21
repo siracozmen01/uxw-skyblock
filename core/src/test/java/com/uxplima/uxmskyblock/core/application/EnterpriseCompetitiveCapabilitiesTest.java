@@ -300,7 +300,7 @@ class EnterpriseCompetitiveCapabilitiesTest {
 
         var result2 = restoreService.executeRestore(manifest, bucket, prefix, false);
         assertThat(result2).isInstanceOf(IslandRestoreService.RestoreOutcome.Failure.class);
-        verify(mockRelational, never()).restoreRelationalSnapshot(any(), any());
+        verify(mockRelational, never()).restoreRelationalSnapshot(any(), any(), any());
 
         // 3. Valid checksum succeeds
         when(mockStorage.getObject(eq(bucket), eq("islands/test-island/relational.json")))
@@ -308,6 +308,6 @@ class EnterpriseCompetitiveCapabilitiesTest {
 
         var result3 = restoreService.executeRestore(manifest, bucket, prefix, false);
         assertThat(result3).isInstanceOf(IslandRestoreService.RestoreOutcome.Success.class);
-        verify(mockRelational).restoreRelationalSnapshot(any(), eq(payload));
+        verify(mockRelational).restoreRelationalSnapshot(any(), eq(payload), any());
     }
 }
