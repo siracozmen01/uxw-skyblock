@@ -90,7 +90,9 @@ public final class AdminWiring {
                 voidingAdapter,
                 islandBackupAdapter,
                 persistence.outboxPort(),
-                persistence.islandRecycleOperationPort());
+                persistence.islandRecycleOperationPort(),
+                java.time.Clock.systemUTC(),
+                config.antiAbuseConfig().resetChallengeTtl());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
                 recycleService,
                 persistence.islandStoragePort(),

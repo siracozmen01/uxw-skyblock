@@ -50,6 +50,7 @@ public final class IslandRecycleService {
 
     private record ChallengeEntry(IslandId islandId, ResetChallenge challenge) {}
 
+    /** How long a reset confirmation code stays good, when the operator names no other number. */
     public static final Duration DEFAULT_CHALLENGE_TTL = Duration.ofSeconds(60);
 
     private final IslandStoragePort islandStoragePort;
@@ -60,6 +61,7 @@ public final class IslandRecycleService {
     private final @Nullable OutboxPort outboxPort;
     private final @Nullable IslandRecycleOperationPort recycleOperationPort;
     private final Clock clock;
+    private final Duration challengeTtl;
     private final SecureRandom secureRandom;
     private final Map<ProfileId, ChallengeEntry> pendingChallenges = new ConcurrentHashMap<>();
 
@@ -72,6 +74,36 @@ public final class IslandRecycleService {
             @Nullable OutboxPort outboxPort,
             @Nullable IslandRecycleOperationPort recycleOperationPort,
             Clock clock) {
+        this(
+                islandStoragePort,
+                worldGridAllocationPort,
+                spiralSlotPoolPort,
+                voidingPort,
+                backupPort,
+                outboxPort,
+                recycleOperationPort,
+                clock,
+                DEFAULT_CHALLENGE_TTL);
+    }
+
+    /**
+     * The canonical constructor, carrying the window a reset confirmation code stays good for.
+     *
+     * <p>That window was sixty seconds written in the code. It is how long a player has to read a
+     * four digit code and type it back before the island they are about to erase stops listening,
+     * which is exactly the sort of number an operator has an opinion about.
+     */
+    public IslandRecycleService(
+            IslandStoragePort islandStoragePort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            SpiralSlotPoolPort spiralSlotPoolPort,
+            @Nullable IslandVoidingPort voidingPort,
+            @Nullable IslandBackupPort backupPort,
+            @Nullable OutboxPort outboxPort,
+            @Nullable IslandRecycleOperationPort recycleOperationPort,
+            Clock clock,
+            Duration challengeTtl) {
+        this.challengeTtl = Objects.requireNonNull(challengeTtl, "challengeTtl must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.worldGridAllocationPort =
                 Objects.requireNonNull(worldGridAllocationPort, "worldGridAllocationPort must not be null");
@@ -153,7 +185,7 @@ public final class IslandRecycleService {
 
         int randomDigits = secureRandom.nextInt(10000);
         String code = String.format("%04d", randomDigits);
-        Instant expiresAt = clock.instant().plus(DEFAULT_CHALLENGE_TTL);
+        Instant expiresAt = clock.instant().plus(challengeTtl);
         ResetChallenge challenge = new ResetChallenge(code, expiresAt);
 
         pendingChallenges.put(requesterProfileId, new ChallengeEntry(islandId, challenge));

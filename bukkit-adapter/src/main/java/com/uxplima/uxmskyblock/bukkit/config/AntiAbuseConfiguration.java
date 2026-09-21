@@ -17,6 +17,7 @@ public record AntiAbuseConfiguration(
         Duration resetWindowDuration,
         Duration coopJoinCooldown,
         Duration quarantineLookupTtl,
+        Duration resetChallengeTtl,
         String resetBypassPermission,
         String coopBypassPermission,
         String quarantineBypassPermission) {
@@ -37,6 +38,15 @@ public record AntiAbuseConfiguration(
      */
     public static final Duration DEFAULT_QUARANTINE_LOOKUP_TTL = Duration.ofSeconds(30);
 
+    /**
+     * How long a reset confirmation code stays good.
+     *
+     * <p>It is how long a player has to read a four digit code and type it back before the island
+     * they are about to erase stops listening. Too short and a slow reader loses the code; too long
+     * and somebody else can walk up to the keyboard.
+     */
+    public static final Duration DEFAULT_RESET_CHALLENGE_TTL = Duration.ofSeconds(60);
+
     public static final String DEFAULT_RESET_BYPASS_PERMISSION = "uxmskyblock.bypass.resetlimits";
     public static final String DEFAULT_COOP_BYPASS_PERMISSION = "uxmskyblock.bypass.coopcooldown";
     public static final String DEFAULT_QUARANTINE_BYPASS_PERMISSION = "uxmskyblock.bypass.quarantine";
@@ -47,6 +57,7 @@ public record AntiAbuseConfiguration(
         Objects.requireNonNull(resetWindowDuration, "resetWindowDuration must not be null");
         Objects.requireNonNull(coopJoinCooldown, "coopJoinCooldown must not be null");
         Objects.requireNonNull(quarantineLookupTtl, "quarantineLookupTtl must not be null");
+        Objects.requireNonNull(resetChallengeTtl, "resetChallengeTtl must not be null");
         Objects.requireNonNull(resetBypassPermission, "resetBypassPermission must not be null");
         Objects.requireNonNull(coopBypassPermission, "coopBypassPermission must not be null");
         Objects.requireNonNull(quarantineBypassPermission, "quarantineBypassPermission must not be null");
@@ -61,6 +72,7 @@ public record AntiAbuseConfiguration(
                 DEFAULT_RESET_WINDOW_DURATION,
                 DEFAULT_COOP_JOIN_COOLDOWN,
                 DEFAULT_QUARANTINE_LOOKUP_TTL,
+                DEFAULT_RESET_CHALLENGE_TTL,
                 DEFAULT_RESET_BYPASS_PERMISSION,
                 DEFAULT_COOP_BYPASS_PERMISSION,
                 DEFAULT_QUARANTINE_BYPASS_PERMISSION);
@@ -80,6 +92,7 @@ public record AntiAbuseConfiguration(
         Duration resetWindowDuration = parseDuration(node.node("reset-window-duration"), DEFAULT_RESET_WINDOW_DURATION);
         Duration coopJoinCooldown = parseDuration(node.node("coop-join-cooldown"), DEFAULT_COOP_JOIN_COOLDOWN);
         Duration quarantineLookupTtl = parseDuration(node.node("quarantine-lookup-ttl"), DEFAULT_QUARANTINE_LOOKUP_TTL);
+        Duration resetChallengeTtl = parseDuration(node.node("reset-challenge-ttl"), DEFAULT_RESET_CHALLENGE_TTL);
         String resetBypass = node.node("reset-bypass-permission").getString(DEFAULT_RESET_BYPASS_PERMISSION);
         String coopBypass = node.node("coop-bypass-permission").getString(DEFAULT_COOP_BYPASS_PERMISSION);
         String quarantineBypass =
@@ -93,6 +106,7 @@ public record AntiAbuseConfiguration(
                 resetWindowDuration,
                 coopJoinCooldown,
                 quarantineLookupTtl,
+                resetChallengeTtl,
                 resetBypass,
                 coopBypass,
                 quarantineBypass);
