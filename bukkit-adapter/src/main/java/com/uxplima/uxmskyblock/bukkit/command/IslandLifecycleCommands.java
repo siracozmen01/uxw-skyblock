@@ -152,6 +152,22 @@ public final class IslandLifecycleCommands {
                 .then(Cmd.argument("name", StringArgumentType.greedyString()).executes(this::executeRename));
     }
 
+    /**
+     * The preset's name in the player's own language.
+     *
+     * <p>A preset's name is a catalogue key, because it is a sentence a player reads and no sentence
+     * a player reads is written in Java. A file that holds a plain name rather than a key still
+     * works: the name is shown as it stands.
+     */
+    private String presetName(Player player, com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset) {
+        String written = preset.displayName();
+        if (!written.startsWith("@")) {
+            return written;
+        }
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(messages.renderPlain(player, written.substring(1)));
+    }
+
     private Optional<ProfileId> activeProfile(Player player) {
         if (sessionCoordinator == null) {
             return Optional.empty();
@@ -243,8 +259,7 @@ public final class IslandLifecycleCommands {
                                 send(
                                         player,
                                         "create.success",
-                                        Placeholder.unparsed(
-                                                "preset", success.preset().displayName()));
+                                        Placeholder.unparsed("preset", presetName(player, success.preset())));
                             });
                         });
                     } else {

@@ -23,6 +23,7 @@ import com.uxplima.uxmskyblock.bukkit.config.LimitConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PerformanceConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.PresetConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
@@ -93,6 +94,7 @@ public final class ConfigurationWiring {
     private final WorldConfiguration worldConfig;
     private final UpgradesConfiguration upgradesConfig;
     private final GeneratorsConfiguration generatorsConfig;
+    private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
 
@@ -157,7 +159,8 @@ public final class ConfigurationWiring {
             InteractablesConfiguration interactablesConfig,
             WorldConfiguration worldConfig,
             UpgradesConfiguration upgradesConfig,
-            GeneratorsConfiguration generatorsConfig) {
+            GeneratorsConfiguration generatorsConfig,
+            PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
         this.nodeConfig = Objects.requireNonNull(nodeConfig, "nodeConfig must not be null");
@@ -189,6 +192,7 @@ public final class ConfigurationWiring {
         this.worldConfig = Objects.requireNonNull(worldConfig, "worldConfig must not be null");
         this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
+        this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
     }
@@ -226,7 +230,8 @@ public final class ConfigurationWiring {
             InteractablesConfiguration interactablesConfig,
             WorldConfiguration worldConfig,
             UpgradesConfiguration upgradesConfig,
-            GeneratorsConfiguration generatorsConfig) {
+            GeneratorsConfiguration generatorsConfig,
+            PresetConfiguration presetConfig) {
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
                 rootNode,
@@ -257,7 +262,8 @@ public final class ConfigurationWiring {
                 interactablesConfig,
                 worldConfig,
                 upgradesConfig,
-                generatorsConfig);
+                generatorsConfig,
+                presetConfig);
         wiring.validate();
         return wiring;
     }
@@ -425,6 +431,11 @@ public final class ConfigurationWiring {
 
     public UpgradesConfiguration upgradesConfig() {
         return upgradesConfig;
+    }
+
+    /** The starter islands a player may choose between, as this server's file describes them. */
+    public PresetConfiguration presetConfig() {
+        return presetConfig;
     }
 
     public GeneratorsConfiguration generatorsConfig() {

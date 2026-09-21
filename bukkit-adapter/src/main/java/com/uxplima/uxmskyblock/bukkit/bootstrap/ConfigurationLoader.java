@@ -26,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PerformanceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PlayerStateConfigurationAdapter;
+import com.uxplima.uxmskyblock.bukkit.config.PresetConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SeasonConfiguration;
@@ -247,6 +248,8 @@ public final class ConfigurationLoader {
                 "upgrades.conf",
                 UpgradesConfiguration::load,
                 UpgradesConfiguration.defaultConfiguration());
+        PresetConfiguration presetConfig = loadConfig(
+                plugin, dataDir, "presets.conf", PresetConfiguration::load, PresetConfiguration.defaultConfiguration());
         GeneratorsConfiguration generatorsConfig = loadConfig(
                 plugin,
                 dataDir,
@@ -284,7 +287,8 @@ public final class ConfigurationLoader {
                 interactablesConfig,
                 worldConfig,
                 upgradesConfig,
-                generatorsConfig);
+                generatorsConfig,
+                presetConfig);
 
         wiring.validate();
         return wiring;

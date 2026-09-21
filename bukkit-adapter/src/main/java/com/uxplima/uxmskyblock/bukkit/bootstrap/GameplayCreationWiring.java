@@ -61,7 +61,7 @@ public final class GameplayCreationWiring {
         Objects.requireNonNull(rewardInboxService, "rewardInboxService must not be null");
         Objects.requireNonNull(upgradeService, "upgradeService must not be null");
 
-        this.presetCatalog = new StarterPresetCatalog();
+        this.presetCatalog = config.presetConfig().catalogue();
         this.schematicEngine = new StarterSchematicEngine(backpressureController);
         this.coordinateAllocator = new SpiralGridCoordinateAllocator();
         this.gridService = new SpiralWorldGridService(coordinateAllocator);

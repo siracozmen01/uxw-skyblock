@@ -169,6 +169,9 @@ class BackupRestoreWiringTest {
         AllianceConfiguration alliance = mock(AllianceConfiguration.class);
         when(config.allianceConfig()).thenReturn(alliance);
 
+        when(config.presetConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.PresetConfiguration.defaultConfiguration());
+
         when(config.rewardConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration.defaultConfiguration());
 
