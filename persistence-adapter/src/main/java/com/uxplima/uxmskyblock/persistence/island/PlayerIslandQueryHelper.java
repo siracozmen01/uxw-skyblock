@@ -183,8 +183,17 @@ final class PlayerIslandQueryHelper {
         return members;
     }
 
+    /**
+     * The island's flags, starting from the declared defaults and overlaid with what is stored.
+     *
+     * <p>It used to start empty, and {@link IslandFlags#isEnabled} answers false for a name it does
+     * not hold. Every flag added to {@link IslandFlags} after an island was written therefore read
+     * as off for that island, whatever its declared default said, and no migration would have shown
+     * it: the rows were simply not there. VISITOR_ACCESS defaults to true and would have read as
+     * false, which is an island silently closed to everybody.
+     */
     static IslandFlags loadFlags(Connection conn, String islandIdStr) throws SQLException {
-        Map<String, Boolean> values = new HashMap<>();
+        Map<String, Boolean> values = new HashMap<>(IslandFlags.defaults().values());
         try (PreparedStatement stmt =
                 conn.prepareStatement("SELECT flag_name, flag_value FROM island_flags WHERE island_id = ?")) {
             stmt.setString(1, islandIdStr);

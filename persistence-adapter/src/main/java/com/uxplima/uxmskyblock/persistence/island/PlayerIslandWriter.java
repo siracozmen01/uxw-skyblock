@@ -165,6 +165,12 @@ final class PlayerIslandWriter {
     private static void saveIslandRoles(Connection conn, Island island) throws SQLException {
         String islandIdStr = island.id().value().toString();
 
+        // A role the island no longer has is deleted, the way a member who left is. Without this the
+        // row survived every save, loadRoles hydrated it back on the next read, and deleting a
+        // custom role looked like it worked until the server restarted. Its permissions went with
+        // it, because the permission sync below only runs for roles the island still holds.
+        deleteRemovedRoles(conn, islandIdStr, island.roles().keySet());
+
         for (IslandRole role : island.roles().values()) {
             boolean exists;
             try (PreparedStatement checkStmt =
@@ -216,6 +222,37 @@ final class PlayerIslandWriter {
                         insertPerm.executeUpdate();
                     }
                 }
+            }
+        }
+    }
+
+    private static void deleteRemovedRoles(Connection conn, String islandIdStr, Set<String> keptRoleIds)
+            throws SQLException {
+        Set<String> storedRoleIds = new HashSet<>();
+        try (PreparedStatement query = conn.prepareStatement("SELECT role_id FROM island_roles WHERE island_id = ?")) {
+            query.setString(1, islandIdStr);
+            try (ResultSet rs = query.executeQuery()) {
+                while (rs.next()) {
+                    storedRoleIds.add(rs.getString("role_id"));
+                }
+            }
+        }
+
+        for (String storedRoleId : storedRoleIds) {
+            if (keptRoleIds.contains(storedRoleId)) {
+                continue;
+            }
+            try (PreparedStatement deletePerms =
+                    conn.prepareStatement("DELETE FROM island_role_permissions WHERE island_id = ? AND role_id = ?")) {
+                deletePerms.setString(1, islandIdStr);
+                deletePerms.setString(2, storedRoleId);
+                deletePerms.executeUpdate();
+            }
+            try (PreparedStatement deleteRole =
+                    conn.prepareStatement("DELETE FROM island_roles WHERE island_id = ? AND role_id = ?")) {
+                deleteRole.setString(1, islandIdStr);
+                deleteRole.setString(2, storedRoleId);
+                deleteRole.executeUpdate();
             }
         }
     }
