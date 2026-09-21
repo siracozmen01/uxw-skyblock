@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -74,6 +75,47 @@ class SkyblockEconomyBridgeTest {
                 "Test",
                 Instant.now());
         when(mockBankService.findIslandIdByProfileId(profileId)).thenReturn(Optional.of(islandId));
+    }
+
+    @Test
+    @DisplayName("A rejected deposit refunds the wallet and says so when the refund lands")
+    void aRejectedDepositRefundsTheWallet() {
+        when(mockEconomy.isPresent()).thenReturn(true);
+        when(mockEconomy.has(eq(mockPlayer), anyDouble())).thenReturn(true);
+        when(mockEconomy.withdraw(eq(mockPlayer), anyDouble())).thenReturn(true);
+        when(mockEconomy.deposit(eq(mockPlayer), anyDouble())).thenReturn(true);
+        when(mockBankService.findIslandIdByProfileId(profileId)).thenReturn(Optional.of(islandId));
+        when(mockBankService.deposit(any(), any(), anyLong(), any()))
+                .thenReturn(new BankTransactionOutcome.AuthorityRejected("bank said no"));
+
+        AtomicReference<BankTransactionOutcome> seen = new AtomicReference<>();
+        bridge.depositToIslandBank(mockPlayer, profileId, 50L, nodeId, seen::set);
+
+        verify(mockEconomy).deposit(eq(mockPlayer), eq(50.0));
+        assertThat(seen.get()).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        BankTransactionOutcome.AuthorityRejected rejected =
+                (BankTransactionOutcome.AuthorityRejected) Objects.requireNonNull(seen.get());
+        assertThat(rejected.reason()).isEqualTo("bank said no");
+    }
+
+    @Test
+    @DisplayName("A refund that does not land is reported rather than leaving the player paid up for nothing")
+    void aFailedRefundIsReported() {
+        when(mockEconomy.isPresent()).thenReturn(true);
+        when(mockEconomy.has(eq(mockPlayer), anyDouble())).thenReturn(true);
+        when(mockEconomy.withdraw(eq(mockPlayer), anyDouble())).thenReturn(true);
+        when(mockEconomy.deposit(eq(mockPlayer), anyDouble())).thenReturn(false);
+        when(mockBankService.findIslandIdByProfileId(profileId)).thenReturn(Optional.of(islandId));
+        when(mockBankService.deposit(any(), any(), anyLong(), any()))
+                .thenReturn(new BankTransactionOutcome.AuthorityRejected("bank said no"));
+
+        AtomicReference<BankTransactionOutcome> seen = new AtomicReference<>();
+        bridge.depositToIslandBank(mockPlayer, profileId, 50L, nodeId, seen::set);
+
+        assertThat(seen.get()).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        BankTransactionOutcome.AuthorityRejected rejected =
+                (BankTransactionOutcome.AuthorityRejected) Objects.requireNonNull(seen.get());
+        assertThat(rejected.reason()).contains("could not be").contains("refunded");
     }
 
     @Test

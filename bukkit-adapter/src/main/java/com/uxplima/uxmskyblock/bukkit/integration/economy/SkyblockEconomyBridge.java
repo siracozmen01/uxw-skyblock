@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -28,6 +30,8 @@ import org.jspecify.annotations.Nullable;
  * distributed {@link IslandBankService} backed by durable write-ahead sagas.
  */
 public final class SkyblockEconomyBridge {
+
+    private static final Logger LOGGER = Logger.getLogger(SkyblockEconomyBridge.class.getName());
 
     private final EconomyBridge economyBridge;
     private final IslandBankService bankService;
@@ -143,7 +147,21 @@ public final class SkyblockEconomyBridge {
                     } else {
                         outcome = bankService.deposit(profileId, playerUuid, minorUnits, nodeId);
                         if (!(outcome instanceof BankTransactionOutcome.Success)) {
-                            economyBridge.deposit(player, (double) dollars);
+                            // The wallet has already been charged. If the refund does not land the
+                            // player has paid for nothing, so the answer cannot be the bank's
+                            // refusal: it has to say where the money went.
+                            boolean refunded = economyBridge.deposit(player, (double) dollars);
+                            if (!refunded) {
+                                LOGGER.log(
+                                        Level.SEVERE,
+                                        "Wallet refund failed after a rejected island bank deposit."
+                                                + " player={0} amountMinorUnits={1} bankOutcome={2}",
+                                        new Object[] {playerUuid, minorUnits, outcome});
+                                outcome = new BankTransactionOutcome.AuthorityRejected(
+                                        "The island bank refused the deposit and your wallet could not be"
+                                                + " refunded. Contact an administrator with the time of this"
+                                                + " message.");
+                            }
                         }
                     }
                 } else {
