@@ -27,20 +27,58 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
  */
 public final class IslandMutationLock {
 
-    private final Map<IslandId, ReentrantLock> locks = new ConcurrentHashMap<>();
+    /**
+     * One island's lock and how many callers are holding or waiting for it.
+     *
+     * <p>The count is what lets the lock be thrown away again. A map keyed by island that nothing
+     * ever removes from is a slow leak on a server that has made a hundred thousand islands over a
+     * year, and the count is kept under the map's own lock so a lock is never dropped from under a
+     * caller who has already been handed it.
+     */
+    private record Guard(ReentrantLock lock, int users) {}
+
+    private final Map<IslandId, Guard> locks = new ConcurrentHashMap<>();
 
     /** Runs {@code work} with nobody else changing this island, and gives back what it returns. */
     public <T> T inside(IslandId islandId, Supplier<T> work) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(work, "work must not be null");
 
-        ReentrantLock lock = locks.computeIfAbsent(islandId, key -> new ReentrantLock());
+        ReentrantLock lock = acquire(islandId);
         lock.lock();
         try {
             return work.get();
         } finally {
             lock.unlock();
+            release(islandId);
         }
+    }
+
+    /**
+     * The lock for this island, counting this caller as one of its users.
+     *
+     * <p>{@code compute} runs under the map's own lock for this key, so the count and the lock move
+     * together and nobody can be handed a lock that is being removed.
+     */
+    private ReentrantLock acquire(IslandId islandId) {
+        return Objects.requireNonNull(locks.compute(
+                        islandId,
+                        (key, existing) -> existing == null
+                                ? new Guard(new ReentrantLock(), 1)
+                                : new Guard(existing.lock(), existing.users() + 1)))
+                .lock();
+    }
+
+    /** Gives the lock back, and throws it away when nobody else wants it. */
+    private void release(IslandId islandId) {
+        var unused = locks.computeIfPresent(
+                islandId,
+                (key, existing) -> existing.users() <= 1 ? null : new Guard(existing.lock(), existing.users() - 1));
+    }
+
+    /** How many islands are being changed right now. For a test to assert the locks do not pile up. */
+    public int held() {
+        return locks.size();
     }
 
     /** Runs {@code work} with nobody else changing this island. */
@@ -60,7 +98,7 @@ public final class IslandMutationLock {
      */
     public boolean isHeld(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
-        ReentrantLock lock = locks.get(islandId);
-        return lock != null && lock.isLocked();
+        Guard guard = locks.get(islandId);
+        return guard != null && guard.lock().isLocked();
     }
 }

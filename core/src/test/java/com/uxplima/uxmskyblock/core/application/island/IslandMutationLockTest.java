@@ -197,4 +197,97 @@ class IslandMutationLockTest {
         assertThat(lock.isHeld(ONE)).isFalse();
         assertThat(lock.inside(ONE, () -> "still usable")).isEqualTo("still usable");
     }
+
+    @Test
+    @DisplayName("A lock is thrown away when nobody wants it, so the map does not pile up")
+    void theLocksDoNotPileUp() {
+        IslandMutationLock lock = new IslandMutationLock();
+
+        for (int island = 0; island < 1000; island++) {
+            lock.inside(IslandId.of(UUID.randomUUID()), () -> "done");
+        }
+
+        assertThat(lock.held())
+                .describedAs("a map keyed by island that nothing removes from is a slow leak on a "
+                        + "server that has made a hundred thousand islands")
+                .isZero();
+    }
+
+    @Test
+    @DisplayName("A nested change does not drop the lock when the inner one finishes")
+    void anestedChangeKeepsTheLock() {
+        IslandMutationLock lock = new IslandMutationLock();
+
+        String result = lock.inside(ONE, () -> {
+            lock.inside(ONE, () -> "inner");
+            assertThat(lock.isHeld(ONE))
+                    .describedAs("the outer change is still holding it")
+                    .isTrue();
+            return "outer";
+        });
+
+        assertThat(result).isEqualTo("outer");
+        assertThat(lock.held()).isZero();
+    }
+
+    @Test
+    @DisplayName("Throwing away and handing out at the same time never lets two changes in together")
+    void reusingALockNeverLetsTwoIn() throws Exception {
+        IslandMutationLock lock = new IslandMutationLock();
+        AtomicInteger inside = new AtomicInteger();
+        AtomicInteger seenTogether = new AtomicInteger();
+        int threads = 8;
+        int rounds = 2000;
+
+        CountDownLatch go = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            for (int t = 0; t < threads; t++) {
+                var unused = pool.submit(() -> {
+                    try {
+                        go.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    // Short changes on one island, so the lock is handed out and thrown away
+                    // constantly. If a caller could be given a lock that is being removed, two of
+                    // them would end up on two different locks and both get in.
+                    for (int round = 0; round < rounds; round++) {
+                        lock.inside(ONE, () -> {
+                            if (inside.incrementAndGet() != 1) {
+                                seenTogether.incrementAndGet();
+                            }
+                            inside.decrementAndGet();
+                        });
+                    }
+                });
+            }
+            go.countDown();
+            pool.shutdown();
+            assertThat(pool.awaitTermination(60, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(seenTogether)
+                .describedAs("two changes to one island got in together")
+                .hasValue(0);
+        assertThat(lock.held())
+                .describedAs("and the lock was given back afterwards")
+                .isZero();
+    }
+
+    @Test
+    @DisplayName("A change that throws still gives its lock back")
+    void athrowingChangeStillGivesItBack() {
+        IslandMutationLock lock = new IslandMutationLock();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> lock.inside(ONE, () -> {
+                    throw new IllegalStateException("the island was gone");
+                }))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(lock.held()).isZero();
+    }
 }
