@@ -4,14 +4,18 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
+import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyService;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridPort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstance;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -30,6 +34,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class CreateIslandUseCase {
 
+    private static final Logger LOGGER = Logger.getLogger(CreateIslandUseCase.class.getName());
+
     public sealed interface CreateIslandResult {
         record Success(Island island, IslandLocation location, StarterPreset preset) implements CreateIslandResult {}
 
@@ -47,6 +53,7 @@ public final class CreateIslandUseCase {
     private final WorldGridPort worldGridPort;
     private final WorldGridAllocationPort worldGridAllocationPort;
     private final @Nullable OutboxPort outboxPort;
+    private final @Nullable GameModeHierarchyService gameModeHierarchy;
 
     public CreateIslandUseCase(
             IslandStoragePort islandStoragePort,
@@ -56,6 +63,35 @@ public final class CreateIslandUseCase {
             WorldGridPort worldGridPort,
             WorldGridAllocationPort worldGridAllocationPort,
             @Nullable OutboxPort outboxPort) {
+        this(
+                islandStoragePort,
+                islandAuthorityPort,
+                islandBankPort,
+                presetCatalog,
+                worldGridPort,
+                worldGridAllocationPort,
+                outboxPort,
+                null);
+    }
+
+    /**
+     * The canonical constructor, carrying the game mode hierarchy a new island is bound into.
+     *
+     * <p>Every island belongs to one game mode instance, and the instance is what a backup names
+     * when it says which world this island came from. Nothing ever wrote one, so every backup fell
+     * through to an instance id synthesised from the owner's profile: a reference to a row that has
+     * never existed. Binding the island here is what makes the reference real.
+     */
+    public CreateIslandUseCase(
+            IslandStoragePort islandStoragePort,
+            IslandAuthorityPort islandAuthorityPort,
+            IslandBankPort islandBankPort,
+            StarterPresetCatalog presetCatalog,
+            WorldGridPort worldGridPort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            @Nullable OutboxPort outboxPort,
+            @Nullable GameModeHierarchyService gameModeHierarchy) {
+        this.gameModeHierarchy = gameModeHierarchy;
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
         this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
@@ -126,6 +162,7 @@ public final class CreateIslandUseCase {
             islandStoragePort.saveIsland(island, location, outboxEvent);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
             islandBankPort.createBank(islandId);
+            bindIntoGameModeHierarchy(profileId, islandId, preset.id());
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
@@ -191,6 +228,31 @@ public final class CreateIslandUseCase {
                 return new CreateIslandResult.AlreadyHasIsland(existing.get());
             }
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
+        }
+    }
+
+    /**
+     * Binds the new island into its owner's game mode instance, creating the instance when it is
+     * their first island.
+     *
+     * <p>A failure here never fails the creation. The player's island exists, their bank exists and
+     * this node holds authority over it; refusing all of that because a hierarchy row would not
+     * write would be a worse answer than a backup that falls back to a synthesised reference, which
+     * is exactly what every backup did before this ran at all.
+     */
+    private void bindIntoGameModeHierarchy(ProfileId profileId, IslandId islandId, String rulesetConfig) {
+        if (gameModeHierarchy == null) {
+            return;
+        }
+        try {
+            GameModeInstance instance = gameModeHierarchy.getOrCreateSkyblockInstance(profileId, rulesetConfig);
+            gameModeHierarchy.bindIsland(instance.id(), islandId);
+        } catch (RuntimeException e) {
+            LOGGER.log(
+                    Level.WARNING,
+                    e,
+                    () -> "The island " + islandId + " was created but could not be bound into its game mode "
+                            + "instance. Its backups will name a synthesised reference until it is bound.");
         }
     }
 }

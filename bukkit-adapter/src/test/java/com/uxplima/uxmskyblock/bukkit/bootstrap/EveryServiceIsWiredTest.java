@@ -33,12 +33,14 @@ class EveryServiceIsWiredTest {
      * <p>Each names the board card that called it complete:
      *
      * <ul>
-     *   <li>{@code GameModeHierarchyService}: BDR-001
      *   <li>{@code JournaledInventoryMutationService}: WP2-005
      * </ul>
+     *
+     * <p>{@code GameModeHierarchyService} left this list when island creation began binding each new
+     * island into its owner's game mode instance. Until then every backup fell through to an
+     * instance id synthesised from the owner's profile: a reference to a row that had never existed.
      */
-    private static final Set<String> NOT_WIRED_YET =
-            Set.of("GameModeHierarchyService", "JournaledInventoryMutationService");
+    private static final Set<String> NOT_WIRED_YET = Set.of("JournaledInventoryMutationService");
 
     // JournaledInventoryMutationService is not unused by accident. The reward delivery handler runs
     // the same two phase protocol inline, and it does one thing more: on a failed commit it puts the

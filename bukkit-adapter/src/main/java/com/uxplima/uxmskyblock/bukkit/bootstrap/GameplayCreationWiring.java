@@ -5,6 +5,7 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.mission.IslandMissionListener;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
+import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -31,6 +32,7 @@ public final class GameplayCreationWiring {
     private final SpiralGridCoordinateAllocator coordinateAllocator;
     private final SpiralWorldGridService gridService;
     private final CreateIslandUseCase createIslandUseCase;
+    private final GameModeHierarchyService gameModeHierarchyService;
     private final IslandLocationService locationService;
     private final IslandLeaderboardService leaderboardService;
     private final IslandSeasonService seasonService;
@@ -60,6 +62,11 @@ public final class GameplayCreationWiring {
         this.coordinateAllocator = new SpiralGridCoordinateAllocator();
         this.gridService = new SpiralWorldGridService(coordinateAllocator);
 
+        // Every island belongs to one game mode instance, and the instance is what a backup names
+        // when it says which world the island came from. Nothing ever wrote one, so every backup
+        // fell through to an id synthesised from the owner's profile: a reference to a row that has
+        // never existed.
+        this.gameModeHierarchyService = new GameModeHierarchyService(persistence.gameModeHierarchyStoragePort());
         this.createIslandUseCase = new CreateIslandUseCase(
                 persistence.islandStoragePort(),
                 persistence.islandAuthorityPort(),
@@ -67,7 +74,8 @@ public final class GameplayCreationWiring {
                 presetCatalog,
                 gridService,
                 persistence.worldGridAllocationPort(),
-                persistence.outboxPort());
+                persistence.outboxPort(),
+                this.gameModeHierarchyService);
         this.locationService = new IslandLocationService(persistence.islandStoragePort());
         this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());
 
@@ -119,6 +127,11 @@ public final class GameplayCreationWiring {
 
     public SpiralWorldGridService gridService() {
         return gridService;
+    }
+
+    /** The game mode hierarchy every island is bound into when it is created. */
+    public GameModeHierarchyService gameModeHierarchyService() {
+        return gameModeHierarchyService;
     }
 
     public CreateIslandUseCase createIslandUseCase() {
