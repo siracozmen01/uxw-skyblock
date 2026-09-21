@@ -296,6 +296,7 @@ class BackupRestoreWiringTest {
         IslandCommandTree commandTree = new IslandCommandTree(
                 mock(com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase.class),
                 mock(com.uxplima.uxmskyblock.core.application.island.IslandLocationService.class),
+                mock(com.uxplima.uxmskyblock.core.application.flag.IslandFlagService.class),
                 mock(com.uxplima.uxmskyblock.core.application.bank.IslandBankService.class),
                 mock(com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort.class),
                 mock(com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService.class),

@@ -30,6 +30,7 @@ import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
+import com.uxplima.uxmskyblock.core.application.flag.IslandFlagService;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
@@ -173,6 +174,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree = new IslandCommandTree(
                 gameplay.createIslandUseCase(),
                 gameplay.locationService(),
+                new IslandFlagService(persistence.islandStoragePort()),
                 gameplay.bankService(),
                 persistence.islandUpgradeStoragePort(),
                 gameplay.leaderboardService(),
@@ -211,6 +213,12 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setNetworkRouter(this.networkRouter);
         this.commandTree.setRestoreService(gameplay.islandRestoreService());
         this.commandTree.setBackupService(gameplay.backupService());
+        // Four subsystems that were running with no door. Every one of them had a service, a table
+        // and a feature module, and no command a player could type.
+        this.commandTree.setWarpService(gameplay.warpService());
+        this.commandTree.setSocialService(gameplay.socialService());
+        this.commandTree.setAllianceService(gameplay.allianceService());
+        this.commandTree.setRewardInboxService(gameplay.rewardInboxService());
 
         this.apiBridge = new BukkitSkyblockApiBridge(
                 persistence.islandStoragePort(),

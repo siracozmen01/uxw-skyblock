@@ -29,6 +29,12 @@ public final class IslandLocationService {
         return islandStoragePort.findIslandIdByProfileId(profileId);
     }
 
+    /** The island itself, for the callers that need its members and its flags, not just its place. */
+    public Optional<Island> findIsland(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return islandStoragePort.findIslandById(islandId);
+    }
+
     /** Who owns the island, for the callers that hold an island and need a profile. */
     public Optional<ProfileId> findOwnerProfileId(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");

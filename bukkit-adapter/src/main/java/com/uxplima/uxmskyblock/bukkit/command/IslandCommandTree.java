@@ -27,11 +27,13 @@ import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
+import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
+import com.uxplima.uxmskyblock.core.application.flag.IslandFlagService;
 import com.uxplima.uxmskyblock.core.application.home.HomeService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -40,9 +42,12 @@ import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
+import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
+import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
+import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -60,6 +65,7 @@ public final class IslandCommandTree {
 
     private final CreateIslandUseCase createIslandUseCase;
     private final IslandLocationService islandLocationService;
+    private final IslandFlagService flagService;
     private final IslandBankService islandBankService;
     private final IslandUpgradeStoragePort islandUpgradePort;
     private final IslandLeaderboardService islandLeaderboardService;
@@ -83,10 +89,15 @@ public final class IslandCommandTree {
     private volatile @Nullable IslandNetworkRouter networkRouter;
     private volatile @Nullable IslandRestoreService restoreService;
     private volatile @Nullable BackupService backupService;
+    private volatile @Nullable IslandWarpService warpService;
+    private volatile @Nullable IslandSocialService socialService;
+    private volatile @Nullable IslandAllianceService allianceService;
+    private volatile @Nullable RewardInboxService rewardInboxService;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
             IslandLocationService islandLocationService,
+            IslandFlagService flagService,
             IslandBankService islandBankService,
             IslandUpgradeStoragePort islandUpgradePort,
             IslandLeaderboardService islandLeaderboardService,
@@ -103,6 +114,7 @@ public final class IslandCommandTree {
         this(
                 createIslandUseCase,
                 islandLocationService,
+                flagService,
                 islandBankService,
                 islandUpgradePort,
                 islandLeaderboardService,
@@ -123,6 +135,7 @@ public final class IslandCommandTree {
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
             IslandLocationService islandLocationService,
+            IslandFlagService flagService,
             IslandBankService islandBankService,
             IslandUpgradeStoragePort islandUpgradePort,
             IslandLeaderboardService islandLeaderboardService,
@@ -141,6 +154,7 @@ public final class IslandCommandTree {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
+        this.flagService = Objects.requireNonNull(flagService, "flagService must not be null");
         this.islandBankService = Objects.requireNonNull(islandBankService, "islandBankService must not be null");
         this.islandUpgradePort = Objects.requireNonNull(islandUpgradePort, "islandUpgradePort must not be null");
         this.islandLeaderboardService =
@@ -224,6 +238,26 @@ public final class IslandCommandTree {
         return restoreService;
     }
 
+    /** Hands the warp subsystem to the command that reaches it. */
+    public void setWarpService(@Nullable IslandWarpService warpService) {
+        this.warpService = warpService;
+    }
+
+    /** Hands the social subsystem to the commands that reach it. */
+    public void setSocialService(@Nullable IslandSocialService socialService) {
+        this.socialService = socialService;
+    }
+
+    /** Hands the alliance subsystem to the command that reaches it. */
+    public void setAllianceService(@Nullable IslandAllianceService allianceService) {
+        this.allianceService = allianceService;
+    }
+
+    /** Hands the reward inbox to the command that opens it. */
+    public void setRewardInboxService(@Nullable RewardInboxService rewardInboxService) {
+        this.rewardInboxService = rewardInboxService;
+    }
+
     public void setBackupService(@Nullable BackupService backupService) {
         this.backupService = backupService;
     }
@@ -254,7 +288,12 @@ public final class IslandCommandTree {
             IslandProgressionCommands progressionCommands,
             IslandMechanicsCommands mechanicsCommands,
             IslandActivityCommands activityCommands,
-            IslandHomeCommands homeCommands) {}
+            IslandHomeCommands homeCommands,
+            IslandWarpCommands warpCommands,
+            IslandSocialCommands socialCommands,
+            IslandAllianceCommands allianceCommands,
+            IslandRewardCommands rewardCommands,
+            IslandFlagCommands flagCommands) {}
 
     private CommandGroups buildGroups() {
 
@@ -342,6 +381,26 @@ public final class IslandCommandTree {
                 messages,
                 sessionCoordinator);
 
+        // Four subsystems were built, wired and running with no command to reach them: warps, the
+        // social system, alliances and the reward inbox. Rewards were being issued into a table a
+        // player had no way to open.
+        IslandWarpCommands warpCommands = new IslandWarpCommands(
+                () -> warpService, islandLocationService, schedulerPort, messages, sessionCoordinator);
+
+        IslandSocialCommands socialCommands = new IslandSocialCommands(
+                () -> socialService, islandLocationService, schedulerPort, messages, sessionCoordinator);
+
+        IslandAllianceCommands allianceCommands = new IslandAllianceCommands(
+                () -> allianceService, islandLocationService, schedulerPort, messages, sessionCoordinator);
+
+        IslandRewardCommands rewardCommands =
+                new IslandRewardCommands(() -> rewardInboxService, schedulerPort, messages, sessionCoordinator);
+
+        // Sixteen island flags, read by the protection listener on every event, and nothing could
+        // change one. PvP was on or off according to a default nobody could move.
+        IslandFlagCommands flagCommands =
+                new IslandFlagCommands(flagService, islandLocationService, schedulerPort, messages, sessionCoordinator);
+
         return new CommandGroups(
                 bankCommands,
                 chatCommands,
@@ -351,7 +410,12 @@ public final class IslandCommandTree {
                 progressionCommands,
                 mechanicsCommands,
                 activityCommands,
-                homeCommands);
+                homeCommands,
+                warpCommands,
+                socialCommands,
+                allianceCommands,
+                rewardCommands,
+                flagCommands);
     }
 
     private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroups groups) {
@@ -383,6 +447,13 @@ public final class IslandCommandTree {
                 .then(groups.homeCommands().buildNamedHome())
                 .then(groups.homeCommands().buildDeleteHome())
                 .then(groups.activityCommands().build())
+                .then(groups.warpCommands().build())
+                .then(groups.socialCommands().buildGuestbook())
+                .then(groups.socialCommands().buildRate())
+                .then(groups.socialCommands().buildBookmarks())
+                .then(groups.allianceCommands().build())
+                .then(groups.rewardCommands().build())
+                .then(groups.flagCommands().build())
                 .then(Cmd.literal("vault")
                         .executes(ctx -> executeVault(ctx, 1))
                         .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
