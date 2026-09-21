@@ -5,13 +5,16 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
+import com.uxplima.uxmskyblock.bukkit.notification.IslandNotificationListener;
 import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultListener;
 import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.home.HomeService;
+import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
@@ -37,6 +40,9 @@ public final class SocialWiring {
     private final IslandWarpService warpService;
     private final IslandVaultService vaultService;
     private final HomeService homeService;
+    private final ActivityFeedService activityFeedService;
+    private final NotificationService notificationService;
+    private final IslandNotificationListener notificationListener;
     private final @Nullable IslandVaultWindow vaultWindow;
     private final @Nullable IslandVaultListener vaultListener;
 
@@ -105,6 +111,11 @@ public final class SocialWiring {
         this.homeService = new HomeService(
                 persistence.homeStoragePort(), config.homeConfig().limitPolicy());
 
+        this.activityFeedService = new ActivityFeedService(persistence.activityFeedStoragePort());
+        this.notificationService = new NotificationService(persistence.notificationStoragePort());
+        this.notificationListener = new IslandNotificationListener(
+                this.notificationService, scheduler, config.messages(), authority.sessionCoordinator());
+
         if (config.vaultConfig().enabled()) {
             this.vaultWindow = new IslandVaultWindow(
                     this.vaultService,
@@ -150,6 +161,18 @@ public final class SocialWiring {
 
     public IslandWarpService warpService() {
         return warpService;
+    }
+
+    public ActivityFeedService activityFeedService() {
+        return activityFeedService;
+    }
+
+    public NotificationService notificationService() {
+        return notificationService;
+    }
+
+    public IslandNotificationListener notificationListener() {
+        return notificationListener;
     }
 
     public @Nullable IslandVaultWindow vaultWindow() {

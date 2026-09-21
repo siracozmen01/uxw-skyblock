@@ -23,6 +23,7 @@ import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.mission.IslandMissionListener;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
+import com.uxplima.uxmskyblock.bukkit.notification.IslandNotificationListener;
 import com.uxplima.uxmskyblock.bukkit.performance.IslandRedstoneOptimizationListener;
 import com.uxplima.uxmskyblock.bukkit.protection.CategoricalInteractablesListener;
 import com.uxplima.uxmskyblock.bukkit.protection.ObsidianRecoveryListener;
@@ -38,6 +39,7 @@ import com.uxplima.uxmskyblock.bukkit.world.AsyncStructureSuppressionListener;
 import com.uxplima.uxmskyblock.bukkit.worth.FoliaIslandChunkScanner;
 import com.uxplima.uxmskyblock.bukkit.worth.IslandWorthListener;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
@@ -265,6 +267,14 @@ public final class GameplayWiring {
 
     public IslandSeasonService seasonService() {
         return creationWiring.seasonService();
+    }
+
+    public ActivityFeedService activityFeedService() {
+        return socialWiring.activityFeedService();
+    }
+
+    public IslandNotificationListener notificationListener() {
+        return socialWiring.notificationListener();
     }
 
     public @Nullable IslandVaultWindow vaultWindow() {

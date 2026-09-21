@@ -33,16 +33,12 @@ class EveryServiceIsWiredTest {
      * <p>Each names the board card that called it complete:
      *
      * <ul>
-     *   <li>{@code ActivityFeedService}, {@code NotificationService}: ENT-001
      *   <li>{@code GameModeHierarchyService}: BDR-001
      *   <li>{@code JournaledInventoryMutationService}: WP2-005
      * </ul>
      */
-    private static final Set<String> NOT_WIRED_YET = Set.of(
-            "ActivityFeedService",
-            "GameModeHierarchyService",
-            "JournaledInventoryMutationService",
-            "NotificationService");
+    private static final Set<String> NOT_WIRED_YET =
+            Set.of("GameModeHierarchyService", "JournaledInventoryMutationService");
 
     private static final Path CORE_SERVICES = Path.of("../core/src/main/java/com/uxplima/uxmskyblock/core/application");
 

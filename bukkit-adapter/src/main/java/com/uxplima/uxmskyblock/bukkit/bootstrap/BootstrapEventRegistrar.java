@@ -30,6 +30,9 @@ public final class BootstrapEventRegistrar {
         if (gameplayWiring.vaultListener() != null) {
             pm.registerEvents(gameplayWiring.vaultListener(), plugin);
         }
+        {
+            pm.registerEvents(gameplayWiring.notificationListener(), plugin);
+        }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("missions")
                 && gameplayWiring.missionListener() != null) {
             pm.registerEvents(gameplayWiring.missionListener(), plugin);
