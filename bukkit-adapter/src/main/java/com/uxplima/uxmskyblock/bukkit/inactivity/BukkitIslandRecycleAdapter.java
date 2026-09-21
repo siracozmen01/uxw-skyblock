@@ -50,8 +50,7 @@ public final class BukkitIslandRecycleAdapter implements IslandRecyclePort {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         if (visitorEvictionAdapter != null) {
-            visitorEvictionAdapter.evictNonStaffVisitors(
-                    islandId, "<red>This island has been deleted and recycled due to team inactivity.</red>");
+            visitorEvictionAdapter.evictNonStaffVisitors(islandId, "inactivity.recycled_reason");
         }
         if (protectionListener != null) {
             protectionListener.spatialIndex().removeIsland(islandId);

@@ -29,8 +29,7 @@ public final class BukkitIslandArchivalAdapter implements IslandArchivalPort {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         if (visitorEvictionAdapter != null) {
-            visitorEvictionAdapter.evictNonStaffVisitors(
-                    islandId, "<red>This island has been archived due to team inactivity.</red>");
+            visitorEvictionAdapter.evictNonStaffVisitors(islandId, "inactivity.archived_reason");
         }
         if (protectionListener != null) {
             protectionListener.spatialIndex().removeIsland(islandId);

@@ -66,7 +66,7 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     }
 
     @Override
-    public void evictNonStaffVisitors(IslandId islandId, @Nullable String reason) {
+    public void evictNonStaffVisitors(IslandId islandId, @Nullable String reasonKey) {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         schedulerPort.async(() -> {
@@ -76,7 +76,7 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
             }
 
             IslandLocation location = optLocation.get();
-            EvictionPlan plan = new EvictionPlan(islandId, location.worldName(), location.bounds(), reason);
+            EvictionPlan plan = new EvictionPlan(islandId, location.worldName(), location.bounds(), reasonKey);
             schedulerPort.onGlobal(() -> executeEvictionPlan(plan));
         });
     }
@@ -123,10 +123,17 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
         }
     }
 
-    private void sendFrozenNotice(Player player, @Nullable String reason) {
-        Component reasonText = reason != null
-                ? Component.text(reason)
-                : messages.renderPlain(player, "protection.quarantine_default_reason");
+    /**
+     * Tells the evicted player why, in their own language.
+     *
+     * <p>{@code reasonKey} is a catalogue key, not a sentence. It used to be a MiniMessage string
+     * written into the Java by the caller and then wrapped in {@code Component.text}, so the player
+     * was shown the tags themselves: they read {@code <red>This island has been archived...</red>}
+     * with the angle brackets, in English, whatever language they had chosen.
+     */
+    private void sendFrozenNotice(Player player, @Nullable String reasonKey) {
+        Component reasonText =
+                messages.renderPlain(player, reasonKey != null ? reasonKey : "protection.quarantine_default_reason");
         messages.send(player, "error.island_frozen", Placeholder.component("reason", reasonText));
     }
 

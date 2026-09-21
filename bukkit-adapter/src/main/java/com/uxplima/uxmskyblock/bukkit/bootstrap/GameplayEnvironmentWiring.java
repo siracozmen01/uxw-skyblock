@@ -75,7 +75,8 @@ public final class GameplayEnvironmentWiring {
                         schematicEngine,
                         scheduler,
                         p -> authority.sessionCoordinator().activeProfile(p.getUniqueId()),
-                        worldName)
+                        worldName,
+                        config.messages())
                 : null;
 
         boolean limitsEnabled = config.moduleSettings().isModuleEnabled("limits");

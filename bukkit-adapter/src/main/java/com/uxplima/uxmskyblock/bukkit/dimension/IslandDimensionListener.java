@@ -14,8 +14,10 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -40,6 +42,7 @@ public final class IslandDimensionListener implements Listener {
     private final SchedulerPort schedulerPort;
     private final Function<Player, Optional<ProfileId>> profileResolver;
     private final String overworldName;
+    private final Messages messages;
 
     public IslandDimensionListener(
             IslandDimensionService dimensionService,
@@ -47,7 +50,8 @@ public final class IslandDimensionListener implements Listener {
             StarterSchematicEngine schematicEngine,
             SchedulerPort schedulerPort,
             Function<Player, Optional<ProfileId>> profileResolver,
-            String overworldName) {
+            String overworldName,
+            Messages messages) {
         this.dimensionService = Objects.requireNonNull(dimensionService, "dimensionService must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -55,6 +59,7 @@ public final class IslandDimensionListener implements Listener {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.profileResolver = Objects.requireNonNull(profileResolver, "profileResolver must not be null");
         this.overworldName = Objects.requireNonNull(overworldName, "overworldName must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -113,14 +118,14 @@ public final class IslandDimensionListener implements Listener {
         Optional<ProfileId> optProfile = profileResolver.apply(player);
         if (optProfile.isEmpty()) {
             event.setCancelled(true);
-            sendMessage(player, "<red>You must have an active island profile to enter portals.</red>");
+            send(player, "dimension.no_profile");
             return;
         }
 
         Optional<IslandId> optIslandId = islandLocationService.findIslandId(optProfile.get());
         if (optIslandId.isEmpty()) {
             event.setCancelled(true);
-            sendMessage(player, "<red>You do not belong to an active island.</red>");
+            send(player, "dimension.no_island");
             return;
         }
 
@@ -130,29 +135,25 @@ public final class IslandDimensionListener implements Listener {
         switch (accessResult) {
             case IslandDimensionAccessResult.Disabled disabled -> {
                 event.setCancelled(true);
-                sendMessage(
-                        player,
-                        "<red>Portal travel to the " + targetDimension.name()
-                                + " dimension is currently disabled.</red>");
+                send(player, "dimension.portal_disabled", dimensionName(player, targetDimension));
             }
             case IslandDimensionAccessResult.Locked locked -> {
                 event.setCancelled(true);
-                sendMessage(
+                send(
                         player,
-                        "<red>The " + targetDimension.name()
-                                + " dimension is locked! Unlock the <yellow>"
-                                + locked.requiredUpgrade().key()
-                                + "</yellow> island upgrade first.</red>");
+                        "dimension.locked",
+                        dimensionName(player, targetDimension),
+                        Placeholder.unparsed("upgrade", locked.requiredUpgrade().key()));
             }
             case IslandDimensionAccessResult.NoIsland noIsland -> {
                 event.setCancelled(true);
-                sendMessage(player, "<red>You do not belong to an active island.</red>");
+                send(player, "dimension.no_island");
             }
             case IslandDimensionAccessResult.Allowed allowed -> {
                 World destWorld = Bukkit.getWorld(allowed.targetWorld());
                 if (destWorld == null) {
                     event.setCancelled(true);
-                    sendMessage(player, "<red>Dimension world '" + allowed.targetWorld() + "' is not loaded.</red>");
+                    send(player, "dimension.world_unloaded", Placeholder.unparsed("world", allowed.targetWorld()));
                     return;
                 }
 
@@ -165,7 +166,7 @@ public final class IslandDimensionListener implements Listener {
                 Optional<IslandLocation> optLocation = islandLocationService.findLocation(islandId);
                 if (optLocation.isEmpty()) {
                     event.setCancelled(true);
-                    sendMessage(player, "<red>Could not resolve island coordinates.</red>");
+                    send(player, "dimension.no_coordinates");
                     return;
                 }
 
@@ -176,10 +177,7 @@ public final class IslandDimensionListener implements Listener {
 
                 if (allowed.schematicRequired()) {
                     event.setCancelled(true);
-                    sendMessage(
-                            player,
-                            "<yellow>Generating your " + targetDimension.name()
-                                    + " island outpost platform...</yellow>");
+                    send(player, "dimension.generating", dimensionName(player, targetDimension));
 
                     int chunkX = centerX >> 4;
                     int chunkZ = centerZ >> 4;
@@ -202,8 +200,7 @@ public final class IslandDimensionListener implements Listener {
                             Location targetLoc =
                                     new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
                             player.teleport(targetLoc);
-                            sendMessage(
-                                    player, "<green>Welcome to your " + targetDimension.name() + " island!</green>");
+                            send(player, "dimension.welcome", dimensionName(player, targetDimension));
                         });
                     });
                 } else {
@@ -227,13 +224,21 @@ public final class IslandDimensionListener implements Listener {
 
         Optional<ProfileId> optProfile = profileResolver.apply(player);
         if (optProfile.isEmpty()) {
-            sendMessage(player, "<red>You must have an active island profile.</red>");
+            send(player, "dimension.no_profile");
             return;
         }
+        ProfileId profileId = optProfile.get();
 
-        Optional<IslandId> optIslandId = islandLocationService.findIslandId(optProfile.get());
+        // Which island the caller belongs to, where it is, and whether the dimension is unlocked are
+        // three reads. This runs from /is nether and /is end, which Brigadier calls on the thread
+        // that owns the player, so the reads go to the scheduler and only the teleport comes back.
+        schedulerPort.async(() -> travelToDimension(player, profileId, targetDimension));
+    }
+
+    private void travelToDimension(Player player, ProfileId profileId, IslandDimensionType targetDimension) {
+        Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
         if (optIslandId.isEmpty()) {
-            sendMessage(player, "<red>You do not belong to an active island.</red>");
+            send(player, "dimension.no_island");
             return;
         }
 
@@ -242,35 +247,40 @@ public final class IslandDimensionListener implements Listener {
 
         switch (accessResult) {
             case IslandDimensionAccessResult.Disabled disabled ->
-                sendMessage(
-                        player,
-                        "<red>Access to the " + targetDimension.name() + " dimension is currently disabled.</red>");
+                send(player, "dimension.disabled", dimensionName(player, targetDimension));
             case IslandDimensionAccessResult.Locked locked ->
-                sendMessage(
+                send(
                         player,
-                        "<red>The " + targetDimension.name()
-                                + " dimension is locked! Unlock the <yellow>"
-                                + locked.requiredUpgrade().key()
-                                + "</yellow> island upgrade first.</red>");
-            case IslandDimensionAccessResult.NoIsland noIsland ->
-                sendMessage(player, "<red>You do not belong to an active island.</red>");
+                        "dimension.locked",
+                        dimensionName(player, targetDimension),
+                        Placeholder.unparsed("upgrade", locked.requiredUpgrade().key()));
+            case IslandDimensionAccessResult.NoIsland noIsland -> send(player, "dimension.no_island");
             case IslandDimensionAccessResult.Allowed allowed -> {
-                World destWorld = Bukkit.getWorld(allowed.targetWorld());
-                if (destWorld == null) {
-                    sendMessage(player, "<red>Dimension world '" + allowed.targetWorld() + "' is not loaded.</red>");
-                    return;
-                }
-
                 if (allowed.mode() == DimensionMode.SHARED_WORLD) {
-                    player.teleport(destWorld.getSpawnLocation());
-                    sendMessage(player, "<green>Teleported to " + targetDimension.name() + " wilderness.</green>");
+                    // Looking a world up and moving a player both belong to the thread that owns
+                    // the player, and this one runs on the scheduler.
+                    schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                        if (!player.isOnline()) {
+                            return;
+                        }
+                        World sharedWorld = Bukkit.getWorld(allowed.targetWorld());
+                        if (sharedWorld == null) {
+                            send(
+                                    player,
+                                    "dimension.world_unloaded",
+                                    Placeholder.unparsed("world", allowed.targetWorld()));
+                            return;
+                        }
+                        var unused = player.teleportAsync(sharedWorld.getSpawnLocation());
+                        send(player, "dimension.wilderness", dimensionName(player, targetDimension));
+                    });
                     return;
                 }
 
                 // PRIVATE_ISLAND mode
                 Optional<IslandLocation> optLocation = islandLocationService.findLocation(islandId);
                 if (optLocation.isEmpty()) {
-                    sendMessage(player, "<red>Could not resolve island coordinates.</red>");
+                    send(player, "dimension.no_coordinates");
                     return;
                 }
 
@@ -293,25 +303,46 @@ public final class IslandDimensionListener implements Listener {
                         if (!player.isOnline()) {
                             return;
                         }
+                        World destWorld = Bukkit.getWorld(worldName);
+                        if (destWorld == null) {
+                            send(player, "dimension.world_unloaded", Placeholder.unparsed("world", worldName));
+                            return;
+                        }
                         Location pLoc = player.getLocation();
                         float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
                         float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
                         Location targetLoc =
                                 new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
-                        player.teleport(targetLoc);
-                        sendMessage(player, "<green>Teleported to your " + targetDimension.name() + " island!</green>");
+                        var unused = player.teleportAsync(targetLoc);
+                        send(player, "dimension.arrived", dimensionName(player, targetDimension));
                     });
                 });
             }
         }
     }
 
-    private void sendMessage(Player player, String miniMessageText) {
+    /**
+     * Sends one catalogue line to the player, on the thread that owns them.
+     *
+     * <p>Every line here used to be an English sentence written into the Java, which is a Turkish
+     * player reading English at every portal and a translator with nothing to translate. Two of them
+     * also pasted an enum constant straight into the sentence, so a player was told about the
+     * "THE_END" dimension.
+     */
+    private void send(Player player, String key, TagResolver... resolvers) {
         schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
             if (player.isOnline()) {
-                player.sendMessage(MiniMessage.miniMessage().deserialize(miniMessageText));
+                player.sendMessage(messages.render(player, key, resolvers));
             }
         });
+    }
+
+    /** The dimension's name in the player's own language, rather than its enum constant. */
+    private TagResolver dimensionName(Player player, IslandDimensionType dimension) {
+        return Placeholder.component(
+                "dimension",
+                messages.renderPlain(
+                        player, "dimension.name_" + dimension.name().toLowerCase(java.util.Locale.ROOT)));
     }
 
     public IslandDimensionService dimensionService() {

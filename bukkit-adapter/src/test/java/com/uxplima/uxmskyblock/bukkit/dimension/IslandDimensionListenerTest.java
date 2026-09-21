@@ -20,6 +20,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
+import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
@@ -99,7 +102,8 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
                 schematicEngine,
                 directScheduler,
                 p -> Optional.of(profileId),
-                "skyblock_world");
+                "skyblock_world",
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()));
 
         when(islandLocationService.findIslandId(profileId)).thenReturn(Optional.of(islandId));
         IslandBounds bounds = IslandBounds.fromCenterAndRadius(100, 200, 50);
@@ -211,8 +215,19 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
     void executeDimensionTeleportSuccess() {
         when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
 
-        listener.executeDimensionTeleport(player, IslandDimensionType.NETHER);
+        boolean teleportAttempted = false;
+        try {
+            listener.executeDimensionTeleport(player, IslandDimensionType.NETHER);
+        } catch (org.mockbukkit.mockbukkit.exception.UnimplementedOperationException unimplemented) {
+            // MockBukkit does not implement teleportAsync, and JUnit reads its exception as an
+            // assumption failure, which would turn this test into a silent skip rather than a
+            // failure. The teleport is a fact to assert on instead.
+            assertThat(unimplemented.getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().contains("teleport"));
+            teleportAttempted = true;
+        }
 
+        assertThat(teleportAttempted).describedAs("the player was put down").isTrue();
         verify(schematicEngine)
                 .pasteDimensionPlatform(eq(netherWorld), eq(100), eq(64), eq(200), eq(IslandDimensionType.NETHER));
         assertThat(dimensionService.hasGeneratedDimension(islandId, IslandDimensionType.NETHER))
