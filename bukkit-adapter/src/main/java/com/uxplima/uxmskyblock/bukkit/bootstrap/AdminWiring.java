@@ -92,7 +92,11 @@ public final class AdminWiring {
                 persistence.outboxPort(),
                 persistence.islandRecycleOperationPort());
         this.resetConfirmationMenu = new IslandResetConfirmationMenu(
-                recycleService, persistence.islandStoragePort(), authority.sessionCoordinator(), scheduler);
+                recycleService,
+                persistence.islandStoragePort(),
+                authority.sessionCoordinator(),
+                scheduler,
+                config.messages());
 
         this.objectStoragePort = Objects.requireNonNull(objectStorage, "objectStorage must not be null");
         this.backupService = new BackupService(persistence.backupCatalogPort(), this.objectStoragePort);

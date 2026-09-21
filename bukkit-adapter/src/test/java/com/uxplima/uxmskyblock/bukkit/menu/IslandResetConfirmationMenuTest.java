@@ -16,6 +16,7 @@ import org.bukkit.entity.Player;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -50,7 +51,8 @@ class IslandResetConfirmationMenuTest extends MockBukkitHarness {
         mockSessionCoordinator = mock(PlayerSessionCoordinator.class);
         scheduler = new DirectSchedulerPort();
 
-        menu = new IslandResetConfirmationMenu(mockRecycleService, mockStorage, mockSessionCoordinator, scheduler);
+        menu = new IslandResetConfirmationMenu(
+                mockRecycleService, mockStorage, mockSessionCoordinator, scheduler, Messages.bundled());
 
         player = createPlayer("TestResetPlayer");
         islandId = new IslandId(UUID.randomUUID());
@@ -126,7 +128,7 @@ class IslandResetConfirmationMenuTest extends MockBukkitHarness {
         when(mockBedrock.isBedrock(player)).thenReturn(true);
 
         IslandResetConfirmationMenu bedrockMenu = new IslandResetConfirmationMenu(
-                mockRecycleService, mockStorage, mockSessionCoordinator, scheduler, mockBedrock);
+                mockRecycleService, mockStorage, mockSessionCoordinator, scheduler, mockBedrock, Messages.bundled());
 
         when(mockSessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(profileId));
         when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
