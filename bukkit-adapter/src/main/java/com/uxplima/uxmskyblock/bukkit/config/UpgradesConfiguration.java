@@ -31,7 +31,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
         Map<UpgradeId, UpgradeDefinition> defs = new LinkedHashMap<>();
 
         // 1. Island Size Upgrade
-        UpgradeId sizeId = UpgradeId.of("island_size");
+        UpgradeId sizeId = UpgradeId.SIZE;
         defs.put(
                 sizeId,
                 new UpgradeDefinition(
@@ -45,7 +45,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                                 new UpgradeTier(5, 1_000_000L, "PRIMARY", Map.of("radius", 100.0, "size", 200.0)))));
 
         // 2. Member Limit Upgrade
-        UpgradeId memberId = UpgradeId.of("member_limit");
+        UpgradeId memberId = UpgradeId.MEMBERS;
         defs.put(
                 memberId,
                 new UpgradeDefinition(
@@ -58,7 +58,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                                 new UpgradeTier(4, 200_000L, "PRIMARY", Map.of("max_members", 16.0)))));
 
         // 3. Ore Generator Upgrade
-        UpgradeId oreId = UpgradeId.of("ore_generator");
+        UpgradeId oreId = UpgradeId.ORE_GENERATOR;
         defs.put(
                 oreId,
                 new UpgradeDefinition(
@@ -71,7 +71,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                                 new UpgradeTier(4, 1_000_000L, "PRIMARY", Map.of("tier", 4.0)))));
 
         // 4. Crop Growth Upgrade
-        UpgradeId cropId = UpgradeId.of("crop_growth");
+        UpgradeId cropId = UpgradeId.CROP_GROWTH;
         defs.put(
                 cropId,
                 new UpgradeDefinition(
@@ -82,8 +82,32 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                                 new UpgradeTier(2, 60_000L, "PRIMARY", Map.of("rate_multiplier", 1.25)),
                                 new UpgradeTier(3, 150_000L, "PRIMARY", Map.of("rate_multiplier", 1.50)))));
 
-        // 5. Spawner Rates Upgrade
-        UpgradeId spawnerId = UpgradeId.of("spawner_rates");
+        // 5. Warp Slots Upgrade, read by IslandWarpService.getMaxAllowedWarps
+        UpgradeId warpId = UpgradeId.WARPS;
+        defs.put(
+                warpId,
+                new UpgradeDefinition(
+                        warpId,
+                        "Warp Slots",
+                        List.of(
+                                new UpgradeTier(1, 25_000L, "PRIMARY", Map.of("limit", 4.0)),
+                                new UpgradeTier(2, 100_000L, "PRIMARY", Map.of("limit", 6.0)),
+                                new UpgradeTier(3, 300_000L, "PRIMARY", Map.of("limit", 10.0)))));
+
+        // 6. Vault Pages Upgrade, read by IslandVaultService.getMaxAllowedPages
+        UpgradeId vaultId = UpgradeId.VAULT_PAGES;
+        defs.put(
+                vaultId,
+                new UpgradeDefinition(
+                        vaultId,
+                        "Vault Pages",
+                        List.of(
+                                new UpgradeTier(1, 40_000L, "PRIMARY", Map.of("limit", 2.0)),
+                                new UpgradeTier(2, 120_000L, "PRIMARY", Map.of("limit", 4.0)),
+                                new UpgradeTier(3, 400_000L, "PRIMARY", Map.of("limit", 6.0)))));
+
+        // 7. Spawner Rates Upgrade
+        UpgradeId spawnerId = UpgradeId.SPAWNER_RATES;
         defs.put(
                 spawnerId,
                 new UpgradeDefinition(

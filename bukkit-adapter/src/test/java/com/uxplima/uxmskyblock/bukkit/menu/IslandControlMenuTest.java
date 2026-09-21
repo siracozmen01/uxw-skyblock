@@ -85,7 +85,7 @@ class IslandControlMenuTest extends MockBukkitHarness {
         IslandBank bank = new IslandBank(islandId, 25000L, 10L, 50L, 1L, Instant.now());
         IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 50);
         IslandLocation loc = new IslandLocation(islandId, "skyblock_world", bounds, 0, 70, 0, 0f, 0f);
-        Map<UpgradeId, Integer> upgrades = Map.of(UpgradeId.SIZE, 2, UpgradeId.SPAWNER_SPEED, 3);
+        Map<UpgradeId, Integer> upgrades = Map.of(UpgradeId.SIZE, 2, UpgradeId.SPAWNER_RATES, 3);
 
         SimpleGui gui = menu.buildGui(player, sampleIsland, bank, upgrades, Optional.of(loc));
 

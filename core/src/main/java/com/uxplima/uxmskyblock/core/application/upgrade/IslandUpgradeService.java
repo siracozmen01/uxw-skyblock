@@ -8,13 +8,17 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
+import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeDefinition;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradePurchaseOutcome;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeTier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Domain service coordinating upgrade progression, tier verification, and financial settlement.
@@ -30,9 +34,69 @@ public final class IslandUpgradeService {
     private final java.util.Set<IslandId> loadingIslands =
             java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
+    private final @Nullable IslandBankPort bankPort;
+    private final @Nullable IslandAuthorityPort authorityPort;
+
     public IslandUpgradeService(IslandUpgradeStoragePort storagePort, Map<UpgradeId, UpgradeDefinition> definitions) {
+        this(storagePort, definitions, null, null);
+    }
+
+    /**
+     * The canonical constructor, carrying what a purchase needs beyond the tiers themselves.
+     *
+     * <p>A purchase charges the island bank, and the bank refuses a write from a node that does not
+     * hold the island's authority lease. A caller that had to find the lease itself would be every
+     * command, every menu and every API bridge doing the same three lines, so the service does it,
+     * the way the bank service already does.
+     */
+    public IslandUpgradeService(
+            IslandUpgradeStoragePort storagePort,
+            Map<UpgradeId, UpgradeDefinition> definitions,
+            @Nullable IslandBankPort bankPort,
+            @Nullable IslandAuthorityPort authorityPort) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort");
         this.definitions = (definitions == null) ? Map.of() : Map.copyOf(definitions);
+        this.bankPort = bankPort;
+        this.authorityPort = authorityPort;
+    }
+
+    /** Whether this service was built with what a purchase needs. */
+    public boolean canPurchase() {
+        return bankPort != null && authorityPort != null;
+    }
+
+    /**
+     * Buys the next tier, finding the bank and the authority lease itself.
+     *
+     * <p>Refuses when this node does not hold the lease, or holds an expired one, rather than
+     * charging into a write the bank would reject with less to say about why.
+     */
+    public UpgradePurchaseOutcome purchaseUpgrade(
+            IslandId islandId, UpgradeId upgradeId, UUID actorUuid, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId");
+        Objects.requireNonNull(upgradeId, "upgradeId");
+        Objects.requireNonNull(actorUuid, "actorUuid");
+        Objects.requireNonNull(serverNodeId, "serverNodeId");
+        if (bankPort == null || authorityPort == null) {
+            return new UpgradePurchaseOutcome.PaymentFailed("Upgrades cannot be bought on this server.");
+        }
+
+        Optional<IslandAuthorityRecord> optAuthority = authorityPort.findAuthority(islandId);
+        if (optAuthority.isEmpty()) {
+            return new UpgradePurchaseOutcome.PaymentFailed("No authority record found for island " + islandId);
+        }
+        IslandAuthorityRecord authority = optAuthority.get();
+        if (!authority.authoritativeNode().equals(serverNodeId)) {
+            return new UpgradePurchaseOutcome.PaymentFailed("This server does not hold authority for island " + islandId
+                    + " (held by " + authority.authoritativeNode() + ")");
+        }
+        if (authority.leaseExpiresAt().isBefore(java.time.Instant.now())) {
+            return new UpgradePurchaseOutcome.PaymentFailed(
+                    "Authority lease expired at " + authority.leaseExpiresAt() + " for island " + islandId);
+        }
+
+        return purchaseUpgrade(
+                islandId, upgradeId, actorUuid, bankPort, serverNodeId.value(), authority.authorityEpoch());
     }
 
     /** The catalogue this service was built with, so a caller can build a second one over it. */

@@ -411,6 +411,10 @@ public final class IslandCommandTree {
                 .then(groups.chatCommands().buildAllianceChatAlias())
                 .then(groups.seasonCommands().buildSeason())
                 .then(groups.reloadCommands().buildReload())
+                .then(groups.upgradeCommands().build())
+                // The menu file and the documents both say upgrades; a player typing the singular
+                // should not be told there is no such command.
+                .then(groups.upgradeCommands().buildUnder("upgrade"))
                 .then(vaultBranch("vault"))
                 // The design document publishes /is chest for the same window. A command an
                 // operator reads about and types is either there or the document is wrong, and the

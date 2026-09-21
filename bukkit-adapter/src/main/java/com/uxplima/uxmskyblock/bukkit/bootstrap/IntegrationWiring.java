@@ -210,6 +210,7 @@ public final class IntegrationWiring implements AutoCloseable {
                         .antiAbuseService(gameplay.antiAbuseService())
                         .boosterService(gameplay.boosterService())
                         .boosterMenu(gameplay.boosterMenu())
+                        .upgradeService(gameplay.upgradeService())
                         .build());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());

@@ -13,6 +13,7 @@ import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
+import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import org.jspecify.annotations.Nullable;
 
@@ -40,7 +41,8 @@ public record IslandFeatures(
         @Nullable IslandLimitService limitService,
         @Nullable IslandAntiAbuseService antiAbuseService,
         @Nullable IslandBoosterService boosterService,
-        @Nullable IslandBoosterMenu boosterMenu) {
+        @Nullable IslandBoosterMenu boosterMenu,
+        @Nullable IslandUpgradeService upgradeService) {
 
     /** Every optional module switched off, which is what a bare island command is. */
     public static IslandFeatures none() {
@@ -68,8 +70,14 @@ public record IslandFeatures(
         private @Nullable IslandAntiAbuseService antiAbuseService;
         private @Nullable IslandBoosterService boosterService;
         private @Nullable IslandBoosterMenu boosterMenu;
+        private @Nullable IslandUpgradeService upgradeService;
 
         private Builder() {}
+
+        public Builder upgradeService(@Nullable IslandUpgradeService value) {
+            this.upgradeService = value;
+            return this;
+        }
 
         public Builder controlMenu(@Nullable IslandControlMenu value) {
             this.controlMenu = value;
@@ -156,7 +164,8 @@ public record IslandFeatures(
                     limitService,
                     antiAbuseService,
                     boosterService,
-                    boosterMenu);
+                    boosterMenu,
+                    upgradeService);
         }
     }
 }

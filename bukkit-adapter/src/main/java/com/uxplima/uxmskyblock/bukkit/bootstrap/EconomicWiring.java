@@ -68,7 +68,10 @@ public final class EconomicWiring {
                 persistence.outboxPort());
         this.dynamicPricingEngine = new DynamicPricingEngine(config.shopConfig().dampingFactor());
         this.upgradeService = new IslandUpgradeService(
-                persistence.islandUpgradeStoragePort(), config.upgradesConfig().definitions());
+                persistence.islandUpgradeStoragePort(),
+                config.upgradesConfig().definitions(),
+                persistence.islandBankPort(),
+                persistence.islandAuthorityPort());
 
         this.bankruptcyService = new IslandBankruptcyService(
                 persistence.islandBankruptcyStoragePort(),

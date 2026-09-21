@@ -45,7 +45,8 @@ final class CommandGroupBuilder {
             IslandMembershipCommands membershipCommands,
             IslandInfoCommands infoCommands,
             IslandSeasonCommands seasonCommands,
-            IslandReloadCommands reloadCommands) {}
+            IslandReloadCommands reloadCommands,
+            IslandUpgradeCommands upgradeCommands) {}
 
     CommandGroups build() {
 
@@ -56,6 +57,14 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.serverNodeId,
                 () -> tree.bankruptcyService,
+                tree.messages,
+                tree.sessionCoordinator);
+
+        IslandUpgradeCommands upgradeCommands = new IslandUpgradeCommands(
+                () -> tree.features.upgradeService(),
+                tree.islandLocationService,
+                tree.schedulerPort,
+                tree.serverNodeId,
                 tree.messages,
                 tree.sessionCoordinator);
 
@@ -235,6 +244,7 @@ final class CommandGroupBuilder {
                 membershipCommands,
                 infoCommands,
                 seasonCommands,
-                reloadCommands);
+                reloadCommands,
+                upgradeCommands);
     }
 }

@@ -196,9 +196,10 @@ public final class IslandControlMenu {
                 Map.entry("size_tier", String.valueOf(tiers.getOrDefault(UpgradeId.SIZE, 0))),
                 Map.entry("members_tier", String.valueOf(tiers.getOrDefault(UpgradeId.MEMBERS, 0))),
                 Map.entry("warps_tier", String.valueOf(tiers.getOrDefault(UpgradeId.WARPS, 0))),
-                Map.entry("spawner_tier", String.valueOf(tiers.getOrDefault(UpgradeId.SPAWNER_SPEED, 0))),
+                Map.entry("spawner_tier", String.valueOf(tiers.getOrDefault(UpgradeId.SPAWNER_RATES, 0))),
                 Map.entry("generator_tier", String.valueOf(tiers.getOrDefault(UpgradeId.ORE_GENERATOR, 0))),
-                Map.entry("vault_tier", String.valueOf(tiers.getOrDefault(UpgradeId.VAULT_PAGES, 0))));
+                Map.entry("vault_tier", String.valueOf(tiers.getOrDefault(UpgradeId.VAULT_PAGES, 0))),
+                Map.entry("crop_tier", String.valueOf(tiers.getOrDefault(UpgradeId.CROP_GROWTH, 0))));
     }
 
     public void open(Player player) {
@@ -335,7 +336,7 @@ public final class IslandControlMenu {
 
         // Slot 12: Upgrades
         int sizeTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SIZE, 0) : 0;
-        int spawnerTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SPAWNER_SPEED, 0) : 0;
+        int spawnerTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SPAWNER_RATES, 0) : 0;
         ItemStack upgradeItem = ItemBuilder.of(Material.NETHER_STAR)
                 .name(messages.renderPlain(player, "menu.control.upgrades_name"))
                 .lore(messages.renderAll(
