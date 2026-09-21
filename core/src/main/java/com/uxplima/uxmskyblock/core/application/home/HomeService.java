@@ -46,7 +46,7 @@ public final class HomeService {
             double z,
             float yaw,
             float pitch,
-            int vipTier) {
+            int allowance) {
 
         Objects.requireNonNull(profileId, "profileId must not be null");
         Objects.requireNonNull(islandId, "islandId must not be null");
@@ -59,7 +59,7 @@ public final class HomeService {
 
         if (existing.isEmpty()) {
             int currentCount = homeStoragePort.countHomes(profileId);
-            int maxAllowed = homeLimitPolicy.maxHomesFor(vipTier);
+            int maxAllowed = homeLimitPolicy.maxHomesFor(allowance);
             if (currentCount >= maxAllowed) {
                 return new SetHomeResult.LimitExceeded(currentCount, maxAllowed);
             }
