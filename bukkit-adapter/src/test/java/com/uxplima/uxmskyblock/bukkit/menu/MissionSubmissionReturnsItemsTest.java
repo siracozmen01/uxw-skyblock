@@ -1,0 +1,163 @@
+package com.uxplima.uxmskyblock.bukkit.menu;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
+
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
+import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionBranch;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionId;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionProgress;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionReward;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionTriggerType;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.entity.PlayerMock;
+
+/**
+ * A manual submission takes the items on the entity thread and writes the progress off it. If the
+ * write does nothing the player has paid for nothing, and nothing used to give the items back.
+ */
+class MissionSubmissionReturnsItemsTest extends MockBukkitHarness {
+
+    private IslandMissionService missionService;
+    private IslandMissionsMenu menu;
+    private PlayerMock player;
+    private IslandId islandId;
+    private ProfileId profileId;
+    private MissionDefinition definition;
+
+    @BeforeEach
+    void setUp() {
+        missionService = mock(IslandMissionService.class);
+        IslandStoragePort storagePort = mock(IslandStoragePort.class);
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        menu = new IslandMissionsMenu(
+                missionService, storagePort, sessions, new DirectScheduler(), Messages.bundled(), null);
+
+        player = createPlayer("Submitter");
+        islandId = IslandId.of(UUID.randomUUID());
+        profileId = new ProfileId(UUID.randomUUID());
+
+        definition = new MissionDefinition(
+                MissionId.of("collect-diamonds"),
+                MissionBranch.MINING,
+                "Collect diamonds",
+                "Hand in diamonds.",
+                MissionTriggerType.ITEM_SUBMIT,
+                Material.DIAMOND.name(),
+                10,
+                MissionReward.empty());
+        when(missionService.allMissions()).thenReturn(List.of(definition));
+        when(missionService.findAllProgress(eq(islandId), eq(profileId))).thenReturn(java.util.Map.of());
+    }
+
+    @Test
+    @DisplayName("Items come back when the submission is not credited")
+    void itemsComeBackWhenNotCredited() {
+        when(missionService.submitManualItem(any(), any(), any(), anyLong(), any()))
+                .thenReturn(Optional.empty());
+        player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
+
+        menu.handleManualItemSubmission(player, islandId, profileId, definition);
+
+        assertThat(countOf(Material.DIAMOND)).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("Items come back when the write throws rather than vanishing with the error")
+    void itemsComeBackWhenTheWriteThrows() {
+        when(missionService.submitManualItem(any(), any(), any(), anyLong(), any()))
+                .thenThrow(new IllegalStateException("database is gone"));
+        player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
+
+        menu.handleManualItemSubmission(player, islandId, profileId, definition);
+
+        assertThat(countOf(Material.DIAMOND)).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("Items stay taken when the submission is credited")
+    void itemsStayTakenWhenCredited() {
+        when(missionService.submitManualItem(any(), any(), any(), anyLong(), any()))
+                .thenReturn(Optional.of(MissionProgress.initial(definition.id())));
+        player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
+
+        menu.handleManualItemSubmission(player, islandId, profileId, definition);
+
+        assertThat(countOf(Material.DIAMOND)).isZero();
+    }
+
+    private int countOf(Material material) {
+        int total = 0;
+        for (ItemStack stack : player.getInventory().getContents()) {
+            if (stack != null && stack.getType() == material) {
+                total += stack.getAmount();
+            }
+        }
+        return total;
+    }
+
+    private static final class DirectScheduler implements SchedulerPort {
+        @Override
+        public void onGlobal(Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void onRegion(String worldName, int chunkX, int chunkZ, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void onEntity(PlayerUuid playerUuid, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void async(Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void asyncAfter(Duration delay, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public void laterGlobal(Duration delay, Runnable task) {
+            task.run();
+        }
+
+        @Override
+        public AutoCloseable repeatGlobal(Runnable task, Duration initialDelay, Duration period) {
+            return () -> {};
+        }
+
+        @Override
+        public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
+            return () -> {};
+        }
+    }
+}

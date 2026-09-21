@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -41,6 +43,8 @@ import org.jspecify.annotations.Nullable;
  * and physical item submissions.
  */
 public final class IslandMissionsMenu {
+
+    private static final Logger LOGGER = Logger.getLogger(IslandMissionsMenu.class.getName());
 
     private final IslandMissionService missionService;
     private final IslandStoragePort islandStoragePort;
@@ -257,8 +261,8 @@ public final class IslandMissionsMenu {
         return gui;
     }
 
-    private void handleManualItemSubmission(
-            Player player, IslandId islandId, ProfileId profileId, MissionDefinition def) {
+    /** Package private so the guard against losing a player's items can drive it directly. */
+    void handleManualItemSubmission(Player player, IslandId islandId, ProfileId profileId, MissionDefinition def) {
         String filter = def.targetFilter();
         Material requiredMat = Material.matchMaterial(filter);
         if (requiredMat == null) {
@@ -308,8 +312,27 @@ public final class IslandMissionsMenu {
 
         final int taken = toTake;
         schedulerPort.async(() -> {
-            missionService.submitManualItem(islandId, profileId, def.id(), taken, Instant.now());
+            boolean credited;
+            try {
+                credited = missionService
+                        .submitManualItem(islandId, profileId, def.id(), taken, Instant.now())
+                        .isPresent();
+            } catch (RuntimeException e) {
+                LOGGER.log(
+                        Level.SEVERE,
+                        "Crediting a manual mission submission failed, returning the items to the player",
+                        e);
+                credited = false;
+            }
+
+            boolean creditedFinal = credited;
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                if (!creditedFinal) {
+                    returnItems(player, requiredMat, taken);
+                    messages.send(
+                            player, "menu.missions.submit_failed", Placeholder.unparsed("item", requiredMat.name()));
+                    return;
+                }
                 messages.send(
                         player,
                         "menu.missions.submitted",
@@ -318,5 +341,25 @@ public final class IslandMissionsMenu {
                 open(player);
             });
         });
+    }
+
+    /**
+     * Gives back what was taken when the submission was not credited.
+     *
+     * <p>The items leave the inventory before the progress is written, because the write is off the
+     * entity thread and the inventory may not be touched from there. If the write then does nothing,
+     * either because it failed or because the mission was already finished by somebody else, the
+     * player has paid for nothing. What does not fit goes on the ground at their feet rather than
+     * being dropped silently.
+     */
+    private void returnItems(Player player, Material material, int amount) {
+        if (amount <= 0) {
+            return;
+        }
+        ItemStack stack = new ItemStack(material, amount);
+        Map<Integer, ItemStack> leftover = player.getInventory().addItem(stack);
+        for (ItemStack overflow : leftover.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), overflow);
+        }
     }
 }
