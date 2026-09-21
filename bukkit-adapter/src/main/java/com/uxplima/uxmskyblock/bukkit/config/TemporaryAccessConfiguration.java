@@ -14,13 +14,16 @@ public record TemporaryAccessConfiguration(
         Duration defaultDuration,
         Duration maxDuration,
         Duration purgeInterval,
-        boolean enforceRulesetIsolation) {
+        boolean enforceRulesetIsolation,
+        Duration grantLookupTtl) {
 
     public static final boolean DEFAULT_ENABLED = true;
     public static final Duration DEFAULT_DURATION = Duration.ofHours(1);
     public static final Duration DEFAULT_MAX_DURATION = Duration.ofDays(1);
     public static final Duration DEFAULT_PURGE_INTERVAL = Duration.ofMinutes(1);
     public static final boolean DEFAULT_ENFORCE_RULESET_ISOLATION = true;
+    public static final Duration DEFAULT_GRANT_LOOKUP_TTL =
+            com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService.DEFAULT_GRANT_LOOKUP_TTL;
 
     public TemporaryAccessConfiguration {
         Objects.requireNonNull(defaultDuration, "defaultDuration must not be null");
@@ -35,6 +38,10 @@ public record TemporaryAccessConfiguration(
         if (purgeInterval.isNegative() || purgeInterval.isZero()) {
             throw new IllegalArgumentException("purgeInterval must be positive: " + purgeInterval);
         }
+        Objects.requireNonNull(grantLookupTtl, "grantLookupTtl must not be null");
+        if (grantLookupTtl.isNegative()) {
+            throw new IllegalArgumentException("grantLookupTtl must not be negative: " + grantLookupTtl);
+        }
     }
 
     public static TemporaryAccessConfiguration defaultConfiguration() {
@@ -43,7 +50,8 @@ public record TemporaryAccessConfiguration(
                 DEFAULT_DURATION,
                 DEFAULT_MAX_DURATION,
                 DEFAULT_PURGE_INTERVAL,
-                DEFAULT_ENFORCE_RULESET_ISOLATION);
+                DEFAULT_ENFORCE_RULESET_ISOLATION,
+                DEFAULT_GRANT_LOOKUP_TTL);
     }
 
     public static TemporaryAccessConfiguration load(ConfigurationNode rootNode) {
@@ -69,6 +77,11 @@ public record TemporaryAccessConfiguration(
 
         boolean enforceIsolation = node.node("enforce-ruleset-isolation").getBoolean(DEFAULT_ENFORCE_RULESET_ISOLATION);
 
-        return new TemporaryAccessConfiguration(enabled, defaultDuration, maxDuration, purgeInterval, enforceIsolation);
+        String ttlRaw = node.node("grant-lookup-ttl").getString();
+        Duration grantLookupTtl =
+                ttlRaw != null && !ttlRaw.isBlank() ? Durations.parse(ttlRaw) : DEFAULT_GRANT_LOOKUP_TTL;
+
+        return new TemporaryAccessConfiguration(
+                enabled, defaultDuration, maxDuration, purgeInterval, enforceIsolation, grantLookupTtl);
     }
 }

@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.core.application.access;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -31,10 +32,73 @@ public final class TemporaryAccessService {
     public static final Set<PermissionKey> ECONOMIC_PERMISSIONS = Set.of(
             StandardPermissions.BANK_DEPOSIT, StandardPermissions.BANK_WITHDRAW, StandardPermissions.SHOP_ACCESS);
 
+    /** How long a root's grants may be answered from memory before they are read again. */
+    public static final Duration DEFAULT_GRANT_LOOKUP_TTL = Duration.ofSeconds(30);
+
     private final TemporaryAccessStoragePort storagePort;
+    private final Duration grantLookupTtl;
+
+    /**
+     * Every grant on a root, and when it was read.
+     *
+     * <p>{@link #hasAccess} is asked about every block a player who is not a member touches, and it
+     * went to the database every single time: a query per click, on the thread the interaction
+     * arrived on. The common case is a root with no grants at all, and that case was the uncached
+     * one, so a visitor tapping a chest ran a query per tap.
+     *
+     * <p>A root with no grants is remembered as having none, which is the answer that matters. This
+     * node writes its own grants into the map as it makes them, so what it granted is never stale;
+     * the read is only there to notice a grant another node made, and a bounded staleness is the
+     * right price for that where a query per click is not.
+     */
+    private final java.util.concurrent.ConcurrentMap<String, List<TemporaryAccessGrant>> grantsByRoot =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final java.util.concurrent.ConcurrentMap<String, Instant> rootReadAt =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public TemporaryAccessService(TemporaryAccessStoragePort storagePort) {
+        this(storagePort, DEFAULT_GRANT_LOOKUP_TTL);
+    }
+
+    public TemporaryAccessService(TemporaryAccessStoragePort storagePort, Duration grantLookupTtl) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
+        this.grantLookupTtl = Objects.requireNonNull(grantLookupTtl, "grantLookupTtl must not be null");
+        if (grantLookupTtl.isNegative()) {
+            throw new IllegalArgumentException("grantLookupTtl must not be negative: " + grantLookupTtl);
+        }
+    }
+
+    private static String rootKey(String targetRootTypeId, String targetRootKey) {
+        return targetRootTypeId + '\u001f' + targetRootKey;
+    }
+
+    /** Every grant on the root, from memory when it was read recently enough. */
+    private List<TemporaryAccessGrant> activeGrantsOn(String targetRootTypeId, String targetRootKey, Instant now) {
+        String key = rootKey(targetRootTypeId, targetRootKey);
+        Instant readAt = rootReadAt.get(key);
+        List<TemporaryAccessGrant> cached = grantsByRoot.get(key);
+        // Good strictly before it runs out, so a window of nothing reads every time, which is what
+        // the configuration file promises an operator who writes zero.
+        if (cached != null && readAt != null && readAt.plus(grantLookupTtl).isAfter(now)) {
+            return cached;
+        }
+        List<TemporaryAccessGrant> fresh = List.copyOf(storagePort.findActiveByRoot(targetRootTypeId, targetRootKey));
+        grantsByRoot.put(key, fresh);
+        rootReadAt.put(key, now);
+        return fresh;
+    }
+
+    /** Forgets what this node knew about a root, so the next question is asked of the database. */
+    private void forgetRoot(String targetRootTypeId, String targetRootKey) {
+        String key = rootKey(targetRootTypeId, targetRootKey);
+        grantsByRoot.remove(key);
+        rootReadAt.remove(key);
+    }
+
+    /** How many roots this node is answering from memory, for a caller that wants to say so. */
+    public int rootsHeldInMemory() {
+        return grantsByRoot.size();
     }
 
     /**
@@ -122,6 +186,7 @@ public final class TemporaryAccessService {
                 now);
 
         storagePort.save(grant);
+        forgetRoot(targetRootTypeId, targetRootKey);
         return grant;
     }
 
@@ -135,6 +200,7 @@ public final class TemporaryAccessService {
         if (grant.state() != GrantState.REVOKED) {
             storagePort.updateState(grantId, GrantState.REVOKED, Instant.now());
         }
+        forgetRoot(grant.targetRootTypeId(), grant.targetRootKey());
     }
 
     /**
@@ -163,7 +229,7 @@ public final class TemporaryAccessService {
             return false;
         }
 
-        List<TemporaryAccessGrant> grants = storagePort.findActiveByRoot(targetRootTypeId, targetRootKey);
+        List<TemporaryAccessGrant> grants = activeGrantsOn(targetRootTypeId, targetRootKey, now);
         for (TemporaryAccessGrant grant : grants) {
             if (!grant.granteeProfileId().equals(granteeProfileId)) {
                 continue;
@@ -182,7 +248,10 @@ public final class TemporaryAccessService {
     }
 
     public List<TemporaryAccessGrant> getActiveGrantsForRoot(String targetRootTypeId, String targetRootKey) {
-        return storagePort.findActiveByRoot(targetRootTypeId, targetRootKey);
+        // A caller asking for the list is a menu or a command rather than a block click, so it reads
+        // through to the database and leaves what it found where the hot path will find it.
+        forgetRoot(targetRootTypeId, targetRootKey);
+        return activeGrantsOn(targetRootTypeId, targetRootKey, Instant.now());
     }
 
     public List<TemporaryAccessGrant> getActiveGrantsForGrantee(ProfileId granteeProfileId) {
@@ -195,5 +264,8 @@ public final class TemporaryAccessService {
 
     public void purgeExpired(Instant now) {
         storagePort.purgeExpired(now);
+        // Whatever was purged was on some root, and which one is not worth a second query.
+        grantsByRoot.clear();
+        rootReadAt.clear();
     }
 }

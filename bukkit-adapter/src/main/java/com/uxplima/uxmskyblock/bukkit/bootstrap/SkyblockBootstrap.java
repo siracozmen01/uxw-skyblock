@@ -85,8 +85,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 configWiring.allianceConfig().friendlyFireShielding(),
                 configWiring.allianceConfig().privilegedVisitAccess(),
                 configWiring.allianceConfig().allianceChatEnabled());
-        TemporaryAccessService temporaryAccessService =
-                new TemporaryAccessService(persistenceWiring.bootstrap().temporaryAccessStoragePort());
+        TemporaryAccessService temporaryAccessService = new TemporaryAccessService(
+                persistenceWiring.bootstrap().temporaryAccessStoragePort(),
+                configWiring.temporaryAccessConfig().grantLookupTtl());
         BukkitIslandVisitorEvictionAdapter visitorEvictionAdapter = new BukkitIslandVisitorEvictionAdapter(
                 plugin,
                 persistenceWiring.bootstrap().islandStoragePort(),
