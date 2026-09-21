@@ -133,7 +133,8 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 backpressureController,
                 economyBridgeRef::get,
                 clusterTransportWiring.chatTransport(),
-                persistenceWiring.objectStoragePort());
+                persistenceWiring.objectStoragePort(),
+                persistenceWiring.backupBucket());
 
         this.integrationWiring = new IntegrationWiring(
                 plugin,

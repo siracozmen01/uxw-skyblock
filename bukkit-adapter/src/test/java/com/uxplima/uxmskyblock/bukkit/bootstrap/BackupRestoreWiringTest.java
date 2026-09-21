@@ -280,7 +280,8 @@ class BackupRestoreWiringTest {
                     backpressureController,
                     () -> null,
                     new LocalIslandChatTransportAdapter(),
-                    customStorage);
+                    customStorage,
+                    new com.uxplima.uxmskyblock.core.domain.storage.StorageBucket("test-bucket"));
 
             assertThat(gameplay.objectStoragePort()).isSameAs(customStorage);
             assertThat(gameplay.worldDimensionSnapshotPort()).isNotNull();

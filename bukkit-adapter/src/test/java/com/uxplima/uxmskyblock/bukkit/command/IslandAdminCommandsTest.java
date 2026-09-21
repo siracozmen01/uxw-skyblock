@@ -113,6 +113,7 @@ class IslandAdminCommandsTest {
                 () -> null,
                 () -> null,
                 () -> null,
+                () -> null,
                 protection,
                 locations,
                 sessions,

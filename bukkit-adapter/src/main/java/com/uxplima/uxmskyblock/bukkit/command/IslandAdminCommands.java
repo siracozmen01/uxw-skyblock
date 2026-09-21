@@ -39,6 +39,7 @@ import com.uxplima.uxmskyblock.core.domain.inactivity.IslandInactivityScanReport
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.snapshot.RestoreMode;
+import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -64,6 +65,7 @@ public final class IslandAdminCommands {
             Supplier<@Nullable IslandRestoreService> restoreServiceProvider,
             Supplier<@Nullable BackupService> backupServiceProvider,
             Supplier<@Nullable IslandRecycleService> recycleServiceProvider,
+            Supplier<@Nullable StorageBucket> backupBucketProvider,
             IslandProtectionListener protectionListener,
             IslandLocationService islandLocationService,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
@@ -85,6 +87,7 @@ public final class IslandAdminCommands {
                 restoreServiceProvider,
                 backupServiceProvider,
                 recycleServiceProvider,
+                backupBucketProvider,
                 islandLocationService,
                 sessionCoordinator,
                 schedulerPort,

@@ -78,6 +78,7 @@ import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
+import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter;
@@ -96,6 +97,7 @@ public final class GameplayWiring {
 
     private final GameplayCreationWiring creationWiring;
     private final AdminWiring adminWiring;
+    private final StorageBucket backupBucket;
     private final EconomicWiring economicWiring;
     private final SocialWiring socialWiring;
     private final GameplayProtectionWiring protectionWiring;
@@ -132,7 +134,8 @@ public final class GameplayWiring {
                 economyBridgeSupplier,
                 chatTransport,
                 new LocalFilesystemStorageAdapter(
-                        plugin.getDataFolder().toPath().resolve("backups")));
+                        plugin.getDataFolder().toPath().resolve("backups")),
+                new StorageBucket(PersistenceWiring.DEFAULT_BACKUP_BUCKET));
     }
 
     public GameplayWiring(
@@ -150,7 +153,8 @@ public final class GameplayWiring {
             AdaptiveBackpressureController backpressureController,
             Supplier<SkyblockEconomyBridge> economyBridgeSupplier,
             IslandChatTransportPort chatTransport,
-            ObjectStoragePort objectStorage) {
+            ObjectStoragePort objectStorage,
+            StorageBucket backupBucket) {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.backpressureController =
                 Objects.requireNonNull(backpressureController, "backpressureController must not be null");
@@ -183,6 +187,7 @@ public final class GameplayWiring {
                 chatTransport,
                 scheduler);
 
+        this.backupBucket = java.util.Objects.requireNonNull(backupBucket, "backupBucket must not be null");
         this.adminWiring = new AdminWiring(
                 plugin,
                 config,
@@ -499,6 +504,11 @@ public final class GameplayWiring {
 
     public ObjectStoragePort objectStoragePort() {
         return adminWiring.objectStoragePort();
+    }
+
+    /** The bucket the operator named for backups, so a restore reads back from where one was written. */
+    public StorageBucket backupBucket() {
+        return backupBucket;
     }
 
     public BackupService backupService() {

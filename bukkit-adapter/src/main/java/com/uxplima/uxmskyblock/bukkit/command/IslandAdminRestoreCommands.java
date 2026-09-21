@@ -52,6 +52,7 @@ public final class IslandAdminRestoreCommands {
     private final Supplier<@Nullable IslandRestoreService> restoreServiceProvider;
     private final Supplier<@Nullable BackupService> backupServiceProvider;
     private final Supplier<@Nullable IslandRecycleService> recycleServiceProvider;
+    private final Supplier<@Nullable StorageBucket> backupBucketProvider;
     private final IslandLocationService islandLocationService;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
@@ -61,6 +62,7 @@ public final class IslandAdminRestoreCommands {
             Supplier<@Nullable IslandRestoreService> restoreServiceProvider,
             Supplier<@Nullable BackupService> backupServiceProvider,
             Supplier<@Nullable IslandRecycleService> recycleServiceProvider,
+            Supplier<@Nullable StorageBucket> backupBucketProvider,
             IslandLocationService islandLocationService,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
@@ -71,6 +73,8 @@ public final class IslandAdminRestoreCommands {
                 Objects.requireNonNull(backupServiceProvider, "backupServiceProvider must not be null");
         this.recycleServiceProvider =
                 Objects.requireNonNull(recycleServiceProvider, "recycleServiceProvider must not be null");
+        this.backupBucketProvider =
+                Objects.requireNonNull(backupBucketProvider, "backupBucketProvider must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.sessionCoordinator = sessionCoordinator;
@@ -232,7 +236,15 @@ public final class IslandAdminRestoreCommands {
         schedulerPort.async(() -> {
             try {
                 BackupSetId backupSetId = BackupSetId.fromString(backupIdStr);
-                StorageBucket bucket = new StorageBucket("uxmskyblock-backups");
+                // The bucket is the one the operator named in storage.s3.bucket. It used to be
+                // written into this line, so an operator who renamed their bucket wrote backups to
+                // one place and restored from another that does not exist: the restore answered
+                // "manifest missing" and said nothing about why.
+                StorageBucket bucket = backupBucketProvider.get();
+                if (bucket == null) {
+                    send(sender, "admin.restore_not_configured");
+                    return;
+                }
                 String rootPrefix = "backups/" + backupSetId;
 
                 Optional<BackupManifest> optManifest = Optional.empty();

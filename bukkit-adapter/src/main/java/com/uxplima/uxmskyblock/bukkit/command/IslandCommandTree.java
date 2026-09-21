@@ -54,6 +54,7 @@ import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -96,6 +97,7 @@ public final class IslandCommandTree {
     volatile @Nullable IslandNetworkRouter networkRouter;
     volatile @Nullable IslandRestoreService restoreService;
     volatile @Nullable BackupService backupService;
+    volatile @Nullable StorageBucket backupBucket;
     volatile @Nullable IslandWarpService warpService;
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
@@ -279,6 +281,16 @@ public final class IslandCommandTree {
 
     public void setBackupService(@Nullable BackupService backupService) {
         this.backupService = backupService;
+    }
+
+    /**
+     * Names the bucket a restore reads from.
+     *
+     * <p>The restore command used to write the name into its own source, so an operator who renamed
+     * their bucket wrote backups to one place and restored from another that does not exist.
+     */
+    public void setBackupBucket(@Nullable StorageBucket backupBucket) {
+        this.backupBucket = backupBucket;
     }
 
     public @Nullable BackupService backupService() {

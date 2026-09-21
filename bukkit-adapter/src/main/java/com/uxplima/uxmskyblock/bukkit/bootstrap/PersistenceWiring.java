@@ -23,17 +23,40 @@ import org.spongepowered.configurate.ConfigurationNode;
  */
 public final class PersistenceWiring implements AutoCloseable {
 
+    /** The bucket a backup is written to when the operator names none. */
+    public static final String DEFAULT_BACKUP_BUCKET = "uxmskyblock-backups";
+
     private final PersistenceBootstrap persistenceBootstrap;
     private final ObjectStoragePort objectStoragePort;
+    private final StorageBucket backupBucket;
 
-    public PersistenceWiring(PersistenceBootstrap persistenceBootstrap, ObjectStoragePort objectStoragePort) {
+    public PersistenceWiring(
+            PersistenceBootstrap persistenceBootstrap,
+            ObjectStoragePort objectStoragePort,
+            StorageBucket backupBucket) {
         this.persistenceBootstrap =
                 Objects.requireNonNull(persistenceBootstrap, "persistenceBootstrap must not be null");
         this.objectStoragePort = Objects.requireNonNull(objectStoragePort, "objectStoragePort must not be null");
+        this.backupBucket = Objects.requireNonNull(backupBucket, "backupBucket must not be null");
+    }
+
+    public PersistenceWiring(PersistenceBootstrap persistenceBootstrap, ObjectStoragePort objectStoragePort) {
+        this(persistenceBootstrap, objectStoragePort, new StorageBucket(DEFAULT_BACKUP_BUCKET));
     }
 
     public PersistenceWiring(PersistenceBootstrap persistenceBootstrap) {
         this(persistenceBootstrap, new LocalFilesystemStorageAdapter(Path.of("backups")));
+    }
+
+    /**
+     * The bucket backups are written to and read back from.
+     *
+     * <p>The restore command used to write this name into its own source, so an operator who
+     * renamed their bucket wrote backups to one place and restored from another that does not
+     * exist. The restore answered "manifest missing" and said nothing about why.
+     */
+    public StorageBucket backupBucket() {
+        return backupBucket;
     }
 
     /**
@@ -58,6 +81,18 @@ public final class PersistenceWiring implements AutoCloseable {
             Path dbFile = dataDir.resolve("skyblock.db");
             persistenceBootstrap = PersistenceBootstrap.createSqlite(dbFile);
         }
+
+        // The bucket is named once, whichever storage backend is chosen, because a backup written
+        // under one name has to be read back under the same one.
+        String configuredBucket =
+                rootNode != null ? rootNode.node("storage", "s3", "bucket").getString() : null;
+        if (configuredBucket == null || configuredBucket.isBlank()) {
+            configuredBucket = System.getProperty("skyblock.s3.bucket", System.getenv("SKYBLOCK_S3_BUCKET"));
+        }
+        if (configuredBucket == null || configuredBucket.isBlank()) {
+            configuredBucket = DEFAULT_BACKUP_BUCKET;
+        }
+        StorageBucket backupBucket = new StorageBucket(configuredBucket);
 
         // Resolve ObjectStoragePort (S3 or local filesystem)
         ObjectStoragePort objectStorage;
@@ -87,15 +122,6 @@ public final class PersistenceWiring implements AutoCloseable {
             }
             if (region == null || region.isBlank()) {
                 region = "us-east-1";
-            }
-
-            String bucketName =
-                    rootNode != null ? rootNode.node("storage", "s3", "bucket").getString() : null;
-            if (bucketName == null || bucketName.isBlank()) {
-                bucketName = System.getProperty("skyblock.s3.bucket", System.getenv("SKYBLOCK_S3_BUCKET"));
-            }
-            if (bucketName == null || bucketName.isBlank()) {
-                bucketName = "uxmskyblock-backups";
             }
 
             String accessKey = rootNode != null
@@ -150,7 +176,7 @@ public final class PersistenceWiring implements AutoCloseable {
             S3StorageConfiguration s3Config = new S3StorageConfiguration(
                     URI.create(endpointStr),
                     region,
-                    new StorageBucket(bucketName),
+                    backupBucket,
                     credentials,
                     addressingMode,
                     providerTarget,
@@ -171,7 +197,7 @@ public final class PersistenceWiring implements AutoCloseable {
             objectStorage = new LocalFilesystemStorageAdapter(backupDir);
         }
 
-        return new PersistenceWiring(persistenceBootstrap, objectStorage);
+        return new PersistenceWiring(persistenceBootstrap, objectStorage, backupBucket);
     }
 
     private static boolean isRemoteConfigured(ConfigurationNode rootNode) {
