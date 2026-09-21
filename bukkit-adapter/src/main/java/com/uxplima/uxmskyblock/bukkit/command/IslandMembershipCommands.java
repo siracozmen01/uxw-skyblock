@@ -97,6 +97,100 @@ public final class IslandMembershipCommands {
                         .then(Cmd.argument("role", StringArgumentType.word()).executes(this::executeRole)));
     }
 
+    /**
+     * {@code /is permissions} and {@code /is permissions <role> <permission> <on|off>}.
+     *
+     * <p>The design document publishes this for overriding a permission per role, the table that
+     * holds it has been written on every save since the island writer was written, and nothing could
+     * move one: the roles an island was created with were the roles it died with.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildPermissions() {
+        return Cmd.literal("permissions")
+                .executes(this::executePermissionList)
+                .then(Cmd.argument("role", StringArgumentType.word())
+                        .then(Cmd.argument("permission", StringArgumentType.word())
+                                .then(Cmd.argument("state", StringArgumentType.word())
+                                        .executes(this::executeSetPermission))));
+    }
+
+    private int executePermissionList(CommandContext<CommandSourceStack> ctx) {
+        return withService(
+                ctx,
+                (player, service, actor) -> schedulerPort.async(() -> {
+                    Optional<IslandId> optIsland = islandLocationService.findIslandId(actor);
+                    Optional<com.uxplima.uxmskyblock.core.domain.island.Island> optIslandRow =
+                            optIsland.flatMap(islandLocationService::findIsland);
+                    if (optIslandRow.isEmpty()) {
+                        send(player, "error.no_island");
+                        return;
+                    }
+                    com.uxplima.uxmskyblock.core.domain.island.Island island = optIslandRow.get();
+                    send(player, "member.permissions_header");
+                    island.roles().values().stream()
+                            .sorted(java.util.Comparator.comparingInt(
+                                    com.uxplima.uxmskyblock.core.domain.island.IslandRole::weight))
+                            .forEach(role -> send(
+                                    player,
+                                    "member.permissions_entry",
+                                    Placeholder.unparsed("role", role.id().toLowerCase(java.util.Locale.ROOT)),
+                                    Placeholder.unparsed("permissions", permissionsOf(role))));
+                }));
+    }
+
+    /** The permissions a role carries, lower case and comma separated, or a word saying none. */
+    private String permissionsOf(com.uxplima.uxmskyblock.core.domain.island.IslandRole role) {
+        return role.permissions().stream()
+                .map(permission -> permission.name().toLowerCase(java.util.Locale.ROOT))
+                .sorted()
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("-");
+    }
+
+    private int executeSetPermission(CommandContext<CommandSourceStack> ctx) {
+        String role = StringArgumentType.getString(ctx, "role");
+        String permission = StringArgumentType.getString(ctx, "permission");
+        String state = StringArgumentType.getString(ctx, "state");
+        boolean allowed =
+                "on".equalsIgnoreCase(state) || "true".equalsIgnoreCase(state) || "yes".equalsIgnoreCase(state);
+        boolean denied =
+                "off".equalsIgnoreCase(state) || "false".equalsIgnoreCase(state) || "no".equalsIgnoreCase(state);
+        if (!allowed && !denied) {
+            send(ctx.getSource().getSender(), "member.permission_state", Placeholder.unparsed("state", state));
+            return Cmd.OK;
+        }
+
+        return withService(
+                ctx,
+                (player, service, actor) -> schedulerPort.async(() -> {
+                    switch (service.setRolePermission(actor, role, permission, allowed)) {
+                        case IslandMembershipService.PermissionOutcome.Changed changed ->
+                            send(
+                                    player,
+                                    changed.allowed() ? "member.permission_granted" : "member.permission_revoked",
+                                    Placeholder.unparsed("role", changed.roleId()),
+                                    Placeholder.unparsed("permission", changed.permission()));
+                        case IslandMembershipService.PermissionOutcome.NotAllowed ignored ->
+                            send(player, "member.role_no_permission");
+                        case IslandMembershipService.PermissionOutcome.NoIsland ignored ->
+                            send(player, "error.no_island");
+                        case IslandMembershipService.PermissionOutcome.UnknownRole unknown ->
+                            send(
+                                    player,
+                                    "member.unknown_role",
+                                    Placeholder.unparsed("role", unknown.roleId()),
+                                    Placeholder.unparsed("roles", unknown.available()));
+                        case IslandMembershipService.PermissionOutcome.UnknownPermission unknown ->
+                            send(
+                                    player,
+                                    "member.unknown_permission",
+                                    Placeholder.unparsed("permission", unknown.permission()),
+                                    Placeholder.unparsed("permissions", unknown.available()));
+                        case IslandMembershipService.PermissionOutcome.CannotChangeOwnerRole ignored ->
+                            send(player, "member.owner_role_stays");
+                    }
+                }));
+    }
+
     private int executeInvite(CommandContext<CommandSourceStack> ctx) {
         String target = StringArgumentType.getString(ctx, "player");
         return withService(

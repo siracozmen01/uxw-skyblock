@@ -277,4 +277,63 @@ class IslandMembershipServiceTest {
         assertThat(service.leave(STRANGER)).isInstanceOf(IslandMembershipService.RemovalOutcome.NoIsland.class);
         verify(storage, never()).saveIsland(any(), any());
     }
+
+    @Test
+    @DisplayName("A permission granted to a role is written, and everybody holding it moves with it")
+    void grantingAPermissionMovesTheMembersToo() {
+        island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.VISITOR, NOW));
+
+        IslandMembershipService.PermissionOutcome outcome =
+                service.setRolePermission(OWNER, "visitor", "block_place", true);
+
+        assertThat(outcome).isInstanceOf(IslandMembershipService.PermissionOutcome.Changed.class);
+        Island saved = savedIsland();
+        assertThat(java.util.Objects.requireNonNull(saved.roles().get("VISITOR"))
+                        .permissions())
+                .contains(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_PLACE);
+        assertThat(java.util.Objects.requireNonNull(saved.members().get(MATE))
+                        .role()
+                        .permissions())
+                .describedAs("a member carries their role rather than pointing at it, so they move with it")
+                .contains(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_PLACE);
+    }
+
+    @Test
+    @DisplayName("A permission taken off a role is really off it")
+    void revokingAPermissionTakesItOff() {
+        service.setRolePermission(OWNER, "member", "block_place", false);
+
+        assertThat(java.util.Objects.requireNonNull(savedIsland().roles().get("MEMBER"))
+                        .permissions())
+                .doesNotContain(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_PLACE);
+    }
+
+    @Test
+    @DisplayName("The owner's role is left alone, or an owner could lock themselves out")
+    void theOwnersRoleIsLeftAlone() {
+        assertThat(service.setRolePermission(OWNER, "owner", "block_place", false))
+                .isInstanceOf(IslandMembershipService.PermissionOutcome.CannotChangeOwnerRole.class);
+        verify(storage, never()).saveIsland(any(), any());
+    }
+
+    @Test
+    @DisplayName("A permission nobody declares is refused by name, with the ones that are declared")
+    void anUnknownPermissionIsRefusedByName() {
+        IslandMembershipService.PermissionOutcome outcome = service.setRolePermission(OWNER, "member", "fly", true);
+
+        assertThat(outcome).isInstanceOf(IslandMembershipService.PermissionOutcome.UnknownPermission.class);
+        assertThat(((IslandMembershipService.PermissionOutcome.UnknownPermission) outcome).available())
+                .contains("block_place");
+        verify(storage, never()).saveIsland(any(), any());
+    }
+
+    @Test
+    @DisplayName("A role whose permissions do not carry MEMBER_PROMOTE may not edit a role")
+    void aRoleWithoutPromoteMayNotEditARole() {
+        island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.VISITOR, NOW));
+        when(storage.findIslandIdByProfileId(MATE)).thenReturn(Optional.of(ISLAND));
+
+        assertThat(service.setRolePermission(MATE, "member", "block_place", true))
+                .isInstanceOf(IslandMembershipService.PermissionOutcome.NotAllowed.class);
+    }
 }

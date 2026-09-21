@@ -312,7 +312,7 @@ public final class IntegrationWiring implements AutoCloseable {
         });
         engine.action("skyblock:settings", ctx -> {
             ctx.player().closeInventory();
-            messages.send(ctx.player(), "menu.control.settings_hint");
+            ctx.player().performCommand("is settings");
         });
         // The invite button sent a hint message, because there was no command behind it. The name
         // the player types is the verb's argument, so one slot serves every invite.
@@ -327,7 +327,7 @@ public final class IntegrationWiring implements AutoCloseable {
         });
         engine.action("skyblock:permissions", ctx -> {
             ctx.player().closeInventory();
-            messages.send(ctx.player(), "menu.control.settings_hint");
+            ctx.player().performCommand("is permissions");
         });
         // The upgrade key is the verb's argument, so one verb serves every upgrade a file names and
         // an operator can add a slot for a new one without a line of Java.

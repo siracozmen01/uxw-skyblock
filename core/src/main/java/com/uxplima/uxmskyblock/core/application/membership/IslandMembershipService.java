@@ -5,11 +5,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.ToIntFunction;
 
@@ -321,6 +323,114 @@ public final class IslandMembershipService {
         Island updated = island.addMember(new IslandMember(member.playerUuid(), target, role, member.joinedAt()));
         islandStoragePort.saveIsland(updated, optLocation.get());
         return new RoleOutcome.Changed(target, roleId.toLowerCase(Locale.ROOT));
+    }
+
+    /** What a request to move a permission on a role came back with. */
+    public sealed interface PermissionOutcome {
+
+        /** The role now does, or does not, carry the permission. */
+        record Changed(String roleId, String permission, boolean allowed) implements PermissionOutcome {}
+
+        /** The caller's role does not carry MEMBER_PROMOTE, which is what editing a role needs. */
+        record NotAllowed() implements PermissionOutcome {}
+
+        /** The caller has no island. */
+        record NoIsland() implements PermissionOutcome {}
+
+        /** The island has no role by that name. {@code available} lists the ones it has. */
+        record UnknownRole(String roleId, String available) implements PermissionOutcome {}
+
+        /** No permission goes by that name. {@code available} lists the ones that do. */
+        record UnknownPermission(String permission, String available) implements PermissionOutcome {}
+
+        /** The owner's role is not something a permission command moves. */
+        record CannotChangeOwnerRole() implements PermissionOutcome {}
+    }
+
+    /**
+     * Turns one permission on or off for one role on the caller's island.
+     *
+     * <p>The design document publishes {@code /is permissions} for exactly this, and the table that
+     * holds it has been written on every save since the island writer was written. Nothing could
+     * move one: the roles an island was created with were the roles it died with.
+     *
+     * <p>The owner's role is left alone. An owner who can take a permission off their own role can
+     * lock themselves out of their own island, and no message would bring it back.
+     */
+    public PermissionOutcome setRolePermission(
+            ProfileId actor, String rawRoleId, String rawPermission, boolean allowed) {
+        Objects.requireNonNull(actor, "actor must not be null");
+        Objects.requireNonNull(rawRoleId, "rawRoleId must not be null");
+        Objects.requireNonNull(rawPermission, "rawPermission must not be null");
+
+        Optional<Island> optIsland = islandOf(actor);
+        if (optIsland.isEmpty()) {
+            return new PermissionOutcome.NoIsland();
+        }
+        Island island = optIsland.get();
+        if (!may(island, actor, IslandPermission.MEMBER_PROMOTE)) {
+            return new PermissionOutcome.NotAllowed();
+        }
+
+        String roleId = rawRoleId.toUpperCase(Locale.ROOT);
+        IslandRole role = island.roles().get(roleId);
+        if (role == null) {
+            return new PermissionOutcome.UnknownRole(rawRoleId.toLowerCase(Locale.ROOT), roleNames(island));
+        }
+        if (roleId.equals(IslandRole.OWNER.id())) {
+            return new PermissionOutcome.CannotChangeOwnerRole();
+        }
+
+        IslandPermission permission;
+        try {
+            permission = IslandPermission.valueOf(rawPermission.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return new PermissionOutcome.UnknownPermission(rawPermission.toLowerCase(Locale.ROOT), permissionNames());
+        }
+
+        Set<IslandPermission> permissions = EnumSet.noneOf(IslandPermission.class);
+        permissions.addAll(role.permissions());
+        if (allowed) {
+            permissions.add(permission);
+        } else {
+            permissions.remove(permission);
+        }
+
+        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
+        if (optLocation.isEmpty()) {
+            return new PermissionOutcome.NoIsland();
+        }
+        IslandRole updated = new IslandRole(role.id(), role.weight(), role.displayName(), permissions, role.isSystem());
+        islandStoragePort.saveIsland(withRole(island, updated), optLocation.get());
+        return new PermissionOutcome.Changed(
+                roleId.toLowerCase(Locale.ROOT), permission.name().toLowerCase(Locale.ROOT), allowed);
+    }
+
+    /** Every permission a caller may name, lower case and comma separated. */
+    public static String permissionNames() {
+        return java.util.Arrays.stream(IslandPermission.values())
+                .map(permission -> permission.name().toLowerCase(Locale.ROOT))
+                .sorted()
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
+    }
+
+    /**
+     * The island with one role replaced, and every member who holds it moved onto the new one.
+     *
+     * <p>A member carries their role rather than pointing at it, so changing what a role may do
+     * without walking the members leaves everybody on the old permissions until they next log in
+     * and the island is read fresh. That is a rule that applies at a time nobody can predict.
+     */
+    private static Island withRole(Island island, IslandRole role) {
+        Island updated = island.withRole(role);
+        for (IslandMember member : island.members().values()) {
+            if (member.role().id().equals(role.id())) {
+                updated = updated.addMember(
+                        new IslandMember(member.playerUuid(), member.profileId(), role, member.joinedAt()));
+            }
+        }
+        return updated;
     }
 
     /** Everybody on the island, the owner first and then by the day they joined. */

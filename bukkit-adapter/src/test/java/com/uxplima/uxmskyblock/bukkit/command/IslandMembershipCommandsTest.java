@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -96,6 +97,8 @@ class IslandMembershipCommandsTest {
         when(membership.setRole(any(), any(), anyString()))
                 .thenReturn(new IslandMembershipService.RoleOutcome.Changed(MATE, "moderator"));
         when(membership.members(ISLAND)).thenReturn(List.of());
+        when(membership.setRolePermission(any(), anyString(), anyString(), anyBoolean()))
+                .thenReturn(new IslandMembershipService.PermissionOutcome.Changed("member", "block_place", true));
 
         IslandLocationService locations = mock(IslandLocationService.class);
         when(locations.findIslandId(OWNER)).thenReturn(Optional.of(ISLAND));
@@ -119,6 +122,7 @@ class IslandMembershipCommandsTest {
         dispatcher.register(commands.buildLeave());
         dispatcher.register(commands.buildMembers());
         dispatcher.register(commands.buildRole());
+        dispatcher.register(commands.buildPermissions());
     }
 
     @AfterEach
@@ -251,5 +255,38 @@ class IslandMembershipCommandsTest {
         run("invite Mate", owner);
 
         assertThat(owner.nextMessage()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Turning a permission on carries the role, the permission and the direction")
+    void turningAPermissionOnCarriesAllThree() throws Exception {
+        run("permissions member block_place on", owner);
+
+        verify(membership).setRolePermission(OWNER, "member", "block_place", true);
+    }
+
+    @Test
+    @DisplayName("Turning it off is the same command the other way")
+    void turningItOffIsTheSameCommand() throws Exception {
+        run("permissions member block_place off", owner);
+
+        verify(membership).setRolePermission(OWNER, "member", "block_place", false);
+    }
+
+    @Test
+    @DisplayName("A word that is neither on nor off never reaches the service")
+    void aWordThatIsNeitherNeverReachesTheService() throws Exception {
+        run("permissions member block_place maybe", owner);
+
+        verify(membership, never()).setRolePermission(any(), anyString(), anyString(), anyBoolean());
+        assertThat(owner.nextMessage()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("A bare /is permissions changes nothing, it only reads")
+    void aBarePermissionsCommandChangesNothing() throws Exception {
+        run("permissions", owner);
+
+        verify(membership, never()).setRolePermission(any(), anyString(), anyString(), anyBoolean());
     }
 }
