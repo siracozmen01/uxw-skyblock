@@ -29,6 +29,7 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
@@ -211,6 +212,103 @@ class IslandLifecycleCommandsTest {
         run("reset confirm AB12CD", player);
 
         verify(recycle).executeReset(PROFILE, ISLAND, "AB12CD", false);
+    }
+
+    @Test
+    @DisplayName("A second confirmation while the island is still being erased is refused")
+    void aSecondConfirmationIsRefusedWhileTheFirstRuns() throws Exception {
+        // The daily limit is recorded when the erasure finishes, so a second confirmation arriving
+        // while the first is still running used to pass the same check and erase the island twice
+        // for one allowance. The erasure here never finishes, which is the whole window.
+        IslandAntiAbuseService antiAbuse = new IslandAntiAbuseService(
+                mock(com.uxplima.uxmskyblock.core.application.antiabuse.AntiAbuseStoragePort.class),
+                false,
+                IslandAntiAbuseService.DEFAULT_QUARANTINE_DURATION,
+                IslandAntiAbuseService.DEFAULT_RESET_COOLDOWN,
+                IslandAntiAbuseService.DEFAULT_MAX_RESETS_PER_DAY,
+                IslandAntiAbuseService.DEFAULT_RESET_WINDOW_DURATION,
+                IslandAntiAbuseService.DEFAULT_COOP_JOIN_COOLDOWN,
+                IslandAntiAbuseService.DEFAULT_QUARANTINE_LOOKUP_TTL,
+                java.time.Clock.systemUTC());
+
+        IslandRecycleService slowRecycle = mock(IslandRecycleService.class);
+        when(slowRecycle.generateResetChallenge(PROFILE, ISLAND))
+                .thenReturn(new ResetChallenge("AB12CD", Instant.now().plusSeconds(60)));
+        when(slowRecycle.executeReset(any(), any(), any(), anyBoolean())).thenReturn(new CompletableFuture<>());
+
+        CommandDispatcher<CommandSourceStack> slow = dispatcherOver(antiAbuse, slowRecycle);
+
+        runOn(slow, "reset confirm AB12CD", player);
+        runOn(slow, "reset confirm AB12CD", player);
+
+        verify(slowRecycle, org.mockito.Mockito.times(1)).executeReset(PROFILE, ISLAND, "AB12CD", false);
+        assertThat(antiAbuse.resetsRunning())
+                .describedAs("erasures running for this player")
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("An erasure that finishes gives the player their next reset back")
+    void aFinishedErasureReleasesThePlayer() throws Exception {
+        IslandAntiAbuseService antiAbuse = new IslandAntiAbuseService(
+                mock(com.uxplima.uxmskyblock.core.application.antiabuse.AntiAbuseStoragePort.class),
+                false,
+                IslandAntiAbuseService.DEFAULT_QUARANTINE_DURATION,
+                IslandAntiAbuseService.DEFAULT_RESET_COOLDOWN,
+                IslandAntiAbuseService.DEFAULT_MAX_RESETS_PER_DAY,
+                IslandAntiAbuseService.DEFAULT_RESET_WINDOW_DURATION,
+                IslandAntiAbuseService.DEFAULT_COOP_JOIN_COOLDOWN,
+                IslandAntiAbuseService.DEFAULT_QUARANTINE_LOOKUP_TTL,
+                java.time.Clock.systemUTC());
+
+        IslandRecycleService failing = mock(IslandRecycleService.class);
+        when(failing.generateResetChallenge(PROFILE, ISLAND))
+                .thenReturn(new ResetChallenge("AB12CD", Instant.now().plusSeconds(60)));
+        when(failing.executeReset(any(), any(), any(), anyBoolean()))
+                .thenReturn(CompletableFuture.completedFuture(
+                        new IslandRecycleService.RecycleResult.InvalidChallenge("wrong code")));
+
+        runOn(dispatcherOver(antiAbuse, failing), "reset confirm AB12CD", player);
+
+        assertThat(antiAbuse.resetsRunning())
+                .describedAs("an erasure that failed must not lock the player out for ever")
+                .isZero();
+    }
+
+    /** The same command tree, over an anti-abuse service and a recycle service this test chose. */
+    private CommandDispatcher<CommandSourceStack> dispatcherOver(
+            IslandAntiAbuseService antiAbuse, IslandRecycleService recycleService) {
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+
+        IslandLifecycleCommands commands = new IslandLifecycleCommands(
+                create,
+                locations,
+                new StarterPresetCatalog(),
+                mock(StarterSchematicEngine.class),
+                mock(IslandProtectionListener.class),
+                sessions,
+                inlineScheduler(),
+                ServerNodeId.of("node-1"),
+                WORLD,
+                () -> antiAbuse,
+                () -> recycleService,
+                () -> null,
+                () -> names,
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()));
+
+        CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
+        tree.register(commands.buildReset());
+        return tree;
+    }
+
+    private void runOn(CommandDispatcher<CommandSourceStack> tree, String line, org.bukkit.entity.Player sender)
+            throws Exception {
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(sender);
+        tree.execute(line, source);
     }
 
     @Test

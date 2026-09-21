@@ -44,6 +44,10 @@ public final class IslandAntiAbuseService {
     private final Clock clock;
 
     private final Map<PlayerUuid, PlayerAntiAbuseRecord> playerRecords = new ConcurrentHashMap<>();
+
+    /** The players whose island is being erased right now, so a second confirmation is refused. */
+    private final java.util.Set<PlayerUuid> resetsInFlight = ConcurrentHashMap.newKeySet();
+
     private final Map<IslandId, IslandQuarantineRecord> activeQuarantines = new ConcurrentHashMap<>();
 
     /**
@@ -160,6 +164,34 @@ public final class IslandAntiAbuseService {
 
         int remainingResets = record.getRemainingResets(now, maxResetsPerDay, resetWindowDuration);
         return new ResetCheckResult.Allowed(remainingResets);
+    }
+
+    /**
+     * Takes the player's reset, if nobody is already running one for them.
+     *
+     * <p>A reset is checked against the daily limit when the command arrives and recorded when the
+     * world has finished being erased, which is seconds later. A player who confirmed twice, or
+     * whose client sent the packet twice, passed the check both times, because neither reset had
+     * been recorded yet: two erasures ran at once and the operator's daily limit was one short of
+     * what it said. One reset at a time per player closes the gap without a record that has to be
+     * put back when an erasure fails.
+     *
+     * @return true when this caller now holds the player's reset and must release it when it ends
+     */
+    public boolean beginReset(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        return resetsInFlight.add(playerUuid);
+    }
+
+    /** Gives the player's reset back, whether it finished or failed. */
+    public void endReset(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        resetsInFlight.remove(playerUuid);
+    }
+
+    /** How many resets are being run right now, for a caller that wants to say so. */
+    public int resetsRunning() {
+        return resetsInFlight.size();
     }
 
     /**

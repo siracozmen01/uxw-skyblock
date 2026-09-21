@@ -389,6 +389,13 @@ public final class IslandLifecycleCommands {
             if (checkResetBlocked(player, antiAbuse, bypass)) {
                 return;
             }
+            // The daily limit is recorded when the erasure finishes, seconds after it is checked. A
+            // second confirmation arriving in between passed the same check, because nothing had
+            // been recorded yet, and erased the island twice for one allowance.
+            if (antiAbuse != null && !antiAbuse.beginReset(new PlayerUuid(player.getUniqueId()))) {
+                send(player, "reset.already_running");
+                return;
+            }
             confirmReset(player, recycleService, antiAbuse, profileId, islandId, code);
         });
         return Cmd.OK;
@@ -402,8 +409,16 @@ public final class IslandLifecycleCommands {
             ProfileId profileId,
             IslandId islandId,
             String code) {
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         var unused = recycleService
                 .executeReset(profileId, islandId, code, false)
+                // Given back whether the erasure finished or threw, so a failure does not leave the
+                // player unable to reset for as long as the server runs.
+                .whenComplete((result, error) -> {
+                    if (antiAbuse != null) {
+                        antiAbuse.endReset(playerUuid);
+                    }
+                })
                 .thenAccept(result -> {
                     schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                         switch (result) {
