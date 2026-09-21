@@ -150,7 +150,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public static SkyblockBootstrap createDefault(JavaPlugin plugin) {
         Objects.requireNonNull(plugin, "plugin must not be null");
-        ConfigurationWiring configWiring = ConfigurationWiring.loadAndValidate(plugin);
+        ConfigurationWiring configWiring = ConfigurationLoader.loadAndValidate(plugin);
         PersistenceWiring persistenceWiring =
                 PersistenceWiring.resolve(configWiring.rootNode(), configWiring.dataDir());
         return new SkyblockBootstrap(plugin, persistenceWiring, configWiring);
