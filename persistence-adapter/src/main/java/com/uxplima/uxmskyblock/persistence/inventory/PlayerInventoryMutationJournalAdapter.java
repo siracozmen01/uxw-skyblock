@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -42,171 +41,16 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
 
     private final Database database;
     private final Dialect dialect;
-
-    private final String selectSessionAuthoritySql;
-    private final String selectInventoryVersionSql;
-    private final String selectJournalForUpdateSql;
-    private final String selectParticipantForUpdateSql;
-    private final String insertJournalSql;
-    private final String insertParticipantSql;
-    private final String updateInventoryOccSql;
-    private final String updateSessionLastDurableVersionSql;
-    private final String updateJournalStateSql;
-    private final String updateParticipantStateSql;
-
-    private final String selectJournalReadSql;
-    private final String selectParticipantReadSql;
+    private final InventoryMutationJournalSql sql;
+    private final JournalTransaction transaction;
+    private final SessionAuthorityGate authority;
 
     public PlayerInventoryMutationJournalAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
-        validateDialect(this.dialect);
-
-        this.selectSessionAuthoritySql = buildSelectSessionAuthoritySql(this.dialect);
-        this.selectInventoryVersionSql = buildSelectInventoryVersionSql(this.dialect);
-        this.selectJournalForUpdateSql = buildSelectJournalSql(this.dialect, true);
-        this.selectParticipantForUpdateSql = buildSelectParticipantSql(this.dialect, true);
-
-        if (dialect == Dialect.POSTGRES) {
-            this.insertJournalSql = "INSERT INTO inventory_mutation_journals "
-                    + "(operation_id, operation_type, state, participant_count, payload, expires_at, created_at, updated_at) "
-                    + "VALUES (?, ?, 'INTENT', 1, CAST(? AS json), ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-            this.insertParticipantSql = "INSERT INTO inventory_mutation_participants "
-                    + "(operation_id, participant_index, inventory_type, owner_root_type, owner_root_id, "
-                    + "expected_version, authority_type, authority_id, authority_epoch, "
-                    + "before_fingerprint, after_fingerprint, durable_apply_state, mutation_delta_payload, updated_at) "
-                    + "VALUES (?, 0, 'PLAYER_INVENTORY', 'PROFILE', ?, ?, 'SERVER_NODE', ?, ?, ?, ?, 'PENDING', CAST(? AS json), CURRENT_TIMESTAMP)";
-        } else {
-            this.insertJournalSql = "INSERT INTO inventory_mutation_journals "
-                    + "(operation_id, operation_type, state, participant_count, payload, expires_at, created_at, updated_at) "
-                    + "VALUES (?, ?, 'INTENT', 1, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-            this.insertParticipantSql = "INSERT INTO inventory_mutation_participants "
-                    + "(operation_id, participant_index, inventory_type, owner_root_type, owner_root_id, "
-                    + "expected_version, authority_type, authority_id, authority_epoch, "
-                    + "before_fingerprint, after_fingerprint, durable_apply_state, mutation_delta_payload, updated_at) "
-                    + "VALUES (?, 0, 'PLAYER_INVENTORY', 'PROFILE', ?, ?, 'SERVER_NODE', ?, ?, ?, ?, 'PENDING', ?, CURRENT_TIMESTAMP)";
-        }
-
-        this.updateInventoryOccSql = "UPDATE profile_inventories "
-                + "SET profile_inventory_version = profile_inventory_version + 1, "
-                + "inventory_nbt = ?, "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE profile_id = ? "
-                + "AND profile_inventory_version = ?";
-
-        this.updateSessionLastDurableVersionSql = "UPDATE player_sessions "
-                + "SET last_durable_inventory_version = ?, "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ?";
-
-        this.updateJournalStateSql = "UPDATE inventory_mutation_journals "
-                + "SET state = ?, updated_at = CURRENT_TIMESTAMP "
-                + "WHERE operation_id = ?";
-
-        this.updateParticipantStateSql = "UPDATE inventory_mutation_participants "
-                + "SET durable_apply_state = ?, updated_at = CURRENT_TIMESTAMP "
-                + "WHERE operation_id = ? AND participant_index = ?";
-
-        this.selectJournalReadSql = buildSelectJournalSql(this.dialect, false);
-        this.selectParticipantReadSql = buildSelectParticipantSql(this.dialect, false);
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock inventory persistence supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
-    }
-
-    private static String buildSelectSessionAuthoritySql(Dialect dialect) {
-        String base = "SELECT active_profile_id, authoritative_node, session_epoch, state, "
-                + "(CASE WHEN lease_expires_at >= CURRENT_TIMESTAMP THEN 1 ELSE 0 END) AS lease_valid "
-                + "FROM player_sessions "
-                + "WHERE player_uuid = ?";
-        return dialect == Dialect.SQLITE ? base : base + " FOR UPDATE";
-    }
-
-    private static String buildSelectInventoryVersionSql(Dialect dialect) {
-        String base = "SELECT profile_inventory_version FROM profile_inventories WHERE profile_id = ?";
-        return dialect == Dialect.SQLITE ? base : base + " FOR UPDATE";
-    }
-
-    private static String buildSelectJournalSql(Dialect dialect, boolean forUpdate) {
-        String base =
-                "SELECT operation_id, operation_type, state, participant_count, payload, expires_at, created_at, updated_at "
-                        + "FROM inventory_mutation_journals WHERE operation_id = ?";
-        return (forUpdate && dialect != Dialect.SQLITE) ? base + " FOR UPDATE" : base;
-    }
-
-    private static String buildSelectParticipantSql(Dialect dialect, boolean forUpdate) {
-        String base = "SELECT operation_id, participant_index, inventory_type, owner_root_type, owner_root_id, "
-                + "expected_version, authority_type, authority_id, authority_epoch, before_fingerprint, "
-                + "after_fingerprint, durable_apply_state, mutation_delta_payload, updated_at "
-                + "FROM inventory_mutation_participants WHERE operation_id = ? AND participant_index = ?";
-        return (forUpdate && dialect != Dialect.SQLITE) ? base + " FOR UPDATE" : base;
-    }
-
-    @FunctionalInterface
-    private interface TxAction<T> {
-        T execute(Connection conn) throws SQLException;
-    }
-
-    private InventoryMutationJournalOutcome executeTx(
-            String opDescription, TxAction<InventoryMutationJournalOutcome> action) {
-        if (dialect == Dialect.SQLITE) {
-            try (Connection conn = database.connection()) {
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute("BEGIN IMMEDIATE");
-                }
-                try {
-                    InventoryMutationJournalOutcome outcome = action.execute(conn);
-                    if (outcome.isSuccess()) {
-                        try (Statement stmt = conn.createStatement()) {
-                            stmt.execute("COMMIT");
-                        }
-                    } else {
-                        try (Statement stmt = conn.createStatement()) {
-                            stmt.execute("ROLLBACK");
-                        }
-                    }
-                    return outcome;
-                } catch (Exception e) {
-                    try (Statement stmt = conn.createStatement()) {
-                        stmt.execute("ROLLBACK");
-                    } catch (SQLException rollbackEx) {
-                        e.addSuppressed(rollbackEx);
-                    }
-                    throw e;
-                }
-            } catch (SQLException e) {
-                throw new InventoryPersistenceException("Failed SQLite " + opDescription, e);
-            }
-        } else {
-            try (Connection conn = database.connection()) {
-                conn.setAutoCommit(false);
-                try {
-                    InventoryMutationJournalOutcome outcome = action.execute(conn);
-                    if (outcome.isSuccess()) {
-                        conn.commit();
-                    } else {
-                        conn.rollback();
-                    }
-                    return outcome;
-                } catch (Exception e) {
-                    try {
-                        conn.rollback();
-                    } catch (SQLException rollbackEx) {
-                        e.addSuppressed(rollbackEx);
-                    }
-                    throw e;
-                }
-            } catch (SQLException e) {
-                throw new InventoryPersistenceException("Failed server DB " + opDescription, e);
-            }
-        }
+        this.sql = InventoryMutationJournalSql.forDialect(this.dialect);
+        this.authority = new SessionAuthorityGate(sql.selectSessionAuthority());
+        this.transaction = new JournalTransaction(database);
     }
 
     @Override
@@ -232,9 +76,9 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(expiryDuration, "expiryDuration");
 
-        return executeTx("recordIntent", conn -> {
+        return transaction.run("recordIntent", conn -> {
             // 1. Check existing journal header for idempotency / conflict
-            try (PreparedStatement ps = conn.prepareStatement(selectJournalForUpdateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.selectJournalForUpdate())) {
                 ps.setString(1, operationId.value().toString());
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
@@ -243,7 +87,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
                         String existingPayload = rs.getString("payload");
 
                         // Check participant 0
-                        try (PreparedStatement partPs = conn.prepareStatement(selectParticipantForUpdateSql)) {
+                        try (PreparedStatement partPs = conn.prepareStatement(sql.selectParticipantForUpdate())) {
                             partPs.setString(1, operationId.value().toString());
                             partPs.setInt(2, 0);
                             try (ResultSet partRs = partPs.executeQuery()) {
@@ -279,38 +123,13 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 2. Validate authority under canonical row lock
-            try (PreparedStatement ps = conn.prepareStatement(selectSessionAuthoritySql)) {
-                ps.setString(1, playerUuid.value().toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) {
-                        return InventoryMutationJournalOutcome.rejected("SESSION_NOT_FOUND");
-                    }
-                    String activeProfileId = rs.getString("active_profile_id");
-                    String authoritativeNode = rs.getString("authoritative_node");
-                    long epoch = rs.getLong("session_epoch");
-                    String state = rs.getString("state");
-                    int leaseValid = rs.getInt("lease_valid");
-
-                    if (!profileId.value().toString().equals(activeProfileId)) {
-                        return InventoryMutationJournalOutcome.rejected("CROSS_PROFILE_MISMATCH");
-                    }
-                    if (!nodeId.value().equals(authoritativeNode)) {
-                        return InventoryMutationJournalOutcome.rejected("WRONG_NODE");
-                    }
-                    if (sessionEpoch != epoch) {
-                        return InventoryMutationJournalOutcome.rejected("STALE_EPOCH");
-                    }
-                    if (!"ACTIVE".equals(state)) {
-                        return InventoryMutationJournalOutcome.rejected("SESSION_NOT_ACTIVE");
-                    }
-                    if (leaseValid != 1) {
-                        return InventoryMutationJournalOutcome.rejected("LEASE_EXPIRED");
-                    }
-                }
+            Optional<String> refusal = authority.refusal(conn, playerUuid, profileId, nodeId, sessionEpoch, true);
+            if (refusal.isPresent()) {
+                return InventoryMutationJournalOutcome.rejected(refusal.get());
             }
 
             // 3. Verify current inventory version matches expected
-            try (PreparedStatement ps = conn.prepareStatement(selectInventoryVersionSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.selectInventoryVersion())) {
                 ps.setString(1, profileId.value().toString());
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
@@ -325,7 +144,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
 
             // 4. Insert journal header
             Timestamp expiresAt = new Timestamp(System.currentTimeMillis() + expiryDuration.toMillis());
-            try (PreparedStatement ps = conn.prepareStatement(insertJournalSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.insertJournal())) {
                 ps.setString(1, operationId.value().toString());
                 ps.setString(2, operationType);
                 ps.setString(3, payload);
@@ -337,7 +156,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 5. Insert participant record
-            try (PreparedStatement ps = conn.prepareStatement(insertParticipantSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.insertParticipant())) {
                 ps.setString(1, operationId.value().toString());
                 ps.setString(2, profileId.value().toString());
                 ps.setLong(3, expectedVersion);
@@ -371,11 +190,11 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
         Objects.requireNonNull(operationId, "operationId");
         Objects.requireNonNull(updatedInventoryNbt, "updatedInventoryNbt");
 
-        return executeTx("commitMutation", conn -> {
+        return transaction.run("commitMutation", conn -> {
             // 1. Verify journal exists and check state
             String opType;
             String state;
-            try (PreparedStatement ps = conn.prepareStatement(selectJournalForUpdateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.selectJournalForUpdate())) {
                 ps.setString(1, operationId.value().toString());
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
@@ -392,7 +211,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
 
             // If already committed, verify participant and return idempotent success
             if ("COMMITTED".equals(state)) {
-                try (PreparedStatement ps = conn.prepareStatement(selectParticipantForUpdateSql)) {
+                try (PreparedStatement ps = conn.prepareStatement(sql.selectParticipantForUpdate())) {
                     ps.setString(1, operationId.value().toString());
                     ps.setInt(2, 0);
                     try (ResultSet rs = ps.executeQuery()) {
@@ -414,7 +233,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 2. Verify participant
-            try (PreparedStatement ps = conn.prepareStatement(selectParticipantForUpdateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.selectParticipantForUpdate())) {
                 ps.setString(1, operationId.value().toString());
                 ps.setInt(2, 0);
                 try (ResultSet rs = ps.executeQuery()) {
@@ -438,38 +257,13 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 3. Validate authority under canonical row lock
-            try (PreparedStatement ps = conn.prepareStatement(selectSessionAuthoritySql)) {
-                ps.setString(1, playerUuid.value().toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) {
-                        return InventoryMutationJournalOutcome.rejected("SESSION_NOT_FOUND");
-                    }
-                    String activeProfileId = rs.getString("active_profile_id");
-                    String authoritativeNode = rs.getString("authoritative_node");
-                    long epoch = rs.getLong("session_epoch");
-                    String sessionState = rs.getString("state");
-                    int leaseValid = rs.getInt("lease_valid");
-
-                    if (!profileId.value().toString().equals(activeProfileId)) {
-                        return InventoryMutationJournalOutcome.rejected("CROSS_PROFILE_MISMATCH");
-                    }
-                    if (!nodeId.value().equals(authoritativeNode)) {
-                        return InventoryMutationJournalOutcome.rejected("WRONG_NODE");
-                    }
-                    if (sessionEpoch != epoch) {
-                        return InventoryMutationJournalOutcome.rejected("STALE_EPOCH");
-                    }
-                    if (!"ACTIVE".equals(sessionState)) {
-                        return InventoryMutationJournalOutcome.rejected("SESSION_NOT_ACTIVE");
-                    }
-                    if (leaseValid != 1) {
-                        return InventoryMutationJournalOutcome.rejected("LEASE_EXPIRED");
-                    }
-                }
+            Optional<String> refusal = authority.refusal(conn, playerUuid, profileId, nodeId, sessionEpoch, true);
+            if (refusal.isPresent()) {
+                return InventoryMutationJournalOutcome.rejected(refusal.get());
             }
 
             // 4. Update profile_inventories OCC (version -> version + 1)
-            try (PreparedStatement ps = conn.prepareStatement(updateInventoryOccSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.updateInventoryOcc())) {
                 ps.setBytes(1, updatedInventoryNbt);
                 ps.setString(2, profileId.value().toString());
                 ps.setLong(3, expectedVersion);
@@ -482,7 +276,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             long newVersion = expectedVersion + 1;
 
             // 5. Update player_sessions.last_durable_inventory_version
-            try (PreparedStatement ps = conn.prepareStatement(updateSessionLastDurableVersionSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.updateSessionLastDurableVersion())) {
                 ps.setLong(1, newVersion);
                 ps.setString(2, playerUuid.value().toString());
                 int updated = ps.executeUpdate();
@@ -492,7 +286,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 6. Update participant apply state to APPLIED
-            try (PreparedStatement ps = conn.prepareStatement(updateParticipantStateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.updateParticipantState())) {
                 ps.setString(1, "APPLIED");
                 ps.setString(2, operationId.value().toString());
                 ps.setInt(3, 0);
@@ -503,7 +297,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 7. Update journal state to COMMITTED
-            try (PreparedStatement ps = conn.prepareStatement(updateJournalStateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.updateJournalState())) {
                 ps.setString(1, "COMMITTED");
                 ps.setString(2, operationId.value().toString());
                 int updated = ps.executeUpdate();
@@ -528,10 +322,10 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
         Objects.requireNonNull(nodeId, "nodeId");
         Objects.requireNonNull(operationId, "operationId");
 
-        return executeTx("abortIntent", conn -> {
+        return transaction.run("abortIntent", conn -> {
             // 1. Check journal state
             String state;
-            try (PreparedStatement ps = conn.prepareStatement(selectJournalForUpdateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.selectJournalForUpdate())) {
                 ps.setString(1, operationId.value().toString());
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
@@ -552,34 +346,13 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 2. Validate authority under canonical row lock
-            try (PreparedStatement ps = conn.prepareStatement(selectSessionAuthoritySql)) {
-                ps.setString(1, playerUuid.value().toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) {
-                        return InventoryMutationJournalOutcome.rejected("SESSION_NOT_FOUND");
-                    }
-                    String activeProfileId = rs.getString("active_profile_id");
-                    String authoritativeNode = rs.getString("authoritative_node");
-                    long epoch = rs.getLong("session_epoch");
-                    int leaseValid = rs.getInt("lease_valid");
-
-                    if (!profileId.value().toString().equals(activeProfileId)) {
-                        return InventoryMutationJournalOutcome.rejected("CROSS_PROFILE_MISMATCH");
-                    }
-                    if (!nodeId.value().equals(authoritativeNode)) {
-                        return InventoryMutationJournalOutcome.rejected("WRONG_NODE");
-                    }
-                    if (sessionEpoch != epoch) {
-                        return InventoryMutationJournalOutcome.rejected("STALE_EPOCH");
-                    }
-                    if (leaseValid != 1) {
-                        return InventoryMutationJournalOutcome.rejected("LEASE_EXPIRED");
-                    }
-                }
+            Optional<String> refusal = authority.refusal(conn, playerUuid, profileId, nodeId, sessionEpoch, false);
+            if (refusal.isPresent()) {
+                return InventoryMutationJournalOutcome.rejected(refusal.get());
             }
 
             // 3. Mark journal ABORTED
-            try (PreparedStatement ps = conn.prepareStatement(updateJournalStateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.updateJournalState())) {
                 ps.setString(1, "ABORTED");
                 ps.setString(2, operationId.value().toString());
                 int updated = ps.executeUpdate();
@@ -589,7 +362,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             }
 
             // 4. Mark participant REVERTED
-            try (PreparedStatement ps = conn.prepareStatement(updateParticipantStateSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(sql.updateParticipantState())) {
                 ps.setString(1, "REVERTED");
                 ps.setString(2, operationId.value().toString());
                 ps.setInt(3, 0);
@@ -607,7 +380,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
     public Optional<InventoryMutationJournalRecord> loadJournal(InventoryMutationOperationId operationId) {
         Objects.requireNonNull(operationId, "operationId");
         try (Connection conn = database.connection();
-                PreparedStatement ps = conn.prepareStatement(selectJournalReadSql)) {
+                PreparedStatement ps = conn.prepareStatement(sql.selectJournalRead())) {
             ps.setString(1, operationId.value().toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
@@ -642,7 +415,7 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
             InventoryMutationOperationId operationId, int participantIndex) {
         Objects.requireNonNull(operationId, "operationId");
         try (Connection conn = database.connection();
-                PreparedStatement ps = conn.prepareStatement(selectParticipantReadSql)) {
+                PreparedStatement ps = conn.prepareStatement(sql.selectParticipantRead())) {
             ps.setString(1, operationId.value().toString());
             ps.setInt(2, participantIndex);
             try (ResultSet rs = ps.executeQuery()) {
