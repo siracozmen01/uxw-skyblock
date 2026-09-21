@@ -71,9 +71,23 @@ public final class RewardClaimCoordinator {
                     + grant.optExpiresAt().orElse(null));
         }
 
-        // 3. Mark CLAIMING if currently PENDING or RECOVERY_REQUIRED
-        if (grant.state() != RewardGrantState.CLAIMING) {
-            storagePort.updateGrantState(grant.grantId(), RewardGrantState.CLAIMING, null, now);
+        // 3. Take the claim, and only if nobody else has.
+        //
+        // This used to read the state and then write CLAIMING unconditionally. Two claims of the same
+        // grant, from a double click or a laggy client sending the packet twice, both read PENDING,
+        // both wrote CLAIMING, and both went on to hand out every component. The delivery handlers
+        // catch most of that further down, in a journal and an inventory version check, but a
+        // duplicate that has to be undone after the item is already in the player's hands is a worse
+        // place to catch it than here, where it never starts.
+        if (grant.state() != RewardGrantState.CLAIMING
+                && !storagePort.compareAndSetGrantState(
+                        grant.grantId(), grant.state(), RewardGrantState.CLAIMING, null, now)) {
+            return ClaimRewardResult.failure(
+                    grant.grantId(),
+                    grant.state(),
+                    0,
+                    grant.components().size(),
+                    "This reward is already being claimed.");
         }
 
         int committedCount = 0;

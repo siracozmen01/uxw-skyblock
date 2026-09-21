@@ -70,6 +70,33 @@ public final class InMemoryRewardStorage implements RewardStoragePort {
     }
 
     @Override
+    public boolean compareAndSetGrantState(
+            RewardGrantId grantId,
+            RewardGrantState expectedState,
+            RewardGrantState newState,
+            @Nullable Instant claimedAt,
+            Instant updatedAt) {
+        // The compute is the whole point: two claims must not both see the expected state and both
+        // win. A get followed by a put would have exactly the race the real statement refuses.
+        RewardGrant moved = grants.computeIfPresent(
+                grantId,
+                (id, existing) -> existing.state() == expectedState
+                        ? new RewardGrant(
+                                existing.grantId(),
+                                existing.recipientProfileId(),
+                                existing.sourceType(),
+                                existing.sourceId(),
+                                newState,
+                                existing.components(),
+                                claimedAt != null ? claimedAt : existing.claimedAt(),
+                                existing.expiresAt(),
+                                existing.createdAt(),
+                                updatedAt)
+                        : existing);
+        return moved != null && moved.state() == newState && moved.updatedAt().equals(updatedAt);
+    }
+
+    @Override
     public void updateGrantState(
             RewardGrantId grantId, RewardGrantState state, @Nullable Instant claimedAt, Instant updatedAt) {
         RewardGrant existing = grants.get(grantId);

@@ -60,6 +60,22 @@ public interface RewardStoragePort {
             RewardGrantId grantId, RewardGrantState state, @Nullable Instant claimedAt, Instant updatedAt);
 
     /**
+     * Moves a grant from {@code expectedState} to {@code newState}, and only from there.
+     *
+     * <p>A claim reads the grant, sees it is not claimed yet, and starts handing out what it holds.
+     * Two claims of the same grant, from a double click or a laggy client, both read the same state
+     * and both start handing out. This refuses the second, so only one claim ever runs.
+     *
+     * @return true when this call moved the grant, false when it was already somewhere else
+     */
+    boolean compareAndSetGrantState(
+            RewardGrantId grantId,
+            RewardGrantState expectedState,
+            RewardGrantState newState,
+            @Nullable Instant claimedAt,
+            Instant updatedAt);
+
+    /**
      * Atomically updates the delivery state and journal operation reference of an individual component.
      *
      * @param componentId component primary UUID

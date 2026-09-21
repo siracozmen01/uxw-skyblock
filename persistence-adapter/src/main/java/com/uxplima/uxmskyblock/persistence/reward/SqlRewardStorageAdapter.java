@@ -205,6 +205,43 @@ public final class SqlRewardStorageAdapter implements RewardStoragePort {
     }
 
     @Override
+    public boolean compareAndSetGrantState(
+            RewardGrantId grantId,
+            RewardGrantState expectedState,
+            RewardGrantState newState,
+            @Nullable Instant claimedAt,
+            Instant updatedAt) {
+        Objects.requireNonNull(grantId, "grantId must not be null");
+        Objects.requireNonNull(expectedState, "expectedState must not be null");
+        Objects.requireNonNull(newState, "newState must not be null");
+        Objects.requireNonNull(updatedAt, "updatedAt must not be null");
+
+        // The state in the WHERE clause is the whole guarantee. A row count of one means this claim
+        // won and may hand out what the grant holds; zero means another claim already did.
+        String sql = """
+                UPDATE reward_grants
+                SET state = ?, claimed_at = ?, updated_at = ?
+                WHERE grant_id = ? AND state = ?
+                """;
+
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, newState.name());
+            if (claimedAt != null) {
+                stmt.setTimestamp(2, Timestamp.from(claimedAt));
+            } else {
+                stmt.setNull(2, Types.TIMESTAMP);
+            }
+            stmt.setTimestamp(3, Timestamp.from(updatedAt));
+            stmt.setString(4, grantId.value().toString());
+            stmt.setString(5, expectedState.name());
+            return stmt.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new RewardPersistenceException("Failed to move reward grant state: " + grantId, e);
+        }
+    }
+
+    @Override
     public void updateGrantState(
             RewardGrantId grantId, RewardGrantState state, @Nullable Instant claimedAt, Instant updatedAt) {
         Objects.requireNonNull(grantId, "grantId must not be null");
