@@ -33,7 +33,7 @@ class EveryServiceIsWiredTest {
      * <p>Each names the board card that called it complete:
      *
      * <ul>
-     *   <li>{@code HomeService}, {@code ActivityFeedService}, {@code NotificationService}: ENT-001
+     *   <li>{@code ActivityFeedService}, {@code NotificationService}: ENT-001
      *   <li>{@code GameModeHierarchyService}: BDR-001
      *   <li>{@code JournaledInventoryMutationService}: WP2-005
      * </ul>
@@ -41,7 +41,6 @@ class EveryServiceIsWiredTest {
     private static final Set<String> NOT_WIRED_YET = Set.of(
             "ActivityFeedService",
             "GameModeHierarchyService",
-            "HomeService",
             "JournaledInventoryMutationService",
             "NotificationService");
 

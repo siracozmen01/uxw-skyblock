@@ -17,6 +17,7 @@ import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
@@ -98,6 +99,7 @@ public final class ConfigurationWiring {
     private final UpgradesConfiguration upgradesConfig;
     private final GeneratorsConfiguration generatorsConfig;
     private final Messages messages;
+    private final HomeConfiguration homeConfig;
 
     private ConfigurationWiring(
             Path dataDir,
@@ -162,6 +164,7 @@ public final class ConfigurationWiring {
         this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
+        this.homeConfig = HomeConfiguration.load(rootNode);
     }
 
     /**
@@ -568,6 +571,11 @@ public final class ConfigurationWiring {
 
     public Path dataDir() {
         return dataDir;
+    }
+
+    /** How many named homes a player may keep, and which permission buys more. */
+    public HomeConfiguration homeConfig() {
+        return homeConfig;
     }
 
     /** The words this server answers in, in every language it ships. */

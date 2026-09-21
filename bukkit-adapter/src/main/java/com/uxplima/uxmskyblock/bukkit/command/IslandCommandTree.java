@@ -17,6 +17,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
+import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
@@ -37,6 +38,7 @@ import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
+import com.uxplima.uxmskyblock.core.application.home.HomeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -76,6 +78,8 @@ public final class IslandCommandTree {
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
+    private final HomeConfiguration homeConfiguration;
+    private volatile @Nullable HomeService homeService;
     private final ServerNodeId serverNodeId;
     private final String worldName;
     private final SkyblockEconomyBridge economyBridge;
@@ -112,6 +116,7 @@ public final class IslandCommandTree {
             PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
             Messages messages,
+            HomeConfiguration homeConfiguration,
             ServerNodeId serverNodeId,
             String worldName) {
         this(
@@ -127,6 +132,7 @@ public final class IslandCommandTree {
                 sessionCoordinator,
                 schedulerPort,
                 messages,
+                homeConfiguration,
                 serverNodeId,
                 worldName,
                 SkyblockEconomyBridge.createDefault(islandBankService, schedulerPort),
@@ -159,6 +165,7 @@ public final class IslandCommandTree {
             PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
             Messages messages,
+            HomeConfiguration homeConfiguration,
             ServerNodeId serverNodeId,
             String worldName,
             SkyblockEconomyBridge economyBridge,
@@ -191,6 +198,7 @@ public final class IslandCommandTree {
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.homeConfiguration = Objects.requireNonNull(homeConfiguration, "homeConfiguration must not be null");
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
@@ -236,6 +244,10 @@ public final class IslandCommandTree {
 
     public @Nullable IslandAntiAbuseService antiAbuseService() {
         return antiAbuseService;
+    }
+
+    public void setHomeService(@Nullable HomeService homeService) {
+        this.homeService = homeService;
     }
 
     public void setNameService(@Nullable IslandNameService nameService) {
@@ -344,6 +356,14 @@ public final class IslandCommandTree {
                 () -> boundaryService,
                 messages);
 
+        IslandHomeCommands homeCommands = new IslandHomeCommands(
+                () -> homeService,
+                islandLocationService,
+                schedulerPort,
+                homeConfiguration,
+                messages,
+                sessionCoordinator);
+
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
                 .then(Cmd.literal("help").executes(this::executeHelp))
@@ -367,6 +387,10 @@ public final class IslandCommandTree {
                 .then(mechanicsCommands.buildQuarantine())
                 .then(mechanicsCommands.buildBooster())
                 .then(navigationCommands.buildSetSpawn())
+                .then(homeCommands.buildSetHome())
+                .then(homeCommands.buildTravelHome())
+                .then(homeCommands.buildNamedHome())
+                .then(homeCommands.buildDeleteHome())
                 .then(lifecycleCommands.buildRename())
                 .then(adminCommands.buildRestore())
                 .then(bankCommands.build())

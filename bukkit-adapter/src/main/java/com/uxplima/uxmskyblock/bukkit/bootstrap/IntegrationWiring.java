@@ -168,6 +168,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 authority.sessionCoordinator(),
                 gameplay.scheduler(),
                 this.messages,
+                config.homeConfig(),
                 serverNodeId,
                 worldName,
                 this.economyBridge,
@@ -186,6 +187,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 gameplay.boosterService(),
                 gameplay.boosterMenu());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
+        this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setNameService(gameplay.islandNameService());
         this.commandTree.setNetworkRouter(this.networkRouter);
         this.commandTree.setRestoreService(gameplay.islandRestoreService());

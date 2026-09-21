@@ -47,6 +47,7 @@ import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.dimension.IslandDimensionService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
+import com.uxplima.uxmskyblock.core.application.home.HomeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
@@ -261,6 +262,10 @@ public final class GameplayWiring {
 
     public IslandSeasonService seasonService() {
         return creationWiring.seasonService();
+    }
+
+    public HomeService homeService() {
+        return socialWiring.homeService();
     }
 
     public IslandSocialService socialService() {

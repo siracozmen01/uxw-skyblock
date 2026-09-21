@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
@@ -146,6 +147,7 @@ class BackupRestoreWiringTest {
         ConfigurationWiring config = mock(ConfigurationWiring.class);
         when(config.moduleSettings()).thenReturn(moduleSettings);
         when(config.messages()).thenReturn(Messages.bundled());
+        when(config.homeConfig()).thenReturn(HomeConfiguration.defaults());
         when(config.nodeConfig()).thenReturn(ServerNodeConfiguration.of(ServerNodeId.of("node-1"), "world", false, ""));
 
         SocialConfiguration social = mock(SocialConfiguration.class);
@@ -306,6 +308,7 @@ class BackupRestoreWiringTest {
                 com.uxplima.uxmskyblock.bukkit.i18n.Messages.of(
                         new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en"),
                         com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration.defaults()),
+                com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration.defaults(),
                 ServerNodeId.of("node-1"),
                 "world");
 

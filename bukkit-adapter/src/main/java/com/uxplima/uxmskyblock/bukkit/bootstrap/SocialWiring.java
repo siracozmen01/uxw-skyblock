@@ -9,6 +9,7 @@ import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
+import com.uxplima.uxmskyblock.core.application.home.HomeService;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
@@ -32,6 +33,7 @@ public final class SocialWiring {
     private final SafeTeleportEngine safeTeleportEngine;
     private final IslandWarpService warpService;
     private final IslandVaultService vaultService;
+    private final HomeService homeService;
 
     public SocialWiring(
             ConfigurationWiring config,
@@ -93,6 +95,13 @@ public final class SocialWiring {
         this.chatListener = config.moduleSettings().isModuleEnabled("chat")
                 ? new IslandChatListener(this.chatService, authority.activeProfileProvider(), config.messages())
                 : null;
+
+        this.homeService = new HomeService(
+                persistence.homeStoragePort(), config.homeConfig().limitPolicy());
+    }
+
+    public HomeService homeService() {
+        return homeService;
     }
 
     public IslandSocialService socialService() {

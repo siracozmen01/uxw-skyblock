@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
@@ -97,6 +98,7 @@ class ZeroFootprintModuleWiringTest {
         ConfigurationWiring config = mock(ConfigurationWiring.class);
         when(config.moduleSettings()).thenReturn(moduleSettings);
         when(config.messages()).thenReturn(Messages.bundled());
+        when(config.homeConfig()).thenReturn(HomeConfiguration.defaults());
         when(config.nodeConfig()).thenReturn(ServerNodeConfiguration.of(ServerNodeId.of("node-1"), "world", false, ""));
 
         PersistenceBootstrap persistence = mock(PersistenceBootstrap.class);
@@ -264,6 +266,7 @@ class ZeroFootprintModuleWiringTest {
         ConfigurationWiring config = mock(ConfigurationWiring.class);
         when(config.moduleSettings()).thenReturn(moduleSettings);
         when(config.messages()).thenReturn(Messages.bundled());
+        when(config.homeConfig()).thenReturn(HomeConfiguration.defaults());
         when(config.nodeConfig()).thenReturn(ServerNodeConfiguration.of(ServerNodeId.of("node-1"), "world", false, ""));
 
         SocialConfiguration social = mock(SocialConfiguration.class);
