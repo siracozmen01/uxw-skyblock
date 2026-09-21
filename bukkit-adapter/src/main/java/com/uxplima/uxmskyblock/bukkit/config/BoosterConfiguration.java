@@ -18,14 +18,31 @@ import org.spongepowered.configurate.ConfigurationNode;
  * Immutable configuration record for island boosters and multipliers subsystem (Section 2.34).
  */
 public record BoosterConfiguration(
-        boolean pauseWhenEmpty, Duration cleanInterval, Map<BoosterCategory, CategoryBoosterPolicy> policies) {
+        boolean pauseWhenEmpty,
+        Duration cleanInterval,
+        Duration multiplierCacheTtl,
+        Map<BoosterCategory, CategoryBoosterPolicy> policies) {
 
     public static final boolean DEFAULT_PAUSE_WHEN_EMPTY = true;
     public static final Duration DEFAULT_CLEAN_INTERVAL = Duration.ofSeconds(60);
 
+    /**
+     * How long a booster multiplier stays good enough to use without asking the database again.
+     *
+     * <p>A mob death has to know the multiplier before the event returns, and it cannot wait for a
+     * query. Five seconds is short enough that a booster a player just bought takes effect while
+     * they are still looking at the shop, and long enough that a mob farm does not ask once per
+     * kill. An operator who wants it tighter can say so.
+     */
+    public static final Duration DEFAULT_MULTIPLIER_CACHE_TTL = Duration.ofSeconds(5);
+
     public BoosterConfiguration {
         Objects.requireNonNull(cleanInterval, "cleanInterval must not be null");
+        Objects.requireNonNull(multiplierCacheTtl, "multiplierCacheTtl must not be null");
         Objects.requireNonNull(policies, "policies must not be null");
+        if (multiplierCacheTtl.isNegative()) {
+            throw new IllegalArgumentException("boosters.multiplier-cache-ttl must not be negative");
+        }
         policies = Collections.unmodifiableMap(new EnumMap<>(policies));
     }
 
@@ -40,7 +57,8 @@ public record BoosterConfiguration(
         for (BoosterCategory cat : BoosterCategory.values()) {
             map.put(cat, CategoryBoosterPolicy.defaultFor(cat));
         }
-        return new BoosterConfiguration(DEFAULT_PAUSE_WHEN_EMPTY, DEFAULT_CLEAN_INTERVAL, map);
+        return new BoosterConfiguration(
+                DEFAULT_PAUSE_WHEN_EMPTY, DEFAULT_CLEAN_INTERVAL, DEFAULT_MULTIPLIER_CACHE_TTL, map);
     }
 
     public static BoosterConfiguration load(ConfigurationNode rootNode) {
@@ -52,6 +70,7 @@ public record BoosterConfiguration(
 
         boolean pauseWhenEmpty = node.node("pause-when-empty").getBoolean(DEFAULT_PAUSE_WHEN_EMPTY);
         Duration cleanInterval = parseDuration(node.node("clean-interval"), DEFAULT_CLEAN_INTERVAL);
+        Duration multiplierCacheTtl = parseDuration(node.node("multiplier-cache-ttl"), DEFAULT_MULTIPLIER_CACHE_TTL);
 
         ConfigurationNode categoriesNode = node.node("categories");
         Map<BoosterCategory, CategoryBoosterPolicy> map = new EnumMap<>(BoosterCategory.class);
@@ -98,7 +117,7 @@ public record BoosterConfiguration(
                             defaultDuration));
         }
 
-        return new BoosterConfiguration(pauseWhenEmpty, cleanInterval, map);
+        return new BoosterConfiguration(pauseWhenEmpty, cleanInterval, multiplierCacheTtl, map);
     }
 
     private static Duration parseDuration(ConfigurationNode node, Duration fallback) {

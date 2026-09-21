@@ -101,21 +101,41 @@ class IslandBoosterListenerTest extends MockBukkitHarness {
         verify(mockBoosterService).pauseBoosters(islandId, fixedNow);
     }
 
+    /** Builds one mob death by this player, with {@code exp} experience to drop. */
+    private EntityDeathEvent deathOf(int exp) {
+        World world = server.addSimpleWorld("skyblock_world");
+        LivingEntity entity = (LivingEntity) world.spawnEntity(new Location(world, 0, 64, 0), EntityType.ZOMBIE);
+        DamageSource damageSource = DamageSource.builder(DamageType.PLAYER_ATTACK)
+                .withCausingEntity(testPlayer)
+                .withDirectEntity(testPlayer)
+                .build();
+        return new EntityDeathEvent(entity, damageSource, new ArrayList<>(), exp);
+    }
+
+    @Test
+    @DisplayName("The first kill goes unboosted, because resolving the island is a query")
+    void theFirstKillIsNotBoosted() {
+        when(mockBoosterService.getEffectiveMultiplier(islandId, BoosterCategory.MOB_EXP, fixedNow))
+                .thenReturn(2.5);
+
+        EntityDeathEvent first = deathOf(20);
+        listener.onEntityDeath(first);
+
+        // A mob death sets dropped experience before the event returns, so it cannot wait for the
+        // island lookup. One mob's experience is a cheaper price than a query on a region thread.
+        assertThat(first.getDroppedExp()).isEqualTo(20);
+    }
+
     @Test
     @DisplayName("Multiplies dropped exp on entity death when MOB_EXP booster is active")
     void multipliesExpOnEntityDeath() {
         when(mockBoosterService.getEffectiveMultiplier(islandId, BoosterCategory.MOB_EXP, fixedNow))
                 .thenReturn(2.5);
 
-        World world = server.addSimpleWorld("skyblock_world");
-        LivingEntity entity = (LivingEntity) world.spawnEntity(new Location(world, 0, 64, 0), EntityType.ZOMBIE);
-
-        DamageSource damageSource = DamageSource.builder(DamageType.PLAYER_ATTACK)
-                .withCausingEntity(testPlayer)
-                .withDirectEntity(testPlayer)
-                .build();
-        List<ItemStack> drops = new ArrayList<>();
-        EntityDeathEvent event = new EntityDeathEvent(entity, damageSource, drops, 20);
+        // The first death resolves the island and reads the multiplier, off the event thread on a
+        // real server and inline here, where there is no scheduler.
+        listener.onEntityDeath(deathOf(20));
+        EntityDeathEvent event = deathOf(20);
 
         listener.onEntityDeath(event);
 
@@ -127,6 +147,7 @@ class IslandBoosterListenerTest extends MockBukkitHarness {
     void doesNotModifyExpWhenMultiplierIsOne() {
         when(mockBoosterService.getEffectiveMultiplier(islandId, BoosterCategory.MOB_EXP, fixedNow))
                 .thenReturn(1.0);
+        listener.onEntityDeath(deathOf(20));
 
         World world = server.addSimpleWorld("skyblock_world");
         LivingEntity entity = (LivingEntity) world.spawnEntity(new Location(world, 0, 64, 0), EntityType.ZOMBIE);

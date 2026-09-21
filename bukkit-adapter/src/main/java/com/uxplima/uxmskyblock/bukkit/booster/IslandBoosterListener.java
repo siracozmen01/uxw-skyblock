@@ -1,9 +1,12 @@
 package com.uxplima.uxmskyblock.bukkit.booster;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -40,6 +43,27 @@ public final class IslandBoosterListener implements Listener {
     private final @Nullable SchedulerPort schedulerPort;
     private final Clock clock;
     private final Map<UUID, IslandId> playerIslandCache = new ConcurrentHashMap<>();
+
+    /**
+     * The last multiplier read for an island and a category, and when it was read.
+     *
+     * <p>A mob death has to set the dropped experience before the event returns, so it cannot wait
+     * for a query. It used to run one per kill, on the region thread, for every death that dropped
+     * experience: a mob farm was a query per mob. This holds the answer for
+     * {@code boosters.multiplier-cache-ttl} and refreshes it off the thread the mob died on.
+     */
+    private final Map<MultiplierKey, CachedMultiplier> multiplierCache = new ConcurrentHashMap<>();
+
+    /** Islands whose refresh is already in flight, so a farm does not queue one task per mob. */
+    private final Set<MultiplierKey> refreshing = ConcurrentHashMap.newKeySet();
+
+    private record MultiplierKey(IslandId islandId, BoosterCategory category) {}
+
+    private record CachedMultiplier(double value, Instant readAt) {
+        boolean isFreshAt(Instant now, Duration ttl) {
+            return !readAt.plus(ttl).isBefore(now);
+        }
+    }
 
     public IslandBoosterListener(
             IslandStoragePort islandStoragePort,
@@ -116,7 +140,7 @@ public final class IslandBoosterListener implements Listener {
         Player player = event.getPlayer();
         UUID playerUuid = player.getUniqueId();
         Runnable task = () -> {
-            IslandId islandId = playerIslandCache.remove(playerUuid);
+            IslandId islandId = playerIslandCache.get(playerUuid);
             if (islandId == null) {
                 islandId = findIslandIdForPlayer(playerUuid).orElse(null);
             }
@@ -126,6 +150,7 @@ public final class IslandBoosterListener implements Listener {
                     boosterService.pauseBoosters(islandId, clock.instant());
                 }
             }
+            invalidatePlayer(playerUuid);
         };
 
         if (schedulerPort != null) {
@@ -153,19 +178,83 @@ public final class IslandBoosterListener implements Listener {
 
         IslandId islandId = playerIslandCache.get(killer.getUniqueId());
         if (islandId == null) {
-            islandId = findIslandIdForPlayer(killer.getUniqueId()).orElse(null);
-            if (islandId != null) {
-                playerIslandCache.put(killer.getUniqueId(), islandId);
-            }
+            // Nothing on this path may touch the database. The island is resolved off the thread the
+            // mob died on, and this kill goes unboosted: one mob's experience is a cheaper price
+            // than a query on a region thread, and the next kill will find the answer waiting.
+            resolveIslandLater(killer.getUniqueId());
+            return;
         }
-        if (islandId != null) {
-            double multiplier =
-                    boosterService.getEffectiveMultiplier(islandId, BoosterCategory.MOB_EXP, clock.instant());
-            if (multiplier > 1.0) {
-                int originalExp = event.getDroppedExp();
-                int boostedExp = (int) Math.round(originalExp * multiplier);
-                event.setDroppedExp(boostedExp);
+
+        double multiplier = cachedMultiplier(islandId, BoosterCategory.MOB_EXP);
+        if (multiplier > 1.0) {
+            int originalExp = event.getDroppedExp();
+            int boostedExp = (int) Math.round(originalExp * multiplier);
+            event.setDroppedExp(boostedExp);
+        }
+    }
+
+    /**
+     * The multiplier as of the last read, refreshing it off this thread when it has gone stale.
+     *
+     * <p>Returns 1.0 while the first read is still running. A booster is a bonus, and briefly not
+     * applying one is a smaller wrong than stalling the region thread on every mob that dies.
+     */
+    private double cachedMultiplier(IslandId islandId, BoosterCategory category) {
+        MultiplierKey key = new MultiplierKey(islandId, category);
+        Instant now = clock.instant();
+        CachedMultiplier cached = multiplierCache.get(key);
+        if (cached != null && cached.isFreshAt(now, configuration.multiplierCacheTtl())) {
+            return cached.value();
+        }
+        if (schedulerPort == null) {
+            // No scheduler means no thread to move the work to, which is the test harness and the
+            // one caller that constructs this listener without one. Reading directly is safe there.
+            return refreshNow(key);
+        }
+        refreshLater(key);
+        return cached != null ? cached.value() : 1.0;
+    }
+
+    /** Reads the multiplier and stores it. Runs on a scheduler thread, never on an event thread. */
+    private double refreshNow(MultiplierKey key) {
+        double value = boosterService.getEffectiveMultiplier(key.islandId(), key.category(), clock.instant());
+        multiplierCache.put(key, new CachedMultiplier(value, clock.instant()));
+        return value;
+    }
+
+    private void refreshLater(MultiplierKey key) {
+        if (schedulerPort == null) {
+            refreshNow(key);
+            return;
+        }
+        if (!refreshing.add(key)) {
+            return;
+        }
+        schedulerPort.async(() -> {
+            try {
+                refreshNow(key);
+            } finally {
+                refreshing.remove(key);
             }
+        });
+    }
+
+    private void resolveIslandLater(UUID playerUuid) {
+        if (schedulerPort == null) {
+            findIslandIdForPlayer(playerUuid).ifPresent(id -> playerIslandCache.put(playerUuid, id));
+            return;
+        }
+        schedulerPort.async(() -> findIslandIdForPlayer(playerUuid).ifPresent(id -> {
+            playerIslandCache.put(playerUuid, id);
+            refreshLater(new MultiplierKey(id, BoosterCategory.MOB_EXP));
+        }));
+    }
+
+    /** Forgets what is remembered about a player, for a profile switch or a quit. */
+    public void invalidatePlayer(UUID playerUuid) {
+        IslandId islandId = playerIslandCache.remove(playerUuid);
+        if (islandId != null) {
+            multiplierCache.keySet().removeIf(key -> key.islandId().equals(islandId));
         }
     }
 
