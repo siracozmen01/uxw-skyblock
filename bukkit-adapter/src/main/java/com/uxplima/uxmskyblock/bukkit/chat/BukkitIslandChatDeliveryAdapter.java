@@ -12,6 +12,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatDeliveryPort;
+import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatFrame;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 
@@ -34,8 +35,10 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
         Objects.requireNonNull(recipients, "recipients must not be null");
         Objects.requireNonNull(frame, "frame must not be null");
 
+        // An alliance message reads differently from an island one, because a player who cannot
+        // tell them apart does not know who just heard them.
         Component component = miniMessage.deserialize(
-                configuration.format(),
+                frame.channel() == IslandChatChannel.ALLIANCE ? configuration.allianceFormat() : configuration.format(),
                 Placeholder.parsed("role", frame.senderRole().displayName()),
                 Placeholder.parsed("player", frame.senderName()),
                 Placeholder.unparsed("message", frame.message()));

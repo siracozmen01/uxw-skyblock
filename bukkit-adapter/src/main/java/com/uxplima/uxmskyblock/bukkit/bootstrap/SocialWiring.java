@@ -103,7 +103,11 @@ public final class SocialWiring {
                 actualChatTransport,
                 chatDelivery,
                 chatMemberProvider,
-                config.chatConfig().rateLimitMessagesPerSecond());
+                config.chatConfig().rateLimitMessagesPerSecond(),
+                // The alliance service has carried an alliance-chat switch since it was written and
+                // nothing asked it, because there was no channel to switch on. A server with the
+                // switch off has no ally lookup, so the alliance channel is not offered at all.
+                allianceService.isAllianceChatEnabled() ? allianceService::getAllies : null);
         this.chatListener = config.moduleSettings().isModuleEnabled("chat")
                 ? new IslandChatListener(this.chatService, authority.activeProfileProvider(), config.messages())
                 : null;

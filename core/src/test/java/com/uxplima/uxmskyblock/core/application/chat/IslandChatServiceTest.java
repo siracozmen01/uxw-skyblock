@@ -40,6 +40,10 @@ class IslandChatServiceTest {
     private static final ProfileId MEMBER_ID = ProfileId.of(UUID.randomUUID());
     private static final ProfileId VISITOR_ID = ProfileId.of(UUID.randomUUID());
     private static final ProfileId SPY_ID = ProfileId.of(UUID.randomUUID());
+    private static final IslandId ALLY_ISLAND_ID = IslandId.of(UUID.randomUUID());
+    private static final ProfileId ALLY_OWNER_ID = ProfileId.of(UUID.randomUUID());
+    private static final IslandId STRANGER_ISLAND_ID = IslandId.of(UUID.randomUUID());
+    private static final ProfileId STRANGER_OWNER_ID = ProfileId.of(UUID.randomUUID());
 
     private FakeIslandStorage storage;
     private LocalIslandChatTransportAdapter transport;
@@ -63,6 +67,127 @@ class IslandChatServiceTest {
         Island island = Island.create(ISLAND_ID, bounds, ownerUuid, OWNER_ID, Instant.now());
         island = island.addMember(new IslandMember(memberUuid, MEMBER_ID, IslandRole.MEMBER, Instant.now()));
         storage.saveIsland(island);
+
+        storage.saveIsland(Island.create(
+                ALLY_ISLAND_ID, bounds, PlayerUuid.of(ALLY_OWNER_ID.value()), ALLY_OWNER_ID, Instant.now()));
+        storage.saveIsland(Island.create(
+                STRANGER_ISLAND_ID,
+                bounds,
+                PlayerUuid.of(STRANGER_OWNER_ID.value()),
+                STRANGER_OWNER_ID,
+                Instant.now()));
+    }
+
+    /** A service whose alliance lookup says these two islands are allied and nothing else is. */
+    private IslandChatService alliedChatService(Map<IslandId, Set<ProfileId>> onlineByIsland) {
+        return new IslandChatService(
+                storage,
+                new LocalIslandChatTransportAdapter(),
+                deliveryPort,
+                islandId -> onlineByIsland.getOrDefault(islandId, Set.of()),
+                3,
+                islandId -> ISLAND_ID.equals(islandId) ? List.of(ALLY_ISLAND_ID) : List.of());
+    }
+
+    private static Map<IslandId, Set<ProfileId>> everybodyOnline() {
+        Map<IslandId, Set<ProfileId>> online = new HashMap<>();
+        online.put(ISLAND_ID, Set.of(OWNER_ID, MEMBER_ID));
+        online.put(ALLY_ISLAND_ID, Set.of(ALLY_OWNER_ID));
+        online.put(STRANGER_ISLAND_ID, Set.of(STRANGER_OWNER_ID));
+        return online;
+    }
+
+    @Test
+    @DisplayName("A message on the alliance channel reaches the allied island, and not a stranger's")
+    void allianceChatReachesTheAllyAndNobodyElse() {
+        IslandChatService allied = alliedChatService(everybodyOnline());
+        allied.setChannel(OWNER_ID, IslandChatChannel.ALLIANCE);
+
+        allied.sendChat(OWNER_ID, "Owner", "are you there");
+
+        assertThat(deliveryPort.memberDeliveries).hasSize(1);
+        assertThat(deliveryPort.memberDeliveries.get(0).recipients())
+                .contains(OWNER_ID, MEMBER_ID, ALLY_OWNER_ID)
+                .doesNotContain(STRANGER_OWNER_ID);
+    }
+
+    @Test
+    @DisplayName("A message on the island's own channel never reaches the ally")
+    void islandChatStaysOnTheIsland() {
+        IslandChatService allied = alliedChatService(everybodyOnline());
+        allied.setChannel(OWNER_ID, IslandChatChannel.ISLAND);
+
+        allied.sendChat(OWNER_ID, "Owner", "just us");
+
+        assertThat(deliveryPort.memberDeliveries).hasSize(1);
+        assertThat(deliveryPort.memberDeliveries.get(0).recipients())
+                .contains(OWNER_ID, MEMBER_ID)
+                .doesNotContain(ALLY_OWNER_ID);
+    }
+
+    @Test
+    @DisplayName("The frame says which channel it is, so a reader can tell the two apart")
+    void theFrameNamesItsChannel() {
+        IslandChatService allied = alliedChatService(everybodyOnline());
+        allied.setChannel(OWNER_ID, IslandChatChannel.ALLIANCE);
+
+        allied.sendChat(OWNER_ID, "Owner", "hello allies");
+
+        assertThat(deliveryPort.memberDeliveries.get(0).frame().channel()).isEqualTo(IslandChatChannel.ALLIANCE);
+    }
+
+    @Test
+    @DisplayName("The short form sends one line on the alliance channel and leaves the player where they were")
+    void theShortFormDoesNotMoveThePlayer() {
+        IslandChatService allied = alliedChatService(everybodyOnline());
+        allied.setChannel(OWNER_ID, IslandChatChannel.ISLAND);
+
+        allied.sendChatOn(OWNER_ID, "Owner", "one line", IslandChatChannel.ALLIANCE);
+
+        assertThat(deliveryPort.memberDeliveries.get(0).frame().channel()).isEqualTo(IslandChatChannel.ALLIANCE);
+        assertThat(allied.getChannel(OWNER_ID))
+                .describedAs("a short form that silently moves somebody sends their next message to the wrong people")
+                .isEqualTo(IslandChatChannel.ISLAND);
+    }
+
+    @Test
+    @DisplayName("A player who was on the public channel is still on it after the short form")
+    void theShortFormLeavesAPublicPlayerPublic() {
+        IslandChatService allied = alliedChatService(everybodyOnline());
+
+        allied.sendChatOn(OWNER_ID, "Owner", "one line", IslandChatChannel.ALLIANCE);
+
+        assertThat(allied.getChannel(OWNER_ID)).isEqualTo(IslandChatChannel.GLOBAL);
+    }
+
+    @Test
+    @DisplayName("A server without alliances puts a player asking for the channel on their island's own")
+    void withoutAlliancesTheChannelFallsBackToTheIsland() {
+        onlineMembers.add(OWNER_ID);
+
+        assertThat(chatService.hasAlliances()).isFalse();
+        assertThat(chatService.setChannel(OWNER_ID, IslandChatChannel.ALLIANCE)).isEqualTo(IslandChatChannel.ISLAND);
+    }
+
+    @Test
+    @DisplayName("An allied island decides for itself who among its own members may read chat")
+    void theAlliedIslandAppliesItsOwnPermissions() {
+        Island ally = storage.findIslandById(ALLY_ISLAND_ID).orElseThrow();
+        ProfileId quietOne = ProfileId.of(UUID.randomUUID());
+        storage.saveIsland(ally.addMember(
+                new IslandMember(PlayerUuid.of(quietOne.value()), quietOne, IslandRole.VISITOR, Instant.now())));
+
+        Map<IslandId, Set<ProfileId>> online = everybodyOnline();
+        online.put(ALLY_ISLAND_ID, Set.of(ALLY_OWNER_ID, quietOne));
+        IslandChatService allied = alliedChatService(online);
+        allied.setChannel(OWNER_ID, IslandChatChannel.ALLIANCE);
+
+        allied.sendChat(OWNER_ID, "Owner", "hello");
+
+        assertThat(deliveryPort.memberDeliveries.get(0).recipients())
+                .contains(ALLY_OWNER_ID)
+                .describedAs("a visitor on the allied island carries no CHAT_VIEW")
+                .doesNotContain(quietOne);
     }
 
     @Test

@@ -62,6 +62,105 @@ public final class IslandChatCommands {
                 .then(Cmd.argument("message", StringArgumentType.greedyString()).executes(this::executeChatMessage));
     }
 
+    /**
+     * {@code /is allychat}: put the player on the alliance channel, or take them off it.
+     *
+     * <p>The design specification publishes this and {@code /is ac} beside it, and the alliance
+     * service has carried the switch that turns the channel on since it was written. There was no
+     * channel to switch on.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildAllianceChat() {
+        return Cmd.literal("allychat").executes(this::executeAllianceToggle);
+    }
+
+    /** {@code /is ac [message]}: the short form, which sends one line without leaving your channel. */
+    public LiteralArgumentBuilder<CommandSourceStack> buildAllianceChatAlias() {
+        return Cmd.literal("ac")
+                .executes(this::executeAllianceToggle)
+                .then(Cmd.argument("message", StringArgumentType.greedyString())
+                        .executes(this::executeAllianceMessage));
+    }
+
+    private int executeAllianceToggle(CommandContext<CommandSourceStack> ctx) {
+        return withChat(ctx, (player, chatService, profileId) -> {
+            if (!chatService.hasAlliances()) {
+                onEntity(player, () -> send(player, "chat.alliance_disabled"));
+                return;
+            }
+            try {
+                IslandChatChannel current = chatService.getChannel(profileId);
+                IslandChatChannel next =
+                        current == IslandChatChannel.ALLIANCE ? IslandChatChannel.GLOBAL : IslandChatChannel.ALLIANCE;
+                IslandChatChannel landed = chatService.setChannel(profileId, next);
+                onEntity(player, () -> {
+                    switch (landed) {
+                        case ALLIANCE -> send(player, "chat.toggled_alliance");
+                        case ISLAND -> send(player, "chat.toggled_island");
+                        case GLOBAL -> send(player, "chat.toggled_public");
+                    }
+                });
+            } catch (NoIslandForChatException e) {
+                onEntity(player, () -> send(player, "chat.requires_island"));
+            }
+        });
+    }
+
+    private int executeAllianceMessage(CommandContext<CommandSourceStack> ctx) {
+        String message = StringArgumentType.getString(ctx, "message");
+        return withChat(ctx, (player, chatService, profileId) -> {
+            if (!chatService.hasAlliances()) {
+                onEntity(player, () -> send(player, "chat.alliance_disabled"));
+                return;
+            }
+            try {
+                // One line on the alliance channel, and the player stays on whichever channel they
+                // were standing on. A short form that silently moves somebody is a short form that
+                // sends their next message to the wrong people.
+                chatService.sendChatOn(profileId, player.getName(), message, IslandChatChannel.ALLIANCE);
+            } catch (NoIslandForChatException e) {
+                onEntity(player, () -> send(player, "chat.requires_island"));
+            } catch (IslandChatPermissionDeniedException e) {
+                onEntity(player, () -> send(player, "chat.send_denied"));
+            } catch (ChatRateLimitExceededException e) {
+                onEntity(player, () -> send(player, "chat.rate_limited"));
+            }
+        });
+    }
+
+    /** What a chat command needs: a player, the service, and their own profile, off the thread. */
+    @FunctionalInterface
+    private interface ChatAction {
+        void run(Player player, IslandChatService chatService, ProfileId profileId);
+    }
+
+    private int withChat(CommandContext<CommandSourceStack> ctx, ChatAction action) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        IslandChatService chatService = chatServiceProvider.get();
+        if (chatService == null) {
+            send(player, "chat.not_enabled");
+            return Cmd.OK;
+        }
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, "error.session_not_active");
+            return Cmd.OK;
+        }
+        ProfileId profileId = optProfile.get();
+        schedulerPort.async(() -> action.run(player, chatService, profileId));
+        return Cmd.OK;
+    }
+
+    private void onEntity(Player player, Runnable work) {
+        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+            if (player.isOnline()) {
+                work.run();
+            }
+        });
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> buildSpy() {
         return Cmd.literal("spy").executes(this::executeSpyToggle);
     }

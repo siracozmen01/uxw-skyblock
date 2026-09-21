@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -90,6 +91,8 @@ class IslandChatCommandsTest {
         dispatcher.register(commands.buildChat());
         dispatcher.register(commands.buildChatAlias());
         dispatcher.register(commands.buildSpy());
+        dispatcher.register(commands.buildAllianceChat());
+        dispatcher.register(commands.buildAllianceChatAlias());
     }
 
     @AfterEach
@@ -195,5 +198,59 @@ class IslandChatCommandsTest {
         run("chat hello", server.getConsoleSender());
 
         verify(chat, never()).sendChat(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("/is ac sends one line on the alliance channel and leaves the player where they were")
+    void theShortFormSendsOnTheAllianceChannel() throws Exception {
+        when(chat.hasAlliances()).thenReturn(true);
+
+        run("ac we are under attack", player);
+
+        verify(chat)
+                .sendChatOn(
+                        eq(PROFILE),
+                        anyString(),
+                        eq("we are under attack"),
+                        eq(com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.ALLIANCE));
+        verify(chat, never()).sendChat(any(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("/is allychat moves the player onto the alliance channel")
+    void allychatMovesThePlayerOntoTheChannel() throws Exception {
+        when(chat.hasAlliances()).thenReturn(true);
+        when(chat.getChannel(PROFILE)).thenReturn(com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.GLOBAL);
+        when(chat.setChannel(any(), any()))
+                .thenReturn(com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.ALLIANCE);
+
+        run("allychat", player);
+
+        verify(chat).setChannel(PROFILE, com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.ALLIANCE);
+    }
+
+    @Test
+    @DisplayName("/is allychat a second time takes the player back off it")
+    void allychatTwiceTakesThemOff() throws Exception {
+        when(chat.hasAlliances()).thenReturn(true);
+        when(chat.getChannel(PROFILE)).thenReturn(com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.ALLIANCE);
+        when(chat.setChannel(any(), any()))
+                .thenReturn(com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.GLOBAL);
+
+        run("allychat", player);
+
+        verify(chat).setChannel(PROFILE, com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.GLOBAL);
+    }
+
+    @Test
+    @DisplayName("A server without alliances answers rather than putting a player on a channel nobody reads")
+    void withoutAlliancesNothingIsSent() throws Exception {
+        when(chat.hasAlliances()).thenReturn(false);
+
+        run("allychat", player);
+        run("ac hello", player);
+
+        verify(chat, never()).setChannel(any(), any());
+        verify(chat, never()).sendChatOn(any(), anyString(), anyString(), any());
     }
 }

@@ -393,6 +393,8 @@ public final class IslandCommandTree {
                 .then(groups.membershipCommands().buildRole())
                 .then(groups.membershipCommands().buildPermissions())
                 .then(groups.infoCommands().buildInfo())
+                .then(groups.chatCommands().buildAllianceChat())
+                .then(groups.chatCommands().buildAllianceChatAlias())
                 .then(vaultBranch("vault"))
                 // The design document publishes /is chest for the same window. A command an
                 // operator reads about and types is either there or the document is wrong, and the

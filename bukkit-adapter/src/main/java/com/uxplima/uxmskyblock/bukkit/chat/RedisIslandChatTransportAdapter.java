@@ -15,6 +15,7 @@ import java.util.logging.Logger;
 
 import com.uxplima.uxmlib.redis.RedisBus;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
+import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatFrame;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -81,6 +82,7 @@ public final class RedisIslandChatTransportAdapter implements IslandChatTranspor
             dos.writeUTF(frame.senderRole().id());
             dos.writeUTF(frame.message());
             dos.writeLong(frame.timestamp().toEpochMilli());
+            dos.writeUTF(frame.channel().name());
         }
         return baos.toByteArray();
     }
@@ -93,7 +95,19 @@ public final class RedisIslandChatTransportAdapter implements IslandChatTranspor
             IslandRole senderRole = IslandRole.byId(dis.readUTF()).orElse(IslandRole.MEMBER);
             String message = dis.readUTF();
             Instant timestamp = Instant.ofEpochMilli(dis.readLong());
-            return new IslandChatFrame(islandId, profileId, senderName, senderRole, message, timestamp);
+            // A frame written by a node that predates the alliance channel has nothing after the
+            // timestamp. It is an island frame, which is what every frame was then.
+            IslandChatChannel channel = readChannelOrIsland(dis);
+            return new IslandChatFrame(islandId, profileId, senderName, senderRole, message, timestamp, channel);
+        }
+    }
+
+    /** The channel the frame names, or the island's own when the writer did not name one. */
+    private static IslandChatChannel readChannelOrIsland(DataInputStream dis) {
+        try {
+            return IslandChatChannel.valueOf(dis.readUTF());
+        } catch (IOException | IllegalArgumentException older) {
+            return IslandChatChannel.ISLAND;
         }
     }
 

@@ -25,7 +25,7 @@ class RedisIslandChatTransportAdapterTest {
     private RedisBus redisBus;
     private RedisIslandChatTransportAdapter adapter;
 
-    private final IslandChatFrame sampleFrame = new IslandChatFrame(
+    private final IslandChatFrame sampleFrame = IslandChatFrame.island(
             IslandId.of(UUID.randomUUID()),
             ProfileId.of(UUID.randomUUID()),
             "Steve",
