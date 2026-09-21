@@ -13,7 +13,6 @@ import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
-import com.uxplima.uxmlib.storage.sql.StatementBinder;
 import com.uxplima.uxmskyblock.core.application.session.PlayerSessionAuthorityPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -43,146 +42,15 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
     private final Database database;
     private final Dialect dialect;
 
-    private final String renewSql;
-    private final String drainSql;
-    private final String prepareHandoffSql;
-    private final String plannedAcquireSql;
-    private final String failureTakeoverSql;
-    private final String markRecoveredActiveSql;
-    private final String releaseToOfflineSql;
+    private final SessionAuthoritySql sql;
+    private final SessionWriter writer;
 
     public PlayerSessionAuthorityAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
 
-        validateDialect(this.dialect);
-
-        String activeLeaseExpr = dbNowPlus(dialect, ACTIVE_LEASE_SECONDS);
-        String handoffLeaseExpr = dbNowPlus(dialect, HANDOFF_LEASE_SECONDS);
-
-        this.renewSql = buildRenewSql(activeLeaseExpr);
-        this.drainSql = buildDrainSql();
-        this.prepareHandoffSql = buildPrepareHandoffSql(handoffLeaseExpr);
-        this.plannedAcquireSql = buildPlannedAcquireSql(activeLeaseExpr);
-        this.failureTakeoverSql = buildFailureTakeoverSql(activeLeaseExpr);
-        this.markRecoveredActiveSql = buildMarkRecoveredActiveSql(activeLeaseExpr);
-        this.releaseToOfflineSql = buildReleaseToOfflineSql();
-    }
-
-    private static void validateDialect(Dialect dialect) {
-        switch (dialect) {
-            case SQLITE, MYSQL, POSTGRES -> {}
-            case H2, GENERIC ->
-                throw new IllegalArgumentException(
-                        "Unsupported SQL dialect: " + dialect
-                                + ". Skyblock player session authority supports SQLite, MariaDB (upstream MYSQL), and PostgreSQL.");
-        }
-    }
-
-    private static String dbNowPlus(Dialect dialect, int seconds) {
-        return switch (dialect) {
-            case SQLITE -> "DATETIME('now', '+" + seconds + " seconds')";
-            case MYSQL -> "CURRENT_TIMESTAMP + INTERVAL " + seconds + " SECOND";
-            case POSTGRES -> "CURRENT_TIMESTAMP + INTERVAL '" + seconds + " seconds'";
-            case H2, GENERIC -> throw new IllegalArgumentException("Unsupported dialect: " + dialect);
-        };
-    }
-
-    private static String buildRenewSql(String leaseExpr) {
-        return "UPDATE player_sessions "
-                + "SET lease_expires_at = " + leaseExpr + ", "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND authoritative_node = ? "
-                + "AND session_epoch = ? "
-                + "AND state = 'ACTIVE' "
-                + "AND lease_expires_at >= CURRENT_TIMESTAMP";
-    }
-
-    private static String buildDrainSql() {
-        return "UPDATE player_sessions "
-                + "SET state = 'DRAINING', "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND authoritative_node = ? "
-                + "AND session_epoch = ? "
-                + "AND state = 'ACTIVE' "
-                + "AND lease_expires_at >= CURRENT_TIMESTAMP";
-    }
-
-    private static String buildPrepareHandoffSql(String handoffLeaseExpr) {
-        return "UPDATE player_sessions "
-                + "SET state = 'HANDOFF_READY', "
-                + "handoff_id = ?, "
-                + "handoff_target_node = ?, "
-                + "handoff_expires_at = " + handoffLeaseExpr + ", "
-                + "lease_expires_at = " + handoffLeaseExpr + ", "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND authoritative_node = ? "
-                + "AND session_epoch = ? "
-                + "AND state = 'DRAINING' "
-                + "AND lease_expires_at >= CURRENT_TIMESTAMP";
-    }
-
-    private static String buildPlannedAcquireSql(String activeLeaseExpr) {
-        return "UPDATE player_sessions "
-                + "SET authoritative_node = ?, "
-                + "session_epoch = session_epoch + 1, "
-                + "state = 'ACTIVE', "
-                + "handoff_id = NULL, "
-                + "handoff_target_node = NULL, "
-                + "handoff_expires_at = NULL, "
-                + "lease_expires_at = " + activeLeaseExpr + ", "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND state = 'HANDOFF_READY' "
-                + "AND handoff_id = ? "
-                + "AND handoff_target_node = ? "
-                + "AND authoritative_node = ? "
-                + "AND session_epoch = ? "
-                + "AND handoff_expires_at >= CURRENT_TIMESTAMP";
-    }
-
-    private static String buildFailureTakeoverSql(String activeLeaseExpr) {
-        return "UPDATE player_sessions "
-                + "SET authoritative_node = ?, "
-                + "session_epoch = session_epoch + 1, "
-                + "state = 'RECOVERING', "
-                + "handoff_id = NULL, "
-                + "handoff_target_node = NULL, "
-                + "handoff_expires_at = NULL, "
-                + "lease_expires_at = " + activeLeaseExpr + ", "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND session_epoch = ? "
-                + "AND lease_expires_at < CURRENT_TIMESTAMP";
-    }
-
-    private static String buildMarkRecoveredActiveSql(String activeLeaseExpr) {
-        return "UPDATE player_sessions "
-                + "SET state = 'ACTIVE', "
-                + "lease_expires_at = " + activeLeaseExpr + ", "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND authoritative_node = ? "
-                + "AND session_epoch = ? "
-                + "AND state = 'RECOVERING' "
-                + "AND lease_expires_at >= CURRENT_TIMESTAMP";
-    }
-
-    private static String buildReleaseToOfflineSql() {
-        return "UPDATE player_sessions "
-                + "SET state = 'OFFLINE', "
-                + "handoff_id = NULL, "
-                + "handoff_target_node = NULL, "
-                + "handoff_expires_at = NULL, "
-                + "lease_expires_at = CURRENT_TIMESTAMP, "
-                + "updated_at = CURRENT_TIMESTAMP "
-                + "WHERE player_uuid = ? "
-                + "AND authoritative_node = ? "
-                + "AND session_epoch = ? "
-                + "AND state = 'DRAINING'";
+        this.sql = SessionAuthoritySql.forDialect(this.dialect);
+        this.writer = new SessionWriter(database);
     }
 
     @Override
@@ -349,7 +217,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                     }
                 }
 
-                String activeLeaseExpr = dbNowPlus(dialect, ACTIVE_LEASE_SECONDS);
+                String activeLeaseExpr = sql.activeLeaseExpr();
 
                 if (!sessionExists) {
                     String insertSessSql =
@@ -504,7 +372,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(currentNode, "currentNode");
 
-        int affected = executeUpdate(renewSql, statement -> {
+        int affected = writer.executeUpdate(sql.renew(), statement -> {
             statement.setString(1, playerUuid.value().toString());
             statement.setString(2, currentNode.value());
             statement.setLong(3, currentEpoch);
@@ -518,7 +386,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(currentNode, "currentNode");
 
-        int affected = executeUpdate(drainSql, statement -> {
+        int affected = writer.executeUpdate(sql.drain(), statement -> {
             statement.setString(1, playerUuid.value().toString());
             statement.setString(2, currentNode.value());
             statement.setLong(3, currentEpoch);
@@ -539,7 +407,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(handoffId, "handoffId");
         Objects.requireNonNull(targetNode, "targetNode");
 
-        int affected = executeUpdate(prepareHandoffSql, statement -> {
+        int affected = writer.executeUpdate(sql.prepareHandoff(), statement -> {
             statement.setString(1, handoffId);
             statement.setString(2, targetNode.value());
             statement.setString(3, playerUuid.value().toString());
@@ -562,7 +430,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(expectedHandoffId, "expectedHandoffId");
         Objects.requireNonNull(destinationNode, "destinationNode");
 
-        int affected = executeUpdate(plannedAcquireSql, statement -> {
+        int affected = writer.executeUpdate(sql.plannedAcquire(), statement -> {
             statement.setString(1, destinationNode.value());
             statement.setString(2, playerUuid.value().toString());
             statement.setString(3, expectedHandoffId);
@@ -581,7 +449,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(destinationNode, "destinationNode");
 
-        int affected = executeUpdate(failureTakeoverSql, statement -> {
+        int affected = writer.executeUpdate(sql.failureTakeover(), statement -> {
             statement.setString(1, destinationNode.value());
             statement.setString(2, playerUuid.value().toString());
             statement.setLong(3, expectedEpoch);
@@ -597,7 +465,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(currentNode, "currentNode");
 
-        int affected = executeUpdate(markRecoveredActiveSql, statement -> {
+        int affected = writer.executeUpdate(sql.markRecoveredActive(), statement -> {
             statement.setString(1, playerUuid.value().toString());
             statement.setString(2, currentNode.value());
             statement.setLong(3, currentEpoch);
@@ -614,7 +482,7 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(currentNode, "currentNode");
 
-        int affected = executeUpdate(releaseToOfflineSql, statement -> {
+        int affected = writer.executeUpdate(sql.releaseToOffline(), statement -> {
             statement.setString(1, playerUuid.value().toString());
             statement.setString(2, currentNode.value());
             statement.setLong(3, currentEpoch);
@@ -623,49 +491,5 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
         return affected == 1
                 ? SessionAuthorityOutcome.success(currentEpoch, false)
                 : SessionAuthorityOutcome.rejected();
-    }
-
-    private int executeUpdate(String sql, StatementBinder binder) {
-        if (dialect == Dialect.SQLITE) {
-            return executeSqliteWriter(sql, binder);
-        }
-        return executeServerTransaction(sql, binder);
-    }
-
-    private int executeSqliteWriter(String sql, StatementBinder binder) {
-        try (Connection conn = database.connection()) {
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("BEGIN IMMEDIATE");
-            }
-            try {
-                int affected;
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    binder.bind(ps);
-                    affected = ps.executeUpdate();
-                }
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute("COMMIT");
-                }
-                return affected;
-            } catch (Exception e) {
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute("ROLLBACK");
-                } catch (Exception rollbackEx) {
-                    e.addSuppressed(rollbackEx);
-                }
-                throw e;
-            }
-        } catch (SQLException e) {
-            throw new SessionPersistenceException("Failed to execute SQLite immediate write: " + sql, e);
-        }
-    }
-
-    private int executeServerTransaction(String sql, StatementBinder binder) {
-        try {
-            Integer affected = database.transaction(tx -> tx.update(sql, binder));
-            return affected != null ? affected : 0;
-        } catch (Exception e) {
-            throw new SessionPersistenceException("Failed to execute server transaction update: " + sql, e);
-        }
     }
 }
