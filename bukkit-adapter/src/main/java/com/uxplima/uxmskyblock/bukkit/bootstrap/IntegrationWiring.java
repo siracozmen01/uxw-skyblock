@@ -118,7 +118,8 @@ public final class IntegrationWiring implements AutoCloseable {
                 gameplay.scheduler(),
                 worldName,
                 authority.sessionCoordinator(),
-                this.bedrockFormService);
+                this.bedrockFormService,
+                this.messages);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistence.islandStoragePort(),

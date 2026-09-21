@@ -15,6 +15,7 @@ import org.bukkit.entity.Player;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -64,7 +65,8 @@ class IslandControlMenuTest extends MockBukkitHarness {
                 mockLocations,
                 scheduler,
                 "skyblock_world",
-                uuid -> Optional.of(new ProfileId(uuid)));
+                uuid -> Optional.of(new ProfileId(uuid)),
+                Messages.bundled());
 
         player = createPlayer("TestPlayer");
         islandId = new IslandId(UUID.randomUUID());
@@ -141,7 +143,8 @@ class IslandControlMenuTest extends MockBukkitHarness {
                 scheduler,
                 "skyblock_world",
                 uuid -> Optional.of(new ProfileId(uuid)),
-                mockBedrock);
+                mockBedrock,
+                Messages.bundled());
 
         ProfileId profileId = new ProfileId(player.getUniqueId());
         when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));

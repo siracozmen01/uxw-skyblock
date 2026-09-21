@@ -1,6 +1,5 @@
 package com.uxplima.uxmskyblock.bukkit.menu;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -17,13 +16,14 @@ import org.bukkit.inventory.ItemStack;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -54,6 +54,7 @@ public final class IslandControlMenu {
     private final String worldName;
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final @Nullable BedrockFormService bedrockFormService;
+    private final Messages messages;
 
     public IslandControlMenu(
             IslandStoragePort islandStoragePort,
@@ -63,7 +64,9 @@ public final class IslandControlMenu {
             SchedulerPort schedulerPort,
             String worldName,
             Function<UUID, Optional<ProfileId>> activeProfileProvider,
-            @Nullable BedrockFormService bedrockFormService) {
+            @Nullable BedrockFormService bedrockFormService,
+            Messages messages) {
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
         this.upgradeStoragePort = Objects.requireNonNull(upgradeStoragePort, "upgradeStoragePort must not be null");
@@ -82,7 +85,8 @@ public final class IslandControlMenu {
             IslandLocationService locationService,
             SchedulerPort schedulerPort,
             String worldName,
-            Function<UUID, Optional<ProfileId>> activeProfileProvider) {
+            Function<UUID, Optional<ProfileId>> activeProfileProvider,
+            Messages messages) {
         this(
                 islandStoragePort,
                 islandBankPort,
@@ -91,7 +95,8 @@ public final class IslandControlMenu {
                 schedulerPort,
                 worldName,
                 activeProfileProvider,
-                null);
+                null,
+                messages);
     }
 
     public IslandControlMenu(
@@ -102,7 +107,8 @@ public final class IslandControlMenu {
             SchedulerPort schedulerPort,
             String worldName,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
-            @Nullable BedrockFormService bedrockFormService) {
+            @Nullable BedrockFormService bedrockFormService,
+            Messages messages) {
         this(
                 islandStoragePort,
                 islandBankPort,
@@ -111,7 +117,8 @@ public final class IslandControlMenu {
                 schedulerPort,
                 worldName,
                 sessionCoordinator != null ? sessionCoordinator::activeProfile : uuid -> Optional.empty(),
-                bedrockFormService);
+                bedrockFormService,
+                messages);
     }
 
     public IslandControlMenu(
@@ -121,7 +128,8 @@ public final class IslandControlMenu {
             IslandLocationService locationService,
             SchedulerPort schedulerPort,
             String worldName,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
+            @Nullable PlayerSessionCoordinator sessionCoordinator,
+            Messages messages) {
         this(
                 islandStoragePort,
                 islandBankPort,
@@ -130,7 +138,8 @@ public final class IslandControlMenu {
                 schedulerPort,
                 worldName,
                 sessionCoordinator,
-                null);
+                null,
+                messages);
     }
 
     public IslandControlMenu(
@@ -139,7 +148,8 @@ public final class IslandControlMenu {
             IslandUpgradeStoragePort upgradeStoragePort,
             IslandLocationService locationService,
             SchedulerPort schedulerPort,
-            String worldName) {
+            String worldName,
+            Messages messages) {
         this(
                 islandStoragePort,
                 islandBankPort,
@@ -147,7 +157,8 @@ public final class IslandControlMenu {
                 locationService,
                 schedulerPort,
                 worldName,
-                (PlayerSessionCoordinator) null);
+                (PlayerSessionCoordinator) null,
+                messages);
     }
 
     public void open(Player player) {
@@ -209,15 +220,12 @@ public final class IslandControlMenu {
                                                 loc.spawnYaw(),
                                                 loc.spawnPitch());
                                         var unused = player.teleportAsync(target);
-                                        player.sendMessage(
-                                                Component.text("Teleported to island home!", NamedTextColor.GREEN));
+                                        player.sendMessage(messages.render(player, "menu.control.home_success"));
                                     } else {
-                                        player.sendMessage(
-                                                Component.text("Island world is unloaded.", NamedTextColor.RED));
+                                        player.sendMessage(messages.render(player, "menu.control.home_world_unloaded"));
                                     }
                                 } else {
-                                    player.sendMessage(
-                                            Component.text("Island home location not found.", NamedTextColor.RED));
+                                    player.sendMessage(messages.render(player, "menu.control.home_missing"));
                                 }
                             },
                             () -> player.sendMessage(Component.text(
@@ -245,35 +253,30 @@ public final class IslandControlMenu {
             Map<UpgradeId, Integer> upgrades,
             Optional<IslandLocation> optLoc) {
 
-        Component title = Component.text("Island Control Panel", NamedTextColor.DARK_AQUA, TextDecoration.BOLD);
+        Component title = messages.renderPlain(player, "menu.control.title");
         SimpleGui gui = Guis.gui().title(title).rows(4).build();
 
         // Fill border
         ItemStack border = ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
-                .name(Component.text(" ", NamedTextColor.GRAY))
+                .name(Component.space())
                 .build();
         gui.filler().fillBorder(GuiItem.display(border));
 
         // Slot 10: Overview
         IslandBounds bounds = island.bounds();
         ItemStack overviewItem = ItemBuilder.of(Material.GRASS_BLOCK)
-                .name(Component.text("Island Overview", NamedTextColor.GREEN, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Owner: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        island.ownerPlayerUuid()
-                                                        .value()
-                                                        .toString()
-                                                        .substring(0, 8) + "...",
-                                        NamedTextColor.WHITE)),
-                        Component.text("Members: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        String.valueOf(island.members().size()), NamedTextColor.WHITE)),
-                        Component.text("Center: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        bounds.centerX() + ", " + bounds.centerZ(), NamedTextColor.WHITE)),
-                        Component.text("Radius: ", NamedTextColor.GRAY)
-                                .append(Component.text(bounds.radius() + " blocks", NamedTextColor.WHITE))))
+                .name(messages.renderPlain(player, "menu.control.overview_name"))
+                .lore(messages.renderAll(
+                        player,
+                        "menu.control.overview_lore",
+                        Placeholder.unparsed(
+                                "owner",
+                                island.ownerPlayerUuid().value().toString().substring(0, 8)),
+                        Placeholder.unparsed(
+                                "members", String.valueOf(island.members().size())),
+                        Placeholder.unparsed("x", String.valueOf(bounds.centerX())),
+                        Placeholder.unparsed("z", String.valueOf(bounds.centerZ())),
+                        Placeholder.unparsed("radius", String.valueOf(bounds.radius()))))
                 .build();
         gui.set(10, GuiItem.display(overviewItem));
 
@@ -281,87 +284,73 @@ public final class IslandControlMenu {
         long minorBalance = (bank != null) ? bank.primaryBalanceMinorUnits() : 0L;
         long crystals = (bank != null) ? bank.crystalsBalance() : 0L;
         ItemStack bankItem = ItemBuilder.of(Material.GOLD_INGOT)
-                .name(Component.text("Island Bank", NamedTextColor.GOLD, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Balance: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        "$" + String.format(Locale.US, "%.2f", (double) minorBalance / 100.0),
-                                        NamedTextColor.GREEN)),
-                        Component.text("Crystals: ", NamedTextColor.GRAY)
-                                .append(Component.text(String.valueOf(crystals), NamedTextColor.AQUA)),
-                        Component.text("Click for bank commands", NamedTextColor.YELLOW)))
+                .name(messages.renderPlain(player, "menu.control.bank_name"))
+                .lore(messages.renderAll(
+                        player,
+                        "menu.control.bank_lore",
+                        Placeholder.unparsed(
+                                "balance", String.format(Locale.US, "%.2f", (double) minorBalance / 100.0)),
+                        Placeholder.unparsed("crystals", String.valueOf(crystals))))
                 .build();
         gui.set(11, GuiItem.button(bankItem, e -> {
             player.closeInventory();
-            player.sendMessage(Component.text(
-                    "Bank: Use /is bank deposit <amount> or /is bank withdraw <amount>", NamedTextColor.GOLD));
+            messages.send(player, "menu.control.bank_hint");
         }));
 
         // Slot 12: Upgrades
         int sizeTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SIZE, 0) : 0;
         int spawnerTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SPAWNER_SPEED, 0) : 0;
         ItemStack upgradeItem = ItemBuilder.of(Material.NETHER_STAR)
-                .name(Component.text("Island Upgrades", NamedTextColor.AQUA, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Size Tier: ", NamedTextColor.GRAY)
-                                .append(Component.text(String.valueOf(sizeTier), NamedTextColor.WHITE)),
-                        Component.text("Spawner Speed: ", NamedTextColor.GRAY)
-                                .append(Component.text(String.valueOf(spawnerTier), NamedTextColor.WHITE)),
-                        Component.text("Click to view upgrades", NamedTextColor.YELLOW)))
+                .name(messages.renderPlain(player, "menu.control.upgrades_name"))
+                .lore(messages.renderAll(
+                        player,
+                        "menu.control.upgrades_lore",
+                        Placeholder.unparsed("size", String.valueOf(sizeTier)),
+                        Placeholder.unparsed("spawner", String.valueOf(spawnerTier))))
                 .build();
         gui.set(12, GuiItem.button(upgradeItem, e -> {
             player.closeInventory();
-            player.sendMessage(Component.text(
-                    "Upgrades: Use /is upgrade to manage your island progression.", NamedTextColor.AQUA));
+            messages.send(player, "menu.control.upgrades_hint");
         }));
 
         // Slot 13: Biome
         ItemStack biomeItem = ItemBuilder.of(Material.OAK_SAPLING)
-                .name(Component.text("Island Biome", NamedTextColor.DARK_GREEN, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Customize your island environment.", NamedTextColor.GRAY),
-                        Component.text("Click for biome command", NamedTextColor.YELLOW)))
+                .name(messages.renderPlain(player, "menu.control.biome_name"))
+                .lore(messages.renderAll(player, "menu.control.biome_lore"))
                 .build();
         gui.set(13, GuiItem.button(biomeItem, e -> {
             player.closeInventory();
-            player.sendMessage(Component.text(
-                    "Biome: Use /is biome <type> to update your island biome.", NamedTextColor.DARK_GREEN));
+            messages.send(player, "menu.control.biome_hint");
         }));
 
         // Slot 14: Members
         ItemStack membersItem = ItemBuilder.of(Material.PLAYER_HEAD)
-                .name(Component.text("Island Members", NamedTextColor.YELLOW, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Total members: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        String.valueOf(island.members().size()), NamedTextColor.WHITE)),
-                        Component.text("Click for member commands", NamedTextColor.YELLOW)))
+                .name(messages.renderPlain(player, "menu.control.members_name"))
+                .lore(messages.renderAll(
+                        player,
+                        "menu.control.members_lore",
+                        Placeholder.unparsed(
+                                "members", String.valueOf(island.members().size()))))
                 .build();
         gui.set(14, GuiItem.button(membersItem, e -> {
             player.closeInventory();
-            player.sendMessage(
-                    Component.text("Members: Use /is invite <player> or /is kick <player>", NamedTextColor.YELLOW));
+            messages.send(player, "menu.control.members_hint");
         }));
 
         // Slot 15: Flags & Settings
         ItemStack settingsItem = ItemBuilder.of(Material.REDSTONE_TORCH)
-                .name(Component.text("Island Settings", NamedTextColor.RED, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Configure island security and flags.", NamedTextColor.GRAY),
-                        Component.text("Click for lock/unlock commands", NamedTextColor.YELLOW)))
+                .name(messages.renderPlain(player, "menu.control.settings_name"))
+                .lore(messages.renderAll(player, "menu.control.settings_lore"))
                 .build();
         gui.set(15, GuiItem.button(settingsItem, e -> {
             player.closeInventory();
-            player.sendMessage(Component.text(
-                    "Settings: Use /is lock or /is unlock to control visitor access.", NamedTextColor.RED));
+            messages.send(player, "menu.control.settings_hint");
         }));
 
         // Slot 16: Teleport Home
         ItemStack homeItem = ItemBuilder.of(Material.COMPASS)
-                .name(Component.text("Teleport Home", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
-                .lore(List.of(
-                        Component.text("Warp instantly to island spawn.", NamedTextColor.GRAY),
-                        Component.text("Click to teleport!", NamedTextColor.GREEN)))
+                .name(messages.renderPlain(player, "menu.control.home_name"))
+                .lore(messages.renderAll(player, "menu.control.home_lore"))
                 .build();
         gui.set(16, GuiItem.button(homeItem, e -> {
             player.closeInventory();
@@ -372,18 +361,18 @@ public final class IslandControlMenu {
                     Location target = new Location(
                             world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
                     var unused = player.teleportAsync(target);
-                    player.sendMessage(Component.text("Teleported to island home!", NamedTextColor.GREEN));
+                    messages.send(player, "menu.control.home_success");
                 } else {
-                    player.sendMessage(Component.text("Island world is unloaded.", NamedTextColor.RED));
+                    messages.send(player, "menu.control.home_world_unloaded");
                 }
             } else {
-                player.sendMessage(Component.text("Island home location not found.", NamedTextColor.RED));
+                messages.send(player, "menu.control.home_missing");
             }
         }));
 
         // Slot 31: Close Menu
         ItemStack closeItem = ItemBuilder.of(Material.BARRIER)
-                .name(Component.text("Close Menu", NamedTextColor.RED, TextDecoration.BOLD))
+                .name(messages.renderPlain(player, "menu.control.close"))
                 .build();
         gui.set(31, GuiItem.button(closeItem, e -> player.closeInventory()));
 
