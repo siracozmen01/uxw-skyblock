@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -330,6 +331,14 @@ public final class SkyblockBootstrap implements AutoCloseable {
         gameplayWiring.missionService().flushDirtyProgress();
         integrationWiring.close();
         authorityWiring.close();
+        // Async work already handed out writes to the pool that is about to close. Waiting for it is
+        // the difference between a write landing and a stack trace in a log nobody reads.
+        if (gameplayWiring.scheduler() instanceof FoliaSchedulerAdapter folia
+                && !folia.drainAsync(Duration.ofSeconds(5))) {
+            plugin.getLogger()
+                    .warning("Some background work was still running at shutdown, so the database was closed "
+                            + "under it. Anything it was writing may not have landed.");
+        }
         persistenceWiring.close();
     }
 }

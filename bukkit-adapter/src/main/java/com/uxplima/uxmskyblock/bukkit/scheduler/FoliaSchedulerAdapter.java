@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.scheduler;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -26,6 +27,15 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
  * </ul>
  */
 public final class FoliaSchedulerAdapter implements SchedulerPort {
+
+    /**
+     * Async work that has been handed to the server and has not finished.
+     *
+     * <p>A shutdown closes the connection pool, and an async write that is still running when it
+     * does throws against a closed pool: the write is lost and the stack trace lands in a log nobody
+     * reads until somebody asks where their island went.
+     */
+    private final AtomicInteger inFlight = new AtomicInteger();
 
     private final Plugin plugin;
 
@@ -102,13 +112,63 @@ public final class FoliaSchedulerAdapter implements SchedulerPort {
         return player != null && player.isOnline() && Bukkit.isOwnedByCurrentRegion(player);
     }
 
+    private void runTracked(Runnable task) {
+        try {
+            task.run();
+        } finally {
+            inFlight.decrementAndGet();
+        }
+    }
+
+    /**
+     * Runs a task that was not counted when it was handed out, counting it while it runs.
+     *
+     * <p>A delayed task sits in the server's queue until its moment comes, and a task that has not
+     * started yet is not work a shutdown has to wait for. Counting it at hand-out time would make
+     * every shutdown wait out the whole drain window for a task that was never going to run.
+     */
+    private void runCounted(Runnable task) {
+        inFlight.incrementAndGet();
+        runTracked(task);
+    }
+
+    /** Counts work started outside this adapter, so a drain waits for it too. Paired with {@link #endAsync()}. */
+    void beginAsync() {
+        inFlight.incrementAndGet();
+    }
+
+    /** Reports that work counted by {@link #beginAsync()} has finished. */
+    void endAsync() {
+        inFlight.decrementAndGet();
+    }
+
+    /**
+     * Waits for the async work already handed out, so a caller can close what that work writes to.
+     *
+     * @return true when everything finished, false when the wait ran out and work is still running
+     */
+    public boolean drainAsync(Duration timeout) {
+        Objects.requireNonNull(timeout, "timeout must not be null");
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (inFlight.get() > 0 && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return inFlight.get() == 0;
+    }
+
     @Override
     public void async(Runnable task) {
         Objects.requireNonNull(task, "task must not be null");
         if (disabled()) {
             return;
         }
-        Bukkit.getAsyncScheduler().runNow(plugin, ignored -> task.run());
+        inFlight.incrementAndGet();
+        Bukkit.getAsyncScheduler().runNow(plugin, ignored -> runTracked(task));
     }
 
     @Override
@@ -120,7 +180,7 @@ public final class FoliaSchedulerAdapter implements SchedulerPort {
         }
         long millis = Math.max(0L, delay.toMillis());
         Bukkit.getAsyncScheduler()
-                .runDelayed(plugin, ignored -> task.run(), Math.max(1L, millis), TimeUnit.MILLISECONDS);
+                .runDelayed(plugin, ignored -> runCounted(task), Math.max(1L, millis), TimeUnit.MILLISECONDS);
     }
 
     @Override

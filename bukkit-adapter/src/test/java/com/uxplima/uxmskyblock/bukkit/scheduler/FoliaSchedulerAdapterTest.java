@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.bukkit.plugin.Plugin;
@@ -69,5 +70,62 @@ class FoliaSchedulerAdapterTest {
         scheduler.asyncAfter(Duration.ofMillis(100), () -> ran.set(true));
 
         assertThat(ran).isFalse();
+    }
+
+    @Test
+    @DisplayName("A drain with nothing running returns at once")
+    void drainReturnsWhenNothingIsRunning() {
+        Plugin plugin = mock(Plugin.class);
+        FoliaSchedulerAdapter scheduler = new FoliaSchedulerAdapter(plugin);
+
+        assertThat(scheduler.drainAsync(Duration.ofSeconds(1))).isTrue();
+    }
+
+    @Test
+    @DisplayName("A drain waits for work that is still running, then reports that it finished")
+    void drainWaitsForRunningWork() throws Exception {
+        Plugin plugin = mock(Plugin.class);
+        FoliaSchedulerAdapter scheduler = new FoliaSchedulerAdapter(plugin);
+        scheduler.beginAsync();
+        CountDownLatch started = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            started.countDown();
+            try {
+                Thread.sleep(120L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            scheduler.endAsync();
+        });
+        worker.start();
+        started.await();
+
+        assertThat(scheduler.drainAsync(Duration.ofSeconds(5))).isTrue();
+        worker.join();
+    }
+
+    @Test
+    @DisplayName("A drain that runs out of time says so, so the shutdown can log the loss")
+    void drainReportsTimeout() {
+        Plugin plugin = mock(Plugin.class);
+        FoliaSchedulerAdapter scheduler = new FoliaSchedulerAdapter(plugin);
+        scheduler.beginAsync();
+
+        assertThat(scheduler.drainAsync(Duration.ofMillis(50))).isFalse();
+
+        scheduler.endAsync();
+    }
+
+    @Test
+    @DisplayName("Work that never runs because the plugin is disabled is not work a drain waits for")
+    void disabledWorkIsNotCounted() {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.isEnabled()).thenReturn(false);
+        FoliaSchedulerAdapter scheduler = new FoliaSchedulerAdapter(plugin);
+
+        scheduler.async(() -> {});
+        scheduler.asyncAfter(Duration.ofMillis(10), () -> {});
+
+        assertThat(scheduler.drainAsync(Duration.ofMillis(50))).isTrue();
     }
 }
