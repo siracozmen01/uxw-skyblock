@@ -40,6 +40,13 @@ class EveryServiceIsWiredTest {
     private static final Set<String> NOT_WIRED_YET =
             Set.of("GameModeHierarchyService", "JournaledInventoryMutationService");
 
+    // JournaledInventoryMutationService is not unused by accident. The reward delivery handler runs
+    // the same two phase protocol inline, and it does one thing more: on a failed commit it puts the
+    // slots it changed back. The service could not do that until it was given a compensation hook,
+    // and routing the handler through it before that would have turned a rollback into a
+    // duplication. The hook exists now, so the move is a change of its own rather than something
+    // buried in a wiring commit.
+
     private static final Path CORE_SERVICES = Path.of("../core/src/main/java/com/uxplima/uxmskyblock/core/application");
 
     @Test

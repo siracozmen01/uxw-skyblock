@@ -37,6 +37,12 @@ public final class JournaledInventoryMutationService {
      * 2. Runs the in-memory mutation callback.
      * 3. Commits the mutation to the journal and bumps inventory version.
      * Rollback (ABORT) is executed if step 2 or 3 fails.
+     *
+     * <p>{@code compensation} undoes whatever the supplier did to the world, and it is required
+     * rather than optional. The journal can abort its own intent, but it cannot take an item back
+     * out of a player's inventory: a commit that fails after the mutation ran would otherwise leave
+     * the item given and the ledger saying it never was. The reward delivery handler does exactly
+     * this by hand, rolling back only the slots it changed, which is why it never used this service.
      */
     public <T> Result<MutationSuccess<T>, String> execute(
             PlayerUuid playerUuid,
@@ -50,7 +56,8 @@ public final class JournaledInventoryMutationService {
             String afterFingerprint,
             String payload,
             Duration expiryDuration,
-            Supplier<Result<MutationExecution<T>, String>> mutationSupplier) {
+            Supplier<Result<MutationExecution<T>, String>> mutationSupplier,
+            Runnable compensation) {
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(profileId, "profileId");
         Objects.requireNonNull(nodeId, "nodeId");
@@ -61,6 +68,7 @@ public final class JournaledInventoryMutationService {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(expiryDuration, "expiryDuration");
         Objects.requireNonNull(mutationSupplier, "mutationSupplier");
+        Objects.requireNonNull(compensation, "compensation");
 
         InventoryMutationJournalOutcome intentOutcome = journalPort.recordIntent(
                 playerUuid,
@@ -106,6 +114,10 @@ public final class JournaledInventoryMutationService {
                 execution.updatedInventoryNbt());
 
         if (!commitOutcome.isSuccess()) {
+            // The mutation already happened out there. Undoing the journal without undoing the world
+            // leaves the item in the player's hands and the ledger saying it was never given, which
+            // is a duplication rather than a rollback.
+            compensation.run();
             journalPort.abortIntent(playerUuid, profileId, nodeId, sessionEpoch, operationId);
             return Result.err("Failed to commit mutation: "
                     + commitOutcome

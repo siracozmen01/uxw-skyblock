@@ -14,6 +14,7 @@ import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationI
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationParticipantRecord;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,34 @@ class JournaledInventoryMutationServiceTest {
     }
 
     @Test
+    @DisplayName("A commit that fails undoes the world before it undoes the journal")
+    void aFailedCommitCompensatesFirst() {
+        journalPort.commitSucceeds = false;
+        java.util.List<String> order = new java.util.ArrayList<>();
+        journalPort.onAbort = () -> order.add("abort");
+
+        Result<JournaledInventoryMutationService.MutationSuccess<String>, String> result = service.execute(
+                playerUuid,
+                profileId,
+                nodeId,
+                1L,
+                1L,
+                opId,
+                "TEST_OP",
+                "hash1",
+                "hash2",
+                "{}",
+                Duration.ofSeconds(30),
+                () -> Result.ok(new JournaledInventoryMutationService.MutationExecution<>("done", new byte[] {1})),
+                () -> order.add("compensate"));
+
+        assertThat(result.isErr()).isTrue();
+        assertThat(order)
+                .describedAs("the world is put back before the ledger is, or the item is given and unrecorded")
+                .containsExactly("compensate", "abort");
+    }
+
+    @Test
     @DisplayName("execute succeeds when intent and commit succeed")
     void executeSucceeds() {
         byte[] updatedNbt = new byte[] {1, 2, 3};
@@ -51,7 +80,8 @@ class JournaledInventoryMutationServiceTest {
                 "hash2",
                 "{}",
                 Duration.ofSeconds(30),
-                () -> Result.ok(new JournaledInventoryMutationService.MutationExecution<>("done", updatedNbt)));
+                () -> Result.ok(new JournaledInventoryMutationService.MutationExecution<>("done", updatedNbt)),
+                () -> {});
 
         assertThat(result.isOk()).isTrue();
         JournaledInventoryMutationService.MutationSuccess<String> success = result.orElseThrow();
@@ -77,7 +107,8 @@ class JournaledInventoryMutationServiceTest {
                 "hash2",
                 "{}",
                 Duration.ofSeconds(30),
-                () -> Result.err("insufficient funds"));
+                () -> Result.err("insufficient funds"),
+                () -> {});
 
         assertThat(result.isErr()).isTrue();
         assertThat(result.errorOrThrow()).contains("insufficient funds");
@@ -103,7 +134,8 @@ class JournaledInventoryMutationServiceTest {
                 Duration.ofSeconds(30),
                 () -> {
                     throw new RuntimeException("unexpected NPE");
-                });
+                },
+                () -> {});
 
         assertThat(result.isErr()).isTrue();
         assertThat(result.errorOrThrow()).contains("unexpected NPE");
@@ -129,7 +161,8 @@ class JournaledInventoryMutationServiceTest {
                 "hash2",
                 "{}",
                 Duration.ofSeconds(30),
-                () -> Result.ok(new JournaledInventoryMutationService.MutationExecution<>("done", new byte[0])));
+                () -> Result.ok(new JournaledInventoryMutationService.MutationExecution<>("done", new byte[0])),
+                () -> {});
 
         assertThat(result.isErr()).isTrue();
         assertThat(result.errorOrThrow()).contains("Failed to record intent");
@@ -139,6 +172,10 @@ class JournaledInventoryMutationServiceTest {
 
     private static class FakeJournalPort implements InventoryMutationJournalPort {
         boolean rejectIntent = false;
+        boolean commitSucceeds = true;
+
+        @Nullable Runnable onAbort;
+
         boolean recordedIntent = false;
         boolean committed = false;
         boolean aborted = false;
@@ -172,6 +209,9 @@ class JournaledInventoryMutationServiceTest {
                 long expectedVersion,
                 InventoryMutationOperationId operationId,
                 byte[] updatedInventoryNbt) {
+            if (!commitSucceeds) {
+                return InventoryMutationJournalOutcome.rejected("commit refused by the fake");
+            }
             committed = true;
             return InventoryMutationJournalOutcome.success(expectedVersion + 1);
         }
@@ -183,6 +223,9 @@ class JournaledInventoryMutationServiceTest {
                 ServerNodeId nodeId,
                 long sessionEpoch,
                 InventoryMutationOperationId operationId) {
+            if (onAbort != null) {
+                onAbort.run();
+            }
             aborted = true;
             return InventoryMutationJournalOutcome.success();
         }
