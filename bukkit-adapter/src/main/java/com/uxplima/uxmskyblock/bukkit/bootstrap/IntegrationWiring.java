@@ -11,6 +11,7 @@ import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
+import com.uxplima.uxmskyblock.bukkit.command.IslandFeatures;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
@@ -172,20 +173,22 @@ public final class IntegrationWiring implements AutoCloseable {
                 serverNodeId,
                 worldName,
                 this.economyBridge,
-                this.controlMenu,
-                gameplay.chatService(),
-                gameplay.inactivityService(),
-                gameplay.freezeService(),
-                gameplay.missionsMenu(),
-                gameplay.boundaryService(),
-                gameplay.recycleService(),
-                gameplay.resetConfirmationMenu(),
-                gameplay.worthService(),
-                gameplay.dimensionListener(),
-                gameplay.limitService(),
-                gameplay.antiAbuseService(),
-                gameplay.boosterService(),
-                gameplay.boosterMenu());
+                IslandFeatures.builder()
+                        .controlMenu(this.controlMenu)
+                        .chatService(gameplay.chatService())
+                        .inactivityService(gameplay.inactivityService())
+                        .freezeService(gameplay.freezeService())
+                        .missionsMenu(gameplay.missionsMenu())
+                        .boundaryService(gameplay.boundaryService())
+                        .recycleService(gameplay.recycleService())
+                        .resetMenu(gameplay.resetConfirmationMenu())
+                        .worthService(gameplay.worthService())
+                        .dimensionListener(gameplay.dimensionListener())
+                        .limitService(gameplay.limitService())
+                        .antiAbuseService(gameplay.antiAbuseService())
+                        .boosterService(gameplay.boosterService())
+                        .boosterMenu(gameplay.boosterMenu())
+                        .build());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setVaultWindow(gameplay.vaultWindow());

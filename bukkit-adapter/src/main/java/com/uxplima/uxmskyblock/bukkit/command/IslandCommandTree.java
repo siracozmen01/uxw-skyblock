@@ -22,10 +22,6 @@ import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
-import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
-import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
-import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
-import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -36,12 +32,7 @@ import com.uxplima.uxmskyblock.core.application.backup.BackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
-import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
-import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
-import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
-import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.home.HomeService;
-import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
@@ -49,7 +40,6 @@ import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
-import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
@@ -87,20 +77,7 @@ public final class IslandCommandTree {
     private final ServerNodeId serverNodeId;
     private final String worldName;
     private final SkyblockEconomyBridge economyBridge;
-    private final @Nullable IslandControlMenu controlMenu;
-    private final @Nullable IslandChatService chatService;
-    private final @Nullable IslandInactivityService inactivityService;
-    private final @Nullable IslandAdminFreezeService freezeService;
-    private final @Nullable IslandMissionsMenu missionsMenu;
-    private final @Nullable IslandBoundaryService boundaryService;
-    private final @Nullable IslandRecycleService recycleService;
-    private final @Nullable IslandResetConfirmationMenu resetMenu;
-    private final @Nullable IslandWorthService worthService;
-    private final @Nullable IslandDimensionListener dimensionListener;
-    private final @Nullable IslandLimitService limitService;
-    private final @Nullable IslandAntiAbuseService antiAbuseService;
-    private final @Nullable IslandBoosterService boosterService;
-    private final @Nullable IslandBoosterMenu boosterMenu;
+    private final IslandFeatures features;
     private volatile @Nullable IslandBankruptcyService bankruptcyService;
     private volatile @Nullable IslandNameService nameService;
     private volatile @Nullable IslandNetworkRouter networkRouter;
@@ -140,20 +117,7 @@ public final class IslandCommandTree {
                 serverNodeId,
                 worldName,
                 SkyblockEconomyBridge.createDefault(islandBankService, schedulerPort),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+                IslandFeatures.none());
     }
 
     public IslandCommandTree(
@@ -173,20 +137,7 @@ public final class IslandCommandTree {
             ServerNodeId serverNodeId,
             String worldName,
             SkyblockEconomyBridge economyBridge,
-            @Nullable IslandControlMenu controlMenu,
-            @Nullable IslandChatService chatService,
-            @Nullable IslandInactivityService inactivityService,
-            @Nullable IslandAdminFreezeService freezeService,
-            @Nullable IslandMissionsMenu missionsMenu,
-            @Nullable IslandBoundaryService boundaryService,
-            @Nullable IslandRecycleService recycleService,
-            @Nullable IslandResetConfirmationMenu resetMenu,
-            @Nullable IslandWorthService worthService,
-            @Nullable IslandDimensionListener dimensionListener,
-            @Nullable IslandLimitService limitService,
-            @Nullable IslandAntiAbuseService antiAbuseService,
-            @Nullable IslandBoosterService boosterService,
-            @Nullable IslandBoosterMenu boosterMenu) {
+            IslandFeatures features) {
         this.createIslandUseCase = Objects.requireNonNull(createIslandUseCase, "createIslandUseCase must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -206,20 +157,7 @@ public final class IslandCommandTree {
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
-        this.controlMenu = controlMenu;
-        this.chatService = chatService;
-        this.inactivityService = inactivityService;
-        this.freezeService = freezeService;
-        this.missionsMenu = missionsMenu;
-        this.boundaryService = boundaryService;
-        this.recycleService = recycleService;
-        this.resetMenu = resetMenu;
-        this.worthService = worthService;
-        this.dimensionListener = dimensionListener;
-        this.limitService = limitService;
-        this.antiAbuseService = antiAbuseService;
-        this.boosterService = boosterService;
-        this.boosterMenu = boosterMenu;
+        this.features = Objects.requireNonNull(features, "features must not be null");
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -227,7 +165,7 @@ public final class IslandCommandTree {
     }
 
     public @Nullable IslandWorthService worthService() {
-        return worthService;
+        return features.worthService();
     }
 
     public void setBankruptcyService(@Nullable IslandBankruptcyService bankruptcyService) {
@@ -239,15 +177,15 @@ public final class IslandCommandTree {
     }
 
     public @Nullable IslandDimensionListener dimensionListener() {
-        return dimensionListener;
+        return features.dimensionListener();
     }
 
     public @Nullable IslandLimitService limitService() {
-        return limitService;
+        return features.limitService();
     }
 
     public @Nullable IslandAntiAbuseService antiAbuseService() {
-        return antiAbuseService;
+        return features.antiAbuseService();
     }
 
     public void setActivityFeedService(@Nullable ActivityFeedService activityFeedService) {
@@ -331,14 +269,14 @@ public final class IslandCommandTree {
                 sessionCoordinator);
 
         IslandChatCommands chatCommands =
-                new IslandChatCommands(() -> chatService, schedulerPort, messages, sessionCoordinator);
+                new IslandChatCommands(() -> features.chatService(), schedulerPort, messages, sessionCoordinator);
 
         IslandAdminCommands adminCommands = new IslandAdminCommands(
-                () -> inactivityService,
-                () -> freezeService,
+                () -> features.inactivityService(),
+                () -> features.freezeService(),
                 () -> restoreService,
                 () -> backupService,
-                () -> recycleService,
+                () -> features.recycleService(),
                 protectionListener,
                 islandLocationService,
                 sessionCoordinator,
@@ -356,9 +294,9 @@ public final class IslandCommandTree {
                 schedulerPort,
                 serverNodeId,
                 worldName,
-                () -> antiAbuseService,
-                () -> recycleService,
-                () -> resetMenu,
+                () -> features.antiAbuseService(),
+                () -> features.recycleService(),
+                () -> features.resetMenu(),
                 () -> nameService,
                 messages);
 
@@ -367,7 +305,7 @@ public final class IslandCommandTree {
                 sessionCoordinator,
                 schedulerPort,
                 worldName,
-                () -> dimensionListener,
+                () -> features.dimensionListener(),
                 () -> networkRouter,
                 messages);
 
@@ -378,19 +316,19 @@ public final class IslandCommandTree {
                 biomeModificationPort,
                 sessionCoordinator,
                 schedulerPort,
-                () -> worthService,
+                () -> features.worthService(),
                 messages);
 
         IslandMechanicsCommands mechanicsCommands = new IslandMechanicsCommands(
                 islandLocationService,
                 sessionCoordinator,
                 schedulerPort,
-                () -> limitService,
-                () -> antiAbuseService,
-                () -> boosterService,
-                () -> boosterMenu,
-                () -> missionsMenu,
-                () -> boundaryService,
+                () -> features.limitService(),
+                () -> features.antiAbuseService(),
+                () -> features.boosterService(),
+                () -> features.boosterMenu(),
+                () -> features.missionsMenu(),
+                () -> features.boundaryService(),
                 messages);
 
         IslandActivityCommands activityCommands = new IslandActivityCommands(
@@ -488,8 +426,8 @@ public final class IslandCommandTree {
     }
 
     private int executeRoot(CommandContext<CommandSourceStack> ctx) {
-        if (ctx.getSource().getSender() instanceof Player player && controlMenu != null) {
-            controlMenu.open(player);
+        if (ctx.getSource().getSender() instanceof Player player && features.controlMenu() != null) {
+            features.controlMenu().open(player);
             return Cmd.OK;
         }
         return executeHelp(ctx);
@@ -500,8 +438,8 @@ public final class IslandCommandTree {
             send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
-        if (controlMenu != null) {
-            controlMenu.open(player);
+        if (features.controlMenu() != null) {
+            features.controlMenu().open(player);
         } else {
             send(player, "menu.not_enabled");
         }
