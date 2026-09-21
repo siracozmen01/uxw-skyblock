@@ -63,8 +63,17 @@ public final class IslandAllianceCommands {
         this.sessionCoordinator = sessionCoordinator;
     }
 
+    /** The same branch under another word, for the name a document publishes. */
+    public LiteralArgumentBuilder<CommandSourceStack> buildAlias(String verb) {
+        return branch(verb);
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> build() {
-        return Cmd.literal("alliance")
+        return branch("alliance");
+    }
+
+    private LiteralArgumentBuilder<CommandSourceStack> branch(String verb) {
+        return Cmd.literal(verb)
                 .executes(this::executeList)
                 .then(Cmd.literal("list").executes(this::executeList))
                 .then(Cmd.literal("invites").executes(this::executeInvites))

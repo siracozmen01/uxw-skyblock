@@ -319,6 +319,15 @@ public final class IslandCommandTree {
         return assembleRoot(new CommandGroupBuilder(this).build());
     }
 
+    /** The vault window under whichever word the caller typed. */
+    private LiteralArgumentBuilder<CommandSourceStack> vaultBranch(String verb) {
+        return Cmd.literal(verb)
+                .executes(ctx -> executeVault(ctx, 1))
+                .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                        .executes(ctx -> executeVault(
+                                ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page"))));
+    }
+
     private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroupBuilder.CommandGroups groups) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
@@ -350,10 +359,17 @@ public final class IslandCommandTree {
                 .then(groups.homeCommands().buildDeleteHome())
                 .then(groups.activityCommands().build())
                 .then(groups.warpCommands().build())
+                .then(groups.warpCommands().buildExplore("explore"))
+                .then(groups.warpCommands().buildExplore("warps"))
                 .then(groups.socialCommands().buildGuestbook())
                 .then(groups.socialCommands().buildRate())
                 .then(groups.socialCommands().buildBookmarks())
                 .then(groups.allianceCommands().build())
+                // The names the documents publish for branches that already exist under another
+                // word: /is ally, /is disband, /is settings, and /is explore beside /is warps.
+                .then(groups.allianceCommands().buildAlias("ally"))
+                .then(groups.lifecycleCommands().buildDisband())
+                .then(Cmd.literal("settings").executes(this::executeMenu))
                 .then(groups.rewardCommands().build())
                 .then(groups.flagCommands().build())
                 .then(groups.visitorCommands().buildBan())
@@ -361,12 +377,13 @@ public final class IslandCommandTree {
                 .then(groups.visitorCommands().buildBans())
                 .then(groups.visitorCommands().buildLock())
                 .then(groups.visitorCommands().buildUnlock())
-                .then(Cmd.literal("vault")
-                        .executes(ctx -> executeVault(ctx, 1))
-                        .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
-                                .executes(ctx -> executeVault(
-                                        ctx,
-                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page")))))
+                .then(vaultBranch("vault"))
+                // The design document publishes /is chest for the same window. A command an
+                // operator reads about and types is either there or the document is wrong, and the
+                // command is cheaper than the correction.
+                .then(vaultBranch("chest"))
+                .then(groups.warpCommands().buildWarpLock())
+                .then(groups.warpCommands().buildWarpUnlock())
                 .then(groups.lifecycleCommands().buildRename())
                 .then(groups.adminCommands().buildRestore())
                 .then(groups.bankCommands().build())

@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -61,6 +62,8 @@ class IslandWarpCommandsTest {
     private SchedulerPort scheduler;
     private PlayerMock player;
     private IslandWarpService warps;
+    private IslandLocationService locations;
+    private PlayerSessionCoordinator sessions;
     private CommandDispatcher<CommandSourceStack> dispatcher;
     private boolean teleportAttempted;
 
@@ -108,11 +111,11 @@ class IslandWarpCommandsTest {
         when(warps.getPublicWarps(anyInt(), anyInt())).thenReturn(List.of());
         when(warps.safeSpotFor(any(), any())).thenReturn(publicWarp().location());
 
-        IslandLocationService locations = mock(IslandLocationService.class);
+        locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
         when(locations.findIsland(ISLAND)).thenReturn(Optional.of(island()));
 
-        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
         scheduler = inlineScheduler();
@@ -347,5 +350,69 @@ class IslandWarpCommandsTest {
                 false,
                 Instant.now(),
                 Instant.now());
+    }
+
+    @Test
+    @DisplayName("Locking one warp reaches the setter that nothing used to call")
+    void lockingOneWarpReachesTheSetter() throws Exception {
+        run("warp lock shop", player);
+
+        verify(warps).setWarpLock(any(), eq(PROFILE), eq(WarpName.of("shop")), eq(true));
+    }
+
+    @Test
+    @DisplayName("Unlocking it again is the same setter the other way")
+    void unlockingIsTheSameSetter() throws Exception {
+        run("warp unlock shop", player);
+
+        verify(warps).setWarpLock(any(), eq(PROFILE), eq(WarpName.of("shop")), eq(false));
+    }
+
+    @Test
+    @DisplayName("The short /is warplock the document publishes is the same verb")
+    void theShortFormIsTheSameVerb() throws Exception {
+        CommandDispatcher<CommandSourceStack> shortForm = new CommandDispatcher<>();
+        IslandWarpCommands commands = new IslandWarpCommands(
+                () -> warps,
+                locations,
+                scheduler,
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
+                sessions);
+        shortForm.register(commands.buildWarpLock());
+        shortForm.register(commands.buildWarpUnlock());
+
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(player);
+        shortForm.execute("warplock shop", source);
+        shortForm.execute("warpunlock shop", source);
+
+        verify(warps).setWarpLock(any(), eq(PROFILE), eq(WarpName.of("shop")), eq(true));
+        verify(warps).setWarpLock(any(), eq(PROFILE), eq(WarpName.of("shop")), eq(false));
+    }
+
+    @Test
+    @DisplayName("Moving a warp between directory categories reaches the other setter nobody called")
+    void movingACategoryReachesTheSetter() throws Exception {
+        run("warp category shop SHOPS", player);
+
+        verify(warps).setWarpCategory(any(), eq(PROFILE), eq(WarpName.of("shop")), eq(WarpCategory.SHOPS));
+    }
+
+    @Test
+    @DisplayName("A category nobody publishes never reaches the setter")
+    void anUnknownCategoryNeverReachesTheSetter() throws Exception {
+        run("warp category shop GRAVITY", player);
+
+        verify(warps, never()).setWarpCategory(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A role that may not touch a warp is told so rather than the command failing silently")
+    void aRefusedLockIsAnAnswer() throws Exception {
+        doThrow(new SecurityException("no")).when(warps).setWarpLock(any(), any(), any(), anyBoolean());
+
+        run("warp lock shop", player);
+
+        assertThat(player.nextMessage()).isNotNull();
     }
 }

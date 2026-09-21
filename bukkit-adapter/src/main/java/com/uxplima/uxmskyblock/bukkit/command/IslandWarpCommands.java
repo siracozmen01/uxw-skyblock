@@ -91,7 +91,27 @@ public final class IslandWarpCommands {
                                         .executes(this::executeCreateWithCategory))))
                 .then(Cmd.literal("delete")
                         .then(Cmd.argument("name", StringArgumentType.word()).executes(this::executeDelete)))
+                .then(Cmd.literal("lock")
+                        .then(Cmd.argument("name", StringArgumentType.word())
+                                .executes(ctx -> executeSetLock(ctx, true))))
+                .then(Cmd.literal("unlock")
+                        .then(Cmd.argument("name", StringArgumentType.word())
+                                .executes(ctx -> executeSetLock(ctx, false))))
+                .then(Cmd.literal("category")
+                        .then(Cmd.argument("name", StringArgumentType.word())
+                                .then(Cmd.argument("category", StringArgumentType.word())
+                                        .executes(this::executeSetCategory))))
                 .then(Cmd.argument("name", StringArgumentType.word()).executes(this::executeGo));
+    }
+
+    /**
+     * {@code /is explore} and {@code /is warps}: the community directory, under the two names the
+     * design document publishes for it.
+     *
+     * <p>Both are {@code /is warp browse}. The document names them and the tree did not.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildExplore(String verb) {
+        return Cmd.literal(verb).executes(this::executeBrowse);
     }
 
     private int executeList(CommandContext<CommandSourceStack> ctx) {
@@ -228,6 +248,98 @@ public final class IslandWarpCommands {
                 onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
             }
         });
+    }
+
+    /**
+     * {@code /is warplock <name>}: the short form the design document publishes.
+     *
+     * <p>Shutting one warp to visitors while the others stay open is a rule the visit gate has read
+     * since it was written, and nothing could set it. {@code /is warp lock} and this are the same
+     * verb; the document names this one, so it exists.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildWarpLock() {
+        return Cmd.literal("warplock")
+                .then(Cmd.argument("name", StringArgumentType.word()).executes(ctx -> executeSetLock(ctx, true)));
+    }
+
+    /** {@code /is warpunlock <name>}: the other half of the short form. */
+    public LiteralArgumentBuilder<CommandSourceStack> buildWarpUnlock() {
+        return Cmd.literal("warpunlock")
+                .then(Cmd.argument("name", StringArgumentType.word()).executes(ctx -> executeSetLock(ctx, false)));
+    }
+
+    /**
+     * Shuts one warp to visitors, or opens it again.
+     *
+     * <p>{@code IslandWarpService.setWarpLock} had no caller anywhere in the plugin, so
+     * {@code warp.isLocked()} was a column the visit gate read and nothing ever wrote: every warp on
+     * every island was open, whatever the owner wanted.
+     */
+    private int executeSetLock(CommandContext<CommandSourceStack> ctx, boolean locked) {
+        String rawName = StringArgumentType.getString(ctx, "name");
+        return onOwnIsland(ctx, (player, service, island) -> {
+            try {
+                service.setWarpLock(island, ownerProfileOf(island, player), WarpName.of(rawName), locked);
+                onEntity(
+                        player,
+                        () -> send(
+                                player,
+                                locked ? "warp.locked" : "warp.unlocked",
+                                Placeholder.unparsed("name", rawName)));
+            } catch (SecurityException denied) {
+                onEntity(player, () -> send(player, "warp.no_permission"));
+            } catch (RuntimeException missing) {
+                onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
+            }
+        });
+    }
+
+    /**
+     * Moves a warp between the directory categories a visitor browses by.
+     *
+     * <p>{@code setWarpCategory} was the other half of the same dead pair: a warp could be created
+     * in a category and never moved out of it.
+     */
+    private int executeSetCategory(CommandContext<CommandSourceStack> ctx) {
+        String rawName = StringArgumentType.getString(ctx, "name");
+        String rawCategory = StringArgumentType.getString(ctx, "category");
+        WarpCategory category = null;
+        for (WarpCategory candidate : WarpCategory.values()) {
+            if (candidate.name().equalsIgnoreCase(rawCategory)) {
+                category = candidate;
+            }
+        }
+        if (category == null) {
+            send(
+                    ctx.getSource().getSender(),
+                    "warp.unknown_category",
+                    Placeholder.unparsed("category", rawCategory),
+                    Placeholder.unparsed("categories", categoryNames()));
+            return Cmd.OK;
+        }
+
+        WarpCategory chosen = category;
+        return onOwnIsland(ctx, (player, service, island) -> {
+            try {
+                service.setWarpCategory(island, ownerProfileOf(island, player), WarpName.of(rawName), chosen);
+                onEntity(
+                        player,
+                        () -> send(
+                                player,
+                                "warp.category_changed",
+                                Placeholder.unparsed("name", rawName),
+                                Placeholder.unparsed("category", chosen.name())));
+            } catch (SecurityException denied) {
+                onEntity(player, () -> send(player, "warp.no_permission"));
+            } catch (RuntimeException missing) {
+                onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
+            }
+        });
+    }
+
+    /** The caller's own profile on this island, which onOwnIsland has already proved they have. */
+    private ProfileId ownerProfileOf(Island island, Player player) {
+        return activeProfile(player).orElse(island.ownerProfileId());
     }
 
     private int executeGo(CommandContext<CommandSourceStack> ctx) {

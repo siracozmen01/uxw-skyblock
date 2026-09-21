@@ -133,6 +133,19 @@ public final class IslandLifecycleCommands {
                         .then(Cmd.argument("code", StringArgumentType.word()).executes(this::executeResetConfirm)));
     }
 
+    /**
+     * {@code /is disband}: the word the documents use for erasing the island.
+     *
+     * <p>It is {@code /is delete} with another name, confirmation code and all. A document that
+     * tells an operator to type a word is a document the command tree has to answer.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildDisband() {
+        return Cmd.literal("disband")
+                .executes(this::executeReset)
+                .then(Cmd.literal("confirm")
+                        .then(Cmd.argument("code", StringArgumentType.word()).executes(this::executeResetConfirm)));
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> buildRename() {
         return Cmd.literal("rename")
                 .executes(this::executeGetRename)

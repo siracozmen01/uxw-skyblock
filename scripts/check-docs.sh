@@ -34,11 +34,23 @@ done
 #
 # Four documents published /is admin rollback and one published /is recalc while neither existed.
 # An operator reading a document and typing what it says is the whole point of writing one.
-commands=$(grep -ohE '`/(is|island) [a-z]+' docs/*.md 2>/dev/null \
+#
+# The list of verbs comes from the command tree itself, written down by
+# CommandVerbsAreWrittenDownTest. This used to grep the sources for literal("x"), which stopped
+# being true the moment a branch was built by a helper that takes the word as an argument: /is vault
+# still existed and the grep said it did not.
+verbs_file=bukkit-adapter/build/command-verbs.txt
+if [ ! -f "$verbs_file" ]; then
+    echo "The list of command verbs is not here yet. Run ./gradlew :bukkit-adapter:test first,"
+    echo "which writes $verbs_file out of the tree the plugin registers."
+    exit 1
+fi
+
+commands=$(grep -rohE '`/(is|island) [a-z]+' docs --include='*.md' 2>/dev/null \
     | sed -E 's/`\/(is|island) //' | sort -u || true)
 for command in $commands; do
-    if ! grep -qrE "literal\(\"$command\"\)" bukkit-adapter/src/main/java/com/uxplima/uxmskyblock/bukkit/command/; then
-        echo "A document tells an operator to type /is $command, and no command tree branch declares it."
+    if ! grep -qxF "$command" "$verbs_file"; then
+        echo "A document tells an operator to type /is $command, and the command tree has no such verb."
         offences=$((offences + 1))
     fi
 done
