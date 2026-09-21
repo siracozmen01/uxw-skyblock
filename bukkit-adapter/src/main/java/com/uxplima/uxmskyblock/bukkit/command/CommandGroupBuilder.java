@@ -42,7 +42,8 @@ final class CommandGroupBuilder {
             IslandRewardCommands rewardCommands,
             IslandFlagCommands flagCommands,
             IslandVisitorCommands visitorCommands,
-            IslandMembershipCommands membershipCommands) {}
+            IslandMembershipCommands membershipCommands,
+            IslandInfoCommands infoCommands) {}
 
     CommandGroups build() {
 
@@ -197,6 +198,14 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
 
+        IslandInfoCommands infoCommands = new IslandInfoCommands(
+                tree.islandLocationService,
+                () -> tree.nameService,
+                () -> tree.features.boosterService(),
+                tree.schedulerPort,
+                tree.messages,
+                tree.sessionCoordinator);
+
         return new CommandGroups(
                 bankCommands,
                 chatCommands,
@@ -213,6 +222,7 @@ final class CommandGroupBuilder {
                 rewardCommands,
                 flagCommands,
                 visitorCommands,
-                membershipCommands);
+                membershipCommands,
+                infoCommands);
     }
 }
