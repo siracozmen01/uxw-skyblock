@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordA
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
+import com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine;
 import com.uxplima.uxmskyblock.bukkit.network.BukkitVelocityBridge;
 import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
@@ -52,6 +53,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final CompositeWebMapAdapter webMapAdapter;
     private final IslandWebMapService islandWebMapService;
     private final IslandControlMenu controlMenu;
+    private final SkyblockMenuEngine menuEngine;
     private final SkyblockPlaceholderExpansion placeholderExpansion;
     private final TransactionalOutboxDispatcher outboxDispatcher;
     private final ClusterTransportWiring clusterTransport;
@@ -127,6 +129,14 @@ public final class IntegrationWiring implements AutoCloseable {
                 authority.sessionCoordinator(),
                 this.bedrockFormService,
                 this.messages);
+
+        // The menu files are the menus. Three of them shipped from the beginning and nothing read
+        // one, so an operator who moved a slot and restarted saw no change.
+        this.menuEngine = new SkyblockMenuEngine(plugin, this.messages, config.dataDir(), config.rootNode());
+        this.menuEngine.loadSpecs();
+        registerMenuVerbs(this.menuEngine, this.messages);
+        this.menuEngine.install();
+        this.controlMenu.useMenuEngine(this.menuEngine);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistence.islandStoragePort(),
@@ -249,6 +259,59 @@ public final class IntegrationWiring implements AutoCloseable {
         return islandWebMapService;
     }
 
+    /**
+     * The verbs a skyblock menu file may name, on top of the five every plugin has.
+     *
+     * <p>Each one is what the window used to do in Java when its slot was clicked. The file decides
+     * which slot runs which verb; this decides what each verb means.
+     */
+    private static void registerMenuVerbs(SkyblockMenuEngine engine, Messages messages) {
+        engine.action("skyblock:teleport-home", ctx -> {
+            ctx.player().closeInventory();
+            ctx.player().performCommand("is home");
+        });
+        engine.action("skyblock:bank", ctx -> {
+            ctx.player().closeInventory();
+            messages.send(ctx.player(), "menu.control.bank_hint");
+        });
+        engine.action("skyblock:upgrades", ctx -> {
+            ctx.player().closeInventory();
+            ctx.player().performCommand("is upgrades");
+        });
+        engine.action("skyblock:members", ctx -> {
+            ctx.player().closeInventory();
+            messages.send(ctx.player(), "menu.control.members_hint");
+        });
+        engine.action("skyblock:settings", ctx -> {
+            ctx.player().closeInventory();
+            messages.send(ctx.player(), "menu.control.settings_hint");
+        });
+        engine.action("skyblock:invite", ctx -> {
+            ctx.player().closeInventory();
+            messages.send(ctx.player(), "menu.control.members_hint");
+        });
+        engine.action("skyblock:permissions", ctx -> {
+            ctx.player().closeInventory();
+            messages.send(ctx.player(), "menu.control.settings_hint");
+        });
+        // The upgrade key is the verb's argument, so one verb serves every upgrade a file names and
+        // an operator can add a slot for a new one without a line of Java.
+        engine.action("skyblock:buy-upgrade", ctx -> {
+            String upgradeKey = ctx.arg().strip();
+            ctx.player().closeInventory();
+            if (upgradeKey.isEmpty()) {
+                messages.send(ctx.player(), "menu.control.upgrade_unnamed");
+                return;
+            }
+            ctx.player().performCommand("is upgrades buy " + upgradeKey);
+        });
+    }
+
+    /** The menu engine, so a feature can register the verbs its own menu files name. */
+    public SkyblockMenuEngine menuEngine() {
+        return menuEngine;
+    }
+
     public IslandControlMenu controlMenu() {
         return controlMenu;
     }
@@ -307,6 +370,7 @@ public final class IntegrationWiring implements AutoCloseable {
 
     @Override
     public void close() {
+        menuEngine.close();
         discordService.close();
         outboxDispatcher.close();
         clusterTransport.close();

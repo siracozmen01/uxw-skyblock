@@ -1,0 +1,180 @@
+package com.uxplima.uxmskyblock.bukkit.menu;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+
+import com.uxplima.uxmlib.bedrock.BedrockDetector;
+import com.uxplima.uxmlib.bedrock.BedrockScreen;
+import com.uxplima.uxmlib.gui.GuiText;
+import com.uxplima.uxmlib.menu.MenuBasics;
+import com.uxplima.uxmlib.menu.Menus;
+import com.uxplima.uxmlib.menu.binding.MenuBindings;
+import com.uxplima.uxmlib.menu.render.ItemRenderer;
+import com.uxplima.uxmlib.menu.render.MenuRenderer;
+import com.uxplima.uxmlib.menu.runtime.MenuActionContext;
+import com.uxplima.uxmlib.menu.runtime.MenuListener;
+import com.uxplima.uxmlib.menu.spec.MenuSpec;
+import com.uxplima.uxmlib.menu.spec.MenuSpecLoader;
+import com.uxplima.uxmlib.scheduler.PaperScheduler;
+import com.uxplima.uxmlib.text.style.Theme;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import org.jspecify.annotations.Nullable;
+import org.spongepowered.configurate.ConfigurationNode;
+
+/**
+ * The menu engine, reading this server's own menu files.
+ *
+ * <p>Three menu files shipped with the plugin from the beginning and nothing ever read one. An
+ * operator who opened {@code menus/island-main.conf}, moved a slot and restarted saw no change,
+ * because every slot, material, title and lore was decided in Java. That is the opposite of what the
+ * files and the documentation both promise.
+ *
+ * <p>This holds the engine and the vocabulary of verbs a menu file may name. The file says what to
+ * run; this says what each verb means. Nothing here decides a colour, a word or a layout.
+ */
+public final class SkyblockMenuEngine implements AutoCloseable {
+
+    private static final Logger LOGGER = Logger.getLogger(SkyblockMenuEngine.class.getName());
+
+    private final MenuBindings bindings = new MenuBindings();
+    private final Menus menus;
+    private final MenuListener listener;
+    private final Path menusDir;
+    private final List<String> loaded = new ArrayList<>();
+
+    public SkyblockMenuEngine(Plugin plugin, Messages messages, Path dataDir, @Nullable ConfigurationNode themeNode) {
+        Objects.requireNonNull(plugin, "plugin must not be null");
+        Objects.requireNonNull(messages, "messages must not be null");
+        Objects.requireNonNull(dataDir, "dataDir must not be null");
+
+        this.menusDir = dataDir.resolve("menus");
+        Theme theme = themeNode == null ? Theme.defaults() : Theme.from(themeNode);
+        GuiText words = new CatalogueMenuWords(messages);
+        ItemRenderer itemRenderer = new ItemRenderer(words, () -> theme, bindings.placeholders());
+        MenuRenderer renderer = new MenuRenderer(itemRenderer, bindings.conditions(), bindings.contents());
+        PaperScheduler scheduler = new PaperScheduler(plugin);
+
+        this.menus = new Menus(
+                renderer,
+                scheduler,
+                bindings.lists(),
+                null,
+                bindings.actions(),
+                bindings.conditions(),
+                null,
+                BedrockDetector.forServer(Bukkit.getServer()),
+                BedrockScreen.forServer(Bukkit.getServer()),
+                bindings.pagedLists());
+        this.listener = new MenuListener(renderer, bindings.actions(), bindings.conditions(), scheduler, plugin);
+
+        // close, open, command, message and sound mean the same in every plugin, so they come from
+        // the library. Anything a skyblock menu can do that a generic menu cannot is registered by
+        // the feature that owns it, through bindings().
+        MenuBasics.register(bindings, menus);
+    }
+
+    /**
+     * Reads every {@code menus/*.conf} the operator has, registering each under its file name.
+     *
+     * <p>A file that will not parse is reported and skipped. One broken menu must not stop a server:
+     * the operator gets the file name and the reason, and every other menu still opens.
+     */
+    public void loadSpecs() {
+        if (!Files.isDirectory(menusDir)) {
+            return;
+        }
+        MenuSpecLoader loader = new MenuSpecLoader();
+        try (Stream<Path> files = Files.list(menusDir)) {
+            for (Path file : files.sorted().toList()) {
+                String name = file.getFileName().toString();
+                if (!name.endsWith(".conf")) {
+                    continue;
+                }
+                String id = name.substring(0, name.length() - ".conf".length()).toLowerCase(Locale.ROOT);
+                try {
+                    MenuSpec spec = loader.load(file);
+                    menus.registerSpec(id, spec);
+                    loaded.add(id);
+                } catch (RuntimeException e) {
+                    LOGGER.log(
+                            Level.WARNING,
+                            e,
+                            () -> "The menu file " + file + " could not be read, so the menu it "
+                                    + "describes will not open. Every other menu still works.");
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, e, () -> "The menus folder " + menusDir + " could not be listed.");
+        }
+    }
+
+    /** Starts listening for clicks. Called once, after every feature has registered its verbs. */
+    public void install() {
+        listener.install();
+    }
+
+    /** Where a feature registers the verbs its own menus name. */
+    public MenuBindings bindings() {
+        return bindings;
+    }
+
+    public Menus menus() {
+        return menus;
+    }
+
+    /** The ids of the menu files that loaded, which is what an operator sees in a diagnostic. */
+    public List<String> loadedSpecs() {
+        return List.copyOf(loaded);
+    }
+
+    /** Whether a menu of this id is registered, so a caller can fall back when the file is missing. */
+    public boolean has(String specId) {
+        return menus.registeredSpec(specId).isPresent();
+    }
+
+    /**
+     * Opens a menu with live values bound as {@code %argument_<name>%} tokens.
+     *
+     * <p>The values are gathered by the caller, off the main thread where they come from a database,
+     * and passed in. That is the seam between what a file says and what a server knows.
+     */
+    public boolean open(Player viewer, String specId, Map<String, String> values) {
+        Objects.requireNonNull(viewer, "viewer must not be null");
+        Objects.requireNonNull(specId, "specId must not be null");
+        Objects.requireNonNull(values, "values must not be null");
+        if (!has(specId)) {
+            return false;
+        }
+        menus.open(viewer, specId, null, 0, values);
+        return true;
+    }
+
+    /** Registers one verb a skyblock menu file may name. */
+    public void action(String id, java.util.function.Consumer<MenuActionContext> handler) {
+        bindings.action(id, handler);
+    }
+
+    public Optional<MenuSpec> spec(String specId) {
+        return menus.registeredSpec(specId);
+    }
+
+    @Override
+    public void close() {
+        listener.uninstall();
+        menus.shutdown();
+    }
+}

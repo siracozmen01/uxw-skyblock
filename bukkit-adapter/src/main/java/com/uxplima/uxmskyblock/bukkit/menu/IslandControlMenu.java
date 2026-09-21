@@ -53,6 +53,7 @@ public final class IslandControlMenu {
     private final String worldName;
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final @Nullable BedrockFormService bedrockFormService;
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
     private final Messages messages;
 
     public IslandControlMenu(
@@ -160,6 +161,46 @@ public final class IslandControlMenu {
                 messages);
     }
 
+    /**
+     * Hands this menu the engine that reads {@code menus/island-main.conf}.
+     *
+     * <p>When the operator's file is there, the file decides the layout. The Java built window below
+     * stays as the answer to a file that is missing or will not parse, so a typo in a menu file
+     * leaves a player with a working menu rather than with nothing.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine menuEngine) {
+        this.menuEngine = menuEngine;
+    }
+
+    /**
+     * The live values {@code island-main.conf} may spell as {@code %argument_<name>%}.
+     *
+     * <p>Every token here is one the server can actually answer. The file that shipped before spelled
+     * {@code {bank_level}} and {@code {max_members}}, and neither existed anywhere in the code: it was
+     * a dead placeholder in a file nothing read.
+     */
+    private Map<String, String> liveValues(
+            Island island, @Nullable IslandBank bank, @Nullable Map<UpgradeId, Integer> upgrades) {
+        long minorBalance = bank != null ? bank.primaryBalanceMinorUnits() : 0L;
+        Map<UpgradeId, Integer> tiers = upgrades != null ? upgrades : Map.of();
+        IslandBounds bounds = island.bounds();
+        return Map.ofEntries(
+                Map.entry("island", island.id().value().toString()),
+                Map.entry("balance", String.format(Locale.US, "%.2f", (double) minorBalance / 100.0)),
+                Map.entry("crystals", String.valueOf(bank != null ? bank.crystalsBalance() : 0L)),
+                Map.entry("exp", String.valueOf(bank != null ? bank.expBalance() : 0L)),
+                Map.entry("member_count", String.valueOf(island.members().size())),
+                Map.entry("radius", String.valueOf(bounds.radius())),
+                Map.entry("center_x", String.valueOf(bounds.centerX())),
+                Map.entry("center_z", String.valueOf(bounds.centerZ())),
+                Map.entry("size_tier", String.valueOf(tiers.getOrDefault(UpgradeId.SIZE, 0))),
+                Map.entry("members_tier", String.valueOf(tiers.getOrDefault(UpgradeId.MEMBERS, 0))),
+                Map.entry("warps_tier", String.valueOf(tiers.getOrDefault(UpgradeId.WARPS, 0))),
+                Map.entry("spawner_tier", String.valueOf(tiers.getOrDefault(UpgradeId.SPAWNER_SPEED, 0))),
+                Map.entry("generator_tier", String.valueOf(tiers.getOrDefault(UpgradeId.ORE_GENERATOR, 0))),
+                Map.entry("vault_tier", String.valueOf(tiers.getOrDefault(UpgradeId.VAULT_PAGES, 0))));
+    }
+
     public void open(Player player) {
         Objects.requireNonNull(player, "player must not be null");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
@@ -229,6 +270,10 @@ public final class IslandControlMenu {
                             () -> messages.send(player, "menu.control.bank_hint"),
                             () -> messages.send(player, "menu.control.members_hint"),
                             () -> messages.send(player, "menu.control.settings_hint"));
+                    return;
+                }
+                SkyblockMenuEngine engine = this.menuEngine;
+                if (engine != null && engine.open(player, "island-main", liveValues(island, bank, upgrades))) {
                     return;
                 }
                 SimpleGui gui = buildGui(player, island, bank, upgrades, optLoc);
