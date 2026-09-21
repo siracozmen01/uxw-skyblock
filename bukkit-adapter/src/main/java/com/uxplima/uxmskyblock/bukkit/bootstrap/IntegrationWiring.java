@@ -220,6 +220,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setRestoreService(gameplay.islandRestoreService());
         this.commandTree.setBackupService(gameplay.backupService());
         this.commandTree.setBackupBucket(gameplay.backupBucket());
+        this.commandTree.setIslandBackupService(gameplay.islandBackupService());
         // Four subsystems that were running with no door. Every one of them had a service, a table
         // and a feature module, and no command a player could type.
         this.commandTree.setWarpService(gameplay.warpService());

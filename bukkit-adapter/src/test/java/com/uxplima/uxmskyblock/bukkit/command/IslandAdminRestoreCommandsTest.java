@@ -32,6 +32,7 @@ import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.backup.BackupCatalogPort;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -41,6 +42,7 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupLifecycleState;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupManifest;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupType;
+import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -76,6 +78,7 @@ class IslandAdminRestoreCommandsTest {
     private BackupService backups;
     private BackupCatalogPort catalog;
     private IslandRecycleService recycle;
+    private IslandBackupService islandBackups;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private static SchedulerPort inlineScheduler() {
@@ -152,6 +155,10 @@ class IslandAdminRestoreCommandsTest {
         backups = mock(BackupService.class);
         when(backups.loadManifest(any(), anyString())).thenReturn(Optional.empty());
 
+        islandBackups = mock(IslandBackupService.class);
+        when(islandBackups.backupIsland(any(), any(), any()))
+                .thenReturn(new IslandBackupService.BackupOutcome.Success(BackupSetId.random(), 4));
+
         recycle = mock(IslandRecycleService.class);
         when(recycle.executeReset(any(), any(), any(), anyBoolean()))
                 .thenReturn(
@@ -168,6 +175,7 @@ class IslandAdminRestoreCommandsTest {
                 () -> backups,
                 () -> recycle,
                 () -> CONFIGURED_BUCKET,
+                () -> islandBackups,
                 locations,
                 sessions,
                 inlineScheduler(),
@@ -176,6 +184,7 @@ class IslandAdminRestoreCommandsTest {
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.buildRestore());
         dispatcher.register(commands.buildRollback());
+        dispatcher.register(commands.buildBackup());
     }
 
     @AfterEach
@@ -306,5 +315,52 @@ class IslandAdminRestoreCommandsTest {
 
         assertThat(admin.nextMessage()).isNotNull();
         verify(restore, never()).executeRestore(any(), any(), anyString(), anyBoolean(), any());
+    }
+
+    @Test
+    @DisplayName("A backup is made of the island the admin named, in the operator's own bucket")
+    void aBackupNamesTheIslandAndTheBucket() throws Exception {
+        run("backup " + ISLAND.value(), admin);
+
+        verify(islandBackups).backupIsland(eq(ISLAND), eq(CONFIGURED_BUCKET), any());
+    }
+
+    @Test
+    @DisplayName("A backup carries every dimension, because a restore of half an island is not a restore")
+    void aBackupCarriesEveryDimension() throws Exception {
+        run("backup " + ISLAND.value(), admin);
+
+        verify(islandBackups)
+                .backupIsland(
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.argThat(dimensions -> dimensions.containsAll(
+                                List.of(DimensionId.OVERWORLD, DimensionId.THE_NETHER, DimensionId.THE_END))));
+    }
+
+    @Test
+    @DisplayName("A target that names no island is backed up as nothing")
+    void anUnresolvedTargetBacksUpNothing() throws Exception {
+        run("backup Nobody", admin);
+
+        verify(islandBackups, never()).backupIsland(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A player without an admin permission cannot reach the backup branch")
+    void anOrdinaryPlayerCannotBackUp() {
+        assertThatThrownBy(() -> run("backup " + ISLAND.value(), ordinary)).isInstanceOf(Exception.class);
+        verify(islandBackups, never()).backupIsland(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A backup that failed is an answer, not a silence")
+    void aFailedBackupIsAnAnswer() throws Exception {
+        when(islandBackups.backupIsland(any(), any(), any()))
+                .thenReturn(new IslandBackupService.BackupOutcome.Failure("the world is not loaded"));
+
+        run("backup " + ISLAND.value(), admin);
+
+        assertThat(admin.nextMessage()).isNotNull();
     }
 }

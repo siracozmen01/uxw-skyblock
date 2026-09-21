@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -23,6 +24,7 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -31,6 +33,7 @@ import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupLifecycleState;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupManifest;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
+import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -53,6 +56,7 @@ public final class IslandAdminRestoreCommands {
     private final Supplier<@Nullable BackupService> backupServiceProvider;
     private final Supplier<@Nullable IslandRecycleService> recycleServiceProvider;
     private final Supplier<@Nullable StorageBucket> backupBucketProvider;
+    private final Supplier<@Nullable IslandBackupService> islandBackupServiceProvider;
     private final IslandLocationService islandLocationService;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
@@ -63,6 +67,7 @@ public final class IslandAdminRestoreCommands {
             Supplier<@Nullable BackupService> backupServiceProvider,
             Supplier<@Nullable IslandRecycleService> recycleServiceProvider,
             Supplier<@Nullable StorageBucket> backupBucketProvider,
+            Supplier<@Nullable IslandBackupService> islandBackupServiceProvider,
             IslandLocationService islandLocationService,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
@@ -75,6 +80,8 @@ public final class IslandAdminRestoreCommands {
                 Objects.requireNonNull(recycleServiceProvider, "recycleServiceProvider must not be null");
         this.backupBucketProvider =
                 Objects.requireNonNull(backupBucketProvider, "backupBucketProvider must not be null");
+        this.islandBackupServiceProvider =
+                Objects.requireNonNull(islandBackupServiceProvider, "islandBackupServiceProvider must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.sessionCoordinator = sessionCoordinator;
@@ -162,6 +169,69 @@ public final class IslandAdminRestoreCommands {
                 .stream()
                 .filter(record -> record.state() == BackupLifecycleState.AVAILABLE)
                 .max(Comparator.comparing(BackupCatalogRecord::createdAt));
+    }
+
+    /**
+     * {@code /is admin backup <island>}: make the backup a restore puts back.
+     *
+     * <p>Everything on the reading side was here and nothing ever wrote one, so an administrator
+     * could restore backups that could not exist. {@code /is admin rollback} looks for the newest
+     * finished backup of an island and, until this command, never found one.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildBackup() {
+        return Cmd.literal("backup")
+                .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
+                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                        || src.getSender().isOp())
+                .then(Cmd.argument("island", StringArgumentType.word()).executes(this::executeBackup));
+    }
+
+    private int executeBackup(CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        IslandBackupService backupService = islandBackupServiceProvider.get();
+        if (backupService == null) {
+            send(sender, "admin.backup_not_configured");
+            return Cmd.OK;
+        }
+        String target = StringArgumentType.getString(ctx, "island");
+
+        schedulerPort.async(() -> {
+            StorageBucket bucket = backupBucketProvider.get();
+            if (bucket == null) {
+                send(sender, "admin.restore_not_configured");
+                return;
+            }
+            Optional<IslandId> optIsland =
+                    IslandAdminCommands.resolveIslandId(sessionCoordinator, islandLocationService, target);
+            if (optIsland.isEmpty()) {
+                send(sender, "admin.island_unresolved", Placeholder.unparsed("target", target));
+                return;
+            }
+
+            IslandId islandId = optIsland.get();
+            send(
+                    sender,
+                    "admin.backup_starting",
+                    Placeholder.unparsed("island", islandId.value().toString()));
+
+            // Reading the database and every chunk inside the island's bounds is what this is, so it
+            // runs here on the scheduler and the world adapter hops onto each owning region itself.
+            IslandBackupService.BackupOutcome outcome = backupService.backupIsland(
+                    islandId, bucket, List.of(DimensionId.OVERWORLD, DimensionId.THE_NETHER, DimensionId.THE_END));
+
+            switch (outcome) {
+                case IslandBackupService.BackupOutcome.Success success ->
+                    send(
+                            sender,
+                            "admin.backup_success",
+                            Placeholder.unparsed("island", islandId.value().toString()),
+                            Placeholder.unparsed("backup", success.backupSetId().toString()),
+                            Placeholder.unparsed("artifacts", Integer.toString(success.artifacts())));
+                case IslandBackupService.BackupOutcome.Failure failure ->
+                    send(sender, "admin.backup_failed", Placeholder.unparsed("reason", failure.reason()));
+            }
+        });
+        return Cmd.OK;
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildRestore() {

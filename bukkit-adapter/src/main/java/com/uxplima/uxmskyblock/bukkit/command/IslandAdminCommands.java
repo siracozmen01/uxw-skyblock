@@ -26,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -66,6 +67,7 @@ public final class IslandAdminCommands {
             Supplier<@Nullable BackupService> backupServiceProvider,
             Supplier<@Nullable IslandRecycleService> recycleServiceProvider,
             Supplier<@Nullable StorageBucket> backupBucketProvider,
+            Supplier<@Nullable IslandBackupService> islandBackupServiceProvider,
             IslandProtectionListener protectionListener,
             IslandLocationService islandLocationService,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
@@ -88,6 +90,7 @@ public final class IslandAdminCommands {
                 backupServiceProvider,
                 recycleServiceProvider,
                 backupBucketProvider,
+                islandBackupServiceProvider,
                 islandLocationService,
                 sessionCoordinator,
                 schedulerPort,
@@ -127,6 +130,7 @@ public final class IslandAdminCommands {
                                 .then(Cmd.argument("mode", StringArgumentType.word())
                                         .executes(restoreCommands::executeAdminRestoreWithMode))))
                 .then(restoreCommands.buildRollback())
+                .then(restoreCommands.buildBackup())
                 .then(Cmd.literal("delete")
                         .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                 || src.getSender().isOp())

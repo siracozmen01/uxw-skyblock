@@ -65,6 +65,7 @@ final class CommandGroupBuilder {
                 () -> tree.backupService,
                 () -> tree.features.recycleService(),
                 () -> tree.backupBucket,
+                () -> tree.islandBackupService,
                 tree.protectionListener,
                 tree.islandLocationService,
                 tree.sessionCoordinator,

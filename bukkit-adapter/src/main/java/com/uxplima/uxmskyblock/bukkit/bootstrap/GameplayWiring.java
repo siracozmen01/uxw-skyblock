@@ -43,6 +43,7 @@ import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
@@ -517,5 +518,9 @@ public final class GameplayWiring {
 
     public IslandRestoreService islandRestoreService() {
         return adminWiring.islandRestoreService();
+    }
+
+    public IslandBackupService islandBackupService() {
+        return adminWiring.islandBackupService();
     }
 }

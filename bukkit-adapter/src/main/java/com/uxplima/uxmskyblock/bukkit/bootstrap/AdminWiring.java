@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
@@ -43,6 +44,7 @@ public final class AdminWiring {
     private final ObjectStoragePort objectStoragePort;
     private final BackupService backupService;
     private final IslandRestoreService islandRestoreService;
+    private final IslandBackupService islandBackupService;
     private final IslandAntiAbuseService antiAbuseService;
     private final @Nullable IslandAntiAbuseListener antiAbuseListener;
 
@@ -107,6 +109,11 @@ public final class AdminWiring {
                 this.objectStoragePort,
                 persistence.rootRelationalSnapshotPort(),
                 this.worldDimensionSnapshotPort);
+        this.islandBackupService = new IslandBackupService(
+                this.backupService,
+                persistence.rootRelationalSnapshotPort(),
+                this.worldDimensionSnapshotPort,
+                pluginVersionOf(plugin));
 
         this.antiAbuseService = new IslandAntiAbuseService(
                 persistence.antiAbuseStoragePort(),
@@ -157,6 +164,28 @@ public final class AdminWiring {
 
     public ObjectStoragePort objectStoragePort() {
         return objectStoragePort;
+    }
+
+    /**
+     * The plugin's own version, for the provenance field of a backup manifest.
+     *
+     * <p>A server that does not publish its plugin metadata still takes backups. The version is
+     * written down so a reader knows what made the file, and a file that cannot say is better than
+     * no file at all.
+     */
+    private static String pluginVersionOf(org.bukkit.plugin.Plugin plugin) {
+        try {
+            io.papermc.paper.plugin.configuration.PluginMeta meta = plugin.getPluginMeta();
+            String version = meta.getVersion();
+            return version.isBlank() ? "unknown" : version;
+        } catch (RuntimeException | LinkageError unavailable) {
+            return "unknown";
+        }
+    }
+
+    /** The thing that makes the backups the restore command puts back. */
+    public IslandBackupService islandBackupService() {
+        return islandBackupService;
     }
 
     public BackupService backupService() {

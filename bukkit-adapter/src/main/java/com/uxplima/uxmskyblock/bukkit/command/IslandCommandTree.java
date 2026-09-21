@@ -31,6 +31,7 @@ import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
@@ -98,6 +99,7 @@ public final class IslandCommandTree {
     volatile @Nullable IslandRestoreService restoreService;
     volatile @Nullable BackupService backupService;
     volatile @Nullable StorageBucket backupBucket;
+    volatile @Nullable IslandBackupService islandBackupService;
     volatile @Nullable IslandWarpService warpService;
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
@@ -291,6 +293,11 @@ public final class IslandCommandTree {
      */
     public void setBackupBucket(@Nullable StorageBucket backupBucket) {
         this.backupBucket = backupBucket;
+    }
+
+    /** The thing that makes the backups {@code /is admin restore} puts back. */
+    public void setIslandBackupService(@Nullable IslandBackupService islandBackupService) {
+        this.islandBackupService = islandBackupService;
     }
 
     public @Nullable BackupService backupService() {
