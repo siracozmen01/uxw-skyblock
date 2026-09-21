@@ -89,6 +89,35 @@ public final class IslandFlagService {
         return new FlagChange.Changed(flag.toLowerCase(Locale.ROOT), enabled);
     }
 
+    /**
+     * Puts one flag where the caller asked, rather than the other way from where it is.
+     *
+     * <p>A lock command has to be this and not a toggle. An owner who types {@code /is lock} twice
+     * because the first one scrolled past means the island to be locked both times, and a toggle
+     * would unlock it.
+     */
+    public FlagChange set(Island island, ProfileId actorProfileId, String rawFlagName, boolean enabled) {
+        Objects.requireNonNull(island, "island must not be null");
+        Objects.requireNonNull(actorProfileId, "actorProfileId must not be null");
+        Objects.requireNonNull(rawFlagName, "rawFlagName must not be null");
+
+        String flag = rawFlagName.toUpperCase(Locale.ROOT);
+        if (!island.flags().values().containsKey(flag)) {
+            return new FlagChange.UnknownFlag(rawFlagName.toLowerCase(Locale.ROOT), flagNames(island));
+        }
+        if (!mayModifySettings(island, actorProfileId)) {
+            return new FlagChange.NotAllowed();
+        }
+
+        Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
+        if (optLocation.isEmpty()) {
+            return new FlagChange.IslandMissing();
+        }
+
+        islandStoragePort.saveIsland(island.withFlags(island.flags().withFlag(flag, enabled)), optLocation.get());
+        return new FlagChange.Changed(flag.toLowerCase(Locale.ROOT), enabled);
+    }
+
     /** Reads the island fresh, for a caller that holds only its id. */
     public Optional<Island> findIsland(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");

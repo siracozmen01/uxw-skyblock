@@ -40,7 +40,8 @@ final class CommandGroupBuilder {
             IslandSocialCommands socialCommands,
             IslandAllianceCommands allianceCommands,
             IslandRewardCommands rewardCommands,
-            IslandFlagCommands flagCommands) {}
+            IslandFlagCommands flagCommands,
+            IslandVisitorCommands visitorCommands) {}
 
     CommandGroups build() {
 
@@ -173,6 +174,16 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
 
+        // The ban list had a service, a port, a table and a reader, and no command could put a name
+        // in it. The visit gate asked an empty list on every island on every server.
+        IslandVisitorCommands visitorCommands = new IslandVisitorCommands(
+                () -> tree.warpService,
+                tree.flagService,
+                tree.islandLocationService,
+                tree.schedulerPort,
+                tree.messages,
+                tree.sessionCoordinator);
+
         return new CommandGroups(
                 bankCommands,
                 chatCommands,
@@ -187,6 +198,7 @@ final class CommandGroupBuilder {
                 socialCommands,
                 allianceCommands,
                 rewardCommands,
-                flagCommands);
+                flagCommands,
+                visitorCommands);
     }
 }
