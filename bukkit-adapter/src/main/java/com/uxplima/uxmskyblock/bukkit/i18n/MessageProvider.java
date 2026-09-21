@@ -18,6 +18,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -94,14 +96,27 @@ public final class MessageProvider {
         }
     }
 
+    /** The bundled catalogue file names, from which the language tag is read. */
+    private static final Pattern BUNDLED_CATALOG = Pattern.compile("messages_([A-Za-z0-9_-]+)\\.conf");
+
     /**
-     * Loads bundled resources for known locales ("en", "tr") using the specified ClassLoader.
+     * Loads every bundled message catalogue, whatever languages the build happens to ship.
      *
-     * @param classLoader the classloader to search for /messages/messages_{locale}.conf
+     * <p>This used to name two: English and Turkish. The number of languages a plugin speaks is the
+     * number of files in {@code messages/}, and nothing counts them. A build that ships a third
+     * catalogue got nothing from it, and the only sign was a player reading English.
+     *
+     * @param classLoader the classloader holding the bundled {@code messages/} folder
      */
     public void loadBundledDefaults(ClassLoader classLoader) {
         Objects.requireNonNull(classLoader, "classLoader must not be null");
-        for (String lang : new String[] {"en", "tr"}) {
+
+        Set<String> locales = bundledLocales(classLoader);
+        if (locales.isEmpty()) {
+            LOGGER.warning("No bundled localization catalog was found at all.");
+            return;
+        }
+        for (String lang : locales) {
             String resourcePath = "messages/messages_" + lang + ".conf";
             try (InputStream in = classLoader.getResourceAsStream(resourcePath)) {
                 if (in != null) {
@@ -116,11 +131,92 @@ public final class MessageProvider {
         }
     }
 
+    /**
+     * The language tags the bundled {@code messages/} folder holds.
+     *
+     * <p>Reads the folder rather than a list: from inside the jar it is a jar entry walk, and from
+     * an exploded build directory it is a directory listing. Either way the answer is the files.
+     */
+    static Set<String> bundledLocales(ClassLoader classLoader) {
+        Set<String> locales = new java.util.TreeSet<>();
+        try {
+            java.util.Enumeration<java.net.URL> roots = classLoader.getResources("messages");
+            while (roots.hasMoreElements()) {
+                java.net.URL root = roots.nextElement();
+                if ("jar".equals(root.getProtocol())) {
+                    collectFromJar(root, locales);
+                } else if ("file".equals(root.getProtocol())) {
+                    collectFromDirectory(root, locales);
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.warning(() -> "The bundled messages folder could not be read: " + e.getMessage());
+        }
+        return locales;
+    }
+
+    private static void collectFromJar(java.net.URL root, Set<String> locales) {
+        try {
+            java.net.URLConnection connection = root.openConnection();
+            if (!(connection instanceof java.net.JarURLConnection jarConnection)) {
+                return;
+            }
+            try (java.util.jar.JarFile jar = jarConnection.getJarFile()) {
+                java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
+                while (entries.hasMoreElements()) {
+                    String name = entries.nextElement().getName();
+                    if (!name.startsWith("messages/")) {
+                        continue;
+                    }
+                    addLocale(name.substring("messages/".length()), locales);
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.warning(() -> "The bundled messages jar could not be read: " + e.getMessage());
+        }
+    }
+
+    private static void collectFromDirectory(java.net.URL root, Set<String> locales) {
+        try {
+            Path directory = Path.of(root.toURI());
+            if (!Files.isDirectory(directory)) {
+                return;
+            }
+            try (java.util.stream.Stream<Path> files = Files.list(directory)) {
+                files.forEach(file -> addLocale(file.getFileName().toString(), locales));
+            }
+        } catch (IOException | java.net.URISyntaxException e) {
+            LOGGER.warning(() -> "The bundled messages folder could not be listed: " + e.getMessage());
+        }
+    }
+
+    private static void addLocale(String fileName, Set<String> locales) {
+        Matcher matcher = BUNDLED_CATALOG.matcher(fileName);
+        if (matcher.matches()) {
+            locales.add(matcher.group(1).toLowerCase(Locale.ROOT));
+        }
+    }
+
+    /**
+     * Reads one catalogue over whatever this locale already holds.
+     *
+     * <p>It used to replace. An operator's file is loaded after the bundled one, so replacing meant
+     * their file had to carry every key in the plugin or the rest rendered as their own key names.
+     * That is certain to bite on an update: the jar gains a key, the operator's file predates it,
+     * and every player reads {@code error.players_only} where a sentence belongs. The operator's
+     * line wins for the keys they wrote, and every other key keeps the answer it had.
+     */
     private void loadNode(String locale, ConfigurationNode root) {
-        Map<String, String> catalog = new HashMap<>();
-        Map<String, List<String>> lists = new HashMap<>();
-        String prefix = root.node("prefix").getString("");
-        prefixes.put(locale, prefix);
+        Map<String, String> catalog = new HashMap<>(localeCatalogs.getOrDefault(locale, Map.of()));
+        Map<String, List<String>> lists = new HashMap<>(localeLists.getOrDefault(locale, Map.of()));
+
+        // A file with no prefix of its own keeps the one it had, for the same reason.
+        String prefix = root.node("prefix").getString();
+        if (prefix != null && !prefix.isEmpty()) {
+            prefixes.put(locale, prefix);
+        } else {
+            prefixes.putIfAbsent(locale, "");
+        }
 
         flattenNode("", root, catalog, lists);
         localeCatalogs.put(locale, Collections.unmodifiableMap(catalog));

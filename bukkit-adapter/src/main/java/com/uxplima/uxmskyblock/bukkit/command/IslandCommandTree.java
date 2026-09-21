@@ -17,6 +17,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
+import com.uxplima.uxmskyblock.bukkit.bootstrap.SkyblockReloader;
 import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
@@ -104,6 +105,7 @@ public final class IslandCommandTree {
     volatile @Nullable IslandBackupService islandBackupService;
     volatile @Nullable IslandMembershipService membershipService;
     volatile @Nullable IslandSeasonService seasonService;
+    volatile @Nullable SkyblockReloader reloader;
     volatile @Nullable IslandWarpService warpService;
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
@@ -314,6 +316,11 @@ public final class IslandCommandTree {
         this.seasonService = seasonService;
     }
 
+    /** The files an operator may change while the server is running: catalogues and menus. */
+    public void setReloader(@Nullable SkyblockReloader reloader) {
+        this.reloader = reloader;
+    }
+
     public @Nullable BackupService backupService() {
         return backupService;
     }
@@ -403,6 +410,7 @@ public final class IslandCommandTree {
                 .then(groups.chatCommands().buildAllianceChat())
                 .then(groups.chatCommands().buildAllianceChatAlias())
                 .then(groups.seasonCommands().buildSeason())
+                .then(groups.reloadCommands().buildReload())
                 .then(vaultBranch("vault"))
                 // The design document publishes /is chest for the same window. A command an
                 // operator reads about and types is either there or the document is wrong, and the

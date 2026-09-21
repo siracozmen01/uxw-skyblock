@@ -223,6 +223,10 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setIslandBackupService(gameplay.islandBackupService());
         this.commandTree.setMembershipService(gameplay.membershipService());
         this.commandTree.setSeasonService(gameplay.seasonService());
+        // A reload reads the catalogues and the menus and nothing else: no service is re-bound and
+        // no table is touched, because hot swapping a subsystem is how a plugin leaks classloaders
+        // and leaves listeners behind.
+        this.commandTree.setReloader(new SkyblockReloader(this.messages.provider(), config.dataDir(), this.menuEngine));
         // Four subsystems that were running with no door. Every one of them had a service, a table
         // and a feature module, and no command a player could type.
         this.commandTree.setWarpService(gameplay.warpService());

@@ -44,7 +44,8 @@ final class CommandGroupBuilder {
             IslandVisitorCommands visitorCommands,
             IslandMembershipCommands membershipCommands,
             IslandInfoCommands infoCommands,
-            IslandSeasonCommands seasonCommands) {}
+            IslandSeasonCommands seasonCommands,
+            IslandReloadCommands reloadCommands) {}
 
     CommandGroups build() {
 
@@ -212,6 +213,9 @@ final class CommandGroupBuilder {
         IslandSeasonCommands seasonCommands =
                 new IslandSeasonCommands(() -> tree.seasonService, tree.schedulerPort, tree.messages);
 
+        IslandReloadCommands reloadCommands =
+                new IslandReloadCommands(() -> tree.reloader, tree.schedulerPort, tree.messages);
+
         return new CommandGroups(
                 bankCommands,
                 chatCommands,
@@ -230,6 +234,7 @@ final class CommandGroupBuilder {
                 visitorCommands,
                 membershipCommands,
                 infoCommands,
-                seasonCommands);
+                seasonCommands,
+                reloadCommands);
     }
 }
