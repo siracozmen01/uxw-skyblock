@@ -14,8 +14,7 @@ import java.util.logging.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
@@ -209,9 +208,7 @@ public final class PlayerSessionCoordinator {
         schedulerPort.onEntity(playerUuid, () -> {
             Player player = Bukkit.getPlayer(playerUuid.value());
             if (player != null && player.isOnline()) {
-                player.kick(Component.text(
-                        "Session lease lost or expired. Disconnected to protect player data from split-brain state desync.",
-                        NamedTextColor.RED));
+                player.kick(messages.render(player, "session.lease_lost"));
             }
         });
     }
@@ -233,9 +230,7 @@ public final class PlayerSessionCoordinator {
                 if (!outcome.isSuccess()) {
                     schedulerPort.onEntity(playerUuid, () -> {
                         if (player.isOnline()) {
-                            player.kick(Component.text(
-                                    "Failed to acquire player session authority. Another node may still hold your lease. Please reconnect in a few seconds.",
-                                    NamedTextColor.RED));
+                            player.kick(messages.render(player, "session.authority_refused"));
                         }
                     });
                     return;
@@ -451,8 +446,10 @@ public final class PlayerSessionCoordinator {
                     LOGGER.log(Level.WARNING, "Failed to prepare profile switch: {0}", prepRes.errorOrThrow());
                     schedulerPort.onEntity(playerUuid, () -> {
                         if (player.isOnline()) {
-                            player.sendMessage(Component.text(
-                                    "Failed to switch profile: " + prepRes.errorOrThrow(), NamedTextColor.RED));
+                            messages.send(
+                                    player,
+                                    "session.switch_failed",
+                                    Placeholder.unparsed("reason", String.valueOf(prepRes.errorOrThrow())));
                         }
                     });
                     return;
@@ -493,9 +490,12 @@ public final class PlayerSessionCoordinator {
                             session.setLastDurableVersion(newVersion);
                             schedulerPort.onEntity(playerUuid, () -> {
                                 if (player.isOnline()) {
-                                    player.sendMessage(Component.text(
-                                            "Successfully switched to profile " + targetProfileId.value(),
-                                            NamedTextColor.GREEN));
+                                    messages.send(
+                                            player,
+                                            "session.switched",
+                                            Placeholder.unparsed(
+                                                    "profile",
+                                                    targetProfileId.value().toString()));
                                 }
                             });
                         } else {

@@ -12,7 +12,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
@@ -78,9 +77,8 @@ public final class IslandBoosterMenu {
                 sessionCoordinator != null ? sessionCoordinator.activeProfile(rawUuid) : Optional.empty();
 
         if (activeOpt.isEmpty()) {
-            player.sendMessage(Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED)
-                    .decoration(TextDecoration.ITALIC, false));
+            player.sendMessage(
+                    messages.render(player, "error.session_not_active").decoration(TextDecoration.ITALIC, false));
             return;
         }
 
@@ -90,9 +88,7 @@ public final class IslandBoosterMenu {
             if (optIslandId.isEmpty()) {
                 Runnable notify = () -> {
                     if (player.isOnline()) {
-                        player.sendMessage(Component.text(
-                                        "You do not belong to an island! Create one first via /is create.",
-                                        NamedTextColor.RED)
+                        player.sendMessage(messages.render(player, "menu.control.no_island")
                                 .decoration(TextDecoration.ITALIC, false));
                     }
                 };

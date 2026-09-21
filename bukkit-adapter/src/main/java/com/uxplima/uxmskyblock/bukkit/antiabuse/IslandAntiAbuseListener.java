@@ -15,9 +15,10 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -36,23 +37,27 @@ public final class IslandAntiAbuseListener implements Listener {
     private final IslandAntiAbuseService antiAbuseService;
     private final AntiAbuseConfiguration configuration;
     private final SpatialIslandIndex spatialIndex;
+    private final Messages messages;
 
     public IslandAntiAbuseListener(
             IslandStoragePort islandStoragePort,
             IslandAntiAbuseService antiAbuseService,
             AntiAbuseConfiguration configuration,
-            @Nullable SpatialIslandIndex spatialIndex) {
+            @Nullable SpatialIslandIndex spatialIndex,
+            Messages messages) {
         Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.antiAbuseService = Objects.requireNonNull(antiAbuseService, "antiAbuseService must not be null");
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         this.spatialIndex = spatialIndex != null ? spatialIndex : new SpatialIslandIndex(islandStoragePort, null);
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public IslandAntiAbuseListener(
             IslandStoragePort islandStoragePort,
             IslandAntiAbuseService antiAbuseService,
-            AntiAbuseConfiguration configuration) {
-        this(islandStoragePort, antiAbuseService, configuration, null);
+            AntiAbuseConfiguration configuration,
+            Messages messages) {
+        this(islandStoragePort, antiAbuseService, configuration, null, messages);
     }
 
     public void cacheIsland(Island island) {
@@ -127,11 +132,10 @@ public final class IslandAntiAbuseListener implements Listener {
                 Duration remaining = antiAbuseService
                         .getQuarantineRemaining(island.id(), now)
                         .orElse(Duration.ZERO);
-                player.sendMessage(MiniMessage.miniMessage()
-                        .deserialize(
-                                "<red><bold>QUARANTINE:</bold> Item dropping is disabled on this island during starter quarantine (<yellow>"
-                                        + formatDuration(remaining)
-                                        + "</yellow> remaining).</red>"));
+                messages.send(
+                        player,
+                        "protection.quarantine_no_drop",
+                        Placeholder.unparsed("remaining", formatDuration(remaining)));
             }
         });
     }
@@ -156,11 +160,10 @@ public final class IslandAntiAbuseListener implements Listener {
                     Duration remaining = antiAbuseService
                             .getQuarantineRemaining(island.id(), now)
                             .orElse(Duration.ZERO);
-                    player.sendMessage(MiniMessage.miniMessage()
-                            .deserialize(
-                                    "<red><bold>QUARANTINE:</bold> Visitor access to this island is locked during starter quarantine (<yellow>"
-                                            + formatDuration(remaining)
-                                            + "</yellow> remaining).</red>"));
+                    messages.send(
+                            player,
+                            "protection.quarantine_no_visitors",
+                            Placeholder.unparsed("remaining", formatDuration(remaining)));
                 }
             }
         });
@@ -192,11 +195,10 @@ public final class IslandAntiAbuseListener implements Listener {
                         Duration remaining = antiAbuseService
                                 .getQuarantineRemaining(island.id(), now)
                                 .orElse(Duration.ZERO);
-                        player.sendMessage(MiniMessage.miniMessage()
-                                .deserialize(
-                                        "<red><bold>QUARANTINE:</bold> Visitor access to this island is locked during starter quarantine (<yellow>"
-                                                + formatDuration(remaining)
-                                                + "</yellow> remaining).</red>"));
+                        messages.send(
+                                player,
+                                "protection.quarantine_no_visitors",
+                                Placeholder.unparsed("remaining", formatDuration(remaining)));
                     }
                 }
             }

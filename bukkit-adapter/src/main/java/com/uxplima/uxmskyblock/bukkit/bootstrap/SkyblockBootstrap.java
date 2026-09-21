@@ -87,7 +87,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 persistenceWiring.bootstrap().islandStoragePort(),
                 scheduler,
                 configWiring.nodeConfig().worldName(),
-                null);
+                configWiring.messages());
         IslandAdminFreezeService freezeService = new IslandAdminFreezeService(
                 persistenceWiring.bootstrap().islandStoragePort(),
                 persistenceWiring.bootstrap().islandAdminFreezePort(),
@@ -138,7 +138,6 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 gameplayWiring,
                 clusterTransportWiring);
         economyBridgeRef.set(this.integrationWiring.economyBridge());
-        visitorEvictionAdapter.setMessageProvider(this.integrationWiring.messageProvider());
 
         this.featureModuleWiring =
                 new FeatureModuleWiring(configWiring, persistenceWiring.bootstrap(), gameplayWiring, integrationWiring);

@@ -182,6 +182,16 @@ class MessagesTest {
                 .contains("adaya sahip değilsiniz");
     }
 
+    @Test
+    @DisplayName("A viewer whose locale cannot be read still gets the server default rather than an error")
+    void anUnreadableLocaleFallsBack() {
+        Player player = mock(Player.class);
+        when(player.locale()).thenReturn(null);
+
+        assertThat(PLAIN.serialize(messages.render(player, "error.no_island")))
+                .contains("do not currently belong to an island");
+    }
+
     private static Player playerSpeaking(Locale locale) {
         Player player = mock(Player.class);
         when(player.locale()).thenReturn(locale);

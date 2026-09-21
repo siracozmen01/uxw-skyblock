@@ -15,7 +15,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmlib.gui.Guis;
@@ -168,8 +167,7 @@ public final class IslandControlMenu {
         if (activeOpt.isEmpty()) {
             schedulerPort.onEntity(playerUuid, () -> {
                 if (player.isOnline()) {
-                    player.sendMessage(Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+                    player.sendMessage(messages.render(player, "error.session_not_active"));
                 }
             });
             return;
@@ -181,8 +179,7 @@ public final class IslandControlMenu {
             if (optIslandId.isEmpty()) {
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (player.isOnline()) {
-                        player.sendMessage(Component.text(
-                                "You do not belong to an island. Use /is create to start one!", NamedTextColor.RED));
+                        player.sendMessage(messages.render(player, "menu.control.no_island"));
                     }
                 });
                 return;
@@ -228,16 +225,10 @@ public final class IslandControlMenu {
                                     player.sendMessage(messages.render(player, "menu.control.home_missing"));
                                 }
                             },
-                            () -> player.sendMessage(Component.text(
-                                    "Warps: Use /is warps to browse destinations.", NamedTextColor.AQUA)),
-                            () -> player.sendMessage(Component.text(
-                                    "Bank: Use /is bank deposit <amount> or /is bank withdraw <amount>",
-                                    NamedTextColor.GOLD)),
-                            () -> player.sendMessage(Component.text(
-                                    "Members: Use /is invite <player> or /is kick <player>", NamedTextColor.YELLOW)),
-                            () -> player.sendMessage(Component.text(
-                                    "Settings: Use /is lock or /is unlock to control visitor access.",
-                                    NamedTextColor.RED)));
+                            () -> messages.send(player, "menu.control.warps_hint"),
+                            () -> messages.send(player, "menu.control.bank_hint"),
+                            () -> messages.send(player, "menu.control.members_hint"),
+                            () -> messages.send(player, "menu.control.settings_hint"));
                     return;
                 }
                 SimpleGui gui = buildGui(player, island, bank, upgrades, optLoc);

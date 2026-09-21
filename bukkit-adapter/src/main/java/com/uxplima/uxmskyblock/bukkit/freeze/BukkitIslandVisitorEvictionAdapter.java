@@ -9,10 +9,10 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
-import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandVisitorEvictionPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -31,7 +31,7 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
     private final IslandStoragePort islandStoragePort;
     private final SchedulerPort schedulerPort;
     private volatile @Nullable String evacuationWorldName;
-    private volatile @Nullable MessageProvider messageProvider;
+    private final Messages messages;
 
     public record EvictionPlan(
             IslandId islandId,
@@ -40,8 +40,8 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
             @Nullable String reason) {}
 
     public BukkitIslandVisitorEvictionAdapter(
-            Plugin plugin, IslandStoragePort islandStoragePort, SchedulerPort schedulerPort) {
-        this(plugin, islandStoragePort, schedulerPort, null, null);
+            Plugin plugin, IslandStoragePort islandStoragePort, SchedulerPort schedulerPort, Messages messages) {
+        this(plugin, islandStoragePort, schedulerPort, null, messages);
     }
 
     public BukkitIslandVisitorEvictionAdapter(
@@ -49,28 +49,20 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
             IslandStoragePort islandStoragePort,
             SchedulerPort schedulerPort,
             @Nullable String evacuationWorldName,
-            @Nullable MessageProvider messageProvider) {
+            Messages messages) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.evacuationWorldName = evacuationWorldName;
-        this.messageProvider = messageProvider;
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public void setEvacuationWorldName(@Nullable String evacuationWorldName) {
         this.evacuationWorldName = evacuationWorldName;
     }
 
-    public void setMessageProvider(@Nullable MessageProvider messageProvider) {
-        this.messageProvider = messageProvider;
-    }
-
     public @Nullable String evacuationWorldName() {
         return evacuationWorldName;
-    }
-
-    public @Nullable MessageProvider messageProvider() {
-        return messageProvider;
     }
 
     @Override
@@ -131,27 +123,11 @@ public final class BukkitIslandVisitorEvictionAdapter implements IslandVisitorEv
         }
     }
 
-    @SuppressWarnings("EmptyCatch")
     private void sendFrozenNotice(Player player, @Nullable String reason) {
-        String reasonText = reason != null ? reason : "Administrative quarantine";
-        if (messageProvider != null) {
-            String locale = "en";
-            try {
-                if (player.locale() != null) {
-                    locale = player.locale().getLanguage();
-                }
-            } catch (Throwable ignored) {
-            }
-            player.sendMessage(messageProvider.getComponent(
-                    "error.island_frozen", locale, Placeholder.parsed("reason", reasonText)));
-        } else {
-            player.sendMessage(MiniMessage.miniMessage()
-                    .deserialize(
-                            "<red><bold>QUARANTINE:</bold> This island has been placed under administrative freeze. "
-                                    + "Reason: <yellow>"
-                                    + reasonText
-                                    + "</yellow></red>"));
-        }
+        Component reasonText = reason != null
+                ? Component.text(reason)
+                : messages.renderPlain(player, "protection.quarantine_default_reason");
+        messages.send(player, "error.island_frozen", Placeholder.component("reason", reasonText));
     }
 
     private boolean isStaffOrBypass(Player player) {

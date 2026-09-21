@@ -117,7 +117,10 @@ public final class AdminWiring {
                 java.time.Clock.systemUTC());
         this.antiAbuseListener = config.moduleSettings().isModuleEnabled("anti-abuse")
                 ? new IslandAntiAbuseListener(
-                        persistence.islandStoragePort(), this.antiAbuseService, config.antiAbuseConfig())
+                        persistence.islandStoragePort(),
+                        this.antiAbuseService,
+                        config.antiAbuseConfig(),
+                        config.messages())
                 : null;
     }
 

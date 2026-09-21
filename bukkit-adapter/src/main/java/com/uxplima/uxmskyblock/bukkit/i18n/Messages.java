@@ -115,6 +115,10 @@ public final class Messages {
 
     private String languageOf(Audience viewer) {
         Objects.requireNonNull(viewer, "viewer must not be null");
-        return locales.localeOf(viewer).getLanguage().toLowerCase(Locale.ROOT);
+        Locale locale = locales.localeOf(viewer);
+        if (locale == null) {
+            return provider.defaultLocale();
+        }
+        return locale.getLanguage().toLowerCase(Locale.ROOT);
     }
 }

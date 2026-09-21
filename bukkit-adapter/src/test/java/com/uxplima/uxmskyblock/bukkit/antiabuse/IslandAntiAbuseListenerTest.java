@@ -22,6 +22,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -55,7 +56,7 @@ class IslandAntiAbuseListenerTest extends MockBukkitHarness {
         when(mockService.clock()).thenReturn(Clock.systemUTC());
 
         configuration = AntiAbuseConfiguration.defaultConfiguration();
-        listener = new IslandAntiAbuseListener(mockStoragePort, mockService, configuration);
+        listener = new IslandAntiAbuseListener(mockStoragePort, mockService, configuration, Messages.bundled());
 
         ownerPlayer = createPlayer("OwnerPlayer");
         visitorPlayer = createPlayer("VisitorPlayer");

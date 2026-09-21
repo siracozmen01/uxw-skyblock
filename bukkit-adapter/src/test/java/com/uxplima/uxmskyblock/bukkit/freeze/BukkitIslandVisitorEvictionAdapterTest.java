@@ -52,7 +52,8 @@ class BukkitIslandVisitorEvictionAdapterTest {
 
         storagePort = mock(IslandStoragePort.class);
         scheduler = new DirectScheduler();
-        adapter = new BukkitIslandVisitorEvictionAdapter(plugin, storagePort, scheduler);
+        adapter = new BukkitIslandVisitorEvictionAdapter(
+                plugin, storagePort, scheduler, com.uxplima.uxmskyblock.bukkit.i18n.Messages.bundled());
 
         islandId = IslandId.of(UUID.randomUUID());
         testWorld = mock(World.class);
@@ -155,12 +156,7 @@ class BukkitIslandVisitorEvictionAdapterTest {
         when(customWorld.getSpawnLocation()).thenReturn(customSpawn);
         when(server.getWorld("lobby_world")).thenReturn(customWorld);
 
-        com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider messageProvider =
-                new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en");
-        messageProvider.loadBundledDefaults(getClass().getClassLoader());
-
         adapter.setEvacuationWorldName("lobby_world");
-        adapter.setMessageProvider(messageProvider);
 
         IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 100);
         IslandLocation location = new IslandLocation(islandId, "skyblock_world", bounds, 0, 100, 0, 0, 0);
