@@ -283,7 +283,8 @@ public final class IslandAntiAbuseService {
     /** Whether this node looked recently enough to trust that the island has no quarantine. */
     private boolean recentlyFoundClean(IslandId islandId, Instant now) {
         Instant lookedAt = knownClean.get(islandId);
-        if (lookedAt == null) {
+        if (lookedAt == null || quarantineLookupTtl.isZero()) {
+            // An expiry of zero is an operator saying they want no cache, so every check reads.
             return false;
         }
         if (lookedAt.plus(quarantineLookupTtl).isBefore(now)) {

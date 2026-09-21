@@ -61,7 +61,8 @@ public final class IslandBoosterListener implements Listener {
 
     private record CachedMultiplier(double value, Instant readAt) {
         boolean isFreshAt(Instant now, Duration ttl) {
-            return !readAt.plus(ttl).isBefore(now);
+            // An expiry of zero is an operator saying they want no cache, so nothing is ever fresh.
+            return !ttl.isZero() && !readAt.plus(ttl).isBefore(now);
         }
     }
 

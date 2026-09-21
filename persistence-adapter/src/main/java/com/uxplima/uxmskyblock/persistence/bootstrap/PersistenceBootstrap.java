@@ -1,6 +1,8 @@
 package com.uxplima.uxmskyblock.persistence.bootstrap;
 
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.Objects;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
@@ -65,6 +67,7 @@ import com.uxplima.uxmskyblock.persistence.season.PlayerIslandSeasonAdapter;
 import com.uxplima.uxmskyblock.persistence.session.PlayerSessionAuthorityAdapter;
 import com.uxplima.uxmskyblock.persistence.snapshot.SqlRootRelationalSnapshotAdapter;
 import com.uxplima.uxmskyblock.persistence.social.PlayerIslandSocialAdapter;
+import com.uxplima.uxmskyblock.persistence.upgrade.CachingIslandUpgradeStorage;
 import com.uxplima.uxmskyblock.persistence.upgrade.PlayerIslandUpgradeAdapter;
 import com.uxplima.uxmskyblock.persistence.vault.SqlIslandVaultStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.warp.SqlIslandWarpStorageAdapter;
@@ -77,10 +80,19 @@ import com.uxplima.uxmskyblock.persistence.world.SqlSpiralSlotPoolAdapter;
  */
 public final class PersistenceBootstrap implements AutoCloseable {
 
+    /**
+     * How long a remembered upgrade tier stays good.
+     *
+     * <p>Every write goes through the cache, so a purchase on this node is visible at once and this
+     * only bounds how long it takes to notice one made on another node. An upgrade is bought once
+     * and read on every block placed, so a minute is generous in the direction that matters.
+     */
+    private static final Duration UPGRADE_TIER_CACHE_TTL = Duration.ofMinutes(1);
+
     private final Database database;
     private final PlayerIslandStorageAdapter islandStorageAdapter;
     private final PlayerIslandBankAdapter islandBankAdapter;
-    private final PlayerIslandUpgradeAdapter islandUpgradeAdapter;
+    private final CachingIslandUpgradeStorage islandUpgradeAdapter;
     private final PlayerIslandLeaderboardAdapter islandLeaderboardAdapter;
     private final PlayerBackupCatalogAdapter backupCatalogAdapter;
     private final TransactionalOutboxAdapter outboxAdapter;
@@ -128,7 +140,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
         this.islandStorageAdapter = new PlayerIslandStorageAdapter(database);
         this.islandBankAdapter = new PlayerIslandBankAdapter(database);
-        this.islandUpgradeAdapter = new PlayerIslandUpgradeAdapter(database);
+        // A block limit is read on every placement, and it reads an upgrade tier. Reading that
+        // tier from the database each time was a query per block placed, on the event thread.
+        this.islandUpgradeAdapter = new CachingIslandUpgradeStorage(
+                new PlayerIslandUpgradeAdapter(database), UPGRADE_TIER_CACHE_TTL, Clock.systemUTC());
         this.islandDimensionAdapter = new PlayerIslandDimensionAdapter(database);
         this.islandLeaderboardAdapter = new PlayerIslandLeaderboardAdapter(database);
         this.backupCatalogAdapter = new PlayerBackupCatalogAdapter(database);

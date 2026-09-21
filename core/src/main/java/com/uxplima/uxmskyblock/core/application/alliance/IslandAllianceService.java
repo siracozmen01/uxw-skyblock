@@ -3,8 +3,10 @@ package com.uxplima.uxmskyblock.core.application.alliance;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceId;
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteExpiredException;
@@ -27,12 +29,41 @@ public final class IslandAllianceService {
     public static final int DEFAULT_MAX_ALLIES = 2;
     public static final Duration DEFAULT_INVITE_TIMEOUT = Duration.ofMinutes(5);
 
+    /**
+     * How long an answer about two islands being allied stays good enough for a combat check.
+     *
+     * <p>Friendly fire shielding asks this on every hit, and a hit is not rare. Every alliance this
+     * node forms or breaks clears the answer at once, so this only bounds how long it takes to
+     * notice one formed on another node: half a minute of shielding that should have lifted, or
+     * should have applied, at the moment two allies stop being allies mid fight.
+     */
+    public static final Duration ALLIANCE_CACHE_TTL = Duration.ofSeconds(30);
+
     private final IslandAllianceStoragePort storagePort;
     private final int maxAllies;
     private final Duration inviteTimeout;
     private final boolean friendlyFireShielding;
     private final boolean privilegedVisitAccess;
     private final boolean allianceChatEnabled;
+
+    /**
+     * Whether two islands are allied, as last read, keyed by the pair in a fixed order.
+     *
+     * <p>{@code areAllied} is called from the damage handler, so it ran a query per hit on the
+     * event thread. An alliance is formed once and asked about constantly.
+     */
+    private final Map<AlliancePair, CachedAnswer> allianceAnswers = new ConcurrentHashMap<>();
+
+    /** Two islands in a fixed order, so A against B and B against A are one question. */
+    private record AlliancePair(String first, String second) {
+        static AlliancePair of(IslandId a, IslandId b) {
+            String left = a.value().toString();
+            String right = b.value().toString();
+            return left.compareTo(right) <= 0 ? new AlliancePair(left, right) : new AlliancePair(right, left);
+        }
+    }
+
+    private record CachedAnswer(boolean allied, Instant readAt) {}
 
     public IslandAllianceService(
             IslandAllianceStoragePort storagePort,
@@ -129,6 +160,7 @@ public final class IslandAllianceService {
         IslandAlliance alliance = IslandAlliance.canonical(AllianceId.random(), senderIsland, targetIsland, now);
         storagePort.saveAlliance(alliance);
         storagePort.deleteInvite(senderIsland, targetIsland);
+        forgetAnswersFor(senderIsland, targetIsland);
         return alliance;
     }
 
@@ -148,6 +180,7 @@ public final class IslandAllianceService {
         Objects.requireNonNull(islandA, "islandA must not be null");
         Objects.requireNonNull(islandB, "islandB must not be null");
         storagePort.removeAlliance(islandA, islandB);
+        forgetAnswersFor(islandA, islandB);
     }
 
     /**
@@ -159,7 +192,20 @@ public final class IslandAllianceService {
         if (islandA.equals(islandB)) {
             return false;
         }
-        return storagePort.areAllied(islandA, islandB);
+        AlliancePair pair = AlliancePair.of(islandA, islandB);
+        Instant now = Instant.now();
+        CachedAnswer cached = allianceAnswers.get(pair);
+        if (cached != null && !cached.readAt().plus(ALLIANCE_CACHE_TTL).isBefore(now)) {
+            return cached.allied();
+        }
+        boolean allied = storagePort.areAllied(islandA, islandB);
+        allianceAnswers.put(pair, new CachedAnswer(allied, now));
+        return allied;
+    }
+
+    /** Forgets what was last read about two islands, because one of them just changed. */
+    private void forgetAnswersFor(IslandId islandA, IslandId islandB) {
+        allianceAnswers.remove(AlliancePair.of(islandA, islandB));
     }
 
     /**
