@@ -236,20 +236,26 @@ public final class IslandProgressionCommands {
             com.uxplima.uxmskyblock.core.domain.island.IslandLocation loc = optLoc.get();
             long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
 
-            worthService.triggerAsyncRecalculation(islandId, loc.worldName(), loc.bounds(), 0, bankBalance, score -> {
-                schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                    send(player, "level.recalculated");
-                    send(
-                            player,
-                            "level.new_level",
-                            number("level", score.calculatedLevel()),
-                            number("score", score.totalScore()));
-                    send(
-                            player,
-                            "level.worth",
-                            Placeholder.unparsed("worth", money(score.dampedEconomicWorthMinorUnits())));
-                });
-            });
+            // The same hardcoded zero that once sat in executeLevel sat here too, and this is the
+            // worse half: the recalculation is what rescans the island and publishes the new level,
+            // so levels.quest-weight was dropped from the number a player is finally given.
+            int completed = completedMissions(islandId, profileId);
+
+            worthService.triggerAsyncRecalculation(
+                    islandId, loc.worldName(), loc.bounds(), completed, bankBalance, score -> {
+                        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                            send(player, "level.recalculated");
+                            send(
+                                    player,
+                                    "level.new_level",
+                                    number("level", score.calculatedLevel()),
+                                    number("score", score.totalScore()));
+                            send(
+                                    player,
+                                    "level.worth",
+                                    Placeholder.unparsed("worth", money(score.dampedEconomicWorthMinorUnits())));
+                        });
+                    });
         });
         return Cmd.OK;
     }
