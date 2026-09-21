@@ -5,6 +5,7 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.mission.IslandMissionListener;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
+import com.uxplima.uxmskyblock.core.application.border.IslandSizeAllowance;
 import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
@@ -17,6 +18,7 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
+import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
@@ -48,7 +50,8 @@ public final class GameplayCreationWiring {
             SchedulerPort scheduler,
             AdaptiveBackpressureController backpressureController,
             IslandAccessService accessService,
-            RewardInboxService rewardInboxService) {
+            RewardInboxService rewardInboxService,
+            IslandUpgradeService upgradeService) {
         Objects.requireNonNull(config, "config must not be null");
         Objects.requireNonNull(persistence, "persistence must not be null");
         Objects.requireNonNull(authority, "authority must not be null");
@@ -56,6 +59,7 @@ public final class GameplayCreationWiring {
         Objects.requireNonNull(backpressureController, "backpressureController must not be null");
         Objects.requireNonNull(accessService, "accessService must not be null");
         Objects.requireNonNull(rewardInboxService, "rewardInboxService must not be null");
+        Objects.requireNonNull(upgradeService, "upgradeService must not be null");
 
         this.presetCatalog = new StarterPresetCatalog();
         this.schematicEngine = new StarterSchematicEngine(backpressureController);
@@ -75,7 +79,9 @@ public final class GameplayCreationWiring {
                 gridService,
                 persistence.worldGridAllocationPort(),
                 persistence.outboxPort(),
-                this.gameModeHierarchyService);
+                this.gameModeHierarchyService,
+                new IslandSizeAllowance(upgradeService),
+                config.worldConfig().islandSpawnY());
         this.locationService =
                 new IslandLocationService(persistence.islandStoragePort(), persistence.islandMutationLock());
         this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());

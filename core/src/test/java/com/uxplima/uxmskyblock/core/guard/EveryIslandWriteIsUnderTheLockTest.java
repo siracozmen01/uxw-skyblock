@@ -50,6 +50,7 @@ class EveryIslandWriteIsUnderTheLockTest {
             "unfreezeIslandInside(",
             "transitionEconomicStateInside(",
             "transitionLifecycleInside(",
+            "moveInside(",
             "write(");
 
     @Test

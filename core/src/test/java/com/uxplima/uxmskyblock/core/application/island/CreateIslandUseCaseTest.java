@@ -213,6 +213,29 @@ class CreateIslandUseCaseTest {
     }
 
     @Test
+    @DisplayName("A new island reaches as far as it is told, not as far as a number in the code said")
+    void theStartingRadiusIsTheOneItIsGiven() {
+        CreateIslandUseCase sized = new CreateIslandUseCase(
+                storage, authority, bank, presetCatalog, gridService, allocationPort, null, null, ignored -> 37, 64);
+
+        CreateIslandUseCase.CreateIslandResult result = sized.execute(
+                new PlayerUuid(UUID.randomUUID()),
+                new ProfileId(UUID.randomUUID()),
+                "classic",
+                ServerNodeId.of("node-1"),
+                "world");
+
+        CreateIslandUseCase.CreateIslandResult.Success success =
+                (CreateIslandUseCase.CreateIslandResult.Success) result;
+        assertThat(success.island().bounds().radius())
+                .describedAs("how far the new island reaches")
+                .isEqualTo(37);
+        assertThat(success.location().spawnY())
+                .describedAs("how high the new island's spawn sits")
+                .isEqualTo(65.0);
+    }
+
+    @Test
     @DisplayName("A profile that clicks create eight times gets one island, not eight")
     void eightClicksMakeOneIsland() throws Exception {
         int clicks = 8;

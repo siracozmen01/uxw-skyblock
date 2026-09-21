@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.ToIntFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -65,6 +66,33 @@ public final class CreateIslandUseCase {
      */
     private final KeyedMutationLock<ProfileId> profileLock = new KeyedMutationLock<>();
 
+    /**
+     * How far a new island reaches from its centre.
+     *
+     * <p>It used to be the number 50, written twice in this file, and it did not match anything: the
+     * first tier of the island size upgrade an operator can edit says 25. A new island now starts
+     * wherever the island's own size allowance puts it, which for an island that has bought nothing
+     * is the first tier of that upgrade, which is a line in the operator's file.
+     */
+    private final ToIntFunction<IslandId> startingRadius;
+
+    /**
+     * The radius a caller that names none gets. Only the convenience constructors use it; the wiring
+     * always names one, read off the island size upgrade.
+     */
+    public static final int DEFAULT_STARTING_RADIUS = 25;
+
+    /**
+     * How high above the void a new island's spawn sits.
+     *
+     * <p>It used to be the number 100 written twice in this file. It is the height the starter
+     * schematic is pasted at, which is a world decision rather than ours, so the wiring reads it out
+     * of the world configuration and this is only what a caller that names none gets.
+     */
+    public static final int DEFAULT_ISLAND_SPAWN_Y = 100;
+
+    private final int islandSpawnY;
+
     public CreateIslandUseCase(
             IslandStoragePort islandStoragePort,
             IslandAuthorityPort islandAuthorityPort,
@@ -101,7 +129,34 @@ public final class CreateIslandUseCase {
             WorldGridAllocationPort worldGridAllocationPort,
             @Nullable OutboxPort outboxPort,
             @Nullable GameModeHierarchyService gameModeHierarchy) {
+        this(
+                islandStoragePort,
+                islandAuthorityPort,
+                islandBankPort,
+                presetCatalog,
+                worldGridPort,
+                worldGridAllocationPort,
+                outboxPort,
+                gameModeHierarchy,
+                ignored -> DEFAULT_STARTING_RADIUS,
+                DEFAULT_ISLAND_SPAWN_Y);
+    }
+
+    /** The canonical constructor, carrying how far a new island reaches. */
+    public CreateIslandUseCase(
+            IslandStoragePort islandStoragePort,
+            IslandAuthorityPort islandAuthorityPort,
+            IslandBankPort islandBankPort,
+            StarterPresetCatalog presetCatalog,
+            WorldGridPort worldGridPort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            @Nullable OutboxPort outboxPort,
+            @Nullable GameModeHierarchyService gameModeHierarchy,
+            ToIntFunction<IslandId> startingRadius,
+            int islandSpawnY) {
         this.gameModeHierarchy = gameModeHierarchy;
+        this.startingRadius = Objects.requireNonNull(startingRadius, "startingRadius must not be null");
+        this.islandSpawnY = islandSpawnY;
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.islandAuthorityPort = Objects.requireNonNull(islandAuthorityPort, "islandAuthorityPort must not be null");
         this.islandBankPort = Objects.requireNonNull(islandBankPort, "islandBankPort must not be null");
@@ -159,13 +214,11 @@ public final class CreateIslandUseCase {
 
         WorldGridAllocation allocation = worldGridAllocationPort.allocateNext(serverNodeId, worldName, islandId);
         IslandCoordinates center = new IslandCoordinates(allocation.centerX(), allocation.centerZ());
-        int initialRadius = 50;
-        IslandBounds bounds = worldGridPort.createBounds(center, initialRadius);
+        IslandBounds bounds = worldGridPort.createBounds(center, startingRadius.applyAsInt(islandId));
 
         Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
-        int spawnY = 100;
         IslandLocation location = new IslandLocation(
-                islandId, worldName, bounds, center.x() + 0.5, spawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
+                islandId, worldName, bounds, center.x() + 0.5, islandSpawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
 
         String payload = String.format(
                 "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
@@ -230,13 +283,11 @@ public final class CreateIslandUseCase {
         IslandId islandId = IslandId.of(UUID.randomUUID());
 
         IslandCoordinates center = worldGridPort.allocateCenter(sequenceIndex);
-        int initialRadius = 50;
-        IslandBounds bounds = worldGridPort.createBounds(center, initialRadius);
+        IslandBounds bounds = worldGridPort.createBounds(center, startingRadius.applyAsInt(islandId));
 
         Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
-        int spawnY = 100;
         IslandLocation location = new IslandLocation(
-                islandId, worldName, bounds, center.x() + 0.5, spawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
+                islandId, worldName, bounds, center.x() + 0.5, islandSpawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
 
         String payload = String.format(
                 "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",

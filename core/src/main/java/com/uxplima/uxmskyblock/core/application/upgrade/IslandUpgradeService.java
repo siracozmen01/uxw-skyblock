@@ -60,6 +60,25 @@ public final class IslandUpgradeService {
         this.authorityPort = authorityPort;
     }
 
+    /**
+     * Told after a purchase moves a tier, so the parts of the server a tier changes can follow it.
+     *
+     * <p>A tier is a number in a table until something acts on it. The island size upgrade had five
+     * tiers and a radius on each, and the island's edge stayed where it was created whatever was
+     * bought, because nothing was listening.
+     */
+    @FunctionalInterface
+    public interface UpgradeApplied {
+        void upgraded(IslandId islandId, UpgradeId upgradeId, int newTier);
+    }
+
+    private final java.util.List<UpgradeApplied> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Registers something to run after a purchase moves a tier. */
+    public void whenUpgraded(UpgradeApplied listener) {
+        listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
+    }
+
     /** Whether this service was built with what a purchase needs. */
     public boolean canPurchase() {
         return bankPort != null && authorityPort != null;
@@ -252,7 +271,26 @@ public final class IslandUpgradeService {
         tierCache
                 .computeIfAbsent(islandId, k -> new java.util.concurrent.ConcurrentHashMap<>())
                 .put(upgradeId, nextTierNum);
+        announce(islandId, upgradeId, nextTierNum);
         return new UpgradePurchaseOutcome.Success(upgradeId, nextTierNum, nextTier.costMinorUnits());
+    }
+
+    /**
+     * Tells every listener the tier moved. One that throws does not undo a purchase that is paid for
+     * and written; it is logged and the rest are still told.
+     */
+    private void announce(IslandId islandId, UpgradeId upgradeId, int newTier) {
+        for (UpgradeApplied listener : listeners) {
+            try {
+                listener.upgraded(islandId, upgradeId, newTier);
+            } catch (RuntimeException e) {
+                LOGGER.log(
+                        Level.WARNING,
+                        e,
+                        () -> "An upgrade listener failed after " + upgradeId.key() + " moved to tier " + newTier
+                                + " on island " + islandId + ". The purchase itself stands.");
+            }
+        }
     }
 
     /**

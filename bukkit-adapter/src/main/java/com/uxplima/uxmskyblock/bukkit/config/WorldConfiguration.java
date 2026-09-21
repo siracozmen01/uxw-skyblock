@@ -13,10 +13,19 @@ import org.spongepowered.configurate.ConfigurationNode;
  */
 public final class WorldConfiguration {
 
+    /** The height a new island's spawn sits at, when the file names none. */
+    public static final int DEFAULT_ISLAND_SPAWN_Y = 100;
+
     private final Set<String> suppressedStructures;
+    private final int islandSpawnY;
 
     public WorldConfiguration(Set<String> suppressedStructures) {
+        this(suppressedStructures, DEFAULT_ISLAND_SPAWN_Y);
+    }
+
+    public WorldConfiguration(Set<String> suppressedStructures, int islandSpawnY) {
         this.suppressedStructures = Collections.unmodifiableSet(new HashSet<>(suppressedStructures));
+        this.islandSpawnY = islandSpawnY;
     }
 
     public static WorldConfiguration defaultConfiguration() {
@@ -35,15 +44,27 @@ public final class WorldConfiguration {
             return defaultConfiguration();
         }
 
+        int spawnY = rootNode.node("island-spawn-y").getInt(DEFAULT_ISLAND_SPAWN_Y);
+
         try {
             List<String> list = rootNode.node("suppressed-structures").getList(String.class);
             if (list == null || list.isEmpty()) {
-                return defaultConfiguration();
+                return new WorldConfiguration(defaultConfiguration().suppressedStructures(), spawnY);
             }
-            return new WorldConfiguration(new HashSet<>(list));
+            return new WorldConfiguration(new HashSet<>(list), spawnY);
         } catch (org.spongepowered.configurate.serialize.SerializationException e) {
-            return defaultConfiguration();
+            return new WorldConfiguration(defaultConfiguration().suppressedStructures(), spawnY);
         }
+    }
+
+    /**
+     * How high above the void a new island's spawn sits.
+     *
+     * <p>It is the height the starter schematic is pasted at, so an operator who builds their
+     * starter island at a different height moves this with it rather than asking for a release.
+     */
+    public int islandSpawnY() {
+        return islandSpawnY;
     }
 
     public boolean isSuppressed(String structureKey) {

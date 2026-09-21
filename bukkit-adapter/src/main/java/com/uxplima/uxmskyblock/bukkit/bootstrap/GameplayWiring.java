@@ -47,6 +47,8 @@ import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
+import com.uxplima.uxmskyblock.core.application.border.IslandBorderService;
+import com.uxplima.uxmskyblock.core.application.border.IslandSizeAllowance;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
@@ -83,6 +85,7 @@ import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.application.world.SpiralWorldGridService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
+import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter;
@@ -103,6 +106,7 @@ public final class GameplayWiring {
     private final AdminWiring adminWiring;
     private final StorageBucket backupBucket;
     private final IslandCacheEviction cacheEviction;
+    private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
     private final SocialWiring socialWiring;
@@ -181,7 +185,8 @@ public final class GameplayWiring {
                 scheduler,
                 backpressureController,
                 accessService,
-                this.economicWiring.rewardInboxService());
+                this.economicWiring.rewardInboxService(),
+                this.economicWiring.upgradeService());
 
         this.socialWiring = new SocialWiring(
                 config,
@@ -230,6 +235,25 @@ public final class GameplayWiring {
                 scheduler,
                 worldName,
                 this.economicWiring.upgradeService());
+
+        // The island size upgrade had five tiers, a cost for each and a radius on each, and nothing
+        // read the radius: an island that paid for the top tier reached exactly as far as one that
+        // had paid nothing. The edge follows the tier now, and the protection index is told, because
+        // it is what answers for every block a player touches.
+        this.borderService = new IslandBorderService(
+                persistence.islandStoragePort(),
+                new IslandSizeAllowance(this.economicWiring.upgradeService()),
+                persistence.islandMutationLock());
+        this.economicWiring.upgradeService().whenUpgraded((islandId, upgradeId, newTier) -> {
+            if (!UpgradeId.SIZE.equals(upgradeId)) {
+                return;
+            }
+            borderService
+                    .applyAllowance(islandId)
+                    .ifPresent(moved -> protectionListener
+                            .spatialIndex()
+                            .indexIsland(moved.island(), moved.location().worldName()));
+        });
 
         // The rest of the caches register as they are built, after the wiring that owns them.
         this.cacheEviction.whenForgotten(this.environmentWiring.limitService()::clearIsland);
