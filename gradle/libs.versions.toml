@@ -24,7 +24,7 @@ mockito        = "5.23.0"
 mockbukkit     = "4.116.1"
 jqwik          = "1.9.3"
 archunit       = "1.4.2"
-testcontainers = "1.20.4"
+testcontainers = "1.21.4"
 
 # Quality & Tooling
 errorprone     = "2.50.0"
