@@ -44,6 +44,18 @@ public final class IslandDimensionListener implements Listener {
     private final String overworldName;
     private final Messages messages;
 
+    /** How long a player is treated as already travelling before the portal may start again. */
+    private static final java.time.Duration TRAVEL_DEBOUNCE = java.time.Duration.ofSeconds(5);
+
+    /**
+     * Who is already on their way through a portal.
+     *
+     * <p>A cancelled portal event fires again while the player is still standing in the portal, and
+     * the travel this starts finishes some hops later. Without this, a player who waits in a portal
+     * starts the same journey several times over.
+     */
+    private final java.util.Set<java.util.UUID> travelling = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public IslandDimensionListener(
             IslandDimensionService dimensionService,
             IslandLocationService islandLocationService,
@@ -77,142 +89,68 @@ public final class IslandDimensionListener implements Listener {
             return;
         }
 
+        // A portal has to be answered before the event returns, and answering it takes three rows:
+        // which island the player belongs to, whether the dimension is unlocked, and where the
+        // island is. Reading them here stopped the region for as long as the database took, on the
+        // thread running the game for everybody around the portal. The portal is refused and the
+        // travel is done on the scheduler, which is the path /is nether already takes.
+        event.setCancelled(true);
+        if (!travelling.add(player.getUniqueId())) {
+            return;
+        }
+        schedulerPort.asyncAfter(TRAVEL_DEBOUNCE, () -> travelling.remove(player.getUniqueId()));
+
         boolean isInOverworld = currentWorld.getName().equalsIgnoreCase(overworldName);
         if (!isInOverworld) {
-            // Returning from dimension to Overworld home
-            routeReturnToOverworld(event, player);
+            schedulerPort.async(() -> returnToOverworld(player));
             return;
         }
 
-        // Entering dimension from Overworld
         IslandDimensionType targetDimension = (cause == PlayerTeleportEvent.TeleportCause.END_PORTAL)
                 ? IslandDimensionType.THE_END
                 : IslandDimensionType.NETHER;
 
-        handleDimensionEntry(event, player, targetDimension);
+        Optional<ProfileId> optProfile = profileResolver.apply(player);
+        if (optProfile.isEmpty()) {
+            send(player, "dimension.no_profile");
+            return;
+        }
+        ProfileId profileId = optProfile.get();
+        schedulerPort.async(() -> travelToDimension(player, profileId, targetDimension));
     }
 
-    private void routeReturnToOverworld(PlayerPortalEvent event, Player player) {
-        Optional<ProfileId> optProfile = profileResolver.apply(player);
-        if (optProfile.isPresent()) {
-            Optional<IslandLocation> optHome = islandLocationService.resolveHome(optProfile.get());
+    /**
+     * Sends the player back to their island, or to the overworld spawn when they have none.
+     *
+     * <p>Runs on the scheduler: resolving a home is a read, and looking a world up and moving a
+     * player belong to the thread that owns them.
+     */
+    private void returnToOverworld(Player player) {
+        Optional<IslandLocation> optHome = profileResolver.apply(player).flatMap(islandLocationService::resolveHome);
+
+        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+            if (!player.isOnline()) {
+                return;
+            }
             if (optHome.isPresent()) {
                 IslandLocation home = optHome.get();
                 World overworld = Bukkit.getWorld(home.worldName());
                 if (overworld != null) {
-                    Location dest = new Location(
-                            overworld, home.spawnX(), home.spawnY(), home.spawnZ(), home.spawnYaw(), home.spawnPitch());
-                    event.setTo(dest);
+                    var unused = player.teleportAsync(new Location(
+                            overworld,
+                            home.spawnX(),
+                            home.spawnY(),
+                            home.spawnZ(),
+                            home.spawnYaw(),
+                            home.spawnPitch()));
                     return;
                 }
             }
-        }
-
-        World defaultOverworld = Bukkit.getWorld(overworldName);
-        if (defaultOverworld != null) {
-            event.setTo(defaultOverworld.getSpawnLocation());
-        }
-    }
-
-    private void handleDimensionEntry(PlayerPortalEvent event, Player player, IslandDimensionType targetDimension) {
-        Optional<ProfileId> optProfile = profileResolver.apply(player);
-        if (optProfile.isEmpty()) {
-            event.setCancelled(true);
-            send(player, "dimension.no_profile");
-            return;
-        }
-
-        Optional<IslandId> optIslandId = islandLocationService.findIslandId(optProfile.get());
-        if (optIslandId.isEmpty()) {
-            event.setCancelled(true);
-            send(player, "dimension.no_island");
-            return;
-        }
-
-        IslandId islandId = optIslandId.get();
-        IslandDimensionAccessResult accessResult = dimensionService.checkAccess(islandId, targetDimension);
-
-        switch (accessResult) {
-            case IslandDimensionAccessResult.Disabled disabled -> {
-                event.setCancelled(true);
-                send(player, "dimension.portal_disabled", dimensionName(player, targetDimension));
+            World defaultOverworld = Bukkit.getWorld(overworldName);
+            if (defaultOverworld != null) {
+                var unusedFallback = player.teleportAsync(defaultOverworld.getSpawnLocation());
             }
-            case IslandDimensionAccessResult.Locked locked -> {
-                event.setCancelled(true);
-                send(
-                        player,
-                        "dimension.locked",
-                        dimensionName(player, targetDimension),
-                        Placeholder.unparsed("upgrade", locked.requiredUpgrade().key()));
-            }
-            case IslandDimensionAccessResult.NoIsland noIsland -> {
-                event.setCancelled(true);
-                send(player, "dimension.no_island");
-            }
-            case IslandDimensionAccessResult.Allowed allowed -> {
-                World destWorld = Bukkit.getWorld(allowed.targetWorld());
-                if (destWorld == null) {
-                    event.setCancelled(true);
-                    send(player, "dimension.world_unloaded", Placeholder.unparsed("world", allowed.targetWorld()));
-                    return;
-                }
-
-                if (allowed.mode() == DimensionMode.SHARED_WORLD) {
-                    event.setTo(destWorld.getSpawnLocation());
-                    return;
-                }
-
-                // PRIVATE_ISLAND mode
-                Optional<IslandLocation> optLocation = islandLocationService.findLocation(islandId);
-                if (optLocation.isEmpty()) {
-                    event.setCancelled(true);
-                    send(player, "dimension.no_coordinates");
-                    return;
-                }
-
-                IslandLocation loc = optLocation.get();
-                int centerX = loc.bounds().centerX();
-                int centerZ = loc.bounds().centerZ();
-                int targetY = 64;
-
-                if (allowed.schematicRequired()) {
-                    event.setCancelled(true);
-                    send(player, "dimension.generating", dimensionName(player, targetDimension));
-
-                    int chunkX = centerX >> 4;
-                    int chunkZ = centerZ >> 4;
-                    String worldName = allowed.targetWorld();
-
-                    schedulerPort.onRegion(worldName, chunkX, chunkZ, () -> {
-                        World w = Bukkit.getWorld(worldName);
-                        if (w != null) {
-                            schematicEngine.pasteDimensionPlatform(w, centerX, targetY, centerZ, targetDimension);
-                            dimensionService.markDimensionGenerated(islandId, targetDimension);
-                        }
-
-                        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                            if (!player.isOnline()) {
-                                return;
-                            }
-                            Location pLoc = player.getLocation();
-                            float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
-                            float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
-                            Location targetLoc =
-                                    new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
-                            player.teleport(targetLoc);
-                            send(player, "dimension.welcome", dimensionName(player, targetDimension));
-                        });
-                    });
-                } else {
-                    Location pLoc = player.getLocation();
-                    float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
-                    float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
-                    Location targetLoc =
-                            new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
-                    event.setTo(targetLoc);
-                }
-            }
-        }
+        });
     }
 
     /**

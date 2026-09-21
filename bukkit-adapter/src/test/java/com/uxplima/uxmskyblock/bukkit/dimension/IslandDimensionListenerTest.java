@@ -49,6 +49,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
     private IslandLocationService islandLocationService;
     private StarterSchematicEngine schematicEngine;
     private IslandDimensionListener listener;
+    private org.bukkit.entity.Player travelling;
 
     private World overworld;
     private World netherWorld;
@@ -110,6 +111,23 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         IslandLocation loc = new IslandLocation(islandId, "skyblock_world", bounds, 100.5, 65.0, 200.5, 0f, 0f);
         when(islandLocationService.findLocation(islandId)).thenReturn(Optional.of(loc));
         when(islandLocationService.resolveHome(profileId)).thenReturn(Optional.of(loc));
+
+        // MockBukkit does not implement teleportAsync, and a portal now moves the player rather
+        // than rewriting the event's destination. The spy answers the call so the test can read
+        // where the player was actually sent.
+        travelling = org.mockito.Mockito.spy(player);
+        org.mockito.Mockito.doAnswer(invocation -> java.util.concurrent.CompletableFuture.completedFuture(true))
+                .when(travelling)
+                .teleportAsync(org.mockito.ArgumentMatchers.any(Location.class));
+    }
+
+    /** Where the player was sent, or empty when nothing sent them anywhere. */
+    private Optional<Location> sentTo() {
+        org.mockito.ArgumentCaptor<Location> captor = org.mockito.ArgumentCaptor.forClass(Location.class);
+        org.mockito.Mockito.verify(travelling, org.mockito.Mockito.atLeast(0)).teleportAsync(captor.capture());
+        return captor.getAllValues().isEmpty()
+                ? Optional.empty()
+                : Optional.of(captor.getAllValues().get(captor.getAllValues().size() - 1));
     }
 
     @Test
@@ -117,7 +135,8 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
     void ignoresUnrelatedPortalCauses() {
         Location from = new Location(overworld, 0, 64, 0);
         Location to = new Location(netherWorld, 0, 64, 0);
-        PlayerPortalEvent event = new PlayerPortalEvent(player, from, to, PlayerTeleportEvent.TeleportCause.COMMAND);
+        PlayerPortalEvent event =
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.COMMAND);
 
         listener.onPlayerPortal(event);
         assertThat(event.isCancelled()).isFalse();
@@ -131,7 +150,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         Location from = new Location(overworld, 100, 64, 200);
         Location to = new Location(netherWorld, 0, 64, 0);
         PlayerPortalEvent event =
-                new PlayerPortalEvent(player, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
 
         listener.onPlayerPortal(event);
         assertThat(event.isCancelled()).isTrue();
@@ -145,7 +164,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         Location from = new Location(overworld, 100, 64, 200);
         Location to = new Location(netherWorld, 0, 64, 0);
         PlayerPortalEvent event =
-                new PlayerPortalEvent(player, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
 
         listener.onPlayerPortal(event);
 
@@ -154,6 +173,9 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
                 .pasteDimensionPlatform(eq(netherWorld), eq(100), eq(64), eq(200), eq(IslandDimensionType.NETHER));
         assertThat(dimensionService.hasGeneratedDimension(islandId, IslandDimensionType.NETHER))
                 .isTrue();
+        assertThat(sentTo())
+                .describedAs("the player was put down on the new platform")
+                .isPresent();
     }
 
     @Test
@@ -165,15 +187,17 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         Location from = new Location(overworld, 100, 64, 200);
         Location to = new Location(netherWorld, 0, 64, 0);
         PlayerPortalEvent event =
-                new PlayerPortalEvent(player, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
 
         listener.onPlayerPortal(event);
 
-        assertThat(event.isCancelled()).isFalse();
-        assertThat(event.getTo()).isNotNull();
-        assertThat(event.getTo().getWorld()).isEqualTo(netherWorld);
-        assertThat(event.getTo().getBlockX()).isEqualTo(100);
-        assertThat(event.getTo().getBlockZ()).isEqualTo(200);
+        // The portal is refused and the travel is done off the region thread, so the destination is
+        // where the player was sent rather than where the event was pointed.
+        assertThat(event.isCancelled()).isTrue();
+        Location destination = sentTo().orElseThrow();
+        assertThat(destination.getWorld()).isEqualTo(netherWorld);
+        assertThat(destination.getBlockX()).isEqualTo(100);
+        assertThat(destination.getBlockZ()).isEqualTo(200);
         verify(schematicEngine, never()).pasteDimensionPlatform(any(), anyInt(), anyInt(), anyInt(), any());
     }
 
@@ -184,12 +208,13 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
 
         Location from = new Location(overworld, 100, 64, 200);
         Location to = new Location(endWorld, 0, 64, 0);
-        PlayerPortalEvent event = new PlayerPortalEvent(player, from, to, PlayerTeleportEvent.TeleportCause.END_PORTAL);
+        PlayerPortalEvent event =
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.END_PORTAL);
 
         listener.onPlayerPortal(event);
 
-        assertThat(event.isCancelled()).isFalse();
-        assertThat(event.getTo()).isEqualTo(endWorld.getSpawnLocation());
+        assertThat(event.isCancelled()).isTrue();
+        assertThat(sentTo()).contains(endWorld.getSpawnLocation());
     }
 
     @Test
@@ -198,16 +223,16 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         Location from = new Location(netherWorld, 100, 64, 200);
         Location to = new Location(overworld, 0, 64, 0);
         PlayerPortalEvent event =
-                new PlayerPortalEvent(player, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL);
 
         listener.onPlayerPortal(event);
 
-        assertThat(event.isCancelled()).isFalse();
-        assertThat(event.getTo()).isNotNull();
-        assertThat(event.getTo().getWorld()).isEqualTo(overworld);
-        assertThat(event.getTo().getX()).isEqualTo(100.5);
-        assertThat(event.getTo().getY()).isEqualTo(65.0);
-        assertThat(event.getTo().getZ()).isEqualTo(200.5);
+        assertThat(event.isCancelled()).isTrue();
+        Location home = sentTo().orElseThrow();
+        assertThat(home.getWorld()).isEqualTo(overworld);
+        assertThat(home.getX()).isEqualTo(100.5);
+        assertThat(home.getY()).isEqualTo(65.0);
+        assertThat(home.getZ()).isEqualTo(200.5);
     }
 
     @Test
@@ -273,6 +298,87 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         @Override
         public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
             return () -> {};
+        }
+    }
+
+    @Test
+    @DisplayName("A player still standing in the portal does not start the same journey twice")
+    void standingInThePortalStartsOneJourney() {
+        when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
+        dimensionService.markDimensionGenerated(islandId, IslandDimensionType.NETHER);
+        // The debounce is a delayed task, so a scheduler that runs a delayed task at once would
+        // lift it immediately and prove nothing. This one holds it, the way a real one does.
+        IslandDimensionListener onDeferring = new IslandDimensionListener(
+                dimensionService,
+                islandLocationService,
+                schematicEngine,
+                new DeferringSchedulerPort(),
+                p -> Optional.of(profileId),
+                "skyblock_world",
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()));
+
+        Location from = new Location(overworld, 100, 64, 200);
+        Location to = new Location(netherWorld, 0, 64, 0);
+        for (int tick = 0; tick < 3; tick++) {
+            onDeferring.onPlayerPortal(
+                    new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL));
+        }
+
+        org.mockito.Mockito.verify(travelling, org.mockito.Mockito.times(1))
+                .teleportAsync(org.mockito.ArgumentMatchers.any(Location.class));
+    }
+
+    /** A scheduler that holds a delayed task rather than running it, which is what a delay is. */
+    private static class DeferringSchedulerPort extends DirectSchedulerPort {
+        @Override
+        public void asyncAfter(Duration delay, Runnable task) {
+            // Held, not run. A real one would run it when the delay is up.
+        }
+    }
+
+    @Test
+    @DisplayName("The portal answer never reads a row on the thread the event runs on")
+    void thePortalReadsNothingOnTheEventThread() {
+        when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
+        dimensionService.markDimensionGenerated(islandId, IslandDimensionType.NETHER);
+        RecordingSchedulerPort recording = new RecordingSchedulerPort();
+        IslandDimensionListener onRecording = new IslandDimensionListener(
+                dimensionService,
+                islandLocationService,
+                schematicEngine,
+                recording,
+                p -> Optional.of(profileId),
+                "skyblock_world",
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()));
+
+        Location from = new Location(overworld, 100, 64, 200);
+        Location to = new Location(netherWorld, 0, 64, 0);
+        onRecording.onPlayerPortal(
+                new PlayerPortalEvent(travelling, from, to, PlayerTeleportEvent.TeleportCause.NETHER_PORTAL));
+
+        org.mockito.Mockito.verify(islandLocationService, org.mockito.Mockito.never())
+                .findIslandId(org.mockito.ArgumentMatchers.any());
+        assertThat(recording.asyncCalls)
+                .describedAs("the travel was handed to the scheduler rather than run where the event was")
+                .isEqualTo(1);
+    }
+
+    /** A scheduler that counts what was handed to it and runs nothing, so the event thread stays bare. */
+    private static class RecordingSchedulerPort extends DirectSchedulerPort {
+        int asyncCalls;
+
+        @Override
+        public void onGlobal(Runnable task) {}
+
+        @Override
+        public void onRegion(String worldName, int chunkX, int chunkZ, Runnable task) {}
+
+        @Override
+        public void onEntity(PlayerUuid playerUuid, Runnable task) {}
+
+        @Override
+        public void async(Runnable task) {
+            asyncCalls++;
         }
     }
 }
