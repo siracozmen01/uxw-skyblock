@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.core.application.reward;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -46,6 +47,23 @@ class OnlyOneClaimHandsOutARewardTest {
             delivered.incrementAndGet();
             return DeliveryResult.success(UUID.randomUUID());
         }
+    }
+
+    /** The same grant, already taken by a claim that touched it {@code stillFor} ago. */
+    private static RewardGrant claimInProgress(RewardGrantId grantId, Duration stillFor) {
+        RewardGrant pending = pendingGrant(grantId);
+        Instant touched = Instant.now().minus(stillFor);
+        return new RewardGrant(
+                pending.grantId(),
+                pending.recipientProfileId(),
+                pending.sourceType(),
+                pending.sourceId(),
+                RewardGrantState.CLAIMING,
+                pending.components(),
+                null,
+                null,
+                pending.createdAt(),
+                touched);
     }
 
     private static RewardGrant pendingGrant(RewardGrantId grantId) {
@@ -113,6 +131,56 @@ class OnlyOneClaimHandsOutARewardTest {
         assertThat(result.success()).isTrue();
         assertThat(handler.delivered).hasValue(1);
         assertThat(storage.findGrantById(grantId).orElseThrow().state()).isEqualTo(RewardGrantState.CLAIMED);
+    }
+
+    @Test
+    @DisplayName("A claim that is still working is not walked past by a second claim")
+    void aClaimInProgressIsNotTakenOver() {
+        InMemoryRewardStorage storage = new InMemoryRewardStorage();
+        RewardGrantId grantId = RewardGrantId.random();
+        RewardGrant working = claimInProgress(grantId, Duration.ofSeconds(1));
+        storage.saveGrant(working);
+        CountingHandler handler = new CountingHandler();
+        RewardClaimCoordinator coordinator =
+                new RewardClaimCoordinator(storage, List.of(handler), Duration.ofMinutes(2));
+
+        ClaimRewardResult result = coordinator.coordinateClaim(working, RECIPIENT);
+
+        assertThat(result.success())
+                .describedAs("a claim already under way must refuse the next one")
+                .isFalse();
+        assertThat(handler.delivered)
+                .describedAs("nothing reached the player a second time")
+                .hasValue(0);
+    }
+
+    @Test
+    @DisplayName("A claim whose node died is taken over once the recovery window has passed")
+    void aStalledClaimIsRecovered() {
+        InMemoryRewardStorage storage = new InMemoryRewardStorage();
+        RewardGrantId grantId = RewardGrantId.random();
+        RewardGrant abandoned = claimInProgress(grantId, Duration.ofMinutes(10));
+        storage.saveGrant(abandoned);
+        CountingHandler handler = new CountingHandler();
+        RewardClaimCoordinator coordinator =
+                new RewardClaimCoordinator(storage, List.of(handler), Duration.ofMinutes(2));
+
+        ClaimRewardResult result = coordinator.coordinateClaim(abandoned, RECIPIENT);
+
+        assertThat(result.success())
+                .describedAs("a reward must not be lost because the node handing it out died")
+                .isTrue();
+        assertThat(handler.delivered).hasValue(1);
+        assertThat(storage.findGrantById(grantId).orElseThrow().state()).isEqualTo(RewardGrantState.CLAIMED);
+    }
+
+    @Test
+    @DisplayName("The recovery window is the operator's number, not ours")
+    void theRecoveryWindowMustBePositive() {
+        InMemoryRewardStorage storage = new InMemoryRewardStorage();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new RewardClaimCoordinator(storage, List.of(), Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

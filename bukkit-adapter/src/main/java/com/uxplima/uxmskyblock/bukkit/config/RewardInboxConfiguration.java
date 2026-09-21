@@ -14,13 +14,15 @@ public record RewardInboxConfiguration(
         Duration defaultExpiration,
         Duration expiryCheckInterval,
         int maxInboxCapacity,
-        boolean autoClaimOnJoin) {
+        boolean autoClaimOnJoin,
+        Duration claimRecoveryWindow) {
 
     public static final boolean DEFAULT_ENABLED = true;
     public static final Duration DEFAULT_DEFAULT_EXPIRATION = Duration.ofDays(30);
     public static final Duration DEFAULT_EXPIRY_CHECK_INTERVAL = Duration.ofMinutes(5);
     public static final int DEFAULT_MAX_INBOX_CAPACITY = 50;
     public static final boolean DEFAULT_AUTO_CLAIM_ON_JOIN = false;
+    public static final Duration DEFAULT_CLAIM_RECOVERY_WINDOW = Duration.ofMinutes(2);
 
     public RewardInboxConfiguration {
         Objects.requireNonNull(defaultExpiration, "defaultExpiration must not be null");
@@ -34,6 +36,10 @@ public record RewardInboxConfiguration(
         if (maxInboxCapacity < 1) {
             throw new IllegalArgumentException("maxInboxCapacity must be positive: " + maxInboxCapacity);
         }
+        Objects.requireNonNull(claimRecoveryWindow, "claimRecoveryWindow must not be null");
+        if (claimRecoveryWindow.isNegative() || claimRecoveryWindow.isZero()) {
+            throw new IllegalArgumentException("claimRecoveryWindow must be positive: " + claimRecoveryWindow);
+        }
     }
 
     public static RewardInboxConfiguration defaultConfiguration() {
@@ -42,7 +48,8 @@ public record RewardInboxConfiguration(
                 DEFAULT_DEFAULT_EXPIRATION,
                 DEFAULT_EXPIRY_CHECK_INTERVAL,
                 DEFAULT_MAX_INBOX_CAPACITY,
-                DEFAULT_AUTO_CLAIM_ON_JOIN);
+                DEFAULT_AUTO_CLAIM_ON_JOIN,
+                DEFAULT_CLAIM_RECOVERY_WINDOW);
     }
 
     public static RewardInboxConfiguration load(ConfigurationNode rootNode) {
@@ -66,6 +73,12 @@ public record RewardInboxConfiguration(
         int maxCapacity = node.node("max-inbox-capacity").getInt(DEFAULT_MAX_INBOX_CAPACITY);
         boolean autoClaim = node.node("auto-claim-on-join").getBoolean(DEFAULT_AUTO_CLAIM_ON_JOIN);
 
-        return new RewardInboxConfiguration(enabled, defaultExpiration, expiryCheckInterval, maxCapacity, autoClaim);
+        String recoveryRaw = node.node("claim-recovery-window").getString();
+        Duration claimRecoveryWindow = recoveryRaw != null && !recoveryRaw.isBlank()
+                ? Durations.parse(recoveryRaw)
+                : DEFAULT_CLAIM_RECOVERY_WINDOW;
+
+        return new RewardInboxConfiguration(
+                enabled, defaultExpiration, expiryCheckInterval, maxCapacity, autoClaim, claimRecoveryWindow);
     }
 }

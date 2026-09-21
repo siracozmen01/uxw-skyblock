@@ -162,7 +162,8 @@ public final class EconomicWiring {
                         currencyDeliveryHandler,
                         vaultDeliveryHandler,
                         cosmeticDeliveryHandler,
-                        permDeliveryHandler));
+                        permDeliveryHandler),
+                config.rewardConfig().claimRecoveryWindow());
 
         this.rewardInboxService = new RewardInboxService(persistence.rewardStoragePort(), rewardClaimCoordinator);
 

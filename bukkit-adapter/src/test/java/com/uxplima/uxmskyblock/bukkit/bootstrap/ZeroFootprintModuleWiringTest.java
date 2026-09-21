@@ -288,6 +288,9 @@ class ZeroFootprintModuleWiringTest {
         AllianceConfiguration alliance = mock(AllianceConfiguration.class);
         when(config.allianceConfig()).thenReturn(alliance);
 
+        when(config.rewardConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.RewardInboxConfiguration.defaultConfiguration());
+
         VaultConfiguration vault = mock(VaultConfiguration.class);
         when(vault.basePages()).thenReturn(1);
         when(vault.maxPages()).thenReturn(10);
