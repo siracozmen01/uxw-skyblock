@@ -454,6 +454,7 @@ public final class IslandCommandTree {
                 .then(groups.mechanicsCommands().buildBorder())
                 .then(groups.mechanicsCommands().buildBounds())
                 .then(groups.progressionCommands().buildLevel())
+                .then(groups.progressionCommands().buildRecalc())
                 .then(groups.progressionCommands().buildWorth())
                 .then(groups.progressionCommands().buildValue())
                 .then(groups.lifecycleCommands().buildReset())

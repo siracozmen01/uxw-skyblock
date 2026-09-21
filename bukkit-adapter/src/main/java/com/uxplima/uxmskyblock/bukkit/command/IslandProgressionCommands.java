@@ -84,6 +84,17 @@ public final class IslandProgressionCommands {
                 .then(Cmd.literal("recalculate").executes(this::executeLevelRecalculate));
     }
 
+    /**
+     * {@code /is recalc}: the short name the extreme scale document publishes for a recalculation.
+     *
+     * <p>The document has named it since it was written and nothing answered it. A command an
+     * operator reads about and types is either there or the document is wrong, and the command is
+     * cheaper than the correction.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildRecalc() {
+        return Cmd.literal("recalc").executes(this::executeLevelRecalculate);
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> buildWorth() {
         return Cmd.literal("worth").executes(this::executeLevel);
     }

@@ -123,6 +123,7 @@ public final class IslandAdminCommands {
                                 .executes(ctx -> restoreCommands.executeAdminRestore(ctx, RestoreMode.safeDefault()))
                                 .then(Cmd.argument("mode", StringArgumentType.word())
                                         .executes(restoreCommands::executeAdminRestoreWithMode))))
+                .then(restoreCommands.buildRollback())
                 .then(Cmd.literal("delete")
                         .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                 || src.getSender().isOp())

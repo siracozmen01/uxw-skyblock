@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -27,6 +28,7 @@ import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
+import com.uxplima.uxmskyblock.core.domain.backup.BackupLifecycleState;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupManifest;
 import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -74,6 +76,88 @@ public final class IslandAdminRestoreCommands {
         this.sessionCoordinator = sessionCoordinator;
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+    }
+
+    /**
+     * {@code /is admin rollback <island> [mode]}: put one island back from its latest backup.
+     *
+     * <p>Four documents publish this command and nothing answered it. {@code /is admin restore}
+     * takes a backup set id, which an operator looking at a griefed island does not have; what they
+     * have is the island. This finds its newest finished backup and restores that.
+     *
+     * <p>It restores one island and never a database. That is not a detail of the implementation:
+     * the persistence specification says a whole database is never restored as a side effect of a
+     * root rollback, and this reaches the same IslandRestoreService the backup id form does.
+     */
+    public LiteralArgumentBuilder<CommandSourceStack> buildRollback() {
+        return Cmd.literal("rollback")
+                .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
+                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                        || src.getSender().isOp())
+                .then(Cmd.argument("island", StringArgumentType.word())
+                        .executes(ctx -> executeRollback(ctx, RestoreMode.safeDefault()))
+                        .then(Cmd.argument("mode", StringArgumentType.word()).executes(this::executeRollbackWithMode)));
+    }
+
+    private int executeRollbackWithMode(CommandContext<CommandSourceStack> ctx) {
+        String raw = StringArgumentType.getString(ctx, "mode");
+        for (RestoreMode mode : RestoreMode.values()) {
+            if (mode.name().equalsIgnoreCase(raw)) {
+                return executeRollback(ctx, mode);
+            }
+        }
+        send(
+                ctx.getSource().getSender(),
+                "admin.restore_unknown_mode",
+                Placeholder.unparsed("mode", raw),
+                Placeholder.unparsed("modes", availableRestoreModes()));
+        return Cmd.OK;
+    }
+
+    private int executeRollback(CommandContext<CommandSourceStack> ctx, RestoreMode mode) {
+        CommandSender sender = ctx.getSource().getSender();
+        IslandRestoreService rService = restoreServiceProvider.get();
+        if (rService == null) {
+            send(sender, "admin.restore_not_configured");
+            return Cmd.OK;
+        }
+        String target = StringArgumentType.getString(ctx, "island");
+
+        schedulerPort.async(() -> {
+            Optional<IslandId> optIsland =
+                    IslandAdminCommands.resolveIslandId(sessionCoordinator, islandLocationService, target);
+            if (optIsland.isEmpty()) {
+                send(sender, "admin.island_unresolved", Placeholder.unparsed("target", target));
+                return;
+            }
+            Optional<BackupCatalogRecord> latest = newestFinishedBackup(rService, optIsland.get());
+            if (latest.isEmpty()) {
+                send(
+                        sender,
+                        "admin.rollback_no_backup",
+                        Placeholder.unparsed("island", optIsland.get().value().toString()));
+                return;
+            }
+            send(
+                    sender,
+                    "admin.rollback_starting",
+                    Placeholder.unparsed("island", optIsland.get().value().toString()),
+                    Placeholder.unparsed("backup", latest.get().backupSetId().toString()),
+                    Placeholder.unparsed("mode", mode.name()));
+            restoreFromSet(sender, rService, latest.get().backupSetId().toString(), mode);
+        });
+        return Cmd.OK;
+    }
+
+    /** The newest backup of this island that finished, because a half written one restores nothing. */
+    private static Optional<BackupCatalogRecord> newestFinishedBackup(
+            IslandRestoreService restoreService, IslandId islandId) {
+        return restoreService
+                .catalogPort()
+                .findByRoot("ISLAND", islandId.value().toString())
+                .stream()
+                .filter(record -> record.state() == BackupLifecycleState.AVAILABLE)
+                .max(Comparator.comparing(BackupCatalogRecord::createdAt));
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildRestore() {
@@ -130,6 +214,21 @@ public final class IslandAdminRestoreCommands {
                 Placeholder.unparsed("backup", backupIdStr),
                 Placeholder.unparsed("mode", mode.name()));
 
+        restoreFromSet(sender, rService, backupIdStr, mode);
+
+        return Cmd.OK;
+    }
+
+    /**
+     * Restores one backup set, whichever way the operator named it.
+     *
+     * <p>Both entry points land here: the one that takes a backup id and the one that takes an
+     * island and finds its newest. The manifest is looked for under the plain prefix first and then
+     * under the one the catalogue records, because a backup written by an older version used the
+     * other shape.
+     */
+    private void restoreFromSet(
+            CommandSender sender, IslandRestoreService rService, String backupIdStr, RestoreMode mode) {
         schedulerPort.async(() -> {
             try {
                 BackupSetId backupSetId = BackupSetId.fromString(backupIdStr);
@@ -181,8 +280,6 @@ public final class IslandAdminRestoreCommands {
                 send(sender, "admin.restore_error", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
             }
         });
-
-        return Cmd.OK;
     }
 
     public int executeAdminDelete(CommandContext<CommandSourceStack> ctx) {

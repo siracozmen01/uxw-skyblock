@@ -16,9 +16,10 @@ if [ ! -d docs ]; then
     exit 0
 fi
 
-modules=$(grep -oE '":[a-z-]+"' settings.gradle.kts | tr -d '"')
 offences=0
 
+# 1. A module the build ships must not be described as absent.
+modules=$(grep -oE '":[a-z-]+"' settings.gradle.kts | tr -d '"')
 for module in $modules; do
     while IFS= read -r hit; do
         [ -z "$hit" ] && continue
@@ -29,11 +30,24 @@ for module in $modules; do
         | grep -E 'NOT IMPLEMENTED|PLANNED —' || true)
 done
 
+# 2. A command a document tells an operator to type must be one the tree declares.
+#
+# Four documents published /is admin rollback and one published /is recalc while neither existed.
+# An operator reading a document and typing what it says is the whole point of writing one.
+commands=$(grep -ohE '`/(is|island) [a-z]+' docs/*.md 2>/dev/null \
+    | sed -E 's/`\/(is|island) //' | sort -u || true)
+for command in $commands; do
+    if ! grep -qrE "literal\(\"$command\"\)" bukkit-adapter/src/main/java/com/uxplima/uxmskyblock/bukkit/command/; then
+        echo "A document tells an operator to type /is $command, and no command tree branch declares it."
+        offences=$((offences + 1))
+    fi
+done
+
 if [ "$offences" -gt 0 ]; then
     echo
-    echo "$offences line(s) describe a shipped module as planned or unimplemented."
-    echo "A reader comparing the documents to the code can only conclude one of them is lying."
+    echo "$offences difference(s) between the documents and the code."
+    echo "A reader comparing the two can only conclude one of them is lying."
     exit 1
 fi
 
-echo "No document calls a shipped module absent."
+echo "The documents and the code agree."
