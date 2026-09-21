@@ -2,11 +2,19 @@ package com.uxplima.uxmskyblock.core.application.island;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
@@ -155,9 +163,15 @@ class CreateIslandUseCaseTest {
     }
 
     private static class FakeIslandStorage implements IslandStoragePort {
-        final Map<IslandId, Island> islands = new HashMap<>();
-        final Map<ProfileId, IslandId> profileToIsland = new HashMap<>();
-        final Map<IslandId, IslandLocation> locations = new HashMap<>();
+        final Map<IslandId, Island> islands = new ConcurrentHashMap<>();
+        final Map<ProfileId, IslandId> profileToIsland = new ConcurrentHashMap<>();
+        final Map<IslandId, IslandLocation> locations = new ConcurrentHashMap<>();
+
+        /**
+         * Holds every lookup until they have all happened, which is the interleaving a double click
+         * produces and a spin on a quiet machine does not.
+         */
+        @Nullable CountDownLatch everybodyLooked;
 
         @Override
         public void saveIsland(Island island, IslandLocation location) {
@@ -173,7 +187,17 @@ class CreateIslandUseCaseTest {
 
         @Override
         public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
-            return Optional.ofNullable(profileToIsland.get(profileId));
+            Optional<IslandId> held = Optional.ofNullable(profileToIsland.get(profileId));
+            CountDownLatch latch = everybodyLooked;
+            if (latch != null) {
+                latch.countDown();
+                try {
+                    var unused = latch.await(200, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return held;
         }
 
         @Override
@@ -186,6 +210,56 @@ class CreateIslandUseCaseTest {
             islands.remove(islandId);
             locations.remove(islandId);
         }
+    }
+
+    @Test
+    @DisplayName("A profile that clicks create eight times gets one island, not eight")
+    void eightClicksMakeOneIsland() throws Exception {
+        int clicks = 8;
+        storage.everybodyLooked = new CountDownLatch(clicks);
+        PlayerUuid playerUuid = new PlayerUuid(UUID.randomUUID());
+        ProfileId profileId = new ProfileId(UUID.randomUUID());
+
+        AtomicInteger created = new AtomicInteger();
+        AtomicInteger refused = new AtomicInteger();
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(clicks);
+        List<Future<?>> running = new ArrayList<>();
+        try {
+            for (int i = 0; i < clicks; i++) {
+                running.add(pool.submit(() -> {
+                    try {
+                        var unused = start.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    CreateIslandUseCase.CreateIslandResult result =
+                            useCase.execute(playerUuid, profileId, "classic", ServerNodeId.of("node-1"), "world");
+                    if (result instanceof CreateIslandUseCase.CreateIslandResult.Success) {
+                        created.incrementAndGet();
+                    } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
+                        refused.incrementAndGet();
+                    }
+                }));
+            }
+            start.countDown();
+            for (Future<?> task : running) {
+                task.get(10, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(created.get()).describedAs("islands built").isEqualTo(1);
+        assertThat(refused.get())
+                .describedAs("clicks told they already have one")
+                .isEqualTo(clicks - 1);
+        assertThat(storage.islands).describedAs("islands in storage").hasSize(1);
+        assertThat(bank.created).describedAs("banks opened").hasSize(1);
+        assertThat(allocationPort.allocations)
+                .describedAs("plots taken out of the world grid")
+                .hasSize(1);
     }
 
     private static class FakeIslandAuthority implements IslandAuthorityPort {

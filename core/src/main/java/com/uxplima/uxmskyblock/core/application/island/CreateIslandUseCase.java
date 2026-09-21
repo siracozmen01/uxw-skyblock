@@ -10,6 +10,7 @@ import java.util.logging.Logger;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankPort;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyService;
+import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridPort;
@@ -54,6 +55,15 @@ public final class CreateIslandUseCase {
     private final WorldGridAllocationPort worldGridAllocationPort;
     private final @Nullable OutboxPort outboxPort;
     private final @Nullable GameModeHierarchyService gameModeHierarchy;
+
+    /**
+     * Holds one profile to one island creation at a time.
+     *
+     * <p>Keyed on the profile because that is who may have one island. A player is on one server at
+     * a time, so this is the whole of the contention: the double click, the client that sent the
+     * packet twice, the menu clicked while the first creation was still allocating a plot.
+     */
+    private final KeyedMutationLock<ProfileId> profileLock = new KeyedMutationLock<>();
 
     public CreateIslandUseCase(
             IslandStoragePort islandStoragePort,
@@ -127,6 +137,13 @@ public final class CreateIslandUseCase {
         Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         Objects.requireNonNull(worldName, "worldName must not be null");
 
+        return profileLock.inside(
+                profileId, () -> createOnAllocatedPlot(playerUuid, profileId, presetId, serverNodeId, worldName));
+    }
+
+    /** Looks for an island the profile already has and builds one if it has none. Runs under the lock. */
+    private CreateIslandResult createOnAllocatedPlot(
+            PlayerUuid playerUuid, ProfileId profileId, String presetId, ServerNodeId serverNodeId, String worldName) {
         Optional<IslandId> existingIsland = islandStoragePort.findIslandIdByProfileId(profileId);
         if (existingIsland.isPresent()) {
             return new CreateIslandResult.AlreadyHasIsland(existingIsland.get());
@@ -186,6 +203,19 @@ public final class CreateIslandUseCase {
         Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         Objects.requireNonNull(worldName, "worldName must not be null");
 
+        return profileLock.inside(
+                profileId,
+                () -> createAtSequence(playerUuid, profileId, presetId, serverNodeId, worldName, sequenceIndex));
+    }
+
+    /** The same, for a caller that names the grid slot itself. Runs under the lock. */
+    private CreateIslandResult createAtSequence(
+            PlayerUuid playerUuid,
+            ProfileId profileId,
+            String presetId,
+            ServerNodeId serverNodeId,
+            String worldName,
+            long sequenceIndex) {
         Optional<IslandId> existingIsland = islandStoragePort.findIslandIdByProfileId(profileId);
         if (existingIsland.isPresent()) {
             return new CreateIslandResult.AlreadyHasIsland(existingIsland.get());
