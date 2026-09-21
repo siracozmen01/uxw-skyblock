@@ -1,11 +1,9 @@
 package com.uxplima.uxmskyblock.core.application.island;
 
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
+import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 
 /**
@@ -19,75 +17,27 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
  * whichever lands second erases the other. Nothing reports it and nothing in the database says it
  * happened.
  *
- * <p>The lock is per island, so two islands never wait on each other, and it is reentrant, so a
- * service that calls another one inside its own change does not deadlock against itself.
+ * <p>The limits are the other half of the same shape: the warps an island may have and the allies
+ * it may keep are both counted and then written, and a count nobody holds is a number two callers
+ * can read the same.
  *
  * <p>This bounds one node. Across nodes the island authority lease is what decides who may write,
  * and a node that does not hold it has no business changing an island at all.
  */
 public final class IslandMutationLock {
 
-    /**
-     * One island's lock and how many callers are holding or waiting for it.
-     *
-     * <p>The count is what lets the lock be thrown away again. A map keyed by island that nothing
-     * ever removes from is a slow leak on a server that has made a hundred thousand islands over a
-     * year, and the count is kept under the map's own lock so a lock is never dropped from under a
-     * caller who has already been handed it.
-     */
-    private record Guard(ReentrantLock lock, int users) {}
-
-    private final Map<IslandId, Guard> locks = new ConcurrentHashMap<>();
+    private final KeyedMutationLock<IslandId> locks = new KeyedMutationLock<>();
 
     /** Runs {@code work} with nobody else changing this island, and gives back what it returns. */
     public <T> T inside(IslandId islandId, Supplier<T> work) {
         Objects.requireNonNull(islandId, "islandId must not be null");
-        Objects.requireNonNull(work, "work must not be null");
-
-        ReentrantLock lock = acquire(islandId);
-        lock.lock();
-        try {
-            return work.get();
-        } finally {
-            lock.unlock();
-            release(islandId);
-        }
-    }
-
-    /**
-     * The lock for this island, counting this caller as one of its users.
-     *
-     * <p>{@code compute} runs under the map's own lock for this key, so the count and the lock move
-     * together and nobody can be handed a lock that is being removed.
-     */
-    private ReentrantLock acquire(IslandId islandId) {
-        return Objects.requireNonNull(locks.compute(
-                        islandId,
-                        (key, existing) -> existing == null
-                                ? new Guard(new ReentrantLock(), 1)
-                                : new Guard(existing.lock(), existing.users() + 1)))
-                .lock();
-    }
-
-    /** Gives the lock back, and throws it away when nobody else wants it. */
-    private void release(IslandId islandId) {
-        var unused = locks.computeIfPresent(
-                islandId,
-                (key, existing) -> existing.users() <= 1 ? null : new Guard(existing.lock(), existing.users() - 1));
-    }
-
-    /** How many islands are being changed right now. For a test to assert the locks do not pile up. */
-    public int held() {
-        return locks.size();
+        return locks.inside(islandId, work);
     }
 
     /** Runs {@code work} with nobody else changing this island. */
     public void inside(IslandId islandId, Runnable work) {
-        Objects.requireNonNull(work, "work must not be null");
-        var unused = inside(islandId, () -> {
-            work.run();
-            return Boolean.TRUE;
-        });
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        locks.inside(islandId, work);
     }
 
     /**
@@ -98,7 +48,11 @@ public final class IslandMutationLock {
      */
     public boolean isHeld(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
-        Guard guard = locks.get(islandId);
-        return guard != null && guard.lock().isLocked();
+        return locks.isHeld(islandId);
+    }
+
+    /** How many islands are being changed right now. For a test to assert the locks do not pile up. */
+    public int held() {
+        return locks.held();
     }
 }

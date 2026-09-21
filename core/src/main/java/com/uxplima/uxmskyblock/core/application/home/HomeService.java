@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.domain.home.Home;
 import com.uxplima.uxmskyblock.core.domain.home.HomeId;
 import com.uxplima.uxmskyblock.core.domain.home.HomeLimitPolicy;
@@ -19,6 +20,15 @@ public final class HomeService {
 
     private final HomeStoragePort homeStoragePort;
     private final HomeLimitPolicy homeLimitPolicy;
+
+    /**
+     * Makes counting the homes and writing the next one one thing.
+     *
+     * <p>Keyed by the profile, because a home belongs to a player rather than to an island. Without
+     * it a player with two clients types the command twice and keeps more homes than their
+     * permission tier allows, and the count is the only thing standing in the way.
+     */
+    private final KeyedMutationLock<ProfileId> mutationLock = new KeyedMutationLock<>();
 
     public sealed interface SetHomeResult {
         record Success(Home home) implements SetHomeResult {}
@@ -55,6 +65,24 @@ public final class HomeService {
         Objects.requireNonNull(worldName, "worldName must not be null");
 
         String normalizedName = name.trim().toLowerCase(java.util.Locale.ROOT);
+        return mutationLock.inside(
+                profileId,
+                () -> writeHome(profileId, islandId, normalizedName, scope, worldName, x, y, z, yaw, pitch, allowance));
+    }
+
+    /** Counts what the player has, refuses or writes. Runs inside the profile's mutation lock. */
+    private SetHomeResult writeHome(
+            ProfileId profileId,
+            IslandId islandId,
+            String normalizedName,
+            HomeScope scope,
+            String worldName,
+            double x,
+            double y,
+            double z,
+            float yaw,
+            float pitch,
+            int allowance) {
         Optional<Home> existing = homeStoragePort.findHome(profileId, normalizedName);
 
         if (existing.isEmpty()) {
