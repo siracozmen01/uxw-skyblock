@@ -27,6 +27,7 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.webmap.IslandMarkerSynchroniser;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -55,6 +56,7 @@ public final class IslandLifecycleCommands {
     private final StarterPresetCatalog presetCatalog;
     private final StarterSchematicEngine schematicEngine;
     private final IslandProtectionListener protectionListener;
+    private volatile @Nullable IslandMarkerSynchroniser markerSynchroniser;
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final ServerNodeId serverNodeId;
@@ -97,6 +99,16 @@ public final class IslandLifecycleCommands {
         this.resetMenuProvider = Objects.requireNonNull(resetMenuProvider, "resetMenuProvider must not be null");
         this.nameServiceProvider = Objects.requireNonNull(nameServiceProvider, "nameServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+    }
+
+    /**
+     * Hands this command the thing that draws islands on the web map.
+     *
+     * <p>Set after construction because the map adapters are built in the integration layer, which
+     * is assembled after the commands are.
+     */
+    public void useMarkerSynchroniser(@Nullable IslandMarkerSynchroniser markerSynchroniser) {
+        this.markerSynchroniser = markerSynchroniser;
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildCreate() {
@@ -175,6 +187,10 @@ public final class IslandLifecycleCommands {
             schedulerPort.onEntity(playerUuid, () -> {
                 if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
                     protectionListener.cacheIsland(success.island());
+                    IslandMarkerSynchroniser markers = this.markerSynchroniser;
+                    if (markers != null) {
+                        markers.onIslandCreated(success.island().id());
+                    }
                     IslandAntiAbuseService antiAbuse = antiAbuseServiceProvider.get();
                     if (antiAbuse != null) {
                         antiAbuse.quarantineNewIsland(success.island().id(), Instant.now());

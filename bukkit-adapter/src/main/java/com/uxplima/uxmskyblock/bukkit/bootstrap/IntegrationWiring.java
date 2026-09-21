@@ -24,6 +24,7 @@ import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.BlueMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.CompositeWebMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
+import com.uxplima.uxmskyblock.bukkit.webmap.IslandMarkerSynchroniser;
 import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
@@ -53,6 +54,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final WorldDimensionSnapshotAdapter worldDimensionSnapshotAdapter;
     private final CompositeWebMapAdapter webMapAdapter;
     private final IslandWebMapService islandWebMapService;
+    private final IslandMarkerSynchroniser markerSynchroniser;
     private final IslandControlMenu controlMenu;
     private final SkyblockMenuEngine menuEngine;
     private final SkyblockPlaceholderExpansion placeholderExpansion;
@@ -119,6 +121,10 @@ public final class IntegrationWiring implements AutoCloseable {
         this.webMapAdapter = new CompositeWebMapAdapter(
                 List.of(new DynmapAdapter(plugin), new BlueMapAdapter(plugin), new Pl3xMapAdapter(plugin)));
         this.islandWebMapService = new IslandWebMapService();
+        // Dynmap, BlueMap and Pl3xMap were all built, all wired into a composite, and nothing ever
+        // called one. Every server running this with Dynmap installed had a map with no islands.
+        this.markerSynchroniser =
+                new IslandMarkerSynchroniser(this.webMapAdapter, gameplay.locationService(), gameplay.scheduler());
 
         this.controlMenu = new IslandControlMenu(
                 persistence.islandStoragePort(),
@@ -219,6 +225,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setSocialService(gameplay.socialService());
         this.commandTree.setAllianceService(gameplay.allianceService());
         this.commandTree.setRewardInboxService(gameplay.rewardInboxService());
+        this.commandTree.useMarkerSynchroniser(this.markerSynchroniser);
 
         this.apiBridge = new BukkitSkyblockApiBridge(
                 persistence.islandStoragePort(),
@@ -265,6 +272,11 @@ public final class IntegrationWiring implements AutoCloseable {
 
     public WebMapAdapter webMapAdapter() {
         return webMapAdapter;
+    }
+
+    /** Puts islands on the web map and takes them off again. */
+    public IslandMarkerSynchroniser markerSynchroniser() {
+        return markerSynchroniser;
     }
 
     public IslandWebMapService islandWebMapService() {

@@ -162,10 +162,27 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 .protectionListener()
                 .loadPersistedIslands(configWiring.nodeConfig().worldName());
         integrationWiring.enable();
+        drawIslandsOnTheWebMap();
         startRestApiIfConfigured();
 
         BootstrapEventRegistrar.registerEvents(
                 Bukkit.getPluginManager(), plugin, featureModuleWiring, gameplayWiring, authorityWiring, configWiring);
+    }
+
+    /**
+     * Draws every island this world holds onto whichever web maps are installed.
+     *
+     * <p>A map that only learns about islands made since the last restart is a map with holes in it,
+     * and the holes are the oldest and largest islands. Until now there were no markers at all:
+     * three web map integrations shipped, all three were wired, and nothing ever called one.
+     */
+    private void drawIslandsOnTheWebMap() {
+        integrationWiring
+                .markerSynchroniser()
+                .drawAll(persistenceWiring
+                        .bootstrap()
+                        .islandStoragePort()
+                        .findAllByWorld(configWiring.nodeConfig().worldName()));
     }
 
     /**

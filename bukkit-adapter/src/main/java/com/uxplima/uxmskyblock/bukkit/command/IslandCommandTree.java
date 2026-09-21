@@ -26,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
+import com.uxplima.uxmskyblock.bukkit.webmap.IslandMarkerSynchroniser;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
@@ -93,6 +94,7 @@ public final class IslandCommandTree {
     private volatile @Nullable IslandSocialService socialService;
     private volatile @Nullable IslandAllianceService allianceService;
     private volatile @Nullable RewardInboxService rewardInboxService;
+    private volatile @Nullable IslandMarkerSynchroniser markerSynchroniser;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -253,6 +255,11 @@ public final class IslandCommandTree {
         this.allianceService = allianceService;
     }
 
+    /** Hands the web map synchroniser to the create command, so a new island lands on the map. */
+    public void useMarkerSynchroniser(@Nullable IslandMarkerSynchroniser markerSynchroniser) {
+        this.markerSynchroniser = markerSynchroniser;
+    }
+
     /** Hands the reward inbox to the command that opens it. */
     public void setRewardInboxService(@Nullable RewardInboxService rewardInboxService) {
         this.rewardInboxService = rewardInboxService;
@@ -369,6 +376,8 @@ public final class IslandCommandTree {
                 () -> features.missionsMenu(),
                 () -> features.boundaryService(),
                 messages);
+
+        lifecycleCommands.useMarkerSynchroniser(markerSynchroniser);
 
         IslandActivityCommands activityCommands = new IslandActivityCommands(
                 () -> activityFeedService, islandLocationService, schedulerPort, messages, sessionCoordinator);
