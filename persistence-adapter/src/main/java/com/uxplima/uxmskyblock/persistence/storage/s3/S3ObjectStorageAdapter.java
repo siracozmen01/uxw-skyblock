@@ -28,12 +28,10 @@ import com.uxplima.uxmskyblock.core.application.storage.ObjectStoragePort;
 import com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageCapability;
 import com.uxplima.uxmskyblock.core.domain.storage.ObjectStorageProviderId;
 import com.uxplima.uxmskyblock.core.domain.storage.ProviderVerificationPolicy;
-import com.uxplima.uxmskyblock.core.domain.storage.S3AddressingMode;
 import com.uxplima.uxmskyblock.core.domain.storage.S3StorageConfiguration;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageChecksumMismatchException;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageObjectMetadata;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Enterprise S3-compatible remote object storage adapter.
@@ -43,12 +41,12 @@ import org.jspecify.annotations.Nullable;
  */
 public final class S3ObjectStorageAdapter implements ObjectStoragePort {
 
-    private static final Pattern UPLOAD_ID_PATTERN =
-            Pattern.compile("<UploadId>(.*?)</UploadId>", Pattern.CASE_INSENSITIVE);
     private static final Pattern KEY_PATTERN = Pattern.compile("<Key>(.*?)</Key>", Pattern.CASE_INSENSITIVE);
 
     private final S3StorageConfiguration configuration;
     private final S3HttpTransport transport;
+    private final S3Requests requests;
+    private final S3MultipartUpload multipart;
 
     public S3ObjectStorageAdapter(S3StorageConfiguration configuration) {
         this(configuration, new JavaHttpClientTransport());
@@ -57,6 +55,8 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
     public S3ObjectStorageAdapter(S3StorageConfiguration configuration, S3HttpTransport transport) {
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
+        this.requests = new S3Requests(this.configuration, this.transport);
+        this.multipart = new S3MultipartUpload(this.requests);
 
         // Enforce verification policy fail-closed
         ProviderVerificationPolicy.validateVerificationStatus(configuration);
@@ -126,17 +126,14 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
             }
         }
 
-        URI uri = resolveObjectUri(bucket, objectKey, null);
+        URI uri = requests.objectUri(bucket, objectKey, null);
         Map<String, List<String>> headers = new LinkedHashMap<>();
         headers.put("Content-Type", List.of(metadata.contentType()));
         headers.put("Content-Length", List.of(String.valueOf(data.length)));
         headers.put("x-amz-meta-sha256", List.of(actualSha256));
 
         S3HttpRequest unsigned = S3HttpRequest.of("PUT", uri, headers, data);
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
+        try (S3HttpResponse response = requests.send(unsigned)) {
             if (!response.isSuccessful()) {
                 throw new RuntimeException("S3 putObject failed for key " + objectKey
                         + " with HTTP status " + response.statusCode()
@@ -163,13 +160,10 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         Objects.requireNonNull(bucket, "bucket must not be null");
         Objects.requireNonNull(objectKey, "objectKey must not be null");
 
-        URI uri = resolveObjectUri(bucket, objectKey, null);
+        URI uri = requests.objectUri(bucket, objectKey, null);
         S3HttpRequest unsigned = S3HttpRequest.of("GET", uri, Map.of());
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
         try {
-            S3HttpResponse response = executeWithRetry(signed);
+            S3HttpResponse response = requests.send(unsigned);
             if (response.statusCode() == 404) {
                 response.close();
                 return Optional.empty();
@@ -237,8 +231,8 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
             // Otherwise, stream exceeds threshold -> MULTIPART UPLOAD
             validateRequiredCapabilities(Set.of(ObjectStorageCapability.MULTIPART_UPLOAD));
 
-            String uploadId = initiateMultipartUpload(bucket, objectKey, metadata);
-            List<PartETag> parts = new ArrayList<>();
+            String uploadId = multipart.initiateMultipartUpload(bucket, objectKey, metadata);
+            List<S3MultipartUpload.PartETag> parts = new ArrayList<>();
             int partNumber = 1;
 
             try {
@@ -252,8 +246,8 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
                 }
 
                 byte[] partBytes = partBuffer.toByteArray();
-                String etag = uploadPart(bucket, objectKey, uploadId, partNumber, partBytes);
-                parts.add(new PartETag(partNumber++, etag));
+                String etag = multipart.uploadPart(bucket, objectKey, uploadId, partNumber, partBytes);
+                parts.add(new S3MultipartUpload.PartETag(partNumber++, etag));
 
                 // Upload subsequent parts
                 while (true) {
@@ -265,8 +259,8 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
                         break;
                     }
                     partBytes = partBuffer.toByteArray();
-                    etag = uploadPart(bucket, objectKey, uploadId, partNumber, partBytes);
-                    parts.add(new PartETag(partNumber++, etag));
+                    etag = multipart.uploadPart(bucket, objectKey, uploadId, partNumber, partBytes);
+                    parts.add(new S3MultipartUpload.PartETag(partNumber++, etag));
                 }
 
                 // Verify computed SHA-256 before completing
@@ -274,18 +268,18 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
                 if (metadata.sha256Checksum() != null
                         && !metadata.sha256Checksum().isBlank()) {
                     if (!actualSha256.equalsIgnoreCase(metadata.sha256Checksum())) {
-                        abortMultipartUpload(bucket, objectKey, uploadId);
+                        multipart.abortMultipartUpload(bucket, objectKey, uploadId);
                         throw new StorageChecksumMismatchException("Multipart stream checksum " + actualSha256
                                 + " does not match expected metadata checksum " + metadata.sha256Checksum());
                     }
                 }
 
-                completeMultipartUpload(bucket, objectKey, uploadId, parts);
+                multipart.completeMultipartUpload(bucket, objectKey, uploadId, parts);
 
             } catch (Exception uploadError) {
                 // Interrupted / failed multipart upload: MUST abort to avoid orphaned parts!
                 try {
-                    abortMultipartUpload(bucket, objectKey, uploadId);
+                    multipart.abortMultipartUpload(bucket, objectKey, uploadId);
                 } catch (Exception abortError) {
                     uploadError.addSuppressed(abortError);
                 }
@@ -297,122 +291,14 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         }
     }
 
-    public String initiateMultipartUpload(StorageBucket bucket, String objectKey, StorageObjectMetadata metadata)
-            throws IOException {
-        URI uri = resolveObjectUri(bucket, objectKey, "uploads=");
-        Map<String, List<String>> headers = new LinkedHashMap<>();
-        headers.put("Content-Type", List.of(metadata.contentType()));
-        if (metadata.sha256Checksum() != null) {
-            headers.put("x-amz-meta-sha256", List.of(metadata.sha256Checksum()));
-        }
-
-        S3HttpRequest unsigned = S3HttpRequest.of("POST", uri, headers);
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to initiate multipart upload for " + objectKey + " HTTP status "
-                        + response.statusCode() + ": " + response.bodyString());
-            }
-
-            String body = response.bodyString();
-            Matcher matcher = UPLOAD_ID_PATTERN.matcher(body);
-            if (matcher.find()) {
-                return matcher.group(1);
-            }
-            throw new IOException("UploadId tag not found in initiate multipart response: " + body);
-        }
-    }
-
-    public String uploadPart(StorageBucket bucket, String objectKey, String uploadId, int partNumber, byte[] partData)
-            throws IOException {
-        String query = "partNumber=" + partNumber + "&uploadId=" + URLEncoder.encode(uploadId, StandardCharsets.UTF_8);
-        URI uri = resolveObjectUri(bucket, objectKey, query);
-
-        Map<String, List<String>> headers = new LinkedHashMap<>();
-        headers.put("Content-Length", List.of(String.valueOf(partData.length)));
-
-        S3HttpRequest unsigned = S3HttpRequest.of("PUT", uri, headers, partData);
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Upload part " + partNumber + " failed for " + objectKey + " HTTP status "
-                        + response.statusCode() + ": " + response.bodyString());
-            }
-
-            return response.firstHeader("ETag")
-                    .orElseGet(() -> response.firstHeader("etag").orElse("\"part-" + partNumber + "\""));
-        }
-    }
-
-    public void completeMultipartUpload(StorageBucket bucket, String objectKey, String uploadId, List<PartETag> parts)
-            throws IOException {
-        String query = "uploadId=" + URLEncoder.encode(uploadId, StandardCharsets.UTF_8);
-        URI uri = resolveObjectUri(bucket, objectKey, query);
-
-        StringBuilder xml = new StringBuilder("<CompleteMultipartUpload>");
-        for (PartETag part : parts) {
-            xml.append("<Part>")
-                    .append("<PartNumber>")
-                    .append(part.partNumber())
-                    .append("</PartNumber>")
-                    .append("<ETag>")
-                    .append(part.etag())
-                    .append("</ETag>")
-                    .append("</Part>");
-        }
-        xml.append("</CompleteMultipartUpload>");
-
-        byte[] body = xml.toString().getBytes(StandardCharsets.UTF_8);
-        Map<String, List<String>> headers = new LinkedHashMap<>();
-        headers.put("Content-Type", List.of("application/xml"));
-        headers.put("Content-Length", List.of(String.valueOf(body.length)));
-
-        S3HttpRequest unsigned = S3HttpRequest.of("POST", uri, headers, body);
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Complete multipart upload failed for " + objectKey + " HTTP status "
-                        + response.statusCode() + ": " + response.bodyString());
-            }
-        }
-    }
-
-    public void abortMultipartUpload(StorageBucket bucket, String objectKey, String uploadId) {
-        try {
-            String query = "uploadId=" + URLEncoder.encode(uploadId, StandardCharsets.UTF_8);
-            URI uri = resolveObjectUri(bucket, objectKey, query);
-
-            S3HttpRequest unsigned = S3HttpRequest.of("DELETE", uri, Map.of());
-            S3HttpRequest signed =
-                    AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-            try (S3HttpResponse response = executeWithRetry(signed)) {
-                if (response.isSuccessful()) {
-                    // Abort succeeded
-                }
-            }
-        } catch (Exception ignored) {
-            // Best effort abort
-        }
-    }
-
     @Override
     public boolean exists(StorageBucket bucket, String objectKey) {
         Objects.requireNonNull(bucket, "bucket must not be null");
         Objects.requireNonNull(objectKey, "objectKey must not be null");
 
-        URI uri = resolveObjectUri(bucket, objectKey, null);
+        URI uri = requests.objectUri(bucket, objectKey, null);
         S3HttpRequest unsigned = S3HttpRequest.of("HEAD", uri, Map.of());
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
+        try (S3HttpResponse response = requests.send(unsigned)) {
             return response.statusCode() == 200;
         } catch (IOException e) {
             throw new RuntimeException("S3 exists check failed for " + objectKey, e);
@@ -424,12 +310,9 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         Objects.requireNonNull(bucket, "bucket must not be null");
         Objects.requireNonNull(objectKey, "objectKey must not be null");
 
-        URI uri = resolveObjectUri(bucket, objectKey, null);
+        URI uri = requests.objectUri(bucket, objectKey, null);
         S3HttpRequest unsigned = S3HttpRequest.of("DELETE", uri, Map.of());
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
+        try (S3HttpResponse response = requests.send(unsigned)) {
             if (!response.isSuccessful() && response.statusCode() != 404) {
                 throw new RuntimeException(
                         "S3 deleteObject failed for " + objectKey + " HTTP status " + response.statusCode());
@@ -442,18 +325,15 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
     @Override
     public List<String> listObjects(StorageBucket bucket, String prefix) {
         Objects.requireNonNull(bucket, "bucket must not be null");
-        String sanitizedPrefix = sanitizeKey(prefix != null ? prefix : "");
+        String sanitizedPrefix = requests.sanitizeKey(prefix != null ? prefix : "");
         String query = "list-type=2"
                 + (sanitizedPrefix.isEmpty()
                         ? ""
                         : "&prefix=" + URLEncoder.encode(sanitizedPrefix, StandardCharsets.UTF_8));
 
-        URI uri = resolveBucketRootUri(bucket, query);
+        URI uri = requests.bucketUri(bucket, query);
         S3HttpRequest unsigned = S3HttpRequest.of("GET", uri, Map.of());
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
+        try (S3HttpResponse response = requests.send(unsigned)) {
             if (!response.isSuccessful()) {
                 throw new RuntimeException("S3 listObjects failed HTTP status " + response.statusCode());
             }
@@ -475,12 +355,9 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         Objects.requireNonNull(bucket, "bucket must not be null");
         Objects.requireNonNull(objectKey, "objectKey must not be null");
 
-        URI uri = resolveObjectUri(bucket, objectKey, null);
+        URI uri = requests.objectUri(bucket, objectKey, null);
         S3HttpRequest unsigned = S3HttpRequest.of("HEAD", uri, Map.of());
-        S3HttpRequest signed =
-                AwsSigV4Signer.sign(unsigned, configuration.credentials(), configuration.region(), Instant.now());
-
-        try (S3HttpResponse response = executeWithRetry(signed)) {
+        try (S3HttpResponse response = requests.send(unsigned)) {
             if (response.statusCode() == 404) {
                 return Optional.empty();
             }
@@ -511,101 +388,6 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         }
     }
 
-    private S3HttpResponse executeWithRetry(S3HttpRequest request) throws IOException {
-        int maxRetries = configuration.maxRetries();
-        int attempts = 0;
-        long backoffMs = 100;
-
-        while (true) {
-            attempts++;
-            try {
-                S3HttpResponse response = transport.send(request);
-                if (response.statusCode() >= 500 && attempts <= maxRetries) {
-                    response.close();
-                    sleepBackoff(backoffMs);
-                    backoffMs *= 2;
-                    continue;
-                }
-                return response;
-            } catch (IOException | InterruptedException e) {
-                if (attempts > maxRetries) {
-                    if (e instanceof InterruptedException) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("S3 request interrupted after retries", e);
-                    }
-                    throw (IOException) e;
-                }
-                sleepBackoff(backoffMs);
-                backoffMs *= 2;
-            }
-        }
-    }
-
-    private void sleepBackoff(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private URI resolveBucketRootUri(StorageBucket bucket, @Nullable String query) {
-        String bucketName = bucket.name();
-        URI base = configuration.endpoint();
-        String scheme = base.getScheme() != null ? base.getScheme() : "https";
-        String host = base.getHost();
-        int port = base.getPort();
-
-        try {
-            if (configuration.addressingMode() == S3AddressingMode.PATH_STYLE) {
-                String path = "/" + bucketName;
-                return new URI(scheme, null, host, port, path, query, null);
-            } else {
-                String virtualHost = bucketName + "." + host;
-                return new URI(scheme, null, virtualHost, port, "/", query, null);
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid URI construction for bucket: " + bucketName, e);
-        }
-    }
-
-    private URI resolveObjectUri(StorageBucket bucket, String objectKey, @Nullable String query) {
-        String sanitizedKey = sanitizeKey(objectKey);
-        if (configuration.pathPrefix() != null && !configuration.pathPrefix().isBlank()) {
-            sanitizedKey = configuration.pathPrefix().trim() + "/" + sanitizedKey;
-        }
-
-        String bucketName = bucket.name();
-        URI base = configuration.endpoint();
-        String scheme = base.getScheme() != null ? base.getScheme() : "https";
-        String host = base.getHost();
-        int port = base.getPort();
-
-        try {
-            if (configuration.addressingMode() == S3AddressingMode.PATH_STYLE) {
-                String path = "/" + bucketName + "/" + sanitizedKey;
-                return new URI(scheme, null, host, port, path, query, null);
-            } else {
-                String virtualHost = bucketName + "." + host;
-                String path = "/" + sanitizedKey;
-                return new URI(scheme, null, virtualHost, port, path, query, null);
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid URI construction for key: " + objectKey, e);
-        }
-    }
-
-    private String sanitizeKey(String objectKey) {
-        String sanitized = objectKey.replace('\\', '/');
-        while (sanitized.startsWith("/")) {
-            sanitized = sanitized.substring(1);
-        }
-        if (sanitized.contains("..")) {
-            throw new IllegalArgumentException("Path traversal attempt in S3 key: " + objectKey);
-        }
-        return sanitized;
-    }
-
     private static String computeSha256(byte[] data) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -614,6 +396,4 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }
     }
-
-    public record PartETag(int partNumber, String etag) {}
 }
