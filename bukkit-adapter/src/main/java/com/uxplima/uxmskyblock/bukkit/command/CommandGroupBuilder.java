@@ -43,7 +43,8 @@ final class CommandGroupBuilder {
             IslandFlagCommands flagCommands,
             IslandVisitorCommands visitorCommands,
             IslandMembershipCommands membershipCommands,
-            IslandInfoCommands infoCommands) {}
+            IslandInfoCommands infoCommands,
+            IslandSeasonCommands seasonCommands) {}
 
     CommandGroups build() {
 
@@ -206,6 +207,11 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
 
+        // The season service, its snapshots, its payouts and its storage were here since the season
+        // work and no command reached any of it.
+        IslandSeasonCommands seasonCommands =
+                new IslandSeasonCommands(() -> tree.seasonService, tree.schedulerPort, tree.messages);
+
         return new CommandGroups(
                 bankCommands,
                 chatCommands,
@@ -223,6 +229,7 @@ final class CommandGroupBuilder {
                 flagCommands,
                 visitorCommands,
                 membershipCommands,
-                infoCommands);
+                infoCommands,
+                seasonCommands);
     }
 }

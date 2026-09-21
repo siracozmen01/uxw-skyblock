@@ -48,6 +48,7 @@ import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.season.IslandSeasonService;
 import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
@@ -102,6 +103,7 @@ public final class IslandCommandTree {
     volatile @Nullable StorageBucket backupBucket;
     volatile @Nullable IslandBackupService islandBackupService;
     volatile @Nullable IslandMembershipService membershipService;
+    volatile @Nullable IslandSeasonService seasonService;
     volatile @Nullable IslandWarpService warpService;
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
@@ -307,6 +309,11 @@ public final class IslandCommandTree {
         this.membershipService = membershipService;
     }
 
+    /** Which season is running, how the last one went, and what it owes a player. */
+    public void setSeasonService(@Nullable IslandSeasonService seasonService) {
+        this.seasonService = seasonService;
+    }
+
     public @Nullable BackupService backupService() {
         return backupService;
     }
@@ -395,6 +402,7 @@ public final class IslandCommandTree {
                 .then(groups.infoCommands().buildInfo())
                 .then(groups.chatCommands().buildAllianceChat())
                 .then(groups.chatCommands().buildAllianceChatAlias())
+                .then(groups.seasonCommands().buildSeason())
                 .then(vaultBranch("vault"))
                 // The design document publishes /is chest for the same window. A command an
                 // operator reads about and types is either there or the document is wrong, and the

@@ -192,6 +192,33 @@ public final class IslandSeasonService {
         storage.transitionSeasonState(active.id(), SeasonState.FROZEN, SeasonState.COMPLETED);
     }
 
+    /**
+     * Every season the server has run, newest first.
+     *
+     * <p>The storage port has answered this since it was written and nothing asked it, because no
+     * command reached a season at all.
+     */
+    public List<SeasonRecord> seasons() {
+        List<SeasonRecord> all = new java.util.ArrayList<>(storage.listSeasons());
+        all.sort(java.util.Comparator.comparingInt(
+                        (SeasonRecord record) -> record.id().number())
+                .reversed());
+        return all;
+    }
+
+    /** One season by its number, for a caller who typed one. */
+    public Optional<SeasonRecord> season(SeasonId id) {
+        Objects.requireNonNull(id, "id must not be null");
+        return storage.findSeason(id);
+    }
+
+    /** The standings of one season on one metric, best first. */
+    public List<SeasonSnapshotEntry> standings(SeasonId id, SeasonMetric metric, int limit) {
+        Objects.requireNonNull(id, "id must not be null");
+        Objects.requireNonNull(metric, "metric must not be null");
+        return storage.findSnapshots(id, metric, Math.max(1, limit));
+    }
+
     public List<SeasonPayoutRecord> getPendingPayouts(PlayerUuid playerUuid) {
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
         return storage.findPendingPayouts(playerUuid);
