@@ -295,6 +295,31 @@ public final class IslandCommandTree {
     }
 
     public void register(JavaPlugin plugin) {
+        CommandGroups groups = buildGroups();
+        LiteralArgumentBuilder<CommandSourceStack> root = assembleRoot(groups);
+        CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
+    }
+
+    /**
+     * The command groups this tree is made of.
+     *
+     * <p>Building nine of them and assembling the tree out of them were one method, which is how
+     * that method reached the size the standards draw a line at. The two halves answer different
+     * questions: what the verbs are, and where they hang.
+     */
+    private record CommandGroups(
+            IslandBankCommands bankCommands,
+            IslandChatCommands chatCommands,
+            IslandAdminCommands adminCommands,
+            IslandLifecycleCommands lifecycleCommands,
+            IslandNavigationCommands navigationCommands,
+            IslandProgressionCommands progressionCommands,
+            IslandMechanicsCommands mechanicsCommands,
+            IslandActivityCommands activityCommands,
+            IslandHomeCommands homeCommands) {}
+
+    private CommandGroups buildGroups() {
+
         IslandBankCommands bankCommands = new IslandBankCommands(
                 islandBankService,
                 islandLocationService,
@@ -379,55 +404,67 @@ public final class IslandCommandTree {
                 messages,
                 sessionCoordinator);
 
+        return new CommandGroups(
+                bankCommands,
+                chatCommands,
+                adminCommands,
+                lifecycleCommands,
+                navigationCommands,
+                progressionCommands,
+                mechanicsCommands,
+                activityCommands,
+                homeCommands);
+    }
+
+    private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroups groups) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
                 .then(Cmd.literal("help").executes(this::executeHelp))
                 .then(Cmd.literal("menu").executes(this::executeMenu))
-                .then(mechanicsCommands.buildMissions())
-                .then(mechanicsCommands.buildChallenges())
-                .then(mechanicsCommands.buildBorder())
-                .then(mechanicsCommands.buildBounds())
-                .then(progressionCommands.buildLevel())
-                .then(progressionCommands.buildWorth())
-                .then(progressionCommands.buildValue())
-                .then(lifecycleCommands.buildReset())
-                .then(lifecycleCommands.buildDelete())
-                .then(lifecycleCommands.buildCreate())
-                .then(navigationCommands.buildHome())
-                .then(navigationCommands.buildGo())
-                .then(navigationCommands.buildVisit())
-                .then(navigationCommands.buildNether())
-                .then(navigationCommands.buildEnd())
-                .then(mechanicsCommands.buildLimits())
-                .then(mechanicsCommands.buildQuarantine())
-                .then(mechanicsCommands.buildBooster())
-                .then(navigationCommands.buildSetSpawn())
-                .then(homeCommands.buildSetHome())
-                .then(homeCommands.buildTravelHome())
-                .then(homeCommands.buildNamedHome())
-                .then(homeCommands.buildDeleteHome())
-                .then(activityCommands.build())
+                .then(groups.mechanicsCommands().buildMissions())
+                .then(groups.mechanicsCommands().buildChallenges())
+                .then(groups.mechanicsCommands().buildBorder())
+                .then(groups.mechanicsCommands().buildBounds())
+                .then(groups.progressionCommands().buildLevel())
+                .then(groups.progressionCommands().buildWorth())
+                .then(groups.progressionCommands().buildValue())
+                .then(groups.lifecycleCommands().buildReset())
+                .then(groups.lifecycleCommands().buildDelete())
+                .then(groups.lifecycleCommands().buildCreate())
+                .then(groups.navigationCommands().buildHome())
+                .then(groups.navigationCommands().buildGo())
+                .then(groups.navigationCommands().buildVisit())
+                .then(groups.navigationCommands().buildNether())
+                .then(groups.navigationCommands().buildEnd())
+                .then(groups.mechanicsCommands().buildLimits())
+                .then(groups.mechanicsCommands().buildQuarantine())
+                .then(groups.mechanicsCommands().buildBooster())
+                .then(groups.navigationCommands().buildSetSpawn())
+                .then(groups.homeCommands().buildSetHome())
+                .then(groups.homeCommands().buildTravelHome())
+                .then(groups.homeCommands().buildNamedHome())
+                .then(groups.homeCommands().buildDeleteHome())
+                .then(groups.activityCommands().build())
                 .then(Cmd.literal("vault")
                         .executes(ctx -> executeVault(ctx, 1))
                         .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                                 .executes(ctx -> executeVault(
                                         ctx,
                                         com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page")))))
-                .then(lifecycleCommands.buildRename())
-                .then(adminCommands.buildRestore())
-                .then(bankCommands.build())
-                .then(progressionCommands.buildBiome())
-                .then(progressionCommands.buildTop())
+                .then(groups.lifecycleCommands().buildRename())
+                .then(groups.adminCommands().buildRestore())
+                .then(groups.bankCommands().build())
+                .then(groups.progressionCommands().buildBiome())
+                .then(groups.progressionCommands().buildTop())
                 .then(Cmd.literal("profile")
                         .then(Cmd.literal("switch")
                                 .then(Cmd.argument("profileId", StringArgumentType.word())
                                         .executes(this::executeProfileSwitch))))
-                .then(chatCommands.buildChat())
-                .then(chatCommands.buildChatAlias())
-                .then(chatCommands.buildSpy())
-                .then(adminCommands.buildAdmin());
-
-        CommandRegistrar.register(plugin, root, "Main Skyblock command tree", "is");
+                .then(groups.chatCommands().buildChat())
+                .then(groups.chatCommands().buildChatAlias())
+                .then(groups.chatCommands().buildSpy())
+                .then(groups.adminCommands().buildAdmin());
+        return root;
     }
 
     private void sendFeedback(Audience audience, Component component) {
