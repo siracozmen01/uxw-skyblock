@@ -139,29 +139,41 @@ public final class IslandVaultService {
             throw new VaultPageLimitExceededException(island.id(), page, maxAllowed);
         }
 
-        Optional<VaultPage> pageOpt = storagePort.findPage(island.id(), page);
-        VaultPage vaultPage;
-        if (pageOpt.isEmpty()) {
-            vaultPage = storagePort.createPage(island.id(), page, new byte[0], actorProfileId.toString());
-        } else {
-            vaultPage = pageOpt.get();
+        // There has to be a row before there is a lease on it.
+        if (storagePort.findPage(island.id(), page).isEmpty()) {
+            var unused = storagePort.createPage(island.id(), page, new byte[0], actorProfileId.toString());
         }
 
         Optional<VaultEditSession> sessionOpt = storagePort.acquireEditSession(island.id(), page, playerUuid, duration);
         if (sessionOpt.isEmpty()) {
-            // Page is locked by an active unexpired session
-            Optional<VaultEditSession> currentActive = Optional.empty();
-            if (vaultPage.activeSessionId() != null) {
-                currentActive = storagePort.findSession(vaultPage.activeSessionId());
-            }
-            UUID activeEditor = currentActive.map(VaultEditSession::playerUuid).orElse(playerUuid);
-            Instant expiresAt = currentActive
-                    .map(VaultEditSession::expiresAt)
-                    .orElseGet(() -> Instant.now().plus(duration));
-            throw new VaultPageBusyException(island.id(), page, activeEditor, expiresAt);
+            throw busy(island, page, playerUuid, duration);
         }
 
+        // The contents are read after the lease, never before it. Reading first opens a window: the
+        // player who held the page commits between the read and the lease, and this window then
+        // shows what the page held before that commit. Closing it writes those contents back, plus
+        // whatever this player added, and the previous holder's deposit is erased or their
+        // withdrawal is undone. Either way items appear or disappear, and the page itself is the
+        // only record, so nothing says it happened.
+        VaultPage vaultPage = storagePort
+                .findPage(island.id(), page)
+                .orElseThrow(() -> new IllegalStateException(
+                        "The vault page " + page + " of island " + island.id() + " was leased and is not there"));
+
         return new VaultOpenResult(vaultPage, sessionOpt.get());
+    }
+
+    /** Who is holding the page and until when, for the refusal a waiting player reads. */
+    private VaultPageBusyException busy(Island island, int page, UUID playerUuid, Duration duration) {
+        Optional<VaultEditSession> currentActive = storagePort
+                .findPage(island.id(), page)
+                .map(VaultPage::activeSessionId)
+                .flatMap(sessionId -> sessionId == null ? Optional.empty() : storagePort.findSession(sessionId));
+        UUID activeEditor = currentActive.map(VaultEditSession::playerUuid).orElse(playerUuid);
+        Instant expiresAt = currentActive
+                .map(VaultEditSession::expiresAt)
+                .orElseGet(() -> Instant.now().plus(duration));
+        return new VaultPageBusyException(island.id(), page, activeEditor, expiresAt);
     }
 
     /**
