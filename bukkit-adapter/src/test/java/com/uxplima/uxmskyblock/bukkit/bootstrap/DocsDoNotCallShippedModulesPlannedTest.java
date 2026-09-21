@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,11 @@ import org.junit.jupiter.api.Test;
  * <p>This is the cheap half of that comparison: a module the build really has must not be described
  * as absent. The expensive half, whether a documented endpoint answers, is what the REST and menu
  * guards do.
+ *
+ * <p><b>This guard runs where the documents are, which is a developer's checkout and not CI.</b>
+ * {@code docs/} is deliberately outside version control, so on a fresh clone there is nothing here
+ * to read. A guard that cannot see its subject must say so and stand aside rather than fail a build
+ * for everyone; failing there would only teach the next person that this file is noise.
  */
 class DocsDoNotCallShippedModulesPlannedTest {
 
@@ -37,6 +43,7 @@ class DocsDoNotCallShippedModulesPlannedTest {
     @Test
     @DisplayName("No document calls a module the build ships planned or unimplemented")
     void noShippedModuleIsCalledPlanned() throws IOException {
+        assumeTrue(Files.isDirectory(DOCS), "docs/ is outside version control, so there is nothing here to read");
         String settings = Files.readString(SETTINGS, StandardCharsets.UTF_8);
         List<String> offences = new ArrayList<>();
         int scanned = 0;
