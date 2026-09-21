@@ -327,7 +327,8 @@ public final class IslandCommandTree {
                 biomeModificationPort,
                 sessionCoordinator,
                 schedulerPort,
-                () -> worthService);
+                () -> worthService,
+                messages);
 
         IslandMechanicsCommands mechanicsCommands = new IslandMechanicsCommands(
                 islandLocationService,

@@ -11,13 +11,14 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.biome.BiomeModificationPort;
@@ -47,6 +48,7 @@ public final class IslandProgressionCommands {
     private final PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final Supplier<@Nullable IslandWorthService> worthServiceProvider;
+    private final Messages messages;
 
     public IslandProgressionCommands(
             IslandLocationService islandLocationService,
@@ -55,7 +57,8 @@ public final class IslandProgressionCommands {
             BiomeModificationPort biomeModificationPort,
             PlayerSessionCoordinator sessionCoordinator,
             SchedulerPort schedulerPort,
-            Supplier<@Nullable IslandWorthService> worthServiceProvider) {
+            Supplier<@Nullable IslandWorthService> worthServiceProvider,
+            Messages messages) {
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.islandBankService = Objects.requireNonNull(islandBankService, "islandBankService must not be null");
@@ -67,6 +70,7 @@ public final class IslandProgressionCommands {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.worthServiceProvider =
                 Objects.requireNonNull(worthServiceProvider, "worthServiceProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildLevel() {
@@ -102,6 +106,19 @@ public final class IslandProgressionCommands {
         return sessionCoordinator.activeProfile(player.getUniqueId());
     }
 
+    private void send(Audience audience, String key, TagResolver... resolvers) {
+        send(audience, messages.render(audience, key, resolvers));
+    }
+
+    private static TagResolver number(String name, long value) {
+        return Placeholder.unparsed(name, String.format(Locale.ROOT, "%,d", value));
+    }
+
+    /** Minor units are stored as an integer; a player reads them as money. */
+    private static String money(long minorUnits) {
+        return String.format(Locale.ROOT, "%,.2f", minorUnits / 100.0);
+    }
+
     private void send(Audience audience, Component component) {
         if (audience instanceof Player player) {
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
@@ -117,25 +134,25 @@ public final class IslandProgressionCommands {
     private int executeLevel(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can check island level.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandWorthService worthService = worthServiceProvider.get();
         if (worthService == null) {
-            send(player, Component.text("Island worth and level engine is not currently enabled.", NamedTextColor.RED));
+            send(player, "level.engine_disabled");
             return Cmd.OK;
         }
 
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
         ProfileId profileId = optProfile.get();
         Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
         if (optIsland.isEmpty()) {
-            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            send(player, "error.no_island");
             return Cmd.OK;
         }
 
@@ -144,45 +161,17 @@ public final class IslandProgressionCommands {
             long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
             IslandScoreBreakdown score = worthService.calculateScore(islandId, 0, bankBalance);
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                send(player, "level.header");
+                send(player, "level.calculated", number("level", score.calculatedLevel()));
+                send(player, "level.total_score", number("score", score.totalScore()));
+                send(player, "level.block_score", number("score", score.blockScore()));
+                send(player, "level.spawner_score", number("score", score.spawnerScore()));
+                send(player, "level.bank_score", number("score", score.bankScore()));
                 send(
                         player,
-                        Component.text("=== Island Level & Valuation ===", NamedTextColor.GOLD, TextDecoration.BOLD));
-                send(
-                        player,
-                        Component.text("Calculated Level: ", NamedTextColor.YELLOW)
-                                .append(Component.text(
-                                        String.format("%,d", score.calculatedLevel()),
-                                        NamedTextColor.GREEN,
-                                        TextDecoration.BOLD)));
-                send(
-                        player,
-                        Component.text("Total Score: ", NamedTextColor.YELLOW)
-                                .append(Component.text(String.format("%,d", score.totalScore()), NamedTextColor.AQUA)));
-                send(
-                        player,
-                        Component.text(" • Block Score: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        String.format("%,d", score.blockScore()), NamedTextColor.WHITE)));
-                send(
-                        player,
-                        Component.text(" • Spawner Score: ", NamedTextColor.GRAY)
-                                .append(Component.text(
-                                        String.format("%,d", score.spawnerScore()), NamedTextColor.WHITE)));
-                send(
-                        player,
-                        Component.text(" • Bank Score: ", NamedTextColor.GRAY)
-                                .append(Component.text(String.format("%,d", score.bankScore()), NamedTextColor.WHITE)));
-                send(
-                        player,
-                        Component.text("Economic Worth: ", NamedTextColor.YELLOW)
-                                .append(Component.text(
-                                        "$" + String.format("%,.2f", score.dampedEconomicWorthMinorUnits() / 100.0),
-                                        NamedTextColor.GOLD)));
-                send(
-                        player,
-                        Component.text(
-                                "Use /is level recalculate to rescan all blocks on your island.",
-                                NamedTextColor.DARK_GRAY));
+                        "level.worth",
+                        Placeholder.unparsed("worth", money(score.dampedEconomicWorthMinorUnits())));
+                send(player, "level.recalculate_hint");
             });
         });
         return Cmd.OK;
@@ -191,41 +180,37 @@ public final class IslandProgressionCommands {
     private int executeLevelRecalculate(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can recalculate island level.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandWorthService worthService = worthServiceProvider.get();
         if (worthService == null) {
-            send(player, Component.text("Island worth and level engine is not currently enabled.", NamedTextColor.RED));
+            send(player, "level.engine_disabled");
             return Cmd.OK;
         }
 
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(player, Component.text("You do not have an active profile.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
 
         ProfileId profileId = optProfile.get();
         Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
         if (optIsland.isEmpty()) {
-            send(player, Component.text("You do not have an active island.", NamedTextColor.RED));
+            send(player, "error.no_island");
             return Cmd.OK;
         }
 
         IslandId islandId = optIsland.get();
-        send(
-                player,
-                Component.text(
-                        "Recalculating island blocks and valuation across region chunks...", NamedTextColor.YELLOW));
+        send(player, "level.recalculating");
 
         schedulerPort.async(() -> {
             Optional<com.uxplima.uxmskyblock.core.domain.island.IslandLocation> optLoc =
                     islandLocationService.findLocation(islandId);
             if (optLoc.isEmpty()) {
                 schedulerPort.onEntity(
-                        new PlayerUuid(player.getUniqueId()),
-                        () -> send(player, Component.text("Could not find island details.", NamedTextColor.RED)));
+                        new PlayerUuid(player.getUniqueId()), () -> send(player, "level.details_missing"));
                 return;
             }
             com.uxplima.uxmskyblock.core.domain.island.IslandLocation loc = optLoc.get();
@@ -233,26 +218,16 @@ public final class IslandProgressionCommands {
 
             worthService.triggerAsyncRecalculation(islandId, loc.worldName(), loc.bounds(), 0, bankBalance, score -> {
                 schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                    send(player, "level.recalculated");
                     send(
                             player,
-                            Component.text(
-                                    "Island recalculation complete!", NamedTextColor.GREEN, TextDecoration.BOLD));
+                            "level.new_level",
+                            number("level", score.calculatedLevel()),
+                            number("score", score.totalScore()));
                     send(
                             player,
-                            Component.text("New Level: ", NamedTextColor.YELLOW)
-                                    .append(Component.text(
-                                            String.format("%,d", score.calculatedLevel()),
-                                            NamedTextColor.GREEN,
-                                            TextDecoration.BOLD))
-                                    .append(Component.text(
-                                            " (Total Score: " + String.format("%,d", score.totalScore()) + ")",
-                                            NamedTextColor.GRAY)));
-                    send(
-                            player,
-                            Component.text("Economic Worth: ", NamedTextColor.YELLOW)
-                                    .append(Component.text(
-                                            "$" + String.format("%,.2f", score.dampedEconomicWorthMinorUnits() / 100.0),
-                                            NamedTextColor.GOLD)));
+                            "level.worth",
+                            Placeholder.unparsed("worth", money(score.dampedEconomicWorthMinorUnits())));
                 });
             });
         });
@@ -271,19 +246,23 @@ public final class IslandProgressionCommands {
         schedulerPort.async(() -> {
             var entries = islandLeaderboardService.getTop(cat, 10);
             schedulerPort.onGlobal(() -> {
-                send(src.getSender(), Component.text("--- Top Islands (" + cat.name() + ") ---", NamedTextColor.GOLD));
+                Audience audience = src.getSender();
+                Component categoryName = messages.renderPlain(
+                        audience, "leaderboard.category_" + cat.name().toLowerCase(Locale.ROOT));
+                send(audience, "leaderboard.header", Placeholder.component("category", categoryName));
                 if (entries.isEmpty()) {
-                    send(src.getSender(), Component.text("No islands ranked yet.", NamedTextColor.GRAY));
+                    send(audience, "leaderboard.empty");
                 } else {
                     for (LeaderboardEntry entry : entries) {
                         String name = entry.islandName() != null
                                 ? entry.islandName()
                                 : entry.islandId().toString().substring(0, 8);
                         send(
-                                src.getSender(),
-                                Component.text(
-                                        "#" + entry.rank() + " " + name + " - " + entry.formattedScore(),
-                                        NamedTextColor.YELLOW));
+                                audience,
+                                "leaderboard.entry",
+                                Placeholder.unparsed("rank", Integer.toString(entry.rank())),
+                                Placeholder.unparsed("name", name),
+                                Placeholder.unparsed("score", entry.formattedScore()));
                     }
                 }
             });
@@ -299,17 +278,14 @@ public final class IslandProgressionCommands {
         String biomeName = StringArgumentType.getString(ctx, "type");
         Optional<IslandBiome> optBiome = IslandBiome.fromId(biomeName);
         if (optBiome.isEmpty()) {
-            send(player, Component.text("Unknown biome '" + biomeName + "'.", NamedTextColor.RED));
+            send(player, "biome.unknown", Placeholder.unparsed("name", biomeName));
             return Cmd.OK;
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -318,9 +294,7 @@ public final class IslandProgressionCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
             if (optIslandId.isEmpty()) {
-                schedulerPort.onEntity(
-                        playerUuid,
-                        () -> send(player, Component.text("You do not have an island.", NamedTextColor.RED)));
+                schedulerPort.onEntity(playerUuid, () -> send(player, "error.no_island"));
                 return;
             }
 
@@ -329,13 +303,9 @@ public final class IslandProgressionCommands {
                     .thenAccept(success -> {
                         schedulerPort.onEntity(playerUuid, () -> {
                             if (success) {
-                                send(
-                                        player,
-                                        Component.text(
-                                                "Island biome changed to " + targetBiome.displayName() + "!",
-                                                NamedTextColor.GREEN));
+                                send(player, "biome.changed", Placeholder.unparsed("biome", targetBiome.displayName()));
                             } else {
-                                send(player, Component.text("Failed to update island biome.", NamedTextColor.RED));
+                                send(player, "biome.failed");
                             }
                         });
                     });
