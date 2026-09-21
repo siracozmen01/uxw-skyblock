@@ -9,10 +9,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.RestApiConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ServerNodeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.freeze.BukkitIslandVisitorEvictionAdapter;
+import com.uxplima.uxmskyblock.bukkit.health.BukkitServerHealthAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
@@ -38,6 +40,7 @@ import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.warp.SafeTeleportEngine;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import com.uxplima.uxmskyblock.rest.server.RestServer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -52,6 +55,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
     private final AuthorityWiring authorityWiring;
     private final GameplayWiring gameplayWiring;
     private final IntegrationWiring integrationWiring;
+    private @Nullable RestServer restServer;
     private final FeatureModuleWiring featureModuleWiring;
 
     public SkyblockBootstrap(JavaPlugin plugin, PersistenceWiring persistenceWiring, ConfigurationWiring configWiring) {
@@ -157,9 +161,42 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 .protectionListener()
                 .loadPersistedIslands(configWiring.nodeConfig().worldName());
         integrationWiring.enable();
+        startRestApiIfConfigured();
 
         BootstrapEventRegistrar.registerEvents(
                 Bukkit.getPluginManager(), plugin, featureModuleWiring, gameplayWiring, authorityWiring, configWiring);
+    }
+
+    /**
+     * Opens the embedded REST API when the operator asked for it.
+     *
+     * <p>The module has existed since the enterprise foundation work and nothing ever started it:
+     * the plugin did not even depend on it, so five endpoints, the bearer check and the deposit
+     * idempotency were code that never ran on a server. It is off by default and refuses to open
+     * while the bearer token is still the one the file ships with.
+     */
+    private void startRestApiIfConfigured() {
+        RestApiConfiguration restConfig = RestApiConfiguration.load(configWiring.rootNode());
+        if (restConfig.refusedForDefaultToken()) {
+            plugin.getLogger()
+                    .warning("The REST API is enabled but rest.bearer-token is still the shipped value, "
+                            + "so the port was not opened. Set a token of your own.");
+            return;
+        }
+        if (!restConfig.shouldStart()) {
+            return;
+        }
+        RestServer server = new RestServer(
+                restConfig.toRestConfiguration(),
+                configWiring.nodeConfig().nodeId(),
+                persistenceWiring.bootstrap().islandStoragePort(),
+                gameplayWiring.bankService(),
+                gameplayWiring.leaderboardService(),
+                new BukkitServerHealthAdapter(
+                        gameplayWiring.protectionListener().spatialIndex()));
+        server.start();
+        this.restServer = server;
+        plugin.getLogger().info("REST API listening on " + restConfig.host() + ":" + server.port());
     }
 
     public ConfigurationWiring configurationWiring() {
@@ -284,6 +321,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     @Override
     public void close() {
+        RestServer server = this.restServer;
+        if (server != null) {
+            server.close();
+            this.restServer = null;
+        }
         featureModuleWiring.close();
         gameplayWiring.missionService().flushDirtyProgress();
         integrationWiring.close();

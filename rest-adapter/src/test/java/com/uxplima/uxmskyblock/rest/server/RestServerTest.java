@@ -48,6 +48,7 @@ class RestServerTest {
     private IslandStoragePort islandStoragePort;
     private IslandBankService bankService;
     private IslandLeaderboardService leaderboardService;
+    private com.uxplima.uxmskyblock.core.application.health.ServerHealthPort health;
     private RestServer restServer;
     private HttpClient httpClient;
     private String baseUrl;
@@ -60,9 +61,25 @@ class RestServerTest {
         islandStoragePort = mock(IslandStoragePort.class);
         bankService = mock(IslandBankService.class);
         leaderboardService = mock(IslandLeaderboardService.class);
+        health = new com.uxplima.uxmskyblock.core.application.health.ServerHealthPort() {
+            @Override
+            public double ticksPerSecond() {
+                return 19.98;
+            }
+
+            @Override
+            public int activeIslandCount() {
+                return 7;
+            }
+
+            @Override
+            public double spatialCacheHitRatio() {
+                return 0.9876;
+            }
+        };
 
         RestConfiguration config = new RestConfiguration(true, "127.0.0.1", 0, TEST_TOKEN);
-        restServer = new RestServer(config, NODE_ID, islandStoragePort, bankService, leaderboardService);
+        restServer = new RestServer(config, NODE_ID, islandStoragePort, bankService, leaderboardService, health);
         restServer.start();
 
         baseUrl = "http://127.0.0.1:" + restServer.port();
@@ -618,6 +635,25 @@ class RestServerTest {
         assertThat(json.get("status").getAsString()).isEqualTo("SUCCESS");
         assertThat(json.get("newBalanceMinorUnits").getAsLong()).isEqualTo(7777L);
         assertThat(json.get("transactionId").getAsString()).isEqualTo(txId.toString());
+    }
+
+    @Test
+    @DisplayName("Health answers the three numbers the document publishes")
+    void testHealthAnswersTheDocumentedNumbers() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/health"))
+                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        assertThat(json.get("status").getAsString()).isEqualTo("UP");
+        assertThat(json.get("ticksPerSecond").getAsDouble()).isEqualTo(19.98);
+        assertThat(json.get("activeIslands").getAsInt()).isEqualTo(7);
+        assertThat(json.get("cacheHitRatio").getAsDouble()).isEqualTo(0.99);
     }
 
     @Test

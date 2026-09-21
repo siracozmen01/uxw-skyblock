@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.bukkit.Location;
 
@@ -23,6 +24,15 @@ import org.jspecify.annotations.Nullable;
  * database lookups on high-frequency Bukkit event threads (BlockBreak, BlockPlace, Move, Interact).
  */
 public final class SpatialIslandIndex {
+
+    /**
+     * How often this index answered from memory. The protection path asks it for every block a
+     * player touches, so the ratio of these two is the one number that says whether the hot path is
+     * actually hot. A miss costs a background refresh and a refused interaction until it lands.
+     */
+    private final LongAdder lookups = new LongAdder();
+
+    private final LongAdder hits = new LongAdder();
 
     public record SpatialChunkKey(String world, int chunkX, int chunkZ) {
         public SpatialChunkKey {
@@ -120,10 +130,12 @@ public final class SpatialIslandIndex {
         int chunkZ = blockZ >> 4;
         SpatialChunkKey key = new SpatialChunkKey(worldName, chunkX, chunkZ);
 
+        lookups.increment();
         IslandId islandId = chunkToIsland.get(key);
         if (islandId != null) {
             Island island = islandMap.get(islandId);
             if (island != null && island.bounds().contains(blockX, blockZ)) {
+                hits.increment();
                 return Optional.of(island);
             }
         }
@@ -168,6 +180,20 @@ public final class SpatialIslandIndex {
 
     public Optional<Island> getCachedIsland(IslandId islandId) {
         return Optional.ofNullable(islandMap.get(islandId));
+    }
+
+    /** The share of lookups answered from memory, or 1.0 before anything has asked. */
+    public double hitRatio() {
+        long asked = lookups.sum();
+        if (asked <= 0) {
+            return 1.0;
+        }
+        return (double) hits.sum() / (double) asked;
+    }
+
+    /** How many islands this index holds, which is how many are live on this node. */
+    public int cachedIslandCount() {
+        return islandMap.size();
     }
 
     public Collection<Island> allCachedIslands() {

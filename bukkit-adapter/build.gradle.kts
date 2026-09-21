@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":rest-adapter"))
     implementation(project(":persistence-adapter"))
     api(project(":api"))
 

@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.rest.server;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -12,6 +13,7 @@ import java.util.logging.Logger;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.health.ServerHealthPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -41,6 +43,7 @@ public final class RestServer implements AutoCloseable {
     private final IslandStoragePort islandStoragePort;
     private final IslandBankService bankService;
     private final IslandLeaderboardService leaderboardService;
+    private final @Nullable ServerHealthPort healthPort;
     private @Nullable Javalin app;
 
     public RestServer(
@@ -48,12 +51,14 @@ public final class RestServer implements AutoCloseable {
             ServerNodeId serverNodeId,
             IslandStoragePort islandStoragePort,
             IslandBankService bankService,
-            IslandLeaderboardService leaderboardService) {
+            IslandLeaderboardService leaderboardService,
+            @Nullable ServerHealthPort healthPort) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.bankService = Objects.requireNonNull(bankService, "bankService must not be null");
         this.leaderboardService = Objects.requireNonNull(leaderboardService, "leaderboardService must not be null");
+        this.healthPort = healthPort;
     }
 
     public synchronized void start() {
@@ -109,11 +114,22 @@ public final class RestServer implements AutoCloseable {
     }
 
     private void handleHealth(Context ctx) {
-        ctx.status(HttpStatus.OK)
-                .json(Map.of(
-                        "status", "UP",
-                        "nodeId", serverNodeId.value(),
-                        "timestamp", Instant.now().toString()));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "UP");
+        body.put("nodeId", serverNodeId.value());
+        body.put("timestamp", Instant.now().toString());
+        // The three the enterprise foundation document publishes. They are absent rather than
+        // invented when this node has no health source wired, which a caller can tell apart.
+        if (healthPort != null) {
+            body.put("ticksPerSecond", round(healthPort.ticksPerSecond()));
+            body.put("activeIslands", healthPort.activeIslandCount());
+            body.put("cacheHitRatio", round(healthPort.spatialCacheHitRatio()));
+        }
+        ctx.status(HttpStatus.OK).json(body);
+    }
+
+    private static double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     private void handleGetIsland(Context ctx) {
