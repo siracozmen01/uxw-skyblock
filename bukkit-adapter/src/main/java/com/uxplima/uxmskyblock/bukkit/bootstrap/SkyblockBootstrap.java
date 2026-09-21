@@ -196,6 +196,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 new BukkitServerHealthAdapter(
                         gameplayWiring.protectionListener().spatialIndex()));
         server.start();
+        // The feed behind WS /api/v1/events carries exactly what the plugin durably staged. Nothing
+        // is invented for the socket, and a viewer that drops a frame never makes the outbox retry.
+        integrationWiring.outboxDispatcher().registerConsumer(server.liveEventFeed());
         this.restServer = server;
         plugin.getLogger().info("REST API listening on " + restConfig.host() + ":" + server.port());
     }

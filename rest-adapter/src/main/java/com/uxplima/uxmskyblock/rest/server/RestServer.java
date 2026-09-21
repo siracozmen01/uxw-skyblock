@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
+import com.uxplima.uxmskyblock.core.application.event.OutboxEventConsumer;
 import com.uxplima.uxmskyblock.core.application.health.ServerHealthPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
@@ -44,6 +45,7 @@ public final class RestServer implements AutoCloseable {
     private final IslandBankService bankService;
     private final IslandLeaderboardService leaderboardService;
     private final @Nullable ServerHealthPort healthPort;
+    private final LiveEventFeed liveEventFeed = new LiveEventFeed();
     private @Nullable Javalin app;
 
     public RestServer(
@@ -108,6 +110,24 @@ public final class RestServer implements AutoCloseable {
 
         // 5. Bank Deposit (Tebex / CraftingStore Webstore)
         app.post("/api/v1/islands/{id}/bank/deposit", this::handleBankDeposit);
+
+        // 6. Live event feed for map overlays.
+        app.ws("/api/v1/events", ws -> {
+            ws.onConnect(ctx -> {
+                if (!authorizeSocket(ctx)) {
+                    ctx.closeSession(1008, "Missing or invalid bearer token.");
+                    return;
+                }
+                if (!liveEventFeed.register(ctx)) {
+                    ctx.closeSession(1013, "Too many viewers are already connected.");
+                    return;
+                }
+                ctx.enableAutomaticPings();
+                liveEventFeed.send(ctx, LiveEventFeed.helloFrame(serverNodeId.value()));
+            });
+            ws.onClose(liveEventFeed::unregister);
+            ws.onError(ctx -> liveEventFeed.unregister(ctx));
+        });
 
         app.start(config.host(), config.port());
         LOGGER.info(() -> "REST server started on " + config.host() + ":" + config.port());
@@ -416,12 +436,44 @@ public final class RestServer implements AutoCloseable {
         }
     }
 
+    /**
+     * Checks the bearer token on a socket upgrade.
+     *
+     * <p>The {@code before} filter covers the HTTP routes and never sees a websocket upgrade, so
+     * the check is repeated here rather than assumed. A browser cannot set an Authorization header
+     * on a websocket, so a query parameter is accepted too; an operator who cares that a token in a
+     * URL reaches an access log should put the feed behind a proxy that strips it.
+     */
+    private boolean authorizeSocket(io.javalin.websocket.WsContext ctx) {
+        String header = ctx.header("Authorization");
+        String token = header != null && header.startsWith("Bearer ")
+                ? header.substring("Bearer ".length()).trim()
+                : ctx.queryParam("token");
+        return token != null && token.equals(config.bearerToken());
+    }
+
+    /**
+     * The feed behind {@code WS /api/v1/events}, to register with the outbox dispatcher.
+     *
+     * <p>Registering it is the caller's job, because the dispatcher belongs to the plugin and this
+     * module must not reach for it.
+     */
+    public OutboxEventConsumer liveEventFeed() {
+        return liveEventFeed;
+    }
+
+    /** How many viewers the feed is holding, which is what the health endpoint reports. */
+    public int liveEventViewers() {
+        return liveEventFeed.viewerCount();
+    }
+
     public int port() {
         return app != null ? app.port() : config.port();
     }
 
     @Override
     public synchronized void close() {
+        liveEventFeed.closeAll();
         if (app != null) {
             app.stop();
             app = null;
