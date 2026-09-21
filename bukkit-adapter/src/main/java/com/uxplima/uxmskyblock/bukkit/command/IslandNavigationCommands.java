@@ -13,13 +13,15 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
@@ -44,6 +46,7 @@ public final class IslandNavigationCommands {
     private final String worldName;
     private final Supplier<@Nullable IslandDimensionListener> dimensionListenerProvider;
     private final Supplier<@Nullable IslandNetworkRouter> networkRouterProvider;
+    private final Messages messages;
 
     public IslandNavigationCommands(
             IslandLocationService islandLocationService,
@@ -51,7 +54,8 @@ public final class IslandNavigationCommands {
             SchedulerPort schedulerPort,
             String worldName,
             Supplier<@Nullable IslandDimensionListener> dimensionListenerProvider,
-            Supplier<@Nullable IslandNetworkRouter> networkRouterProvider) {
+            Supplier<@Nullable IslandNetworkRouter> networkRouterProvider,
+            Messages messages) {
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
@@ -61,6 +65,7 @@ public final class IslandNavigationCommands {
                 Objects.requireNonNull(dimensionListenerProvider, "dimensionListenerProvider must not be null");
         this.networkRouterProvider =
                 Objects.requireNonNull(networkRouterProvider, "networkRouterProvider must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildHome() {
@@ -95,6 +100,10 @@ public final class IslandNavigationCommands {
         return sessionCoordinator.activeProfile(player.getUniqueId());
     }
 
+    private void send(Audience audience, String key, TagResolver... resolvers) {
+        send(audience, messages.render(audience, key, resolvers));
+    }
+
     private void send(Audience audience, Component component) {
         if (audience instanceof Player player) {
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
@@ -111,7 +120,8 @@ public final class IslandNavigationCommands {
         return IslandAdminCommands.resolveIslandId(sessionCoordinator, islandLocationService, target);
     }
 
-    private void teleportToIslandLocation(Player player, IslandLocation loc, String successMsg) {
+    private void teleportToIslandLocation(
+            Player player, IslandLocation loc, String successKey, TagResolver... resolvers) {
         World world = Bukkit.getWorld(loc.worldName());
         if (world != null) {
             Location destination =
@@ -122,27 +132,22 @@ public final class IslandNavigationCommands {
                     player.setFallDistance(0.0f);
                 }
             });
-            send(player, Component.text(successMsg, NamedTextColor.GREEN));
+            send(player, successKey, resolvers);
         } else {
-            send(player, Component.text("Island world is currently unloaded.", NamedTextColor.RED));
+            send(player, "navigation.world_unloaded");
         }
     }
 
     private int executeHome(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(
-                    ctx.getSource().getSender(),
-                    Component.text("Only players can teleport to an island.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -151,11 +156,7 @@ public final class IslandNavigationCommands {
             Optional<IslandLocation> optLoc = islandLocationService.resolveHome(profileId);
             schedulerPort.onEntity(playerUuid, () -> {
                 if (optLoc.isEmpty()) {
-                    send(
-                            player,
-                            Component.text(
-                                    "You do not have an island yet! Use /is create to get started.",
-                                    NamedTextColor.RED));
+                    send(player, "navigation.no_island_yet");
                     return;
                 }
                 IslandLocation loc = optLoc.get();
@@ -169,9 +170,9 @@ public final class IslandNavigationCommands {
                             player.setFallDistance(0.0f);
                         }
                     });
-                    send(player, Component.text("Welcome to your island!", NamedTextColor.GREEN));
+                    send(player, "navigation.home_success");
                 } else {
-                    send(player, Component.text("Island world is currently unloaded.", NamedTextColor.RED));
+                    send(player, "navigation.world_unloaded");
                 }
             });
         });
@@ -181,7 +182,7 @@ public final class IslandNavigationCommands {
 
     private int executeVisit(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can visit islands.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
 
@@ -191,7 +192,7 @@ public final class IslandNavigationCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = resolveIslandId(target);
             if (optIsland.isEmpty()) {
-                send(player, Component.text("Could not find island for target: " + target, NamedTextColor.RED));
+                send(player, "error.island_not_found", Placeholder.unparsed("target", target));
                 return;
             }
 
@@ -201,10 +202,11 @@ public final class IslandNavigationCommands {
                 Optional<IslandLocation> optLoc = islandLocationService.findLocation(islandId);
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (optLoc.isEmpty()) {
-                        send(player, Component.text("Target island has no valid location.", NamedTextColor.RED));
+                        send(player, "navigation.no_location");
                         return;
                     }
-                    teleportToIslandLocation(player, optLoc.get(), "Teleported to island " + target + "!");
+                    teleportToIslandLocation(
+                            player, optLoc.get(), "navigation.visit_success", Placeholder.unparsed("target", target));
                 });
                 return;
             }
@@ -215,25 +217,27 @@ public final class IslandNavigationCommands {
                         case RouteOutcome.Local local -> {
                             Optional<IslandLocation> optLoc = islandLocationService.findLocation(local.islandId());
                             if (optLoc.isEmpty()) {
-                                send(
-                                        player,
-                                        Component.text("Target island has no valid location.", NamedTextColor.RED));
+                                send(player, "navigation.no_location");
                                 return;
                             }
-                            teleportToIslandLocation(player, optLoc.get(), "Teleported to island " + target + "!");
+                            teleportToIslandLocation(
+                                    player,
+                                    optLoc.get(),
+                                    "navigation.visit_success",
+                                    Placeholder.unparsed("target", target));
                         }
                         case RouteOutcome.CrossServer cross -> {
                             send(
                                     player,
-                                    Component.text(
-                                            "Connecting to "
-                                                    + cross.targetNode().value() + "...",
-                                            NamedTextColor.YELLOW));
+                                    "command.visit_cross_server",
+                                    Placeholder.unparsed(
+                                            "node", cross.targetNode().value()));
                         }
                         case RouteOutcome.Unavailable unavail -> {
                             send(
                                     player,
-                                    Component.text("Cannot visit island: " + unavail.reasonCode(), NamedTextColor.RED));
+                                    "navigation.visit_unavailable",
+                                    Placeholder.unparsed("reason", unavail.reasonCode()));
                         }
                     }
                 });
@@ -244,17 +248,14 @@ public final class IslandNavigationCommands {
 
     private int executeSetSpawn(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
-            send(ctx.getSource().getSender(), Component.text("Only players can set spawn.", NamedTextColor.RED));
+            send(ctx.getSource().getSender(), "error.players_only");
             return Cmd.OK;
         }
 
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
-            send(
-                    player,
-                    Component.text(
-                            "Your profile session is not active or still loading. Please wait.", NamedTextColor.RED));
+            send(player, "error.session_not_active");
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
@@ -273,9 +274,9 @@ public final class IslandNavigationCommands {
             boolean updated = islandLocationService.updateSpawn(profileId, currentWorld, x, y, z, yaw, pitch);
             schedulerPort.onEntity(playerUuid, () -> {
                 if (updated) {
-                    send(player, Component.text("Island spawn location updated.", NamedTextColor.GREEN));
+                    send(player, "navigation.spawn_updated");
                 } else {
-                    send(player, Component.text("You do not have an island.", NamedTextColor.RED));
+                    send(player, "error.no_island");
                 }
             });
         });
@@ -286,12 +287,12 @@ public final class IslandNavigationCommands {
     private int executeNether(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can travel to the Nether.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandDimensionListener dimensionListener = dimensionListenerProvider.get();
         if (dimensionListener == null) {
-            send(player, Component.text("Multi-dimension travel is not currently enabled.", NamedTextColor.RED));
+            send(player, "navigation.dimensions_disabled");
             return Cmd.OK;
         }
         dimensionListener.executeDimensionTeleport(player, IslandDimensionType.NETHER);
@@ -301,12 +302,12 @@ public final class IslandNavigationCommands {
     private int executeEnd(CommandContext<CommandSourceStack> ctx) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            send(sender, Component.text("Only in-game players can travel to The End.", NamedTextColor.RED));
+            send(sender, "error.players_only");
             return Cmd.OK;
         }
         IslandDimensionListener dimensionListener = dimensionListenerProvider.get();
         if (dimensionListener == null) {
-            send(player, Component.text("Multi-dimension travel is not currently enabled.", NamedTextColor.RED));
+            send(player, "navigation.dimensions_disabled");
             return Cmd.OK;
         }
         dimensionListener.executeDimensionTeleport(player, IslandDimensionType.THE_END);

@@ -317,7 +317,8 @@ public final class IslandCommandTree {
                 schedulerPort,
                 worldName,
                 () -> dimensionListener,
-                () -> networkRouter);
+                () -> networkRouter,
+                messages);
 
         IslandProgressionCommands progressionCommands = new IslandProgressionCommands(
                 islandLocationService,
