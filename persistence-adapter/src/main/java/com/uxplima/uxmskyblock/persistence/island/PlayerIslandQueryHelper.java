@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -32,6 +33,9 @@ import com.uxplima.uxmskyblock.core.domain.island.ResidencyState;
  * Encapsulates hydration of islands, roles, permissions, members, flags, and locations.
  */
 final class PlayerIslandQueryHelper {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(PlayerIslandQueryHelper.class.getName());
 
     private PlayerIslandQueryHelper() {}
 
@@ -74,24 +78,37 @@ final class PlayerIslandQueryHelper {
             }
         }
 
-        // Load bounds from island_locations
+        // Load bounds from island_locations.
+        //
+        // An island with no row here used to be handed back with bounds around the world origin, a
+        // hundred blocks across. Nothing about that island was true: it claimed ground it had never
+        // been given, the first island on the server sits at the origin so the two overlapped, and a
+        // player sent to their island's centre arrived at 0, 0. An island row and its location row
+        // are written in one transaction, so a missing location is a broken record rather than a
+        // state the server passes through. A record that broken is answered with nothing, which
+        // every caller of this already handles, rather than with a place that was invented here.
         IslandBounds bounds;
         try (PreparedStatement stmt = conn.prepareStatement(
                 "SELECT center_x, center_z, min_x, min_z, max_x, max_z FROM island_locations WHERE island_id = ?")) {
             stmt.setString(1, islandIdStr);
             try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    int minX = rs.getInt("min_x");
-                    int minZ = rs.getInt("min_z");
-                    int maxX = rs.getInt("max_x");
-                    int maxZ = rs.getInt("max_z");
-                    int centerX = rs.getInt("center_x");
-                    int centerZ = rs.getInt("center_z");
-                    int radius = (maxX - minX) / 2;
-                    bounds = new IslandBounds(minX, minZ, maxX, maxZ, centerX, centerZ, radius);
-                } else {
-                    bounds = IslandBounds.fromCenterAndRadius(0, 0, 100);
+                if (!rs.next()) {
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Island {0} has no row in island_locations, so it has no place and is "
+                                    + "answered as absent. The two are written together, so this is a "
+                                    + "record that needs repairing by hand.",
+                            islandIdStr);
+                    return Optional.empty();
                 }
+                int minX = rs.getInt("min_x");
+                int minZ = rs.getInt("min_z");
+                int maxX = rs.getInt("max_x");
+                int maxZ = rs.getInt("max_z");
+                int centerX = rs.getInt("center_x");
+                int centerZ = rs.getInt("center_z");
+                int radius = (maxX - minX) / 2;
+                bounds = new IslandBounds(minX, minZ, maxX, maxZ, centerX, centerZ, radius);
             }
         }
 
