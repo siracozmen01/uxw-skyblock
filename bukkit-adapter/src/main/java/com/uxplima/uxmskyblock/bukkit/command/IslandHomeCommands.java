@@ -88,6 +88,26 @@ public final class IslandHomeCommands {
     }
 
     private int executeSetHome(CommandContext<CommandSourceStack> ctx) {
+        // Where the player stands and what they may hold are read here, on the thread that owns
+        // them, before anything goes to the scheduler. On Folia a location read from the async pool
+        // is not slow, it throws.
+        if (!(ctx.getSource().getSender() instanceof Player standing)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        Location at = standing.getLocation();
+        if (at == null || at.getWorld() == null) {
+            send(standing, "home.location_unreadable");
+            return Cmd.OK;
+        }
+        String worldName = at.getWorld().getName();
+        double x = at.getX();
+        double y = at.getY();
+        double z = at.getZ();
+        float yaw = at.getYaw();
+        float pitch = at.getPitch();
+        int allowance = configuration.allowanceFor(standing::hasPermission);
+
         return withHome(ctx, (player, service, profileId) -> {
             String name = StringArgumentType.getString(ctx, "name");
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
@@ -95,24 +115,8 @@ public final class IslandHomeCommands {
                 send(player, "error.no_island");
                 return;
             }
-            Location at = player.getLocation();
-            if (at == null || at.getWorld() == null) {
-                send(player, "home.location_unreadable");
-                return;
-            }
-            int allowance = configuration.allowanceFor(player::hasPermission);
             HomeService.SetHomeResult result = service.setHome(
-                    profileId,
-                    optIsland.get(),
-                    name,
-                    HomeScope.PERSONAL,
-                    at.getWorld().getName(),
-                    at.getX(),
-                    at.getY(),
-                    at.getZ(),
-                    at.getYaw(),
-                    at.getPitch(),
-                    allowance);
+                    profileId, optIsland.get(), name, HomeScope.PERSONAL, worldName, x, y, z, yaw, pitch, allowance);
 
             switch (result) {
                 case HomeService.SetHomeResult.Success success ->
@@ -139,14 +143,21 @@ public final class IslandHomeCommands {
                 return;
             }
             Home home = optHome.get();
-            World world = Bukkit.getWorld(home.worldName());
-            if (world == null) {
-                send(player, "navigation.world_unloaded");
-                return;
-            }
-            Location target = new Location(world, home.x(), home.y(), home.z(), home.yaw(), home.pitch());
-            var unused = player.teleportAsync(target);
-            send(player, "home.travelled", Placeholder.unparsed("name", home.name()));
+            // Looking a world up and moving a player are the owning thread's business, so the read
+            // finished here and the moving happens there.
+            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                if (!player.isOnline()) {
+                    return;
+                }
+                World world = Bukkit.getWorld(home.worldName());
+                if (world == null) {
+                    send(player, "navigation.world_unloaded");
+                    return;
+                }
+                Location target = new Location(world, home.x(), home.y(), home.z(), home.yaw(), home.pitch());
+                var unused = player.teleportAsync(target);
+                send(player, "home.travelled", Placeholder.unparsed("name", home.name()));
+            });
         });
     }
 
@@ -204,13 +215,13 @@ public final class IslandHomeCommands {
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
+        // The action reads and writes homes, so it stays on the scheduler thread. This used to hop
+        // straight back to the entity thread, which meant every home command did its database work
+        // under the player's cursor: the worst defect in this estate, wearing a hop as a disguise.
         schedulerPort.async(() -> {
-            PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (player.isOnline()) {
-                    action.run(player, service, profileId);
-                }
-            });
+            if (player.isOnline()) {
+                action.run(player, service, profileId);
+            }
         });
         return Cmd.OK;
     }
