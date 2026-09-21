@@ -212,17 +212,23 @@ public final class IslandNavigationCommands {
             }
 
             var unused = networkRouter.routeVisit(playerUuid, islandId).thenAccept(outcome -> {
+                // A local route needs the island's location, which is a read. It used to be read
+                // inside the hop below, on the thread that owns the player, so every cross island
+                // visit put a query under their cursor. The future completes off that thread, which
+                // is where a read belongs.
+                Optional<IslandLocation> localLocation = outcome instanceof RouteOutcome.Local local
+                        ? islandLocationService.findLocation(local.islandId())
+                        : Optional.empty();
                 schedulerPort.onEntity(playerUuid, () -> {
                     switch (outcome) {
                         case RouteOutcome.Local local -> {
-                            Optional<IslandLocation> optLoc = islandLocationService.findLocation(local.islandId());
-                            if (optLoc.isEmpty()) {
+                            if (localLocation.isEmpty()) {
                                 send(player, "navigation.no_location");
                                 return;
                             }
                             teleportToIslandLocation(
                                     player,
-                                    optLoc.get(),
+                                    localLocation.get(),
                                     "navigation.visit_success",
                                     Placeholder.unparsed("target", target));
                         }

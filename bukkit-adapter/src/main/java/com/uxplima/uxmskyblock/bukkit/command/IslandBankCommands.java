@@ -128,20 +128,24 @@ public final class IslandBankCommands {
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (optIslandId.isEmpty()) {
-                    send(player, "error.no_island");
-                    return;
-                }
-                IslandId islandId = optIslandId.get();
-                IslandBankruptcyService bankruptcyService = bankruptcyServiceProvider.get();
-                if (bankruptcyService == null) {
-                    send(player, "bank.upkeep_disabled");
-                    return;
-                }
+            if (optIslandId.isEmpty()) {
+                schedulerPort.onEntity(playerUuid, () -> send(player, "error.no_island"));
+                return;
+            }
+            IslandId islandId = optIslandId.get();
+            IslandBankruptcyService bankruptcyService = bankruptcyServiceProvider.get();
+            if (bankruptcyService == null) {
+                schedulerPort.onEntity(playerUuid, () -> send(player, "bank.upkeep_disabled"));
+                return;
+            }
 
-                Instant now = Instant.now();
-                IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
+            // The record is read here, not inside the hop below. It was read on the entity thread,
+            // and a bankruptcy record that is not already cached is a query: one under the cursor of
+            // every player who ever typed /is upkeep.
+            Instant now = Instant.now();
+            IslandBankruptcyRecord record = bankruptcyService.getBankruptcyRecord(islandId, now);
+
+            schedulerPort.onEntity(playerUuid, () -> {
                 Component status = messages.renderPlain(
                         player, "bank.status_" + record.status().name().toLowerCase(java.util.Locale.ROOT));
 
