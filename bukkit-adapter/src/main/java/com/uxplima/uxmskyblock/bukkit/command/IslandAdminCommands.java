@@ -8,7 +8,6 @@ import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -33,9 +32,6 @@ import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService;
-import com.uxplima.uxmskyblock.core.domain.backup.BackupCatalogRecord;
-import com.uxplima.uxmskyblock.core.domain.backup.BackupManifest;
-import com.uxplima.uxmskyblock.core.domain.backup.BackupSetId;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -43,7 +39,6 @@ import com.uxplima.uxmskyblock.core.domain.inactivity.IslandInactivityScanReport
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.snapshot.RestoreMode;
-import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -55,15 +50,13 @@ public final class IslandAdminCommands {
 
     private final Supplier<@Nullable IslandInactivityService> inactivityServiceProvider;
     private final Supplier<@Nullable IslandAdminFreezeService> freezeServiceProvider;
-    private final Supplier<@Nullable IslandRestoreService> restoreServiceProvider;
-    private final Supplier<@Nullable BackupService> backupServiceProvider;
-    private final Supplier<@Nullable IslandRecycleService> recycleServiceProvider;
     private final IslandProtectionListener protectionListener;
     private final IslandLocationService islandLocationService;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
     private final String worldName;
     private final Messages messages;
+    private final IslandAdminRestoreCommands restoreCommands;
 
     public IslandAdminCommands(
             Supplier<@Nullable IslandInactivityService> inactivityServiceProvider,
@@ -81,12 +74,6 @@ public final class IslandAdminCommands {
                 Objects.requireNonNull(inactivityServiceProvider, "inactivityServiceProvider must not be null");
         this.freezeServiceProvider =
                 Objects.requireNonNull(freezeServiceProvider, "freezeServiceProvider must not be null");
-        this.restoreServiceProvider =
-                Objects.requireNonNull(restoreServiceProvider, "restoreServiceProvider must not be null");
-        this.backupServiceProvider =
-                Objects.requireNonNull(backupServiceProvider, "backupServiceProvider must not be null");
-        this.recycleServiceProvider =
-                Objects.requireNonNull(recycleServiceProvider, "recycleServiceProvider must not be null");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -94,6 +81,14 @@ public final class IslandAdminCommands {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.restoreCommands = new IslandAdminRestoreCommands(
+                restoreServiceProvider,
+                backupServiceProvider,
+                recycleServiceProvider,
+                islandLocationService,
+                sessionCoordinator,
+                schedulerPort,
+                messages);
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildAdmin() {
@@ -125,24 +120,14 @@ public final class IslandAdminCommands {
                                 || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                 || src.getSender().isOp())
                         .then(Cmd.argument("backupId", StringArgumentType.word())
-                                .executes(ctx -> executeAdminRestore(ctx, RestoreMode.safeDefault()))
+                                .executes(ctx -> restoreCommands.executeAdminRestore(ctx, RestoreMode.safeDefault()))
                                 .then(Cmd.argument("mode", StringArgumentType.word())
-                                        .executes(this::executeAdminRestoreWithMode))))
+                                        .executes(restoreCommands::executeAdminRestoreWithMode))))
                 .then(Cmd.literal("delete")
                         .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                                 || src.getSender().isOp())
-                        .then(Cmd.argument("target", StringArgumentType.word()).executes(this::executeAdminDelete)));
-    }
-
-    public LiteralArgumentBuilder<CommandSourceStack> buildRestore() {
-        return Cmd.literal("restore")
-                .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
-                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                        || src.getSender().isOp())
-                .then(Cmd.argument("backupId", StringArgumentType.word())
-                        .executes(ctx -> executeAdminRestore(ctx, RestoreMode.safeDefault()))
-                        .then(Cmd.argument("mode", StringArgumentType.word())
-                                .executes(this::executeAdminRestoreWithMode)));
+                        .then(Cmd.argument("target", StringArgumentType.word())
+                                .executes(restoreCommands::executeAdminDelete)));
     }
 
     public static Optional<IslandId> resolveIslandId(
@@ -359,148 +344,6 @@ public final class IslandAdminCommands {
      * The mode decides how much comes back. A caller who names none gets the one that changes
      * least, because the destructive default is the one nobody meant to pick.
      */
-    private int executeAdminRestoreWithMode(CommandContext<CommandSourceStack> ctx) {
-        String raw = StringArgumentType.getString(ctx, "mode");
-        for (RestoreMode mode : RestoreMode.values()) {
-            if (mode.name().equalsIgnoreCase(raw)) {
-                return executeAdminRestore(ctx, mode);
-            }
-        }
-        send(
-                ctx.getSource().getSender(),
-                "admin.restore_unknown_mode",
-                Placeholder.unparsed("mode", raw),
-                Placeholder.unparsed("modes", availableRestoreModes()));
-        return Cmd.OK;
-    }
-
-    private static String availableRestoreModes() {
-        return java.util.Arrays.stream(RestoreMode.values())
-                .map(Enum::name)
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    private int executeAdminRestore(CommandContext<CommandSourceStack> ctx, RestoreMode mode) {
-        CommandSender sender = ctx.getSource().getSender();
-        if (!sender.hasPermission("uxmskyblock.admin.restore")
-                && !sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                && !sender.isOp()) {
-            send(sender, "admin.restore_no_permission");
-            return Cmd.OK;
-        }
-
-        IslandRestoreService rService = restoreServiceProvider.get();
-        if (rService == null) {
-            send(sender, "admin.restore_not_configured");
-            return Cmd.OK;
-        }
-
-        String backupIdStr = StringArgumentType.getString(ctx, "backupId");
-        send(
-                sender,
-                "admin.restore_starting",
-                Placeholder.unparsed("backup", backupIdStr),
-                Placeholder.unparsed("mode", mode.name()));
-
-        schedulerPort.async(() -> {
-            try {
-                BackupSetId backupSetId = BackupSetId.fromString(backupIdStr);
-                StorageBucket bucket = new StorageBucket("uxmskyblock-backups");
-                String rootPrefix = "backups/" + backupSetId;
-
-                Optional<BackupManifest> optManifest = Optional.empty();
-                BackupService bService = backupServiceProvider.get();
-                if (bService != null) {
-                    optManifest = bService.loadManifest(bucket, rootPrefix);
-                }
-
-                if (optManifest.isEmpty()) {
-                    Optional<BackupCatalogRecord> optRecord =
-                            rService.catalogPort().findById(backupSetId);
-                    if (optRecord.isPresent() && bService != null) {
-                        BackupCatalogRecord record = optRecord.get();
-                        String customPrefix = "backups/" + record.targetRootTypeId() + "/" + record.targetRootKey()
-                                + "/" + backupSetId;
-                        optManifest = bService.loadManifest(bucket, customPrefix);
-                        if (optManifest.isPresent()) {
-                            rootPrefix = customPrefix;
-                        }
-                    }
-                }
-
-                if (optManifest.isEmpty()) {
-                    send(sender, "admin.restore_manifest_missing", Placeholder.unparsed("backup", backupIdStr));
-                    return;
-                }
-
-                BackupManifest manifest = optManifest.get();
-                IslandRestoreService.RestoreOutcome outcome =
-                        rService.executeRestore(manifest, bucket, rootPrefix, true, mode);
-                if (outcome instanceof IslandRestoreService.RestoreOutcome.Success success) {
-                    send(
-                            sender,
-                            "admin.restore_success",
-                            Placeholder.unparsed("backup", backupIdStr),
-                            Placeholder.unparsed("artifacts", Integer.toString(success.artifactsRestored())));
-                } else if (outcome instanceof IslandRestoreService.RestoreOutcome.Failure failure) {
-                    send(
-                            sender,
-                            "admin.restore_failed",
-                            Placeholder.unparsed("backup", backupIdStr),
-                            Placeholder.unparsed("reason", failure.reason()));
-                }
-            } catch (Exception e) {
-                send(sender, "admin.restore_error", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
-            }
-        });
-
-        return Cmd.OK;
-    }
-
-    private int executeAdminDelete(CommandContext<CommandSourceStack> ctx) {
-        CommandSourceStack src = ctx.getSource();
-        IslandRecycleService recycleService = recycleServiceProvider.get();
-        if (recycleService == null) {
-            send(src.getSender(), "admin.recycle_disabled");
-            return Cmd.OK;
-        }
-
-        String target = StringArgumentType.getString(ctx, "target");
-        schedulerPort.async(() -> {
-            Optional<IslandId> optIsland = resolveIslandId(sessionCoordinator, islandLocationService, target);
-            if (optIsland.isEmpty()) {
-                send(src.getSender(), "admin.island_unresolved", Placeholder.unparsed("target", target));
-                return;
-            }
-
-            IslandId islandId = optIsland.get();
-            send(
-                    src.getSender(),
-                    "admin.delete_starting",
-                    Placeholder.unparsed("island", islandId.value().toString()));
-            var unusedAdminReset = recycleService
-                    .executeReset(new ProfileId(UUID.randomUUID()), islandId, null, true)
-                    .thenAccept(result -> {
-                        schedulerPort.onGlobal(() -> {
-                            if (result instanceof IslandRecycleService.RecycleResult.Success) {
-                                send(
-                                        src.getSender(),
-                                        "admin.delete_success",
-                                        Placeholder.unparsed(
-                                                "island", islandId.value().toString()));
-                            } else {
-                                send(
-                                        src.getSender(),
-                                        "admin.delete_failed",
-                                        Placeholder.unparsed(
-                                                "island", islandId.value().toString()));
-                            }
-                        });
-                    });
-        });
-        return Cmd.OK;
-    }
-
     private void send(Audience audience, String key, TagResolver... resolvers) {
         send(audience, messages.render(audience, key, resolvers));
     }
@@ -515,5 +358,10 @@ public final class IslandAdminCommands {
         } else {
             audience.sendMessage(component);
         }
+    }
+
+    /** The standalone /is restore branch, which is the same command reachable without /is admin. */
+    public LiteralArgumentBuilder<CommandSourceStack> buildRestore() {
+        return restoreCommands.buildRestore();
     }
 }
