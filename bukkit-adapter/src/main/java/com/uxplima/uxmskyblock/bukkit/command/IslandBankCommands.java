@@ -214,6 +214,8 @@ public final class IslandBankCommands {
                             "bank.settle_insufficient",
                             Placeholder.unparsed("debt", money(ins.debtAmount())),
                             Placeholder.unparsed("balance", money(ins.currentBalance())));
+                } else if (result instanceof BankruptcyRemediationResult.PaymentRefused refused) {
+                    send(player, "bank.settle_refused", Placeholder.unparsed("debt", money(refused.debtAmount())));
                 } else if (result instanceof BankruptcyRemediationResult.NotInArrears) {
                     send(player, "bank.not_in_arrears");
                 }

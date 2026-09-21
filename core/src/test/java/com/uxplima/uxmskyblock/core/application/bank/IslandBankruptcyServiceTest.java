@@ -241,6 +241,74 @@ class IslandBankruptcyServiceTest {
     }
 
     @Test
+    @DisplayName("A settlement the bank refused because somebody else settled first says so, not insufficient funds")
+    void aRefusedSettlementIsNotInsufficientFunds() {
+        storage.save(new IslandBankruptcyRecord(islandId, BankruptcyStatus.LOCKED, 120_000L, null, now));
+
+        // The money is there. The bank refuses anyway, which is what its version check does when a
+        // second settlement lands on a debt the first has already cleared.
+        IslandBank bank = new IslandBank(islandId, 200_000L, 0L, 0L, 1L, now);
+        when(mockBankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
+        when(mockBankPort.executeTransaction(
+                        eq(islandId),
+                        any(UUID.class),
+                        eq("PRIMARY"),
+                        eq(2),
+                        eq(-120_000L),
+                        anyString(),
+                        eq("node-alpha"),
+                        anyLong(),
+                        eq(1L),
+                        any(UUID.class),
+                        anyString()))
+                .thenAnswer(invocation -> {
+                    // What the winner did before this caller got there.
+                    storage.save(new IslandBankruptcyRecord(islandId, BankruptcyStatus.SOLVENT, 0L, null, now));
+                    service.warmCache(java.util.List.of(
+                            new IslandBankruptcyRecord(islandId, BankruptcyStatus.SOLVENT, 0L, null, now)));
+                    return new BankTransactionOutcome.StaleVersion(1L, 2L);
+                });
+
+        BankruptcyRemediationResult result = service.settleArrears(islandId, now, nodeId);
+
+        assertThat(result)
+                .describedAs("a player who has just paid must not be told they cannot afford it")
+                .isNotInstanceOf(BankruptcyRemediationResult.InsufficientFunds.class);
+        assertThat(result).isInstanceOf(BankruptcyRemediationResult.NotInArrears.class);
+    }
+
+    @Test
+    @DisplayName("A settlement the bank refused with the debt still standing is refused, not unaffordable")
+    void aRefusedSettlementWithTheDebtStillThereSaysSo() {
+        storage.save(new IslandBankruptcyRecord(islandId, BankruptcyStatus.LOCKED, 120_000L, null, now));
+
+        IslandBank bank = new IslandBank(islandId, 200_000L, 0L, 0L, 1L, now);
+        when(mockBankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
+        when(mockBankPort.executeTransaction(
+                        eq(islandId),
+                        any(UUID.class),
+                        eq("PRIMARY"),
+                        eq(2),
+                        eq(-120_000L),
+                        anyString(),
+                        eq("node-alpha"),
+                        anyLong(),
+                        eq(1L),
+                        any(UUID.class),
+                        anyString()))
+                .thenReturn(new BankTransactionOutcome.StaleVersion(1L, 2L));
+
+        BankruptcyRemediationResult result = service.settleArrears(islandId, now, nodeId);
+
+        assertThat(result).isInstanceOf(BankruptcyRemediationResult.PaymentRefused.class);
+        BankruptcyRemediationResult.PaymentRefused refused = (BankruptcyRemediationResult.PaymentRefused) result;
+        assertThat(refused.debtAmount()).isEqualTo(120_000L);
+        assertThat(service.isIslandLocked(islandId, now))
+                .describedAs("the island is still locked, because nothing was paid")
+                .isTrue();
+    }
+
+    @Test
     @DisplayName("settleArrears returns NotInArrears when island is solvent")
     void settleArrearsReturnsNotInArrearsWhenSolvent() {
         BankruptcyRemediationResult result = service.settleArrears(islandId, now, nodeId);

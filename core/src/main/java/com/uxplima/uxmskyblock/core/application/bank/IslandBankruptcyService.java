@@ -213,7 +213,20 @@ public final class IslandBankruptcyService {
                     debt, success.updatedBank().primaryBalanceMinorUnits());
         }
 
-        return new BankruptcyRemediationResult.InsufficientFunds(debt, currentBalance);
+        if (outcome instanceof BankTransactionOutcome.InsufficientFunds shortfall) {
+            return new BankruptcyRemediationResult.InsufficientFunds(debt, shortfall.currentBalance());
+        }
+
+        // The balance was enough when it was read, so a refusal here is the bank's optimistic
+        // version check: somebody else wrote to this bank in between, and on a debt that usually
+        // means they settled it. Telling the player they cannot afford what they have just paid for
+        // is the one answer that is certainly wrong, so the debt is read again and the truth is
+        // whatever it says now.
+        IslandBankruptcyRecord after = getBankruptcyRecord(islandId, now);
+        if (after.debtMinorUnits() == 0 && after.status() == BankruptcyStatus.SOLVENT) {
+            return new BankruptcyRemediationResult.NotInArrears();
+        }
+        return new BankruptcyRemediationResult.PaymentRefused(debt, String.valueOf(outcome));
     }
 
     /**
