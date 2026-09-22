@@ -246,7 +246,15 @@ public final class IntegrationWiring implements AutoCloseable {
                         .upgradeService(gameplay.upgradeService())
                         .shopService(gameplay.shopService())
                         .shopMenu(gameplay.shopMenu())
+                        // The grant subsystem was complete underneath and nothing could make a
+                        // grant: the whole write side had no caller, so the check on every click
+                        // asked about grants that could not exist.
+                        .temporaryAccessService(
+                                config.moduleSettings().isModuleEnabled("temporary-access")
+                                        ? gameplay.temporaryAccessService()
+                                        : null)
                         .build());
+        this.commandTree.useTemporaryAccess(config.temporaryAccessConfig(), authority.nodeProcessIdentity());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setVaultWindow(gameplay.vaultWindow());

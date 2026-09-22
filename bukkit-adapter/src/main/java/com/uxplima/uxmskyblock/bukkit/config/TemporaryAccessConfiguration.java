@@ -4,6 +4,8 @@ import java.time.Duration;
 import java.util.Objects;
 
 import com.uxplima.uxmlib.common.Durations;
+import com.uxplima.uxmskyblock.core.domain.permission.PermissionKey;
+import com.uxplima.uxmskyblock.core.domain.permission.StandardPermissions;
 import org.spongepowered.configurate.ConfigurationNode;
 
 /**
@@ -15,7 +17,11 @@ public record TemporaryAccessConfiguration(
         Duration maxDuration,
         Duration purgeInterval,
         boolean enforceRulesetIsolation,
-        Duration grantLookupTtl) {
+        Duration grantLookupTtl,
+        java.util.Set<PermissionKey> trustPermissions) {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(TemporaryAccessConfiguration.class.getName());
 
     public static final boolean DEFAULT_ENABLED = true;
     public static final Duration DEFAULT_DURATION = Duration.ofHours(1);
@@ -24,6 +30,26 @@ public record TemporaryAccessConfiguration(
     public static final boolean DEFAULT_ENFORCE_RULESET_ISOLATION = true;
     public static final Duration DEFAULT_GRANT_LOOKUP_TTL =
             com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService.DEFAULT_GRANT_LOOKUP_TTL;
+
+    /**
+     * What a trust grant lets the trusted player do, when the operator names nothing.
+     *
+     * <p>Building, breaking and the everyday containers: the things a guest helping out needs. It
+     * deliberately carries nothing economic, nothing that changes the island's settings and nothing
+     * that touches its membership, because a trusted visitor is never a member.
+     */
+    public static final java.util.Set<PermissionKey> DEFAULT_TRUST_PERMISSIONS = java.util.Set.of(
+            StandardPermissions.BLOCK_BREAK,
+            StandardPermissions.BLOCK_PLACE,
+            StandardPermissions.BUCKET_USE,
+            StandardPermissions.NATURAL_INTERACT,
+            StandardPermissions.REDSTONE_INTERACT,
+            StandardPermissions.CHEST_OPEN,
+            StandardPermissions.FURNACE_USE,
+            StandardPermissions.BARREL_OPEN,
+            StandardPermissions.ANVIL_USE,
+            StandardPermissions.CROP_TRAMPLE_BYPASS,
+            StandardPermissions.ANIMAL_BREED);
 
     public TemporaryAccessConfiguration {
         Objects.requireNonNull(defaultDuration, "defaultDuration must not be null");
@@ -42,6 +68,8 @@ public record TemporaryAccessConfiguration(
         if (grantLookupTtl.isNegative()) {
             throw new IllegalArgumentException("grantLookupTtl must not be negative: " + grantLookupTtl);
         }
+        Objects.requireNonNull(trustPermissions, "trustPermissions must not be null");
+        trustPermissions = java.util.Set.copyOf(trustPermissions);
     }
 
     public static TemporaryAccessConfiguration defaultConfiguration() {
@@ -51,7 +79,8 @@ public record TemporaryAccessConfiguration(
                 DEFAULT_MAX_DURATION,
                 DEFAULT_PURGE_INTERVAL,
                 DEFAULT_ENFORCE_RULESET_ISOLATION,
-                DEFAULT_GRANT_LOOKUP_TTL);
+                DEFAULT_GRANT_LOOKUP_TTL,
+                DEFAULT_TRUST_PERMISSIONS);
     }
 
     public static TemporaryAccessConfiguration load(ConfigurationNode rootNode) {
@@ -81,7 +110,43 @@ public record TemporaryAccessConfiguration(
         Duration grantLookupTtl =
                 ttlRaw != null && !ttlRaw.isBlank() ? Durations.parse(ttlRaw) : DEFAULT_GRANT_LOOKUP_TTL;
 
+        java.util.Set<PermissionKey> trustPermissions = readTrustPermissions(node.node("trust-permissions"));
+
         return new TemporaryAccessConfiguration(
-                enabled, defaultDuration, maxDuration, purgeInterval, enforceIsolation, grantLookupTtl);
+                enabled,
+                defaultDuration,
+                maxDuration,
+                purgeInterval,
+                enforceIsolation,
+                grantLookupTtl,
+                trustPermissions);
+    }
+
+    /**
+     * Reads what a trust grant carries.
+     *
+     * <p>A key the operator mistyped is skipped and the rest are kept: a server that will not start
+     * over one line in a permission list is a worse outcome than one that starts with the rest. An
+     * empty or missing list is the shipped set, because a grant that lets the guest do nothing is
+     * indistinguishable from the feature being broken.
+     */
+    private static java.util.Set<PermissionKey> readTrustPermissions(ConfigurationNode node) {
+        if (node.virtual() || node.empty()) {
+            return DEFAULT_TRUST_PERMISSIONS;
+        }
+        java.util.Set<PermissionKey> keys = new java.util.LinkedHashSet<>();
+        for (ConfigurationNode child : node.childrenList()) {
+            String raw = child.getString();
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            try {
+                keys.add(PermissionKey.of(raw.strip()));
+            } catch (IllegalArgumentException e) {
+                LOGGER.warning(() -> "temporary-access.trust-permissions names \"" + raw
+                        + "\", which is not a permission key. It is skipped.");
+            }
+        }
+        return keys.isEmpty() ? DEFAULT_TRUST_PERMISSIONS : java.util.Set.copyOf(keys);
     }
 }

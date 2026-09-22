@@ -6,6 +6,7 @@ import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandShopMenu;
+import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
@@ -46,7 +47,8 @@ public record IslandFeatures(
         @Nullable IslandBoosterMenu boosterMenu,
         @Nullable IslandUpgradeService upgradeService,
         @Nullable IslandShopService shopService,
-        @Nullable IslandShopMenu shopMenu) {
+        @Nullable IslandShopMenu shopMenu,
+        @Nullable TemporaryAccessService temporaryAccessService) {
 
     /** Every optional module switched off, which is what a bare island command is. */
     public static IslandFeatures none() {
@@ -77,8 +79,14 @@ public record IslandFeatures(
         private @Nullable IslandUpgradeService upgradeService;
         private @Nullable IslandShopService shopService;
         private @Nullable IslandShopMenu shopMenu;
+        private @Nullable TemporaryAccessService temporaryAccessService;
 
         private Builder() {}
+
+        public Builder temporaryAccessService(@Nullable TemporaryAccessService value) {
+            this.temporaryAccessService = value;
+            return this;
+        }
 
         public Builder shopMenu(@Nullable IslandShopMenu value) {
             this.shopMenu = value;
@@ -183,7 +191,8 @@ public record IslandFeatures(
                     boosterMenu,
                     upgradeService,
                     shopService,
-                    shopMenu);
+                    shopMenu,
+                    temporaryAccessService);
         }
     }
 }

@@ -47,7 +47,8 @@ final class CommandGroupBuilder {
             IslandSeasonCommands seasonCommands,
             IslandReloadCommands reloadCommands,
             IslandUpgradeCommands upgradeCommands,
-            IslandShopCommands shopCommands) {}
+            IslandShopCommands shopCommands,
+            IslandTrustCommands trustCommands) {}
 
     CommandGroups build() {
 
@@ -66,6 +67,28 @@ final class CommandGroupBuilder {
                 tree.islandLocationService,
                 tree.schedulerPort,
                 tree.serverNodeId,
+                tree.messages,
+                tree.sessionCoordinator);
+
+        IslandTrustCommands trustCommands = new IslandTrustCommands(
+                () -> tree.features.temporaryAccessService(),
+                tree.islandLocationService,
+                tree.schedulerPort,
+                () -> {
+                    com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration configured =
+                            tree.temporaryAccessConfiguration;
+                    return configured != null
+                            ? configured
+                            : com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration.defaultConfiguration();
+                },
+                () -> {
+                    com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity identity =
+                            tree.nodeProcessIdentity;
+                    return identity != null
+                            ? identity
+                            : com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity.create(
+                                    tree.serverNodeId.value());
+                },
                 tree.messages,
                 tree.sessionCoordinator);
 
@@ -256,6 +279,7 @@ final class CommandGroupBuilder {
                 seasonCommands,
                 reloadCommands,
                 upgradeCommands,
-                shopCommands);
+                shopCommands,
+                trustCommands);
     }
 }

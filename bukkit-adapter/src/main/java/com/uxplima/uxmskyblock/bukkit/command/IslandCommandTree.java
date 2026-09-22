@@ -19,6 +19,7 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmlib.command.CommandRegistrar;
 import com.uxplima.uxmskyblock.bukkit.bootstrap.SkyblockReloader;
 import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.TemporaryAccessConfiguration;
 import com.uxplima.uxmskyblock.bukkit.dimension.IslandDimensionListener;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
@@ -55,6 +56,7 @@ import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
+import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -115,6 +117,12 @@ public final class IslandCommandTree {
     volatile @Nullable RewardInboxService rewardInboxService;
     volatile @Nullable IslandMarkerSynchroniser markerSynchroniser;
     volatile @Nullable IslandMissionService missionService;
+
+    /** What a trust grant carries and how long it may last. Set before the tree is registered. */
+    volatile @Nullable TemporaryAccessConfiguration temporaryAccessConfiguration;
+
+    /** Which node and which boot this is, for a grant that lasts until the node restarts. */
+    volatile @Nullable CurrentNodeProcessIdentity nodeProcessIdentity;
 
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
@@ -226,6 +234,13 @@ public final class IslandCommandTree {
 
     public void setActivityFeedService(@Nullable ActivityFeedService activityFeedService) {
         this.activityFeedService = activityFeedService;
+    }
+
+    /** Tells the tree what a trust grant carries, so the trust branch can make one. */
+    public void useTemporaryAccess(
+            TemporaryAccessConfiguration configuration, CurrentNodeProcessIdentity nodeProcessIdentity) {
+        this.temporaryAccessConfiguration = configuration;
+        this.nodeProcessIdentity = nodeProcessIdentity;
     }
 
     public void setVaultWindow(@Nullable IslandVaultWindow vaultWindow) {
@@ -425,6 +440,9 @@ public final class IslandCommandTree {
                 // The menu file and the documents both say upgrades; a player typing the singular
                 // should not be told there is no such command.
                 .then(groups.upgradeCommands().buildUnder("upgrade"))
+                .then(groups.trustCommands().buildTrust())
+                .then(groups.trustCommands().buildUntrust())
+                .then(groups.trustCommands().buildTrusted())
                 .then(vaultBranch("vault"))
                 // The design document publishes /is chest for the same window. A command an
                 // operator reads about and types is either there or the document is wrong, and the
