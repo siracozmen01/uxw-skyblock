@@ -95,7 +95,8 @@ public final class EconomicWiring {
                 persistence.islandBankruptcyStoragePort(),
                 persistence.islandBankPort(),
                 persistence.islandAuthorityPort(),
-                config.bankConfig()::upkeepPolicy);
+                config.bankConfig()::upkeepPolicy,
+                (int) config.nodeConfig().authorityLease().toSeconds());
         this.bankruptcyListener = config.moduleSettings().isModuleEnabled("bank-upkeep")
                 ? new IslandBankruptcyListener(
                         this.bankruptcyService,

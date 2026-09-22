@@ -33,6 +33,7 @@ import com.uxplima.uxmskyblock.core.application.event.DeduplicatingOutboxConsume
 import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.flag.IslandFlagService;
+import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityService;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
@@ -60,6 +61,11 @@ public final class IntegrationWiring implements AutoCloseable {
     private final SkyblockMenuEngine menuEngine;
     private final SkyblockPlaceholderExpansion placeholderExpansion;
     private final TransactionalOutboxDispatcher outboxDispatcher;
+    private final IslandAuthorityService authorityService;
+    private final java.time.Duration authorityHeartbeatInterval;
+    private final com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler;
+
+    private @org.jspecify.annotations.Nullable AutoCloseable authorityHeartbeat;
     private final ClusterTransportWiring clusterTransport;
     private final DurableEventTransportPort eventTransport;
     private final VelocityBridgePort velocityBridge;
@@ -159,6 +165,17 @@ public final class IntegrationWiring implements AutoCloseable {
 
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistence.outboxPort(), gameplay.scheduler(), serverNodeId.value() + "-outbox");
+
+        // The authority lease was taken once, when an island was made, and nothing ever renewed it.
+        // Every write that needs authority is refused once it runs out, so an island stopped being
+        // able to use its own bank one lease after it was created. This is the missing heartbeat.
+        this.scheduler = gameplay.scheduler();
+        this.authorityService = new IslandAuthorityService(
+                persistence.islandAuthorityPort(),
+                serverNodeId,
+                config.nodeConfig().worldName(),
+                config.nodeConfig().authorityLease());
+        this.authorityHeartbeatInterval = config.nodeConfig().authorityHeartbeatInterval();
         this.eventTransport = this.clusterTransport.eventTransport();
         // Delivery is at least once: a worker whose claim lease runs out while it is delivering
         // loses the row to another worker, which delivers it again. The consumer inbox was built
@@ -272,10 +289,34 @@ public final class IntegrationWiring implements AutoCloseable {
             Guis.install(plugin);
         }
         outboxDispatcher.start();
+        // The first beat runs at once: a server that has been down longer than the lease has to take
+        // its islands back before anybody tries to bank on one.
+        authorityService.heartbeat();
+        this.authorityHeartbeat = scheduler.repeatAsync(
+                authorityService::heartbeat, authorityHeartbeatInterval, authorityHeartbeatInterval);
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
         commandTree.register(plugin);
         apiBridge.register();
         economyBridge.recoverPendingSagas(serverNodeId);
+    }
+
+    private void closeAuthorityHeartbeat() {
+        @org.jspecify.annotations.Nullable AutoCloseable beat = this.authorityHeartbeat;
+        this.authorityHeartbeat = null;
+        if (beat == null) {
+            return;
+        }
+        try {
+            beat.close();
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                    .log(java.util.logging.Level.WARNING, "Stopping the island authority heartbeat failed.", e);
+        }
+    }
+
+    /** The heartbeat that keeps this node's authority alive. */
+    public IslandAuthorityService authorityService() {
+        return authorityService;
     }
 
     public SkyblockEconomyBridge economyBridge() {
@@ -433,6 +474,7 @@ public final class IntegrationWiring implements AutoCloseable {
 
     @Override
     public void close() {
+        closeAuthorityHeartbeat();
         menuEngine.close();
         discordService.close();
         outboxDispatcher.close();

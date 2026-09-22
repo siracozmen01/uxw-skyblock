@@ -39,11 +39,35 @@ public final class IslandBankruptcyService {
     private final Supplier<IslandUpkeepPolicy> policySupplier;
     private final ConcurrentMap<IslandId, IslandBankruptcyRecord> bankruptcyCache = new ConcurrentHashMap<>();
 
+    /**
+     * How long an authority lease this service takes runs, when the caller names no number.
+     *
+     * <p>It used to be a day written here and nothing renewed it. The heartbeat renews it now and
+     * the operator sets the length, so this is only the fallback.
+     */
+    public static final int DEFAULT_AUTHORITY_LEASE_SECONDS = 600;
+
+    private final int authorityLeaseSeconds;
+
     public IslandBankruptcyService(
             IslandBankruptcyStoragePort bankruptcyStoragePort,
             IslandBankPort bankPort,
             IslandAuthorityPort authorityPort,
             Supplier<IslandUpkeepPolicy> policySupplier) {
+        this(bankruptcyStoragePort, bankPort, authorityPort, policySupplier, DEFAULT_AUTHORITY_LEASE_SECONDS);
+    }
+
+    /** The canonical constructor, carrying how long an authority lease it takes runs. */
+    public IslandBankruptcyService(
+            IslandBankruptcyStoragePort bankruptcyStoragePort,
+            IslandBankPort bankPort,
+            IslandAuthorityPort authorityPort,
+            Supplier<IslandUpkeepPolicy> policySupplier,
+            int authorityLeaseSeconds) {
+        if (authorityLeaseSeconds < 1) {
+            throw new IllegalArgumentException("authorityLeaseSeconds must be >= 1: " + authorityLeaseSeconds);
+        }
+        this.authorityLeaseSeconds = authorityLeaseSeconds;
         this.bankruptcyStoragePort =
                 Objects.requireNonNull(bankruptcyStoragePort, "bankruptcyStoragePort must not be null");
         this.bankPort = Objects.requireNonNull(bankPort, "bankPort must not be null");
@@ -331,7 +355,7 @@ public final class IslandBankruptcyService {
         if (optAuth.isPresent()) {
             return optAuth.get().authorityEpoch();
         }
-        IslandAuthorityOutcome outcome = authorityPort.acquireAuthority(islandId, serverNodeId, 86400);
+        IslandAuthorityOutcome outcome = authorityPort.acquireAuthority(islandId, serverNodeId, authorityLeaseSeconds);
         if (outcome instanceof IslandAuthorityOutcome.Success s) {
             return s.epoch();
         }

@@ -81,7 +81,8 @@ public final class GameplayCreationWiring {
                 persistence.outboxPort(),
                 this.gameModeHierarchyService,
                 new IslandSizeAllowance(upgradeService),
-                config.worldConfig().islandSpawnY());
+                config.worldConfig().islandSpawnY(),
+                (int) config.nodeConfig().authorityLease().toSeconds());
         this.locationService =
                 new IslandLocationService(persistence.islandStoragePort(), persistence.islandMutationLock());
         this.leaderboardService = new IslandLeaderboardService(

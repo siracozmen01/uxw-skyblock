@@ -311,6 +311,12 @@ class CreateIslandUseCaseTest {
         public Optional<IslandAuthorityRecord> findAuthority(IslandId islandId) {
             return Optional.empty();
         }
+
+        @Override
+        public com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep sweepAuthority(
+                ServerNodeId nodeId, String worldName, int leaseSeconds) {
+            return com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep.NOTHING;
+        }
     }
 
     private static class FakeIslandBank implements IslandBankPort {

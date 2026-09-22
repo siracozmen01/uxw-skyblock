@@ -14,7 +14,13 @@ import org.spongepowered.configurate.ConfigurationNode;
  * split-brain or node collision issues in multi-server distributed deployments.
  */
 public record ServerNodeConfiguration(
-        ServerNodeId nodeId, String worldName, boolean clustered, String redisUri, Duration routeCacheTtl) {
+        ServerNodeId nodeId,
+        String worldName,
+        boolean clustered,
+        String redisUri,
+        Duration routeCacheTtl,
+        Duration authorityLease,
+        Duration authorityHeartbeatInterval) {
 
     /**
      * How long a route to another node stays cached, when the operator names no other number.
@@ -24,6 +30,17 @@ public record ServerNodeConfiguration(
      */
     public static final Duration DEFAULT_ROUTE_CACHE_TTL = Duration.ofSeconds(15);
 
+    /**
+     * How long this node's authority over an island runs before it must be pushed forward.
+     *
+     * <p>It is also how long an island waits before another node may pick it up after this one
+     * stops. A shorter lease recovers faster and beats harder on the database.
+     */
+    public static final Duration DEFAULT_AUTHORITY_LEASE = Duration.ofMinutes(10);
+
+    /** How often the lease is pushed forward. Well inside the lease, so one missed pass is survivable. */
+    public static final Duration DEFAULT_AUTHORITY_HEARTBEAT_INTERVAL = Duration.ofMinutes(2);
+
     public static final String DEFAULT_WORLD_NAME = "world";
     public static final String DEFAULT_REDIS_URI = "redis://localhost:6379";
 
@@ -32,6 +49,20 @@ public record ServerNodeConfiguration(
         Objects.requireNonNull(worldName, "worldName must not be null");
         Objects.requireNonNull(redisUri, "redisUri must not be null");
         Objects.requireNonNull(routeCacheTtl, "routeCacheTtl must not be null");
+        Objects.requireNonNull(authorityLease, "authorityLease must not be null");
+        Objects.requireNonNull(authorityHeartbeatInterval, "authorityHeartbeatInterval must not be null");
+        if (authorityLease.toSeconds() < 1) {
+            throw new IllegalArgumentException("authority-lease must be at least a second: " + authorityLease);
+        }
+        if (authorityHeartbeatInterval.toSeconds() < 1) {
+            throw new IllegalArgumentException(
+                    "authority-heartbeat-interval must be at least a second: " + authorityHeartbeatInterval);
+        }
+        if (authorityHeartbeatInterval.compareTo(authorityLease) >= 0) {
+            throw new IllegalArgumentException("authority-heartbeat-interval (" + authorityHeartbeatInterval
+                    + ") must be shorter than authority-lease (" + authorityLease
+                    + "), or the lease runs out between two beats");
+        }
         if (worldName.isBlank()) {
             throw new IllegalArgumentException("world-name must not be blank");
         }
@@ -41,21 +72,48 @@ public record ServerNodeConfiguration(
     }
 
     public ServerNodeConfiguration(ServerNodeId nodeId, String worldName) {
-        this(nodeId, worldName, false, "", DEFAULT_ROUTE_CACHE_TTL);
+        this(
+                nodeId,
+                worldName,
+                false,
+                "",
+                DEFAULT_ROUTE_CACHE_TTL,
+                DEFAULT_AUTHORITY_LEASE,
+                DEFAULT_AUTHORITY_HEARTBEAT_INTERVAL);
     }
 
     public static ServerNodeConfiguration of(ServerNodeId nodeId, String worldName) {
-        return new ServerNodeConfiguration(nodeId, worldName, false, "", DEFAULT_ROUTE_CACHE_TTL);
+        return new ServerNodeConfiguration(
+                nodeId,
+                worldName,
+                false,
+                "",
+                DEFAULT_ROUTE_CACHE_TTL,
+                DEFAULT_AUTHORITY_LEASE,
+                DEFAULT_AUTHORITY_HEARTBEAT_INTERVAL);
     }
 
     public static ServerNodeConfiguration of(String nodeId, String worldName) {
-        return new ServerNodeConfiguration(ServerNodeId.of(nodeId), worldName, false, "", DEFAULT_ROUTE_CACHE_TTL);
+        return new ServerNodeConfiguration(
+                ServerNodeId.of(nodeId),
+                worldName,
+                false,
+                "",
+                DEFAULT_ROUTE_CACHE_TTL,
+                DEFAULT_AUTHORITY_LEASE,
+                DEFAULT_AUTHORITY_HEARTBEAT_INTERVAL);
     }
 
     public static ServerNodeConfiguration of(
             ServerNodeId nodeId, String worldName, boolean clustered, String redisUri) {
         return new ServerNodeConfiguration(
-                nodeId, worldName, clustered, redisUri != null ? redisUri : "", DEFAULT_ROUTE_CACHE_TTL);
+                nodeId,
+                worldName,
+                clustered,
+                redisUri != null ? redisUri : "",
+                DEFAULT_ROUTE_CACHE_TTL,
+                DEFAULT_AUTHORITY_LEASE,
+                DEFAULT_AUTHORITY_HEARTBEAT_INTERVAL);
     }
 
     public boolean isClustered() {
@@ -117,8 +175,17 @@ public record ServerNodeConfiguration(
                 : (clustered ? DEFAULT_REDIS_URI : "");
 
         Duration routeCacheTtl = parseSeconds(nodeConfig.node("route-cache-ttl"), DEFAULT_ROUTE_CACHE_TTL);
+        Duration authorityLease = parseSeconds(nodeConfig.node("authority-lease"), DEFAULT_AUTHORITY_LEASE);
+        Duration heartbeat =
+                parseSeconds(nodeConfig.node("authority-heartbeat-interval"), DEFAULT_AUTHORITY_HEARTBEAT_INTERVAL);
         return new ServerNodeConfiguration(
-                ServerNodeId.of(rawNodeId.trim()), worldName, clustered, redisUri, routeCacheTtl);
+                ServerNodeId.of(rawNodeId.trim()),
+                worldName,
+                clustered,
+                redisUri,
+                routeCacheTtl,
+                authorityLease,
+                heartbeat);
     }
 
     /**
@@ -134,6 +201,10 @@ public record ServerNodeConfiguration(
         }
         String trimmed = raw.strip().toLowerCase(java.util.Locale.ROOT);
         try {
+            if (trimmed.endsWith("h")) {
+                return Duration.ofHours(Long.parseLong(
+                        trimmed.substring(0, trimmed.length() - 1).strip()));
+            }
             if (trimmed.endsWith("m")) {
                 return Duration.ofMinutes(Long.parseLong(
                         trimmed.substring(0, trimmed.length() - 1).strip()));

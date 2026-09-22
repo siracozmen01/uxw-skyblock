@@ -222,6 +222,12 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
     }
 
     @Override
+    public com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep sweepAuthority(
+            ServerNodeId nodeId, String worldName, int leaseSeconds) {
+        return authorityAdapter.sweepAuthority(nodeId, worldName, leaseSeconds);
+    }
+
+    @Override
     public void updateAdministrativeState(IslandId islandId, AdministrativeState state, @Nullable String freezeReason) {
         freezeAdapter.updateAdministrativeState(islandId, state, freezeReason);
     }

@@ -5,6 +5,7 @@ import java.util.Optional;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
+import com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 
 /**
@@ -52,4 +53,22 @@ public interface IslandAuthorityPort {
      * @return optional containing the authority record if found
      */
     Optional<IslandAuthorityRecord> findAuthority(IslandId islandId);
+
+    /**
+     * Keeps this node's authority over one world's islands alive, and picks up what lapsed.
+     *
+     * <p>A lease was taken once, when the island was created, and nothing ever renewed it. Every
+     * write that needs authority, a bank movement and an upgrade purchase among them, is refused
+     * once the lease has run out, so an island stopped being able to use its own bank a lease after
+     * it was made and never started again.
+     *
+     * <p>Three statements, not three per island: renew what this node holds, take over what has run
+     * out inside this world, and insert a row for an island here that has none.
+     *
+     * @param nodeId this node
+     * @param worldName the world whose islands this node serves
+     * @param leaseSeconds how long the lease runs from now
+     * @return what the pass did
+     */
+    IslandAuthoritySweep sweepAuthority(ServerNodeId nodeId, String worldName, int leaseSeconds);
 }

@@ -91,7 +91,16 @@ public final class CreateIslandUseCase {
      */
     public static final int DEFAULT_ISLAND_SPAWN_Y = 100;
 
+    /**
+     * How long a new island's authority lease runs, when the caller names no number.
+     *
+     * <p>It used to be a day written here, and nothing renewed it, so the island could not use its
+     * bank a day after it was made. The heartbeat renews it now and the operator sets the length.
+     */
+    public static final int DEFAULT_AUTHORITY_LEASE_SECONDS = 600;
+
     private final int islandSpawnY;
+    private final int authorityLeaseSeconds;
 
     public CreateIslandUseCase(
             IslandStoragePort islandStoragePort,
@@ -139,7 +148,8 @@ public final class CreateIslandUseCase {
                 outboxPort,
                 gameModeHierarchy,
                 ignored -> DEFAULT_STARTING_RADIUS,
-                DEFAULT_ISLAND_SPAWN_Y);
+                DEFAULT_ISLAND_SPAWN_Y,
+                DEFAULT_AUTHORITY_LEASE_SECONDS);
     }
 
     /** The canonical constructor, carrying how far a new island reaches. */
@@ -154,6 +164,37 @@ public final class CreateIslandUseCase {
             @Nullable GameModeHierarchyService gameModeHierarchy,
             ToIntFunction<IslandId> startingRadius,
             int islandSpawnY) {
+        this(
+                islandStoragePort,
+                islandAuthorityPort,
+                islandBankPort,
+                presetCatalog,
+                worldGridPort,
+                worldGridAllocationPort,
+                outboxPort,
+                gameModeHierarchy,
+                startingRadius,
+                islandSpawnY,
+                DEFAULT_AUTHORITY_LEASE_SECONDS);
+    }
+
+    /** The canonical constructor, carrying how long the authority lease a new island gets runs. */
+    public CreateIslandUseCase(
+            IslandStoragePort islandStoragePort,
+            IslandAuthorityPort islandAuthorityPort,
+            IslandBankPort islandBankPort,
+            StarterPresetCatalog presetCatalog,
+            WorldGridPort worldGridPort,
+            WorldGridAllocationPort worldGridAllocationPort,
+            @Nullable OutboxPort outboxPort,
+            @Nullable GameModeHierarchyService gameModeHierarchy,
+            ToIntFunction<IslandId> startingRadius,
+            int islandSpawnY,
+            int authorityLeaseSeconds) {
+        if (authorityLeaseSeconds < 1) {
+            throw new IllegalArgumentException("authorityLeaseSeconds must be >= 1: " + authorityLeaseSeconds);
+        }
+        this.authorityLeaseSeconds = authorityLeaseSeconds;
         this.gameModeHierarchy = gameModeHierarchy;
         this.startingRadius = Objects.requireNonNull(startingRadius, "startingRadius must not be null");
         this.islandSpawnY = islandSpawnY;
@@ -230,7 +271,7 @@ public final class CreateIslandUseCase {
 
         try {
             islandStoragePort.saveIsland(island, location, outboxEvent);
-            islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
+            islandAuthorityPort.acquireAuthority(islandId, serverNodeId, authorityLeaseSeconds);
             islandBankPort.createBank(islandId);
             bindIntoGameModeHierarchy(profileId, islandId, preset.id());
             return new CreateIslandResult.Success(island, location, preset);
@@ -300,7 +341,7 @@ public final class CreateIslandUseCase {
         try {
             worldGridAllocationPort.reserveNextSequence(serverNodeId, worldName, center.x(), center.z(), islandId);
             islandStoragePort.saveIsland(island, location, outboxEvent);
-            islandAuthorityPort.acquireAuthority(islandId, serverNodeId, 86400);
+            islandAuthorityPort.acquireAuthority(islandId, serverNodeId, authorityLeaseSeconds);
             islandBankPort.createBank(islandId);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {

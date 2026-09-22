@@ -256,5 +256,11 @@ class IslandBankServiceTest {
         public Optional<IslandAuthorityRecord> findAuthority(IslandId islandId) {
             return Optional.ofNullable(authorities.get(islandId));
         }
+
+        @Override
+        public com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep sweepAuthority(
+                ServerNodeId nodeId, String worldName, int leaseSeconds) {
+            return com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep.NOTHING;
+        }
     }
 }
