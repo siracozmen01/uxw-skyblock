@@ -303,6 +303,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // and a feature module, and no command a player could type.
         this.commandTree.setWarpService(gameplay.warpService());
         this.commandTree.setWarpBrowseMenu(gameplay.warpBrowseMenu());
+        this.commandTree.setBiomeConfiguration(config.biomeConfig());
         this.commandTree.setSocialService(gameplay.socialService());
         this.commandTree.setAllianceService(gameplay.allianceService());
         this.commandTree.setRewardInboxService(gameplay.rewardInboxService());

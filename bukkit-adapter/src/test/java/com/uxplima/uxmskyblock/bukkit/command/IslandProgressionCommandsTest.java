@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -68,6 +69,8 @@ class IslandProgressionCommandsTest {
     private IslandWorthService worth;
     private IslandLeaderboardService leaderboard;
     private BiomeModificationPort biomes;
+    private IslandLocationService locations;
+    private IslandProgressionCommands commands;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private static SchedulerPort inlineScheduler() {
@@ -120,7 +123,7 @@ class IslandProgressionCommandsTest {
         IslandBankService bank = mock(IslandBankService.class);
         when(bank.getBalanceMinorUnits(PROFILE)).thenReturn(Optional.of(5_000L));
 
-        IslandLocationService locations = mock(IslandLocationService.class);
+        locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
         when(locations.findLocation(ISLAND))
                 .thenReturn(Optional.of(new IslandLocation(
@@ -136,7 +139,7 @@ class IslandProgressionCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
-        IslandProgressionCommands commands = new IslandProgressionCommands(
+        commands = new IslandProgressionCommands(
                 locations,
                 bank,
                 leaderboard,
@@ -237,9 +240,100 @@ class IslandProgressionCommandsTest {
         verify(leaderboard).getTop(LeaderboardCategory.LEVEL, 10);
     }
 
+    /** Says the island has reached this level, which is what a biome asks for. */
+    private void islandAtLevel(long level) {
+        when(worth.calculateScore(any(), anyInt(), anyLong()))
+                .thenReturn(new IslandScoreBreakdown(0L, 0L, 0L, 0L, 0L, level, 0L, 0L));
+    }
+
+    /** Puts the caller on the island under a role holding exactly these permissions. */
+    private void callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission... permissions) {
+        com.uxplima.uxmskyblock.core.domain.island.Island island =
+                com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                        ISLAND,
+                        IslandBounds.fromCenterAndRadius(0, 0, 100),
+                        new PlayerUuid(java.util.UUID.randomUUID()),
+                        new ProfileId(java.util.UUID.randomUUID()),
+                        java.time.Instant.now());
+        com.uxplima.uxmskyblock.core.domain.island.IslandRole role =
+                new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                        "CUSTOM",
+                        400,
+                        "Custom",
+                        permissions.length == 0
+                                ? java.util.EnumSet.noneOf(
+                                        com.uxplima.uxmskyblock.core.domain.island.IslandPermission.class)
+                                : java.util.EnumSet.of(permissions[0], permissions),
+                        false);
+        when(locations.findIsland(ISLAND))
+                .thenReturn(Optional.of(island.addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                        new PlayerUuid(player.getUniqueId()), PROFILE, role, java.time.Instant.now()))));
+    }
+
     @Test
-    @DisplayName("A biome the plugin publishes is applied to the caller's island")
+    @DisplayName("A biome the plugin publishes is applied to an island that has reached its level")
     void aKnownBiomeIsApplied() throws Exception {
+        islandAtLevel(5L);
+
+        run("biome desert", player);
+
+        verify(biomes).applyBiome(ISLAND, IslandBiome.DESERT);
+    }
+
+    @Test
+    @DisplayName("An island below the level the operator set does not get the biome")
+    void abiomeAskingForALevelIsRefusedBelowIt() throws Exception {
+        islandAtLevel(4L);
+
+        run("biome desert", player);
+
+        verify(biomes, never()).applyBiome(any(), any());
+        assertThat(player.nextMessage())
+                .describedAs("the level a biome asks for was written into the code and read nowhere")
+                .isNotNull();
+    }
+
+    @Test
+    @DisplayName("The level the operator writes is the level that counts, not the one shipped")
+    void theOperatorsNumberIsTheOneThatCounts() throws Exception {
+        islandAtLevel(1L);
+        commands.useBiomeRules(new com.uxplima.uxmskyblock.bukkit.config.BiomeConfiguration(
+                true, java.util.Map.of(IslandBiome.DESERT, 1), java.util.Map.of(IslandBiome.DESERT, true)));
+
+        run("biome desert", player);
+
+        verify(biomes).applyBiome(ISLAND, IslandBiome.DESERT);
+    }
+
+    @Test
+    @DisplayName("A biome the operator took off the server is refused whatever the level")
+    void abiomeTakenOffIsRefused() throws Exception {
+        islandAtLevel(100L);
+        commands.useBiomeRules(new com.uxplima.uxmskyblock.bukkit.config.BiomeConfiguration(
+                true, java.util.Map.of(IslandBiome.DESERT, 0), java.util.Map.of(IslandBiome.DESERT, false)));
+
+        run("biome desert", player);
+
+        verify(biomes, never()).applyBiome(any(), any());
+    }
+
+    @Test
+    @DisplayName("A role that may not change the biome cannot repaint the island the owner built")
+    void arolewithoutTheBiomePermissionIsRefused() throws Exception {
+        islandAtLevel(100L);
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_BREAK);
+
+        run("biome desert", player);
+
+        verify(biomes, never()).applyBiome(any(), any());
+    }
+
+    @Test
+    @DisplayName("A role that may change the biome does")
+    void arolewithTheBiomePermissionGoesThrough() throws Exception {
+        islandAtLevel(100L);
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BIOME_CHANGE);
+
         run("biome desert", player);
 
         verify(biomes).applyBiome(ISLAND, IslandBiome.DESERT);

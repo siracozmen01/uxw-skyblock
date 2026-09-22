@@ -9,6 +9,7 @@ import java.util.logging.Logger;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.BankConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.BiomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
@@ -83,6 +84,7 @@ public final class ConfigurationWiring {
     private final InactivityConfiguration inactivityConfig;
     private final MissionConfiguration missionConfig;
     private final LevelConfiguration levelConfig;
+    private final BiomeConfiguration biomeConfig;
     private final DimensionConfiguration dimensionConfig;
     private final LimitConfiguration limitConfig;
     private final AntiAbuseConfiguration antiAbuseConfig;
@@ -150,6 +152,7 @@ public final class ConfigurationWiring {
             InactivityConfiguration inactivityConfig,
             MissionConfiguration missionConfig,
             LevelConfiguration levelConfig,
+            BiomeConfiguration biomeConfig,
             DimensionConfiguration dimensionConfig,
             LimitConfiguration limitConfig,
             AntiAbuseConfiguration antiAbuseConfig,
@@ -182,6 +185,7 @@ public final class ConfigurationWiring {
         this.inactivityConfig = Objects.requireNonNull(inactivityConfig, "inactivityConfig must not be null");
         this.missionConfig = Objects.requireNonNull(missionConfig, "missionConfig must not be null");
         this.levelConfig = Objects.requireNonNull(levelConfig, "levelConfig must not be null");
+        this.biomeConfig = Objects.requireNonNull(biomeConfig, "biomeConfig must not be null");
         this.dimensionConfig = Objects.requireNonNull(dimensionConfig, "dimensionConfig must not be null");
         this.limitConfig = Objects.requireNonNull(limitConfig, "limitConfig must not be null");
         this.antiAbuseConfig = Objects.requireNonNull(antiAbuseConfig, "antiAbuseConfig must not be null");
@@ -256,6 +260,7 @@ public final class ConfigurationWiring {
                 inactivityConfig,
                 missionConfig,
                 levelConfig,
+                BiomeConfiguration.defaultConfiguration(),
                 dimensionConfig,
                 limitConfig,
                 antiAbuseConfig,
@@ -397,6 +402,11 @@ public final class ConfigurationWiring {
 
     public LevelConfiguration levelConfig() {
         return levelConfig;
+    }
+
+    /** Which biomes this server offers and what an island has to reach first. */
+    public BiomeConfiguration biomeConfig() {
+        return biomeConfig;
     }
 
     public DimensionConfiguration dimensionConfig() {

@@ -13,6 +13,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.BankConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.BiomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
@@ -194,6 +195,8 @@ public final class ConfigurationLoader {
                 MissionConfiguration.defaultConfiguration());
         LevelConfiguration levelConfig = loadConfig(
                 plugin, dataDir, "levels.conf", LevelConfiguration::load, LevelConfiguration.defaultConfiguration());
+        BiomeConfiguration biomeConfig = loadConfig(
+                plugin, dataDir, "biomes.conf", BiomeConfiguration::load, BiomeConfiguration.defaultConfiguration());
         DimensionConfiguration dimensionConfig = loadConfig(
                 plugin,
                 dataDir,
@@ -276,6 +279,7 @@ public final class ConfigurationLoader {
                 inactivityConfig,
                 missionConfig,
                 levelConfig,
+                biomeConfig,
                 dimensionConfig,
                 limitConfig,
                 antiAbuseConfig,

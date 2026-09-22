@@ -18,6 +18,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.config.BiomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
@@ -31,6 +32,8 @@ import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardCategory;
 import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
 import com.uxplima.uxmskyblock.core.domain.worth.IslandScoreBreakdown;
@@ -51,6 +54,15 @@ public final class IslandProgressionCommands {
     private final Supplier<@Nullable IslandWorthService> worthServiceProvider;
     private final Supplier<@Nullable IslandMissionService> missionServiceProvider;
     private final Messages messages;
+
+    /**
+     * Which biomes this server offers and what an island has to reach first.
+     *
+     * <p>The numbers used to live in the biome definitions themselves, so an operator who wanted
+     * the end sooner had nowhere to say so. The shipped file is the default until the bootstrap
+     * hands over the operator's.
+     */
+    private volatile BiomeConfiguration biomeRules = BiomeConfiguration.defaultConfiguration();
 
     public IslandProgressionCommands(
             IslandLocationService islandLocationService,
@@ -76,6 +88,13 @@ public final class IslandProgressionCommands {
         this.missionServiceProvider =
                 Objects.requireNonNull(missionServiceProvider, "missionServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+    }
+
+    /** Tells this command group which biomes the operator offers, and at what level. */
+    public void useBiomeRules(@Nullable BiomeConfiguration biomeRules) {
+        if (biomeRules != null) {
+            this.biomeRules = biomeRules;
+        }
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildLevel() {
@@ -318,10 +337,44 @@ public final class IslandProgressionCommands {
         ProfileId profileId = optProfile.get();
         IslandBiome targetBiome = optBiome.get();
 
+        BiomeConfiguration rules = this.biomeRules;
+        if (!rules.enabled() || !rules.offers(targetBiome)) {
+            send(
+                    player,
+                    "biome.not_offered",
+                    Placeholder.unparsed("name", targetBiome.id()),
+                    Placeholder.unparsed("offered", rules.offeredNames()));
+            return Cmd.OK;
+        }
+
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandLocationService.findIslandId(profileId);
             if (optIslandId.isEmpty()) {
                 schedulerPort.onEntity(playerUuid, () -> send(player, "error.no_island"));
+                return;
+            }
+
+            // The role editor has published a biome permission since the permission work and this
+            // command read it nowhere, so any member could repaint the island the owner built.
+            Optional<Island> optIsland = islandLocationService.findIsland(optIslandId.get());
+            if (optIsland.isPresent()
+                    && !optIsland.get().isOwner(profileId)
+                    && !optIsland.get().hasPermission(profileId, IslandPermission.BIOME_CHANGE)) {
+                schedulerPort.onEntity(playerUuid, () -> send(player, "biome.no_permission"));
+                return;
+            }
+
+            int required = rules.requiredLevelOf(targetBiome);
+            int reached = levelOf(optIslandId.get(), profileId);
+            if (reached < required) {
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> send(
+                                player,
+                                "biome.level_required",
+                                Placeholder.unparsed("biome", targetBiome.displayName()),
+                                Placeholder.unparsed("required", Integer.toString(required)),
+                                Placeholder.unparsed("level", Integer.toString(reached))));
                 return;
             }
 
@@ -339,6 +392,26 @@ public final class IslandProgressionCommands {
         });
 
         return Cmd.OK;
+    }
+
+    /**
+     * The level this island has reached, or every level at once when there is nothing to measure.
+     *
+     * <p>A node with the worth engine switched off has no levels, so it has no levels to require:
+     * every biome the operator offers is open there. Returning the highest possible number says
+     * that without a second branch at the caller.
+     */
+    private int levelOf(IslandId islandId, ProfileId profileId) {
+        IslandWorthService worthService = worthServiceProvider.get();
+        if (worthService == null) {
+            return Integer.MAX_VALUE;
+        }
+        long bankBalance = islandBankService.getBalanceMinorUnits(profileId).orElse(0L);
+        return (int) Math.min(
+                Integer.MAX_VALUE,
+                worthService
+                        .calculateScore(islandId, completedMissions(islandId, profileId), bankBalance)
+                        .calculatedLevel());
     }
 
     /** How many missions the caller has finished on this island, or none when missions are off. */

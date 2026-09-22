@@ -113,6 +113,9 @@ public final class IslandCommandTree {
     volatile @Nullable SkyblockReloader reloader;
     volatile @Nullable IslandWarpService warpService;
 
+    /** Which biomes the operator offers and what an island has to reach first. */
+    volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable BiomeConfiguration biomeConfiguration;
+
     /** The window the public warp directory opens in, so its icons are drawn. */
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandWarpBrowseMenu warpBrowseMenu;
 
@@ -301,6 +304,12 @@ public final class IslandCommandTree {
     /** Hands the warp subsystem to the command that reaches it. */
     public void setWarpService(@Nullable IslandWarpService warpService) {
         this.warpService = warpService;
+    }
+
+    /** Hands the operator's biome rules to the command that applies them. */
+    public void setBiomeConfiguration(
+            com.uxplima.uxmskyblock.bukkit.config.@Nullable BiomeConfiguration configuration) {
+        this.biomeConfiguration = configuration;
     }
 
     /** Hands the directory window to the browse command, so a warp's icon is seen. */
