@@ -64,6 +64,12 @@ class SomethingWorthAnnouncingIsAnnouncedTest {
             }
             heard.add("audit:" + eventType + ":" + severity);
         }
+
+        @Override
+        public void notifyLeaderboard(
+                String metricName, List<com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry> topEntries) {
+            heard.add("leaderboard:" + metricName);
+        }
     }
 
     private static IslandAllianceService allianceServiceThatAccepts(IslandId a, IslandId b) {

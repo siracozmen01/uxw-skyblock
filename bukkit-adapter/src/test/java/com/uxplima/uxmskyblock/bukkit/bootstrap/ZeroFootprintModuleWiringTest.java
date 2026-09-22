@@ -87,6 +87,7 @@ class ZeroFootprintModuleWiringTest {
                   recycle = false
                   alliances = false
                   shop = false
+                  leaderboards = false
                   "temporary-access" = false
                   "reward-inbox" = false
                   freeze = false

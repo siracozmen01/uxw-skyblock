@@ -127,6 +127,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
         dispatch(DiscordTopic.MILESTONES, DiscordWebhookPayload.ofEmbed(embedBuilder.build()));
     }
 
+    @Override
     public void notifyLeaderboard(String metricName, List<LeaderboardEntry> topEntries) {
         Objects.requireNonNull(metricName, "metricName must not be null");
         Objects.requireNonNull(topEntries, "topEntries must not be null");

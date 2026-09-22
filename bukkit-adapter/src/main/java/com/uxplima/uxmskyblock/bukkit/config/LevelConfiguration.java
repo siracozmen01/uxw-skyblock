@@ -21,7 +21,8 @@ public record LevelConfiguration(
         Map<String, Long> blockWeights,
         Map<String, Long> blockPrices,
         Map<String, Long> spawnerWeights,
-        java.time.Duration leaderboardFreshness) {
+        java.time.Duration leaderboardFreshness,
+        java.time.Duration leaderboardRebuildInterval) {
 
     public static final long DEFAULT_POINTS_PER_LEVEL = 100L;
     public static final long DEFAULT_BANK_MINOR_UNITS_PER_POINT = 10_000L;
@@ -30,6 +31,7 @@ public record LevelConfiguration(
     public static final double DEFAULT_DAMPING_FACTOR = 0.85;
     public static final java.time.Duration DEFAULT_LEADERBOARD_FRESHNESS =
             com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService.DEFAULT_FRESHNESS;
+    public static final java.time.Duration DEFAULT_LEADERBOARD_REBUILD_INTERVAL = java.time.Duration.ofMinutes(5);
 
     public LevelConfiguration {
         blockWeights = Collections.unmodifiableMap(new HashMap<>(blockWeights));
@@ -44,6 +46,11 @@ public record LevelConfiguration(
         Objects.requireNonNull(leaderboardFreshness, "leaderboardFreshness must not be null");
         if (leaderboardFreshness.isNegative()) {
             throw new IllegalArgumentException("leaderboardFreshness must not be negative: " + leaderboardFreshness);
+        }
+        Objects.requireNonNull(leaderboardRebuildInterval, "leaderboardRebuildInterval must not be null");
+        if (leaderboardRebuildInterval.isNegative() || leaderboardRebuildInterval.isZero()) {
+            throw new IllegalArgumentException(
+                    "leaderboardRebuildInterval must be positive: " + leaderboardRebuildInterval);
         }
     }
 
@@ -66,7 +73,8 @@ public record LevelConfiguration(
                 blockWeights,
                 blockPrices,
                 spawnerWeights,
-                DEFAULT_LEADERBOARD_FRESHNESS);
+                DEFAULT_LEADERBOARD_FRESHNESS,
+                DEFAULT_LEADERBOARD_REBUILD_INTERVAL);
     }
 
     public Map<String, Long> basePricesMinorUnits() {
@@ -179,7 +187,16 @@ public record LevelConfiguration(
                 blocks.isEmpty() ? defaultConfiguration().blockWeights() : blocks,
                 prices.isEmpty() ? defaultConfiguration().blockPrices() : prices,
                 spawners.isEmpty() ? defaultConfiguration().spawnerWeights() : spawners,
-                leaderboardFreshness(rootNode));
+                leaderboardFreshness(rootNode),
+                leaderboardRebuildInterval(rootNode));
+    }
+
+    /** How often every board is built again in the background, so no player ever waits for one. */
+    private static java.time.Duration leaderboardRebuildInterval(ConfigurationNode rootNode) {
+        String raw = rootNode.node("leaderboard-rebuild-interval").getString();
+        return raw != null && !raw.isBlank()
+                ? com.uxplima.uxmlib.common.Durations.parse(raw)
+                : DEFAULT_LEADERBOARD_REBUILD_INTERVAL;
     }
 
     /**

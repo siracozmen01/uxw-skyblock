@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.bukkit.module.builtin.DimensionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.DiscordFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.FreezeFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.InactivityFeatureModule;
+import com.uxplima.uxmskyblock.bukkit.module.builtin.LeaderboardFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.LimitFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.MissionFeatureModule;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.PresetsModule;
@@ -98,6 +99,15 @@ public final class FeatureModuleWiring implements AutoCloseable {
         }
         if (config.moduleSettings().isModuleEnabled("alliances")) {
             this.moduleRegistry.register(new AllianceFeatureModule(gameplay.allianceService()));
+        }
+        if (config.moduleSettings().isModuleEnabled("leaderboards")) {
+            // Nothing built a board except the player who asked for one, so the first ask after a
+            // restart paid for a sort across every island while that player waited.
+            this.moduleRegistry.register(new LeaderboardFeatureModule(
+                    gameplay.leaderboardService(),
+                    gameplay.scheduler(),
+                    config.levelConfig().leaderboardRebuildInterval(),
+                    integration.discordService()));
         }
         if (config.moduleSettings().isModuleEnabled("shop")) {
             this.moduleRegistry.register(new ShopFeatureModule(gameplay.dynamicPricingEngine()));

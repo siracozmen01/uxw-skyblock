@@ -2,6 +2,8 @@ package com.uxplima.uxmskyblock.core.application.announce;
 
 import java.util.Map;
 
+import com.uxplima.uxmskyblock.core.domain.leaderboard.LeaderboardEntry;
+
 /**
  * Somewhere outside the server that wants to be told what happened.
  *
@@ -33,4 +35,12 @@ public interface IslandAnnouncer {
      * @param details whatever else is worth carrying, by name
      */
     void notifyAdminAudit(String eventType, String severity, String description, Map<String, String> details);
+
+    /**
+     * The islands at the top of a board, as they stand.
+     *
+     * @param metricName what the board ranks by, in a word a reader understands
+     * @param topEntries the leading islands, best first
+     */
+    void notifyLeaderboard(String metricName, java.util.List<LeaderboardEntry> topEntries);
 }
