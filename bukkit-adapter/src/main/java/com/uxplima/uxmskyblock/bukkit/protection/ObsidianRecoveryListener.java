@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Location;
@@ -52,7 +53,21 @@ public final class ObsidianRecoveryListener implements Listener {
 
     private final ProtectionConfiguration config;
     private final Clock clock;
-    private final Map<Location, Instant> accidentalObsidian = new ConcurrentHashMap<>();
+    /**
+     * Where obsidian formed by accident, and when.
+     *
+     * <p>Keyed by the world's id rather than a {@link Location}, because a location holds its world
+     * and a world that was unloaded would stay in memory for as long as one entry named it. An entry
+     * is only worth anything inside the recovery window, so each new entry clears the ones that have
+     * run out. Without that the map grew by one for every lava source a player ever flooded.
+     */
+    private final Map<FormedAt, Instant> accidentalObsidian = new ConcurrentHashMap<>();
+
+    private record FormedAt(UUID world, int x, int y, int z) {
+        static FormedAt of(Block block) {
+            return new FormedAt(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+        }
+    }
 
     public ObsidianRecoveryListener(ProtectionConfiguration config) {
         this(config, Clock.systemUTC());
@@ -69,8 +84,14 @@ public final class ObsidianRecoveryListener implements Listener {
             return;
         }
 
+        // With every obsidian block recoverable, nothing needs to remember which ones were accidents.
+        if (!config.obsidianRecoveryAccidentalOnly()) {
+            return;
+        }
         if (event.getNewState().getType() == Material.OBSIDIAN) {
-            accidentalObsidian.put(event.getBlock().getLocation(), Instant.now(clock));
+            Instant now = Instant.now(clock);
+            accidentalObsidian.values().removeIf(formedAt -> hasExpired(formedAt, now));
+            accidentalObsidian.put(FormedAt.of(event.getBlock()), now);
         }
     }
 
@@ -92,22 +113,22 @@ public final class ObsidianRecoveryListener implements Listener {
         }
 
         Location loc = clickedBlock.getLocation();
-        Instant formedAt = accidentalObsidian.get(loc);
+        FormedAt key = FormedAt.of(clickedBlock);
+        Instant formedAt = accidentalObsidian.get(key);
 
         if (config.obsidianRecoveryAccidentalOnly()) {
             if (formedAt == null) {
                 return;
             }
-            Instant expiry = formedAt.plus(config.obsidianRecoveryExpiration());
-            if (Instant.now(clock).isAfter(expiry)) {
-                accidentalObsidian.remove(loc);
+            if (hasExpired(formedAt, Instant.now(clock))) {
+                accidentalObsidian.remove(key);
                 return;
             }
         }
 
         // Successfully recovering accidental obsidian to lava
         event.setCancelled(true);
-        accidentalObsidian.remove(loc);
+        accidentalObsidian.remove(key);
         clickedBlock.setType(Material.AIR);
 
         Player player = event.getPlayer();
@@ -125,7 +146,7 @@ public final class ObsidianRecoveryListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         if (event.getBlock().getType() == Material.OBSIDIAN) {
-            accidentalObsidian.remove(event.getBlock().getLocation());
+            accidentalObsidian.remove(FormedAt.of(event.getBlock()));
         }
     }
 
@@ -143,7 +164,12 @@ public final class ObsidianRecoveryListener implements Listener {
         }
     }
 
-    public Map<Location, Instant> accidentalObsidianMap() {
-        return accidentalObsidian;
+    private boolean hasExpired(Instant formedAt, Instant now) {
+        return now.isAfter(formedAt.plus(config.obsidianRecoveryExpiration()));
+    }
+
+    /** How many accidents this node still remembers. Package private for the guard on its size. */
+    int remembered() {
+        return accidentalObsidian.size();
     }
 }
