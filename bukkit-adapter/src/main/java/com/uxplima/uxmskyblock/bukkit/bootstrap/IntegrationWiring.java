@@ -10,6 +10,8 @@ import com.uxplima.uxmlib.bedrock.BedrockScreen;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
+import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockDetector;
+import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockScreen;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.command.IslandFeatures;
 import com.uxplima.uxmskyblock.bukkit.config.NotificationConfiguration;
@@ -124,8 +126,8 @@ public final class IntegrationWiring implements AutoCloseable {
         this.economyBridge = SkyblockEconomyBridge.createDefault(
                 gameplay.bankService(), gameplay.scheduler(), persistence.economySagaPort());
 
-        this.bedrockDetector = BedrockDetector.forServer(plugin.getServer());
-        this.bedrockScreen = BedrockScreen.forServer(plugin.getServer());
+        this.bedrockDetector = LateBedrockDetector.forServer(plugin.getServer());
+        this.bedrockScreen = LateBedrockScreen.forServer(plugin.getServer());
         this.bedrockFormService = new BedrockFormService(bedrockDetector, bedrockScreen, this.messages);
         if (gameplay.resetConfirmationMenu() != null) {
             gameplay.resetConfirmationMenu().setBedrockFormService(this.bedrockFormService);

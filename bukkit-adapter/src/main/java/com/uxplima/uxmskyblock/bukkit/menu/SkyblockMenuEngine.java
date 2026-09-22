@@ -19,8 +19,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-import com.uxplima.uxmlib.bedrock.BedrockDetector;
-import com.uxplima.uxmlib.bedrock.BedrockScreen;
 import com.uxplima.uxmlib.common.Log;
 import com.uxplima.uxmlib.gui.GuiText;
 import com.uxplima.uxmlib.gui.anvil.AnvilInput;
@@ -37,6 +35,8 @@ import com.uxplima.uxmlib.menu.spec.MenuSpec;
 import com.uxplima.uxmlib.menu.spec.MenuSpecLoader;
 import com.uxplima.uxmlib.scheduler.PaperScheduler;
 import com.uxplima.uxmlib.text.style.Theme;
+import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockDetector;
+import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockScreen;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.ConfigurationNode;
@@ -95,8 +95,8 @@ public final class SkyblockMenuEngine implements AutoCloseable {
                 bindings.actions(),
                 bindings.conditions(),
                 null,
-                BedrockDetector.forServer(Bukkit.getServer()),
-                BedrockScreen.forServer(Bukkit.getServer()),
+                LateBedrockDetector.forServer(Bukkit.getServer()),
+                LateBedrockScreen.forServer(Bukkit.getServer()),
                 bindings.pagedLists());
         // The text prompt behind an input: step. Without it a menu file can ask for a warp name and
         // the engine has nowhere to ask it, so the step cancels and the button does nothing. It is
@@ -112,8 +112,8 @@ public final class SkyblockMenuEngine implements AutoCloseable {
                 words,
                 scheduler,
                 Log.of(LOGGER),
-                BedrockDetector.forServer(Bukkit.getServer()),
-                BedrockScreen.forServer(Bukkit.getServer()));
+                LateBedrockDetector.forServer(Bukkit.getServer()),
+                LateBedrockScreen.forServer(Bukkit.getServer()));
 
         this.listener = new MenuListener(
                 renderer,
