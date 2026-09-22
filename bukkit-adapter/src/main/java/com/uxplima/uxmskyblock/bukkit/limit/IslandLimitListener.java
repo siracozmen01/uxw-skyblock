@@ -46,6 +46,15 @@ public final class IslandLimitListener implements Listener {
     private final String bypassPermission;
     private final Messages messages;
 
+    /**
+     * Whoever counts what an island already holds, when nothing has counted it yet.
+     *
+     * <p>Every count lives in memory, so a restart starts every island at zero: an island that had
+     * placed its full allowance of hoppers could place the whole allowance again. The scan that
+     * puts that right existed and had no caller.
+     */
+    private volatile @org.jspecify.annotations.Nullable IslandLimitReconciler reconciler;
+
     public IslandLimitListener(
             IslandLimitService limitService,
             IslandProtectionListener protectionListener,
@@ -55,6 +64,11 @@ public final class IslandLimitListener implements Listener {
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener must not be null");
         this.bypassPermission = Objects.requireNonNull(bypassPermission, "bypassPermission must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+    }
+
+    /** Tells this listener who counts an island that nothing has counted yet. */
+    public void useReconciler(@org.jspecify.annotations.Nullable IslandLimitReconciler reconciler) {
+        this.reconciler = reconciler;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -73,6 +87,11 @@ public final class IslandLimitListener implements Listener {
         IslandId islandId = optIsland.get().id();
         Player player = event.getPlayer();
         boolean hasBypass = player.hasPermission(bypassPermission);
+
+        IslandLimitReconciler counting = this.reconciler;
+        if (counting != null) {
+            counting.countOnceIfNeeded(optIsland.get(), block.getWorld().getName());
+        }
 
         if (!limitService.tryIncrement(islandId, limitType, hasBypass)) {
             event.setCancelled(true);

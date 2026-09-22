@@ -40,6 +40,44 @@ class IslandLimitServiceTest {
     }
 
     @Test
+    @DisplayName("An island nobody has counted is not an island with nothing on it")
+    void anuncountedIslandSaysSo() {
+        IslandId islandId = IslandId.of(java.util.UUID.randomUUID());
+        IslandLimitService service = new IslandLimitService(
+                (island, upgrade) -> 0,
+                java.util.Map.of(
+                        LimitType.HOPPER, new com.uxplima.uxmskyblock.core.domain.limit.LimitQuota(5, null, 0)));
+
+        assertThat(service.isCounted(islandId))
+                .describedAs("every count lives in memory, so a restart starts at zero for everything")
+                .isFalse();
+
+        service.setCount(islandId, LimitType.HOPPER, 3);
+        service.markCounted(islandId);
+
+        assertThat(service.isCounted(islandId)).isTrue();
+        assertThat(service.getCount(islandId, LimitType.HOPPER)).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("An island that was erased has to be counted again")
+    void anerasedIslandIsCountedAgain() {
+        IslandId islandId = IslandId.of(java.util.UUID.randomUUID());
+        IslandLimitService service = new IslandLimitService(
+                (island, upgrade) -> 0,
+                java.util.Map.of(
+                        LimitType.HOPPER, new com.uxplima.uxmskyblock.core.domain.limit.LimitQuota(5, null, 0)));
+        service.setCount(islandId, LimitType.HOPPER, 3);
+        service.markCounted(islandId);
+
+        service.clearIsland(islandId);
+
+        assertThat(service.isCounted(islandId))
+                .describedAs("what is held is zero again, and zero is not a count")
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("Initial limit without upgrades matches base limit")
     void initialLimitMatchesBase() {
         when(upgradeStoragePort.getUpgradeTier(islandId, HOPPER_UPGRADE)).thenReturn(0);

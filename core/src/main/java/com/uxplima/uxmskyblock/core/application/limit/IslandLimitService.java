@@ -36,6 +36,16 @@ public final class IslandLimitService {
     private final ConcurrentMap<IslandId, ConcurrentMap<LimitType, AtomicInteger>> islandCounts =
             new ConcurrentHashMap<>();
 
+    /**
+     * The islands whose counts are known to match the world.
+     *
+     * <p>Every count lives in memory, so a restart starts every island at zero. An island that had
+     * placed its full allowance of hoppers could place the whole allowance again, and again after
+     * the next restart: the limit was defeated by restarting the server. A count that nobody has
+     * checked against the world is not a count, and this is the set of the ones that have been.
+     */
+    private final java.util.Set<IslandId> counted = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** Which tier of one upgrade an island holds. */
     @FunctionalInterface
     public interface TierLookup {
@@ -169,11 +179,34 @@ public final class IslandLimitService {
     }
 
     /**
+     * Says that this island's counts have been checked against the world.
+     *
+     * <p>Called by whoever did the counting, once the scan has finished and every type has been
+     * written with {@link #setCount}.
+     */
+    public void markCounted(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        counted.add(islandId);
+    }
+
+    /**
+     * Whether this island's counts have been checked against the world since this server started.
+     *
+     * <p>Until they have, what is held is zero for everything, which is not the same as an island
+     * with nothing on it.
+     */
+    public boolean isCounted(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return counted.contains(islandId);
+    }
+
+    /**
      * Clears all tracked counts for an island upon deletion/reset.
      */
     public void clearIsland(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         islandCounts.remove(islandId);
+        counted.remove(islandId);
     }
 
     /**

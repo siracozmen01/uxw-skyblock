@@ -31,9 +31,32 @@ public final class IslandLimitReconciler {
     private final SchedulerPort schedulerPort;
     private final IslandLimitService limitService;
 
+    /** Islands being counted right now, so one scan runs rather than one per placement. */
+    private final java.util.Set<IslandId> counting = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public IslandLimitReconciler(SchedulerPort schedulerPort, IslandLimitService limitService) {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.limitService = Objects.requireNonNull(limitService, "limitService must not be null");
+    }
+
+    /**
+     * Counts an island once, the first time somebody places something on it.
+     *
+     * <p>Every count lives in memory, so a restart starts every island at zero and an island that
+     * had placed its full allowance could place it again. Nothing called the scan that puts that
+     * right. It is called here, once per island per boot, off the thread the placement arrived on.
+     *
+     * <p>The placement that triggers the scan is not held up waiting for it: refusing a player
+     * while chunks load is a worse answer than counting one placement late, and the scan overwrites
+     * whatever the counter reached by the time it lands.
+     */
+    public void countOnceIfNeeded(Island island, String worldName) {
+        Objects.requireNonNull(island, "island must not be null");
+        Objects.requireNonNull(worldName, "worldName must not be null");
+        if (limitService.isCounted(island.id()) || !counting.add(island.id())) {
+            return;
+        }
+        var unused = reconcileIsland(island, worldName).whenComplete((counts, failure) -> counting.remove(island.id()));
     }
 
     /**
@@ -123,6 +146,9 @@ public final class IslandLimitReconciler {
                                 limitService.setCount(islandId, type, count);
                                 result.put(type, count);
                             }
+                            // Only now are the counts what the world holds. Until this line the
+                            // island was at zero for everything, which is not the same thing.
+                            limitService.markCounted(islandId);
                             future.complete(Map.copyOf(result));
                         }
                     }

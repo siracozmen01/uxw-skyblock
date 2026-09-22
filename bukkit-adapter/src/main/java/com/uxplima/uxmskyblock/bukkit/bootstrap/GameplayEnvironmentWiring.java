@@ -95,6 +95,11 @@ public final class GameplayEnvironmentWiring {
                         config.messages())
                 : null;
         this.limitReconciler = limitsEnabled ? new IslandLimitReconciler(scheduler, this.limitService) : null;
+        if (this.limitListener != null) {
+            // Nothing called the scan before, so every island started each boot at zero and could
+            // place its whole allowance again.
+            this.limitListener.useReconciler(this.limitReconciler);
+        }
     }
 
     public BukkitBiomeAdapter biomeAdapter() {

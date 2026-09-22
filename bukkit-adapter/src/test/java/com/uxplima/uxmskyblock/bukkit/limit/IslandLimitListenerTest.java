@@ -71,6 +71,35 @@ class IslandLimitListenerTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("The first placement on an island nobody has counted asks for a count")
+    void thefirstPlacementAsksForACount() {
+        IslandLimitReconciler reconciler = mock(IslandLimitReconciler.class);
+        listener.useReconciler(reconciler);
+        Block block = world.getBlockAt(0, 64, 0);
+        block.setType(Material.HOPPER);
+        when(mockLimitService.tryIncrement(islandId, LimitType.HOPPER, false)).thenReturn(true);
+
+        listener.onBlockPlace(new BlockPlaceEvent(
+                block, block.getState(), block, new ItemStack(Material.HOPPER), player, true, EquipmentSlot.HAND));
+
+        verify(reconciler).countOnceIfNeeded(sampleIsland, world.getName());
+    }
+
+    @Test
+    @DisplayName("A node with nobody to count still places blocks")
+    void nocounterIsNotAFailure() {
+        Block block = world.getBlockAt(0, 64, 0);
+        block.setType(Material.HOPPER);
+        when(mockLimitService.tryIncrement(islandId, LimitType.HOPPER, false)).thenReturn(true);
+
+        BlockPlaceEvent event = new BlockPlaceEvent(
+                block, block.getState(), block, new ItemStack(Material.HOPPER), player, true, EquipmentSlot.HAND);
+        listener.onBlockPlace(event);
+
+        assertThat(event.isCancelled()).isFalse();
+    }
+
+    @Test
     @DisplayName("onBlockPlace succeeds and increments when below limit")
     void blockPlaceSucceedsBelowLimit() {
         Block block = world.getBlockAt(0, 64, 0);
