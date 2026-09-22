@@ -22,6 +22,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandShopMenu;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -47,6 +48,7 @@ import org.jspecify.annotations.Nullable;
 public final class IslandShopCommands {
 
     private final Supplier<@Nullable IslandShopService> shopServiceProvider;
+    private final Supplier<@Nullable IslandShopMenu> shopMenuProvider;
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
     private final ServerNodeId serverNodeId;
@@ -55,12 +57,14 @@ public final class IslandShopCommands {
 
     public IslandShopCommands(
             Supplier<@Nullable IslandShopService> shopServiceProvider,
+            Supplier<@Nullable IslandShopMenu> shopMenuProvider,
             IslandLocationService islandLocationService,
             SchedulerPort schedulerPort,
             ServerNodeId serverNodeId,
             Messages messages,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
         this.shopServiceProvider = Objects.requireNonNull(shopServiceProvider, "shopServiceProvider must not be null");
+        this.shopMenuProvider = Objects.requireNonNull(shopMenuProvider, "shopMenuProvider must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
@@ -71,7 +75,7 @@ public final class IslandShopCommands {
 
     public LiteralArgumentBuilder<CommandSourceStack> build() {
         return Cmd.literal("shop")
-                .executes(this::executeList)
+                .executes(this::executeOpen)
                 .then(Cmd.literal("list").executes(this::executeList))
                 .then(Cmd.literal("buy")
                         .then(Cmd.argument("item", StringArgumentType.word())
@@ -98,6 +102,20 @@ public final class IslandShopCommands {
             }
         }
         return builder.buildFuture();
+    }
+
+    /** Opens the window, or prints the list when this node has no window to open. */
+    private int executeOpen(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        IslandShopMenu menu = shopMenuProvider.get();
+        if (menu == null) {
+            return executeList(ctx);
+        }
+        menu.open(player);
+        return Cmd.OK;
     }
 
     private int executeList(CommandContext<CommandSourceStack> ctx) {

@@ -364,6 +364,10 @@ public final class GameplayWiring {
         return economicWiring.shopService();
     }
 
+    public com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandShopMenu shopMenu() {
+        return economicWiring.shopMenu();
+    }
+
     public DynamicPricingEngine dynamicPricingEngine() {
         return economicWiring.dynamicPricingEngine();
     }

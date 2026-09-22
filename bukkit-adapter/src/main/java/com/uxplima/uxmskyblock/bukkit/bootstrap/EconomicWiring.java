@@ -10,6 +10,7 @@ import com.uxplima.uxmskyblock.bukkit.booster.IslandBoosterListener;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandShopMenu;
 import com.uxplima.uxmskyblock.bukkit.module.builtin.UpgradesModule;
 import com.uxplima.uxmskyblock.bukkit.reward.CosmeticRewardDeliveryHandler;
 import com.uxplima.uxmskyblock.bukkit.reward.ExternalVaultRewardDeliveryHandler;
@@ -42,6 +43,7 @@ public final class EconomicWiring {
     private final IslandBankService bankService;
     private final DynamicPricingEngine dynamicPricingEngine;
     private final IslandShopService shopService;
+    private final @Nullable IslandShopMenu shopMenu;
     private final IslandBankruptcyService bankruptcyService;
     private final @Nullable IslandBankruptcyListener bankruptcyListener;
     private final @Nullable FoliaIslandChunkScanner chunkScanner;
@@ -74,6 +76,15 @@ public final class EconomicWiring {
         // operator's file, read here, once.
         config.shopConfig().items().forEach(this.dynamicPricingEngine::registerItem);
         this.shopService = new IslandShopService(this.dynamicPricingEngine, this.bankService);
+        this.shopMenu = config.moduleSettings().isModuleEnabled("shop")
+                ? new IslandShopMenu(
+                        this.shopService,
+                        persistence.islandStoragePort(),
+                        authority.sessionCoordinator(),
+                        scheduler,
+                        config.nodeConfig().nodeId(),
+                        config.messages())
+                : null;
         this.upgradeService = new IslandUpgradeService(
                 persistence.islandUpgradeStoragePort(),
                 config.upgradesConfig().definitions(),
@@ -192,6 +203,11 @@ public final class EconomicWiring {
 
     public IslandBankService bankService() {
         return bankService;
+    }
+
+    /** The shop as a window, when the operator left the module on. */
+    public @Nullable IslandShopMenu shopMenu() {
+        return shopMenu;
     }
 
     /** Buying and selling, settled against the island bank. */

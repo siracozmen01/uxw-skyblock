@@ -116,6 +116,9 @@ public final class IntegrationWiring implements AutoCloseable {
         if (gameplay.boosterMenu() != null) {
             gameplay.boosterMenu().setBedrockFormService(this.bedrockFormService);
         }
+        if (gameplay.shopMenu() != null) {
+            gameplay.shopMenu().setBedrockFormService(this.bedrockFormService);
+        }
 
         this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin, persistence.islandStoragePort());
         this.webMapAdapter = new CompositeWebMapAdapter(
@@ -212,6 +215,7 @@ public final class IntegrationWiring implements AutoCloseable {
                         .boosterMenu(gameplay.boosterMenu())
                         .upgradeService(gameplay.upgradeService())
                         .shopService(gameplay.shopService())
+                        .shopMenu(gameplay.shopMenu())
                         .build());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
@@ -331,6 +335,10 @@ public final class IntegrationWiring implements AutoCloseable {
                 return;
             }
             ctx.player().performCommand("is invite " + name);
+        });
+        engine.action("skyblock:shop", ctx -> {
+            ctx.player().closeInventory();
+            ctx.player().performCommand("is shop");
         });
         engine.action("skyblock:permissions", ctx -> {
             ctx.player().closeInventory();

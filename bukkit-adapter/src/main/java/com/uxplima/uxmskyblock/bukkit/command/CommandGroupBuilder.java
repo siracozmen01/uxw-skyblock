@@ -71,6 +71,7 @@ final class CommandGroupBuilder {
 
         IslandShopCommands shopCommands = new IslandShopCommands(
                 () -> tree.features.shopService(),
+                () -> tree.features.shopMenu(),
                 tree.islandLocationService,
                 tree.schedulerPort,
                 tree.serverNodeId,

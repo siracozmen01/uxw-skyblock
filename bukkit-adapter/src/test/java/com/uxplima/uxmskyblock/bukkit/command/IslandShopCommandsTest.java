@@ -102,6 +102,9 @@ class IslandShopCommandsTest {
 
         IslandShopCommands commands = new IslandShopCommands(
                 () -> shop,
+                // No window on this node, so the bare verb prints the list, which is what these
+                // tests drive. The window has its own.
+                () -> null,
                 locations,
                 inlineScheduler(),
                 NODE,
@@ -134,7 +137,7 @@ class IslandShopCommandsTest {
     }
 
     @Test
-    @DisplayName("The bare verb lists every commodity with what it costs")
+    @DisplayName("The bare verb lists every commodity with what it costs when there is no window")
     void theBareVerbListsTheCatalogue() throws Exception {
         run("shop", player);
 
