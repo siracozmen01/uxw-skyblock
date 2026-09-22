@@ -179,6 +179,7 @@ class BackupRestoreWiringTest {
         when(vault.basePages()).thenReturn(1);
         when(vault.maxPages()).thenReturn(10);
         when(vault.leaseDuration()).thenReturn(Duration.ofMinutes(5));
+        when(vault.auditLogLimit()).thenReturn(50);
         when(config.vaultConfig()).thenReturn(vault);
 
         ChatConfiguration chat = mock(ChatConfiguration.class);

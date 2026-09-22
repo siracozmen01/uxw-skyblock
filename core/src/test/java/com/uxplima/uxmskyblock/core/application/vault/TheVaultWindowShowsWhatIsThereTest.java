@@ -148,6 +148,14 @@ class TheVaultWindowShowsWhatIsThereTest {
         public void appendAuditLog(VaultAuditLogEntry logEntry) {}
 
         @Override
+        public void appendAuditLogs(List<VaultAuditLogEntry> entries) {}
+
+        @Override
+        public int trimAuditLogs(int keepPerPage) {
+            return 0;
+        }
+
+        @Override
         public List<VaultAuditLogEntry> findRecentAuditLogs(IslandId islandId, int limit) {
             return List.of();
         }

@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.module.builtin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
@@ -44,6 +45,34 @@ class TheStaleVaultLeaseIsLetGoOfTest {
         assertThat(scheduler.ran)
                 .describedAs("the sweep ran when its turn came")
                 .isEqualTo(1);
+        verify(vaultService).closeExpiredSessions();
+        verify(vaultService).trimAuditLogs();
+    }
+
+    @Test
+    @DisplayName("The same sweep drops the audit entries a page has outgrown")
+    void theSweepTrimsTheAuditLog() {
+        IslandVaultService vaultService = mock(IslandVaultService.class);
+        when(vaultService.trimAuditLogs()).thenReturn(7);
+
+        VaultFeatureModule module =
+                new VaultFeatureModule(vaultService, VaultConfiguration.defaultConfiguration(), null);
+
+        assertThat(module.trimAuditLogs()).describedAs("entries dropped").isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("A trim that throws does not take the repeating task down")
+    void aFailingTrimIsSurvived() {
+        IslandVaultService vaultService = mock(IslandVaultService.class);
+        when(vaultService.trimAuditLogs()).thenThrow(new IllegalStateException("the database is gone"));
+
+        VaultFeatureModule module =
+                new VaultFeatureModule(vaultService, VaultConfiguration.defaultConfiguration(), null);
+
+        assertThat(module.trimAuditLogs())
+                .describedAs("nothing dropped, and no exception out")
+                .isZero();
     }
 
     @Test

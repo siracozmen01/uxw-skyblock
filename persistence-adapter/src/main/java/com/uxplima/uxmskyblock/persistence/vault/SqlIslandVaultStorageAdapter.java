@@ -172,6 +172,16 @@ public final class SqlIslandVaultStorageAdapter implements IslandVaultStoragePor
         return escrowJournal.findRecentAuditLogs(islandId, limit);
     }
 
+    @Override
+    public void appendAuditLogs(List<VaultAuditLogEntry> entries) {
+        escrowJournal.appendAuditLogs(entries);
+    }
+
+    @Override
+    public int trimAuditLogs(int keepPerPage) {
+        return escrowJournal.trimAuditLogs(keepPerPage);
+    }
+
     private static VaultPage mapVaultPage(ResultSet rs) throws SQLException {
         String activeSessionStr = rs.getString("active_session_id");
         VaultSessionId activeSessionId = activeSessionStr != null ? VaultSessionId.fromString(activeSessionStr) : null;

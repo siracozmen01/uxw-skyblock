@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -217,6 +218,70 @@ class SqlIslandVaultStorageAdapterSqliteTest {
     }
 
     @Test
+    @DisplayName("Trimming keeps the newest entries of every page and drops the rest")
+    void trimmingKeepsTheNewestPerPage() {
+        adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
+        adapter.createPage(ISLAND_ID, 2, new byte[] {2}, OWNER_PROFILE.toString());
+        Instant base = Instant.parse("2026-09-01T00:00:00Z");
+        for (int i = 0; i < 5; i++) {
+            adapter.appendAuditLog(auditEntry(1, base.plusSeconds(i), "PAGE1_" + i, i + 1));
+        }
+        for (int i = 0; i < 3; i++) {
+            adapter.appendAuditLog(auditEntry(2, base.plusSeconds(i), "PAGE2_" + i, i + 1));
+        }
+
+        assertThat(adapter.trimAuditLogs(2))
+                .describedAs("three dropped off page one and one off page two")
+                .isEqualTo(4);
+
+        List<VaultAuditLogEntry> left = adapter.findRecentAuditLogs(ISLAND_ID, 50);
+        assertThat(left)
+                .describedAs("two per page, the newest")
+                .extracting(VaultAuditLogEntry::itemSummary)
+                .containsExactlyInAnyOrder("PAGE1_4", "PAGE1_3", "PAGE2_2", "PAGE2_1");
+    }
+
+    @Test
+    @DisplayName("Trimming a page that has not outgrown its retention drops nothing")
+    void trimmingASmallPageDropsNothing() {
+        adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
+        Instant base = Instant.parse("2026-09-01T00:00:00Z");
+        adapter.appendAuditLog(auditEntry(1, base, "ONLY", 1));
+
+        assertThat(adapter.trimAuditLogs(50)).isZero();
+        assertThat(adapter.findRecentAuditLogs(ISLAND_ID, 50)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("A whole commit's entries go down in one batch")
+    void aWholeCommitIsWrittenAtOnce() {
+        adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
+        Instant base = Instant.parse("2026-09-01T00:00:00Z");
+
+        adapter.appendAuditLogs(List.of(
+                auditEntry(1, base, "FIRST", 1),
+                auditEntry(1, base.plusSeconds(1), "SECOND", 2),
+                auditEntry(1, base.plusSeconds(2), "THIRD", 3)));
+
+        assertThat(adapter.findRecentAuditLogs(ISLAND_ID, 50))
+                .extracting(VaultAuditLogEntry::itemSummary)
+                .containsExactly("THIRD", "SECOND", "FIRST");
+    }
+
+    private static VaultAuditLogEntry auditEntry(int page, Instant createdAt, String summary, int quantity) {
+        return new VaultAuditLogEntry(
+                UUID.randomUUID(),
+                ISLAND_ID,
+                page,
+                OWNER_PROFILE.toString(),
+                VaultActionType.DEPOSIT,
+                0,
+                summary,
+                quantity,
+                createdAt);
+    }
+
+    @Test
     @DisplayName("A lease that is still running is never reported as expired")
     void aLiveLeaseIsNotExpired() {
         adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
@@ -291,10 +356,30 @@ class SqlIslandVaultStorageAdapterSqliteTest {
     @Test
     @DisplayName("appendAuditLog and findRecentAuditLogs order descending and respect limit")
     void auditLogsWork() {
-        VaultAuditLogEntry entry1 = VaultAuditLogEntry.create(
-                ISLAND_ID, 1, OWNER_PROFILE.toString(), VaultActionType.DEPOSIT, 0, "GOLD_INGOT x32", 32);
-        VaultAuditLogEntry entry2 = VaultAuditLogEntry.create(
-                ISLAND_ID, 1, OWNER_PROFILE.toString(), VaultActionType.WITHDRAW, 1, "IRON_INGOT x16", 16);
+        // The timestamps are explicit and a second apart. Two calls to create() land in the same
+        // millisecond, and the driver stores a timestamp to the millisecond, so which of them came
+        // first was down to the order the database happened to scan in.
+        Instant when = Instant.parse("2026-09-01T00:00:00Z");
+        VaultAuditLogEntry entry1 = new VaultAuditLogEntry(
+                UUID.randomUUID(),
+                ISLAND_ID,
+                1,
+                OWNER_PROFILE.toString(),
+                VaultActionType.DEPOSIT,
+                0,
+                "GOLD_INGOT x32",
+                32,
+                when);
+        VaultAuditLogEntry entry2 = new VaultAuditLogEntry(
+                UUID.randomUUID(),
+                ISLAND_ID,
+                1,
+                OWNER_PROFILE.toString(),
+                VaultActionType.WITHDRAW,
+                1,
+                "IRON_INGOT x16",
+                16,
+                when.plusSeconds(1));
 
         adapter.appendAuditLog(entry1);
         adapter.appendAuditLog(entry2);

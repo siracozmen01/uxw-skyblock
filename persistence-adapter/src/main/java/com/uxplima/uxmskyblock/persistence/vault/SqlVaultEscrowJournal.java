@@ -121,29 +121,79 @@ public final class SqlVaultEscrowJournal {
         }
     }
 
+    private static final String INSERT_AUDIT_LOG_SQL = """
+            INSERT INTO vault_audit_logs (
+                log_id, island_id, page, actor_profile_id, action_type, slot, item_summary, quantity, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
+
     public void appendAuditLog(VaultAuditLogEntry logEntry) {
         Objects.requireNonNull(logEntry, "logEntry must not be null");
+        appendAuditLogs(List.of(logEntry));
+    }
+
+    /**
+     * Writes a whole commit's audit entries down one connection.
+     *
+     * <p>One chest edit moves several slots, and a connection for each of them is a round trip for
+     * each of them.
+     */
+    public void appendAuditLogs(List<VaultAuditLogEntry> entries) {
+        Objects.requireNonNull(entries, "entries must not be null");
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(INSERT_AUDIT_LOG_SQL)) {
+            for (VaultAuditLogEntry logEntry : entries) {
+                stmt.setString(1, logEntry.logId().toString());
+                stmt.setString(2, logEntry.islandId().value().toString());
+                stmt.setInt(3, logEntry.page());
+                stmt.setString(4, logEntry.actorProfileId());
+                stmt.setString(5, logEntry.actionType().name());
+                stmt.setInt(6, logEntry.slot());
+                stmt.setString(7, logEntry.itemSummary());
+                stmt.setInt(8, logEntry.quantity());
+                stmt.setTimestamp(9, Timestamp.from(logEntry.createdAt()));
+                stmt.addBatch();
+            }
+            stmt.executeBatch();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to append " + entries.size() + " vault audit log entries", e);
+        }
+    }
+
+    /**
+     * Keeps the newest {@code keepPerPage} entries of every page and deletes the rest.
+     *
+     * <p>One statement, ranked inside a derived table, because MariaDB refuses a bare subquery over
+     * the table a DELETE is working on.
+     */
+    public int trimAuditLogs(int keepPerPage) {
+        if (keepPerPage < 1) {
+            throw new IllegalArgumentException("keepPerPage must be >= 1: " + keepPerPage);
+        }
 
         String sql = """
-                INSERT INTO vault_audit_logs (
-                    log_id, island_id, page, actor_profile_id, action_type, slot, item_summary, quantity, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                DELETE FROM vault_audit_logs
+                WHERE log_id IN (
+                    SELECT log_id FROM (
+                        SELECT log_id, ROW_NUMBER() OVER (
+                            PARTITION BY island_id, page ORDER BY created_at DESC, log_id DESC
+                        ) AS rank_in_page
+                        FROM vault_audit_logs
+                    ) ranked
+                    WHERE rank_in_page > ?
+                )
                 """;
 
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, logEntry.logId().toString());
-            stmt.setString(2, logEntry.islandId().value().toString());
-            stmt.setInt(3, logEntry.page());
-            stmt.setString(4, logEntry.actorProfileId());
-            stmt.setString(5, logEntry.actionType().name());
-            stmt.setInt(6, logEntry.slot());
-            stmt.setString(7, logEntry.itemSummary());
-            stmt.setInt(8, logEntry.quantity());
-            stmt.setTimestamp(9, Timestamp.from(logEntry.createdAt()));
-            stmt.executeUpdate();
+            stmt.setInt(1, keepPerPage);
+            return stmt.executeUpdate();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to append vault audit log " + logEntry.logId(), e);
+            throw new RuntimeException("Failed to trim vault audit logs to " + keepPerPage + " per page", e);
         }
     }
 
@@ -154,7 +204,7 @@ public final class SqlVaultEscrowJournal {
                 SELECT log_id, island_id, page, actor_profile_id, action_type, slot, item_summary, quantity, created_at
                 FROM vault_audit_logs
                 WHERE island_id = ?
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, log_id DESC
                 LIMIT ?
                 """;
 

@@ -44,18 +44,24 @@ public final class IslandVaultService {
     public static final int DEFAULT_MAX_PAGES = 10;
     public static final Duration DEFAULT_LEASE_DURATION = Duration.ofSeconds(60);
 
+    /** How many audit entries a page keeps, when the operator names no number. */
+    public static final int DEFAULT_AUDIT_RETENTION_PER_PAGE = 50;
+
     private final IslandVaultStoragePort storagePort;
     private final @Nullable IslandUpgradeService upgradeService;
     private final int basePages;
     private final int maxPages;
     private final Duration defaultLeaseDuration;
+    private final int auditRetentionPerPage;
 
+    /** The canonical constructor. The retention is the operator's, not a number written in here. */
     public IslandVaultService(
             IslandVaultStoragePort storagePort,
             @Nullable IslandUpgradeService upgradeService,
             int basePages,
             int maxPages,
-            Duration defaultLeaseDuration) {
+            Duration defaultLeaseDuration,
+            int auditRetentionPerPage) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
         this.upgradeService = upgradeService;
         if (basePages < 1) {
@@ -68,10 +74,28 @@ public final class IslandVaultService {
         this.maxPages = maxPages;
         this.defaultLeaseDuration =
                 Objects.requireNonNull(defaultLeaseDuration, "defaultLeaseDuration must not be null");
+        if (auditRetentionPerPage < 1) {
+            throw new IllegalArgumentException("auditRetentionPerPage must be >= 1: " + auditRetentionPerPage);
+        }
+        this.auditRetentionPerPage = auditRetentionPerPage;
+    }
+
+    public IslandVaultService(
+            IslandVaultStoragePort storagePort,
+            @Nullable IslandUpgradeService upgradeService,
+            int basePages,
+            int maxPages,
+            Duration defaultLeaseDuration) {
+        this(storagePort, upgradeService, basePages, maxPages, defaultLeaseDuration, DEFAULT_AUDIT_RETENTION_PER_PAGE);
     }
 
     public IslandVaultService(IslandVaultStoragePort storagePort, @Nullable IslandUpgradeService upgradeService) {
         this(storagePort, upgradeService, DEFAULT_BASE_PAGES, DEFAULT_MAX_PAGES, DEFAULT_LEASE_DURATION);
+    }
+
+    /** How many audit entries a page keeps. The operator sets it. */
+    public int auditRetentionPerPage() {
+        return auditRetentionPerPage;
     }
 
     /**
@@ -263,10 +287,9 @@ public final class IslandVaultService {
                     + " expired or was concurrently modified. Transaction rolled back.");
         }
 
-        if (auditLogs != null) {
-            for (VaultAuditLogEntry entry : auditLogs) {
-                storagePort.appendAuditLog(entry);
-            }
+        if (auditLogs != null && !auditLogs.isEmpty()) {
+            // One call, not one per slot the edit moved.
+            storagePort.appendAuditLogs(auditLogs);
         }
     }
 
@@ -383,11 +406,28 @@ public final class IslandVaultService {
     }
 
     /**
-     * Retrieves the rolling audit history for an island up to the specified limit (capped at 50).
+     * Retrieves the rolling audit history for an island, up to what the operator keeps.
+     *
+     * <p>The ceiling used to be the number 50 written in here, which is a value an operator must be
+     * able to change. It is the retention now: asking for more than a page keeps can only return
+     * rows that are not there.
      */
     public List<VaultAuditLogEntry> getRecentAuditLogs(IslandId islandId, int limit) {
         Objects.requireNonNull(islandId, "islandId must not be null");
-        int boundedLimit = Math.clamp(limit, 1, 50);
+        int boundedLimit = Math.clamp(limit, 1, auditRetentionPerPage);
         return storagePort.findRecentAuditLogs(islandId, boundedLimit);
+    }
+
+    /**
+     * Drops the audit entries a page has outgrown.
+     *
+     * <p>The operator's number is a retention, not a read limit: the configuration calls it the
+     * entries "retained per page". Nothing enforced it, so every deposit and withdrawal a server
+     * ever saw stayed in the table. This keeps the newest and deletes the rest.
+     *
+     * @return how many entries were dropped
+     */
+    public int trimAuditLogs() {
+        return storagePort.trimAuditLogs(auditRetentionPerPage);
     }
 }

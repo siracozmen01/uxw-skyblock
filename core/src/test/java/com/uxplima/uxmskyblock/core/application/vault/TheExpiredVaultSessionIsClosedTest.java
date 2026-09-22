@@ -294,6 +294,14 @@ class TheExpiredVaultSessionIsClosedTest {
         public void appendAuditLog(com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry entry) {}
 
         @Override
+        public void appendAuditLogs(List<com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry> entries) {}
+
+        @Override
+        public int trimAuditLogs(int keepPerPage) {
+            return 0;
+        }
+
+        @Override
         public List<com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry> findRecentAuditLogs(
                 IslandId islandId, int limit) {
             return List.of();

@@ -62,7 +62,25 @@ public interface IslandVaultStoragePort {
 
     void appendAuditLog(VaultAuditLogEntry logEntry);
 
+    /**
+     * Writes a whole commit's audit entries at once.
+     *
+     * <p>One chest edit moves several slots, and one call for each of them is a round trip for each
+     * of them.
+     */
+    void appendAuditLogs(List<VaultAuditLogEntry> entries);
+
     List<VaultAuditLogEntry> findRecentAuditLogs(IslandId islandId, int limit);
+
+    /**
+     * Keeps the newest {@code keepPerPage} audit entries of every vault page and deletes the rest.
+     *
+     * <p>The configuration calls this number the entries retained per page. Nothing enforced it, so
+     * the table held every deposit and withdrawal a server had ever seen.
+     *
+     * @return how many entries were deleted
+     */
+    int trimAuditLogs(int keepPerPage);
 
     List<VaultEditSession> findExpiredActiveSessions();
 }

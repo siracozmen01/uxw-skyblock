@@ -161,6 +161,61 @@ class IslandVaultServiceTest {
     }
 
     @Test
+    @DisplayName("The read is bounded by what the operator keeps, not by a number written in the code")
+    void theOperatorBoundsTheAuditRead() {
+        IslandVaultService keepingThree = new IslandVaultService(storage, null, 1, 5, Duration.ofSeconds(60), 3);
+        Instant base = Instant.parse("2026-09-01T00:00:00Z");
+        for (int i = 0; i < 10; i++) {
+            storage.auditLogs.add(new VaultAuditLogEntry(
+                    UUID.randomUUID(),
+                    ISLAND_ID,
+                    1,
+                    OWNER_PROFILE.toString(),
+                    VaultActionType.DEPOSIT,
+                    0,
+                    "STONE_" + i,
+                    1,
+                    base.plusSeconds(i)));
+        }
+
+        assertThat(keepingThree.auditRetentionPerPage()).isEqualTo(3);
+        assertThat(keepingThree.getRecentAuditLogs(ISLAND_ID, 50))
+                .describedAs("asking for fifty when a page keeps three")
+                .hasSize(3);
+    }
+
+    @Test
+    @DisplayName("The trim hands the operator's retention to the store")
+    void theTrimUsesTheOperatorsRetention() {
+        IslandVaultService keepingThree = new IslandVaultService(storage, null, 1, 5, Duration.ofSeconds(60), 3);
+        Instant base = Instant.parse("2026-09-01T00:00:00Z");
+        for (int i = 0; i < 10; i++) {
+            storage.auditLogs.add(new VaultAuditLogEntry(
+                    UUID.randomUUID(),
+                    ISLAND_ID,
+                    1,
+                    OWNER_PROFILE.toString(),
+                    VaultActionType.DEPOSIT,
+                    0,
+                    "STONE_" + i,
+                    1,
+                    base.plusSeconds(i)));
+        }
+
+        assertThat(keepingThree.trimAuditLogs()).describedAs("seven dropped").isEqualTo(7);
+        assertThat(storage.auditLogs)
+                .extracting(VaultAuditLogEntry::itemSummary)
+                .containsExactlyInAnyOrder("STONE_9", "STONE_8", "STONE_7");
+    }
+
+    @Test
+    @DisplayName("A retention of nothing is refused rather than accepted")
+    void aRetentionOfNothingIsRefused() {
+        assertThatThrownBy(() -> new IslandVaultService(storage, null, 1, 5, Duration.ofSeconds(60), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("commitVaultPage throws StaleVaultSessionException on concurrent conflict")
     void commitVaultPageThrowsStaleSessionException() {
         storage.failNextCommit = true;
@@ -419,6 +474,33 @@ class IslandVaultServiceTest {
         @Override
         public void appendAuditLog(VaultAuditLogEntry logEntry) {
             auditLogs.add(logEntry);
+        }
+
+        @Override
+        public void appendAuditLogs(List<VaultAuditLogEntry> entries) {
+            auditLogs.addAll(entries);
+        }
+
+        @Override
+        public int trimAuditLogs(int keepPerPage) {
+            Map<Integer, Integer> keptPerPage = new HashMap<>();
+            List<VaultAuditLogEntry> newestFirst = new ArrayList<>(auditLogs);
+            newestFirst.sort(java.util.Comparator.comparing(VaultAuditLogEntry::createdAt)
+                    .thenComparing(entry -> entry.logId().toString())
+                    .reversed());
+            List<VaultAuditLogEntry> kept = new ArrayList<>();
+            int dropped = 0;
+            for (VaultAuditLogEntry entry : newestFirst) {
+                int seen = keptPerPage.merge(entry.page(), 1, Integer::sum);
+                if (seen <= keepPerPage) {
+                    kept.add(entry);
+                } else {
+                    dropped++;
+                }
+            }
+            auditLogs.clear();
+            auditLogs.addAll(kept);
+            return dropped;
         }
 
         @Override

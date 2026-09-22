@@ -91,7 +91,8 @@ public final class SocialWiring {
                 upgradeService,
                 config.vaultConfig().basePages(),
                 config.vaultConfig().maxPages(),
-                config.vaultConfig().leaseDuration());
+                config.vaultConfig().leaseDuration(),
+                config.vaultConfig().auditLogLimit());
 
         IslandChatTransportPort actualChatTransport =
                 Objects.requireNonNull(chatTransport, "chatTransport must not be null");

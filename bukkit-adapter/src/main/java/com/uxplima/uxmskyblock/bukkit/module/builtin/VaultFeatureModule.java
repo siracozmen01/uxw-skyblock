@@ -57,10 +57,16 @@ public final class VaultFeatureModule extends AbstractFeatureModule {
         SchedulerPort port = this.scheduler;
         if (port != null) {
             this.sweepTask = port.repeatAsync(
-                    this::closeExpiredSessions,
+                    this::sweep,
                     configuration.expiredSessionSweepInterval(),
                     configuration.expiredSessionSweepInterval());
         }
+    }
+
+    /** One pass of the housekeeping: stale leases first, then the audit entries a page outgrew. */
+    void sweep() {
+        closeExpiredSessions();
+        trimAuditLogs();
     }
 
     /** Closes the sessions whose lease ran out. Package private so the test can run one sweep. */
@@ -70,6 +76,20 @@ public final class VaultFeatureModule extends AbstractFeatureModule {
         } catch (RuntimeException e) {
             // The next sweep tries again. A failed one must not take the repeating task down with it.
             LOGGER.log(Level.WARNING, e, () -> "Closing the expired vault sessions failed. The next sweep retries.");
+            return 0;
+        }
+    }
+
+    /** Drops the audit entries a page has outgrown. Package private so the test can run one sweep. */
+    int trimAuditLogs() {
+        try {
+            int trimmed = vaultService.trimAuditLogs();
+            if (trimmed > 0) {
+                LOGGER.fine(() -> "Dropped " + trimmed + " vault audit entries the pages had outgrown.");
+            }
+            return trimmed;
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, e, () -> "Trimming the vault audit log failed. The next sweep retries.");
             return 0;
         }
     }

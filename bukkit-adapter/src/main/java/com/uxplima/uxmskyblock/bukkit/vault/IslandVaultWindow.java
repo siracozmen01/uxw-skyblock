@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -27,6 +28,8 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
+import com.uxplima.uxmskyblock.core.domain.vault.VaultActionType;
+import com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultPage;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultPageBusyException;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultPageLimitExceededException;
@@ -48,9 +51,11 @@ public final class IslandVaultWindow {
     /**
      * Marks an open vault window and carries what the close handler needs to commit it.
      *
-     * <p>{@code openedWith} is the page as it stood when the window opened. A refused commit leaves
-     * the stored page exactly that, so the difference between it and what the window holds at close
-     * is what the player put in, and that is what has to go back to them.
+     * <p>{@code openedWith} is the page as it stood when the window opened, one entry per slot, air
+     * where the slot was empty. A refused commit leaves the stored page exactly that, so the
+     * difference between it and what the window holds at close is what the player put in, and that
+     * is what has to go back to them. The same difference, read slot by slot, is what the audit log
+     * records.
      */
     public record VaultHolder(
             IslandId islandId, int page, ProfileId profileId, String sessionId, List<ItemStack> openedWith)
@@ -153,7 +158,11 @@ public final class IslandVaultWindow {
         VaultPage vaultPage = opened.page();
         ItemStack[] stored = BukkitInventorySerializer.deserializeItemStacks(vaultPage.contentsNbt());
         VaultHolder holder = new VaultHolder(
-                islandId, page, profileId, opened.session().sessionId().value().toString(), snapshotOf(stored));
+                islandId,
+                page,
+                profileId,
+                opened.session().sessionId().value().toString(),
+                snapshotOf(stored, configuration.slotsPerPage()));
         Inventory inventory = Bukkit.createInventory(
                 holder,
                 configuration.slotsPerPage(),
@@ -172,6 +181,7 @@ public final class IslandVaultWindow {
     public void commit(Player player, VaultHolder holder, ItemStack[] contents) {
         Objects.requireNonNull(holder, "holder must not be null");
         byte[] serialized = BukkitInventorySerializer.serializeItemStacks(contents);
+        List<VaultAuditLogEntry> auditTrail = auditTrailOf(holder, contents);
         schedulerPort.async(() -> {
             try {
                 vaultService.commitVaultPage(
@@ -180,7 +190,7 @@ public final class IslandVaultWindow {
                         holder.profileId().toString(),
                         null,
                         holder.profileId(),
-                        List.of());
+                        auditTrail);
             } catch (RuntimeException e) {
                 // The window is already closed and what it held is nowhere: not in the page, because
                 // the commit was refused, and not with the player, because they put it in the vault.
@@ -218,7 +228,9 @@ public final class IslandVaultWindow {
     private void returnWhatThePlayerAdded(Player player, List<ItemStack> openedWith, ItemStack[] atClose) {
         List<ItemStack> alreadyStored = new ArrayList<>();
         for (ItemStack stack : openedWith) {
-            alreadyStored.add(stack.clone());
+            if (!stack.getType().isAir()) {
+                alreadyStored.add(stack.clone());
+            }
         }
 
         for (ItemStack stack : atClose) {
@@ -248,14 +260,68 @@ public final class IslandVaultWindow {
         }
     }
 
-    /** The page as it stood when the window opened, with the empty slots left out. */
-    private static List<ItemStack> snapshotOf(ItemStack[] stored) {
-        List<ItemStack> snapshot = new ArrayList<>();
-        for (ItemStack stack : stored) {
-            if (stack != null && !stack.getType().isAir()) {
-                snapshot.add(stack.clone());
-            }
+    /** The page as it stood when the window opened, one entry per slot, air where a slot was empty. */
+    private static List<ItemStack> snapshotOf(ItemStack[] stored, int slots) {
+        List<ItemStack> snapshot = new ArrayList<>(slots);
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack stack = slot < stored.length ? stored[slot] : null;
+            snapshot.add(stack == null ? new ItemStack(Material.AIR) : stack.clone());
         }
         return snapshot;
+    }
+
+    /**
+     * What the player moved, slot by slot, as audit entries.
+     *
+     * <p>The vault has held a security audit table, a port and a service call since the vault work,
+     * and nothing ever wrote a row: the window passed an empty list at every commit. A shared chest
+     * several island members can reach is exactly the thing an owner needs a record of.
+     *
+     * <p>A slot whose item changed outright is two entries, one out and one in, because that is what
+     * happened. A slot that only changed amount is the one entry for the difference.
+     */
+    private static List<VaultAuditLogEntry> auditTrailOf(VaultHolder holder, ItemStack[] atClose) {
+        List<ItemStack> openedWith = holder.openedWith();
+        List<VaultAuditLogEntry> trail = new ArrayList<>();
+        int slots = Math.max(openedWith.size(), atClose.length);
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack before = somethingOrNothing(slot < openedWith.size() ? openedWith.get(slot) : null);
+            ItemStack after = somethingOrNothing(slot < atClose.length ? atClose[slot] : null);
+
+            if (before != null && after != null && before.isSimilar(after)) {
+                int moved = after.getAmount() - before.getAmount();
+                if (moved > 0) {
+                    trail.add(entry(holder, slot, VaultActionType.DEPOSIT, after, moved));
+                } else if (moved < 0) {
+                    trail.add(entry(holder, slot, VaultActionType.WITHDRAW, before, -moved));
+                }
+                continue;
+            }
+            if (before != null) {
+                trail.add(entry(holder, slot, VaultActionType.WITHDRAW, before, before.getAmount()));
+            }
+            if (after != null) {
+                trail.add(entry(holder, slot, VaultActionType.DEPOSIT, after, after.getAmount()));
+            }
+        }
+        return List.copyOf(trail);
+    }
+
+    /** An empty slot and an air stack are the same thing here: nothing. */
+    private static @Nullable ItemStack somethingOrNothing(@Nullable ItemStack stack) {
+        return stack == null || stack.getType().isAir() ? null : stack;
+    }
+
+    private static VaultAuditLogEntry entry(
+            VaultHolder holder, int slot, VaultActionType action, ItemStack stack, int quantity) {
+        String summary = stack.getType().name();
+        return VaultAuditLogEntry.create(
+                holder.islandId(),
+                holder.page(),
+                holder.profileId().toString(),
+                action,
+                slot,
+                summary.length() > 128 ? summary.substring(0, 128) : summary,
+                quantity);
     }
 }
