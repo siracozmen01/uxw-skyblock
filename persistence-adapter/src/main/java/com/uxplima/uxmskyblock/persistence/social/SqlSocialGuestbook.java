@@ -171,42 +171,107 @@ final class SqlSocialGuestbook {
         }
     }
 
-    public void setGuestbookPinned(String reviewId, boolean pinned) {
+    /**
+     * Pins one entry while its guestbook is under the limit, in one statement.
+     *
+     * <p>The count is inside the statement, wrapped in a derived table because MariaDB refuses a
+     * bare subquery over the table an UPDATE is working on. Counting first and writing second let
+     * two owners pinning at once both read the same count and both pin.
+     */
+    public boolean pinGuestbookEntryWithin(SocialSubjectRef subject, String reviewId, int maxPinned) {
+        Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
+        if (maxPinned < 1) {
+            throw new IllegalArgumentException("maxPinned must be >= 1: " + maxPinned);
+        }
 
-        String sql = "UPDATE guestbook_reviews SET is_pinned = ? WHERE review_id = ?";
+        String sql = """
+                UPDATE guestbook_reviews
+                SET is_pinned = ?
+                WHERE review_id = ?
+                  AND subject_type_id = ?
+                  AND subject_key = ?
+                  AND is_pinned = ?
+                  AND (
+                      SELECT already_pinned FROM (
+                          SELECT COUNT(*) AS already_pinned
+                          FROM guestbook_reviews
+                          WHERE subject_type_id = ? AND subject_key = ? AND is_pinned = ?
+                      ) counted
+                  ) < ?
+                """;
+
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setBoolean(1, pinned);
+            stmt.setBoolean(1, true);
             stmt.setString(2, reviewId);
-            stmt.executeUpdate();
+            stmt.setString(3, subject.typeId());
+            stmt.setString(4, subject.key());
+            stmt.setBoolean(5, false);
+            stmt.setString(6, subject.typeId());
+            stmt.setString(7, subject.key());
+            stmt.setBoolean(8, true);
+            stmt.setInt(9, maxPinned);
+            return stmt.executeUpdate() == 1;
         } catch (SQLException e) {
-            throw new SocialPersistenceException("Failed to update pinned state for review: " + reviewId, e);
+            throw new SocialPersistenceException("Failed to pin guestbook review: " + reviewId, e);
         }
     }
 
-    public void setGuestbookHidden(String reviewId, boolean hidden) {
+    /** Unpins one of a subject's entries. The subject is part of the statement, not a hope. */
+    public boolean unpinGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+        Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
 
-        String sql = "UPDATE guestbook_reviews SET is_hidden = ? WHERE review_id = ?";
+        String sql = """
+                UPDATE guestbook_reviews
+                SET is_pinned = ?
+                WHERE review_id = ? AND subject_type_id = ? AND subject_key = ?
+                """;
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setBoolean(1, false);
+            stmt.setString(2, reviewId);
+            stmt.setString(3, subject.typeId());
+            stmt.setString(4, subject.key());
+            return stmt.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new SocialPersistenceException("Failed to unpin guestbook review: " + reviewId, e);
+        }
+    }
+
+    public boolean setGuestbookHidden(SocialSubjectRef subject, String reviewId, boolean hidden) {
+        Objects.requireNonNull(subject, "subject must not be null");
+        Objects.requireNonNull(reviewId, "reviewId must not be null");
+
+        String sql = """
+                UPDATE guestbook_reviews
+                SET is_hidden = ?
+                WHERE review_id = ? AND subject_type_id = ? AND subject_key = ?
+                """;
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setBoolean(1, hidden);
             stmt.setString(2, reviewId);
-            stmt.executeUpdate();
+            stmt.setString(3, subject.typeId());
+            stmt.setString(4, subject.key());
+            return stmt.executeUpdate() == 1;
         } catch (SQLException e) {
             throw new SocialPersistenceException("Failed to update hidden state for review: " + reviewId, e);
         }
     }
 
-    public void deleteGuestbookEntry(String reviewId) {
+    public boolean deleteGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+        Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
 
-        String sql = "DELETE FROM guestbook_reviews WHERE review_id = ?";
+        String sql = "DELETE FROM guestbook_reviews WHERE review_id = ? AND subject_type_id = ? AND subject_key = ?";
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, reviewId);
-            stmt.executeUpdate();
+            stmt.setString(2, subject.typeId());
+            stmt.setString(3, subject.key());
+            return stmt.executeUpdate() == 1;
         } catch (SQLException e) {
             throw new SocialPersistenceException("Failed to delete guestbook entry: " + reviewId, e);
         }

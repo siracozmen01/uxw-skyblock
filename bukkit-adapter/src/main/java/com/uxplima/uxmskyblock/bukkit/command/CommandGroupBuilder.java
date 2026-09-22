@@ -201,6 +201,7 @@ final class CommandGroupBuilder {
         IslandSocialCommands socialCommands = new IslandSocialCommands(
                 () -> tree.socialService,
                 tree.protectionListener.spatialIndex(),
+                tree.islandLocationService,
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);

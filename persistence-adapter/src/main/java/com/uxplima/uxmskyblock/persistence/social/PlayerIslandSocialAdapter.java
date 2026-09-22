@@ -76,18 +76,23 @@ public final class PlayerIslandSocialAdapter implements IslandSocialStoragePort 
     }
 
     @Override
-    public void setGuestbookPinned(String reviewId, boolean pinned) {
-        guestbook.setGuestbookPinned(reviewId, pinned);
+    public boolean pinGuestbookEntryWithin(SocialSubjectRef subject, String reviewId, int maxPinned) {
+        return guestbook.pinGuestbookEntryWithin(subject, reviewId, maxPinned);
     }
 
     @Override
-    public void setGuestbookHidden(String reviewId, boolean hidden) {
-        guestbook.setGuestbookHidden(reviewId, hidden);
+    public boolean unpinGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+        return guestbook.unpinGuestbookEntry(subject, reviewId);
     }
 
     @Override
-    public void deleteGuestbookEntry(String reviewId) {
-        guestbook.deleteGuestbookEntry(reviewId);
+    public boolean setGuestbookHidden(SocialSubjectRef subject, String reviewId, boolean hidden) {
+        return guestbook.setGuestbookHidden(subject, reviewId, hidden);
+    }
+
+    @Override
+    public boolean deleteGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+        return guestbook.deleteGuestbookEntry(subject, reviewId);
     }
 
     @Override

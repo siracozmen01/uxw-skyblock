@@ -133,7 +133,7 @@ class IslandSocialServiceTest {
                 .isInstanceOf(GuestbookPinnedLimitExceededException.class);
 
         // Unpin e1, then pin e4 succeeds
-        service.unpinGuestbookEntry(e1);
+        service.unpinGuestbookEntry(islandSubject, e1);
         service.pinGuestbookEntry(islandSubject, e4);
     }
 
@@ -236,42 +236,69 @@ class IslandSocialServiceTest {
         }
 
         @Override
-        public void setGuestbookPinned(String reviewId, boolean pinned) {
+        public boolean pinGuestbookEntryWithin(SocialSubjectRef subject, String reviewId, int maxPinned) {
             GuestbookEntry entry = guestbook.get(reviewId);
-            if (entry != null) {
-                guestbook.put(
-                        reviewId,
-                        new GuestbookEntry(
-                                entry.reviewId(),
-                                entry.subject(),
-                                entry.authorProfileId(),
-                                entry.message(),
-                                entry.isHidden(),
-                                pinned,
-                                entry.createdAt()));
+            // The real store does this in one statement. The double refuses on the same conditions.
+            if (entry == null || !entry.subject().equals(subject) || entry.isPinned()) {
+                return false;
             }
+            if (countPinnedEntries(subject) >= maxPinned) {
+                return false;
+            }
+            setPinned(entry, true);
+            return true;
         }
 
         @Override
-        public void setGuestbookHidden(String reviewId, boolean hidden) {
+        public boolean unpinGuestbookEntry(SocialSubjectRef subject, String reviewId) {
             GuestbookEntry entry = guestbook.get(reviewId);
-            if (entry != null) {
-                guestbook.put(
-                        reviewId,
-                        new GuestbookEntry(
-                                entry.reviewId(),
-                                entry.subject(),
-                                entry.authorProfileId(),
-                                entry.message(),
-                                hidden,
-                                entry.isPinned(),
-                                entry.createdAt()));
+            if (entry == null || !entry.subject().equals(subject)) {
+                return false;
             }
+            setPinned(entry, false);
+            return true;
+        }
+
+        private void setPinned(GuestbookEntry entry, boolean pinned) {
+            guestbook.put(
+                    entry.reviewId(),
+                    new GuestbookEntry(
+                            entry.reviewId(),
+                            entry.subject(),
+                            entry.authorProfileId(),
+                            entry.message(),
+                            entry.isHidden(),
+                            pinned,
+                            entry.createdAt()));
         }
 
         @Override
-        public void deleteGuestbookEntry(String reviewId) {
+        public boolean setGuestbookHidden(SocialSubjectRef subject, String reviewId, boolean hidden) {
+            GuestbookEntry entry = guestbook.get(reviewId);
+            if (entry == null || !entry.subject().equals(subject)) {
+                return false;
+            }
+            guestbook.put(
+                    reviewId,
+                    new GuestbookEntry(
+                            entry.reviewId(),
+                            entry.subject(),
+                            entry.authorProfileId(),
+                            entry.message(),
+                            hidden,
+                            entry.isPinned(),
+                            entry.createdAt()));
+            return true;
+        }
+
+        @Override
+        public boolean deleteGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+            GuestbookEntry entry = guestbook.get(reviewId);
+            if (entry == null || !entry.subject().equals(subject)) {
+                return false;
+            }
             guestbook.remove(reviewId);
+            return true;
         }
 
         @Override

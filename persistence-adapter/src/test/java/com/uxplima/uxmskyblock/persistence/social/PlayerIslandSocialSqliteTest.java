@@ -116,13 +116,13 @@ class PlayerIslandSocialSqliteTest {
         assertThat(found.get().message()).isEqualTo("Amazing island!");
         assertThat(found.get().isPinned()).isFalse();
 
-        // Pin e1
-        adapter.setGuestbookPinned("rev-1", true);
+        // Pin e1, under a limit the statement itself enforces
+        assertThat(adapter.pinGuestbookEntryWithin(subject, "rev-1", 3)).isTrue();
         assertThat(adapter.countPinnedEntries(subject)).isEqualTo(1);
         assertThat(adapter.findGuestbookEntry("rev-1").get().isPinned()).isTrue();
 
         // Hide e2
-        adapter.setGuestbookHidden("rev-2", true);
+        assertThat(adapter.setGuestbookHidden(subject, "rev-2", true)).isTrue();
         assertThat(adapter.findGuestbookEntry("rev-2").get().isHidden()).isTrue();
 
         // Query without hidden: only rev-1 returned
@@ -135,9 +135,114 @@ class PlayerIslandSocialSqliteTest {
         assertThat(allEntries).hasSize(2);
 
         // Delete rev-1
-        adapter.deleteGuestbookEntry("rev-1");
+        assertThat(adapter.deleteGuestbookEntry(subject, "rev-1")).isTrue();
         assertThat(adapter.findGuestbookEntry("rev-1")).isEmpty();
         assertThat(adapter.countPinnedEntries(subject)).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("The pin limit is the statement's, so two pins at once cannot both get through")
+    void thePinLimitHolds() {
+        for (int i = 1; i <= 6; i++) {
+            adapter.saveGuestbookEntry(new GuestbookEntry(
+                    "pin-" + i, subject, profile1, "Message " + i, false, false, now.plusSeconds(i)));
+        }
+
+        int pinned = 0;
+        for (int i = 1; i <= 6; i++) {
+            if (adapter.pinGuestbookEntryWithin(subject, "pin-" + i, 3)) {
+                pinned++;
+            }
+        }
+
+        assertThat(pinned).describedAs("three go on, three are refused").isEqualTo(3);
+        assertThat(adapter.countPinnedEntries(subject)).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Six owners pinning at once still leave three pinned, never four")
+    void thePinLimitHoldsUnderConcurrency() throws Exception {
+        for (int i = 1; i <= 6; i++) {
+            adapter.saveGuestbookEntry(new GuestbookEntry(
+                    "race-" + i, subject, profile1, "Message " + i, false, false, now.plusSeconds(i)));
+        }
+
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(6);
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        List<Thread> threads = new java.util.ArrayList<>();
+        for (int i = 1; i <= 6; i++) {
+            String reviewId = "race-" + i;
+            Thread thread = new Thread(() -> {
+                try {
+                    go.await();
+                    if (adapter.pinGuestbookEntryWithin(subject, reviewId, 3)) {
+                        accepted.incrementAndGet();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (RuntimeException ignored) {
+                    // A database that refuses the write under contention is a refusal, not a pin.
+                } finally {
+                    done.countDown();
+                }
+            });
+            threads.add(thread);
+            thread.start();
+        }
+        go.countDown();
+        assertThat(done.await(30, java.util.concurrent.TimeUnit.SECONDS))
+                .describedAs("every pin finished")
+                .isTrue();
+        for (Thread thread : threads) {
+            thread.join();
+        }
+
+        assertThat(adapter.countPinnedEntries(subject))
+                .describedAs("the operator said three, and three is what the page holds")
+                .isEqualTo(3);
+        assertThat(accepted.get())
+                .describedAs("as many pins reported as there are pinned entries")
+                .isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Pinning what is already pinned changes nothing and does not spend a slot")
+    void pinningTwiceSpendsNothing() {
+        adapter.saveGuestbookEntry(new GuestbookEntry("pin-a", subject, profile1, "Once", false, false, now));
+
+        assertThat(adapter.pinGuestbookEntryWithin(subject, "pin-a", 1)).isTrue();
+        assertThat(adapter.pinGuestbookEntryWithin(subject, "pin-a", 1))
+                .describedAs("already pinned, so nothing to do")
+                .isFalse();
+        assertThat(adapter.countPinnedEntries(subject)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("One island cannot moderate another island's page by naming its entry")
+    void oneIslandCannotReachAnother() {
+        SocialSubjectRef other = SocialSubjectRef.island(IslandId.of(UUID.randomUUID()));
+        adapter.saveGuestbookEntry(new GuestbookEntry("theirs", subject, profile1, "Mine", false, false, now));
+
+        assertThat(adapter.pinGuestbookEntryWithin(other, "theirs", 3))
+                .describedAs("a review id on its own is a key to every guestbook on the server")
+                .isFalse();
+        assertThat(adapter.setGuestbookHidden(other, "theirs", true)).isFalse();
+        assertThat(adapter.unpinGuestbookEntry(other, "theirs")).isFalse();
+        assertThat(adapter.deleteGuestbookEntry(other, "theirs")).isFalse();
+
+        assertThat(adapter.findGuestbookEntry("theirs")).isPresent();
+        assertThat(adapter.findGuestbookEntry("theirs").orElseThrow().isHidden())
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("An entry that is not there reports that it is not there")
+    void anUnknownEntryReportsItself() {
+        assertThat(adapter.pinGuestbookEntryWithin(subject, "nothing", 3)).isFalse();
+        assertThat(adapter.unpinGuestbookEntry(subject, "nothing")).isFalse();
+        assertThat(adapter.setGuestbookHidden(subject, "nothing", true)).isFalse();
+        assertThat(adapter.deleteGuestbookEntry(subject, "nothing")).isFalse();
     }
 
     @Test

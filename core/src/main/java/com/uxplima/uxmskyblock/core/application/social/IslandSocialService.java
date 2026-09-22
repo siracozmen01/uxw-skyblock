@@ -148,31 +148,65 @@ public final class IslandSocialService {
         return reviewId;
     }
 
+    /**
+     * Pins one of this subject's entries to the top of its guestbook.
+     *
+     * <p>The count and the write used to be two calls with nothing between them, so two owners
+     * pinning at once both read the same count and both pinned: an operator's limit of three let
+     * four through. The database decides now, in one statement.
+     *
+     * @throws GuestbookPinnedLimitExceededException when the subject is already at its limit
+     */
     public void pinGuestbookEntry(SocialSubjectRef subject, String reviewId) {
         Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
 
-        int currentPinned = storage.countPinnedEntries(subject);
-        if (currentPinned >= maxPinnedEntries) {
+        if (!storage.pinGuestbookEntryWithin(subject, reviewId, maxPinnedEntries)) {
             throw new GuestbookPinnedLimitExceededException(
                     "Cannot pin more than " + maxPinnedEntries + " guestbook entries");
         }
-        storage.setGuestbookPinned(reviewId, true);
     }
 
-    public void unpinGuestbookEntry(String reviewId) {
+    /**
+     * Unpins one of this subject's entries.
+     *
+     * <p>The subject travels with the review id everywhere here. A review id on its own is a key to
+     * every guestbook on the server, and an owner moderating their own island must not reach
+     * another island's page by typing an id they read somewhere else.
+     *
+     * @return true when an entry changed
+     */
+    public boolean unpinGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+        Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
-        storage.setGuestbookPinned(reviewId, false);
+        return storage.unpinGuestbookEntry(subject, reviewId);
     }
 
-    public void hideGuestbookEntry(String reviewId, boolean hidden) {
+    /**
+     * Hides or shows one of this subject's entries.
+     *
+     * @return true when an entry changed
+     */
+    public boolean hideGuestbookEntry(SocialSubjectRef subject, String reviewId, boolean hidden) {
+        Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
-        storage.setGuestbookHidden(reviewId, hidden);
+        return storage.setGuestbookHidden(subject, reviewId, hidden);
     }
 
-    public void deleteGuestbookEntry(String reviewId) {
+    /**
+     * Deletes one of this subject's entries.
+     *
+     * @return true when an entry was deleted
+     */
+    public boolean deleteGuestbookEntry(SocialSubjectRef subject, String reviewId) {
+        Objects.requireNonNull(subject, "subject must not be null");
         Objects.requireNonNull(reviewId, "reviewId must not be null");
-        storage.deleteGuestbookEntry(reviewId);
+        return storage.deleteGuestbookEntry(subject, reviewId);
+    }
+
+    /** How many entries one guestbook may keep pinned. The operator sets it. */
+    public int maxPinnedEntries() {
+        return maxPinnedEntries;
     }
 
     public List<GuestbookEntry> listGuestbookEntries(

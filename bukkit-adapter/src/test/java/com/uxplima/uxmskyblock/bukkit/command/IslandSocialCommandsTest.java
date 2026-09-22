@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -19,8 +20,6 @@ import org.bukkit.command.CommandSender;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
-import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
@@ -58,6 +57,7 @@ class IslandSocialCommandsTest {
     private PlayerMock player;
     private IslandSocialService social;
     private SpatialIslandIndex index;
+    private com.uxplima.uxmskyblock.core.application.island.IslandLocationService locations;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private static SchedulerPort inlineScheduler() {
@@ -101,17 +101,116 @@ class IslandSocialCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(VISITOR));
 
+        locations = mock(com.uxplima.uxmskyblock.core.application.island.IslandLocationService.class);
         IslandSocialCommands commands = new IslandSocialCommands(
-                () -> social,
-                index,
-                inlineScheduler(),
-                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
-                sessions);
+                () -> social, index, locations, inlineScheduler(), Messages.bundled(), sessions);
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.buildGuestbook());
         dispatcher.register(commands.buildRate());
         dispatcher.register(commands.buildBookmarks());
+    }
+
+    /** Makes the island the player is standing on theirs, so they may moderate its page. */
+    private void theirOwnIsland() {
+        Island theirs = Island.create(
+                SOMEONE_ELSES,
+                new IslandBounds(-50, -50, 50, 50, 0, 0, 50),
+                PlayerUuid.of(player.getUniqueId()),
+                VISITOR,
+                Instant.now());
+        when(locations.findIsland(SOMEONE_ELSES)).thenReturn(Optional.of(theirs));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An owner pins an entry on their own page")
+    void anOwnerPins() throws Exception {
+        theirOwnIsland();
+
+        run("guestbook pin rev-1", player);
+
+        verify(social).pinGuestbookEntry(eq(SocialSubjectRef.island(SOMEONE_ELSES)), eq("rev-1"));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A visitor cannot moderate the page they are standing on")
+    void avisitorCannotModerate() throws Exception {
+        run("guestbook hide rev-1", player);
+
+        verify(social, org.mockito.Mockito.never())
+                .hideGuestbookEntry(
+                        any(SocialSubjectRef.class),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyBoolean());
+        assertThat(player.nextMessage()).describedAs("the refusal").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Hiding, showing, unpinning and deleting all reach the service with the island attached")
+    void everyVerbCarriesTheIsland() throws Exception {
+        theirOwnIsland();
+        when(social.hideGuestbookEntry(
+                        any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(true);
+        when(social.unpinGuestbookEntry(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(true);
+        when(social.deleteGuestbookEntry(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(true);
+        SocialSubjectRef subject = SocialSubjectRef.island(SOMEONE_ELSES);
+
+        run("guestbook hide rev-1", player);
+        run("guestbook show rev-2", player);
+        run("guestbook unpin rev-3", player);
+        run("guestbook delete rev-4", player);
+
+        verify(social).hideGuestbookEntry(eq(subject), eq("rev-1"), eq(true));
+        verify(social).hideGuestbookEntry(eq(subject), eq("rev-2"), eq(false));
+        verify(social).unpinGuestbookEntry(eq(subject), eq("rev-3"));
+        verify(social).deleteGuestbookEntry(eq(subject), eq("rev-4"));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An entry that is not on this page is reported, not silently ignored")
+    void anUnknownEntryIsReported() throws Exception {
+        theirOwnIsland();
+        when(social.deleteGuestbookEntry(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(false);
+
+        run("guestbook delete nothing", player);
+
+        assertThat(player.nextMessage()).describedAs("told it is not there").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A page already at its pin limit says so, naming the operator's number")
+    void afullPageSaysSo() throws Exception {
+        theirOwnIsland();
+        when(social.maxPinnedEntries()).thenReturn(3);
+        org.mockito.Mockito.doThrow(
+                        new com.uxplima.uxmskyblock.core.domain.social.GuestbookPinnedLimitExceededException("full"))
+                .when(social)
+                .pinGuestbookEntry(any(), org.mockito.ArgumentMatchers.anyString());
+
+        run("guestbook pin rev-1", player);
+
+        assertThat(player.nextMessage())
+                .describedAs("the refusal names the number")
+                .contains("3");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An owner reading their own page sees what is hidden on it")
+    void anOwnerSeesHiddenEntries() throws Exception {
+        theirOwnIsland();
+
+        run("guestbook", player);
+
+        verify(social)
+                .listGuestbookEntries(
+                        eq(SocialSubjectRef.island(SOMEONE_ELSES)),
+                        eq(true),
+                        org.mockito.ArgumentMatchers.anyInt(),
+                        org.mockito.ArgumentMatchers.anyInt());
     }
 
     @AfterEach
