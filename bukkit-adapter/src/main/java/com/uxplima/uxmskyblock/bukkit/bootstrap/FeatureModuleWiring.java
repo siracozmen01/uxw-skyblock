@@ -123,7 +123,10 @@ public final class FeatureModuleWiring implements AutoCloseable {
             this.moduleRegistry.register(new TemporaryAccessFeatureModule(
                     gameplay.temporaryAccessService(), gameplay.scheduler(), config.temporaryAccessConfig()));
         }
-        if (config.moduleSettings().isModuleEnabled("reward-inbox")) {
+        // The name the operator's file publishes, which is the name that has to be asked for.
+        // This asked for "reward-inbox" and the file says "rewards", and an unknown module is
+        // treated as on, so an operator who turned the reward inbox off still had it.
+        if (config.moduleSettings().isModuleEnabled("rewards")) {
             this.moduleRegistry.register(new RewardInboxFeatureModule(
                     gameplay.rewardInboxService(), gameplay.scheduler(), config.rewardConfig()));
         }
@@ -142,7 +145,8 @@ public final class FeatureModuleWiring implements AutoCloseable {
             this.moduleRegistry.register(new InactivityFeatureModule(
                     gameplay.inactivityService(), gameplay.scheduler(), config.inactivityConfig(), worldName));
         }
-        if (config.moduleSettings().isModuleEnabled("freeze")) {
+        // Likewise: this asked for "freeze" and the file says "admin-freeze".
+        if (config.moduleSettings().isModuleEnabled("admin-freeze")) {
             this.moduleRegistry.register(new FreezeFeatureModule(gameplay.freezeService()));
         }
         if (config.moduleSettings().isModuleEnabled("missions")) {

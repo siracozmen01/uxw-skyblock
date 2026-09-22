@@ -89,8 +89,8 @@ class ZeroFootprintModuleWiringTest {
                   shop = false
                   leaderboards = false
                   "temporary-access" = false
-                  "reward-inbox" = false
-                  freeze = false
+                  rewards = false
+                  "admin-freeze" = false
                 }
                 """;
         ConfigurationNode root = HoconConfigurationLoader.builder().buildAndLoadString(hocon);
@@ -132,6 +132,13 @@ class ZeroFootprintModuleWiringTest {
             assertThat(wiring.moduleRegistry().findModule("inactivity")).isEmpty();
             assertThat(wiring.moduleRegistry().findModule("presets")).isEmpty();
             assertThat(wiring.moduleRegistry().findModule("recycle")).isEmpty();
+
+            // These two are written under the names the shipped module file publishes. This test
+            // used to write the names the code asked for instead, which is why the two drifting
+            // apart was invisible here: the file said admin-freeze and rewards, the code asked for
+            // freeze and reward-inbox, and an unknown module is treated as on.
+            assertThat(wiring.moduleRegistry().findModule("admin-freeze")).isEmpty();
+            assertThat(wiring.moduleRegistry().findModule("rewards")).isEmpty();
 
             // Enabled core modules are present
             assertThat(wiring.moduleRegistry().findModule("core")).isPresent();
