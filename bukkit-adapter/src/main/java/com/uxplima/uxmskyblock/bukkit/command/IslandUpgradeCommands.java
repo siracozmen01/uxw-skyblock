@@ -28,6 +28,7 @@ import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeDefinition;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
@@ -192,6 +193,29 @@ public final class IslandUpgradeCommands {
         send(player, cost.isEmpty() ? "upgrades.entry_maxed" : "upgrades.entry", resolvers);
     }
 
+    /**
+     * Whether this profile's role lets them buy an upgrade for the island.
+     *
+     * <p>Every purchase spends the island bank, so the withdraw permission is the floor. An upgrade
+     * that names one more in the operator's file asks for that too.
+     *
+     * <p>An island that cannot be read is not a refusal: the purchase answers that itself.
+     */
+    private boolean theRoleAllowsIt(IslandId islandId, ProfileId profileId, @Nullable IslandPermission alsoNeeded) {
+        return islandLocationService
+                .findIsland(islandId)
+                .map(island -> {
+                    if (island.isOwner(profileId)) {
+                        return true;
+                    }
+                    if (!island.hasPermission(profileId, IslandPermission.BANK_WITHDRAW)) {
+                        return false;
+                    }
+                    return alsoNeeded == null || island.hasPermission(profileId, alsoNeeded);
+                })
+                .orElse(true);
+    }
+
     private int executeBuy(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             send(ctx.getSource().getSender(), "error.players_only");
@@ -223,6 +247,18 @@ public final class IslandUpgradeCommands {
                 schedulerPort.onEntity(playerUuid, () -> send(player, "error.no_island"));
                 return;
             }
+            // Buying spends the island bank, so it asks for the permission that lets a role spend
+            // it. The upgrade's own entry may ask for one more, and the operator's file is where
+            // that is named. Neither was read: any member could spend the island's money on any
+            // upgrade whatever their role said.
+            IslandPermission alsoNeeded = service.getDefinition(upgradeId)
+                    .map(UpgradeDefinition::requiredPermission)
+                    .orElse(null);
+            if (!theRoleAllowsIt(optIsland.get(), profileId, alsoNeeded)) {
+                schedulerPort.onEntity(playerUuid, () -> send(player, "upgrades.permission_denied"));
+                return;
+            }
+
             UpgradePurchaseOutcome outcome =
                     service.purchaseUpgrade(optIsland.get(), upgradeId, player.getUniqueId(), serverNodeId);
             if (outcome instanceof UpgradePurchaseOutcome.Success bought) {

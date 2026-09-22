@@ -7,9 +7,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeDefinition;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeTier;
+import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.ConfigurationNode;
 
 /**
@@ -121,6 +123,29 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
         return new UpgradesConfiguration(DEFAULT_ENABLED, defs);
     }
 
+    /**
+     * The role permission an upgrade's own entry asks for, or null when it names none.
+     *
+     * <p>Every purchase spends the island bank and asks for the withdraw permission on that
+     * account. An upgrade may ask for one more, and the file is where the operator says which:
+     * the spawner rates upgrade ships asking for the spawner upgrade permission, which is the only
+     * thing that permission has ever had to gate.
+     *
+     * <p>A word the role editor does not know is ignored rather than fatal. An upgrade nobody can
+     * buy because its file has a typo is worse than one that asks for the money alone.
+     */
+    private static @Nullable IslandPermission permissionNamedBy(ConfigurationNode node) {
+        String raw = node.node("required-permission").getString();
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return IslandPermission.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return null;
+        }
+    }
+
     public static UpgradesConfiguration load(ConfigurationNode root) {
         return fromNode(root);
     }
@@ -166,7 +191,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
             }
 
             UpgradeId id = UpgradeId.of(upgradeKey);
-            definitions.put(id, new UpgradeDefinition(id, displayName, tiers));
+            definitions.put(id, new UpgradeDefinition(id, displayName, tiers, permissionNamedBy(node)));
         }
 
         return new UpgradesConfiguration(enabled, definitions);

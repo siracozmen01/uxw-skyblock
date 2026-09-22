@@ -55,6 +55,7 @@ class IslandUpgradeCommandsTest {
 
     private ServerMock server;
     private PlayerMock player;
+    private IslandLocationService locations;
     private IslandUpgradeService upgrades;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
@@ -90,7 +91,7 @@ class IslandUpgradeCommandsTest {
         when(upgrades.purchaseUpgrade(any(), any(), any(), any(ServerNodeId.class)))
                 .thenReturn(new UpgradePurchaseOutcome.Success(UpgradeId.SIZE, 1, 0L));
 
-        IslandLocationService locations = mock(IslandLocationService.class);
+        locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
 
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
@@ -117,6 +118,76 @@ class IslandUpgradeCommandsTest {
         CommandSourceStack source = mock(CommandSourceStack.class);
         when(source.getSender()).thenReturn(sender);
         dispatcher.execute(line, source);
+    }
+
+    /** Puts the caller on the island under a role holding exactly these permissions. */
+    private void callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission... permissions) {
+        com.uxplima.uxmskyblock.core.domain.island.Island island =
+                com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                        ISLAND,
+                        com.uxplima.uxmskyblock.core.domain.island.IslandBounds.fromCenterAndRadius(0, 0, 64),
+                        new PlayerUuid(java.util.UUID.randomUUID()),
+                        new ProfileId(java.util.UUID.randomUUID()),
+                        java.time.Instant.now());
+        com.uxplima.uxmskyblock.core.domain.island.IslandRole role =
+                new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                        "CUSTOM",
+                        400,
+                        "Custom",
+                        permissions.length == 0
+                                ? java.util.EnumSet.noneOf(
+                                        com.uxplima.uxmskyblock.core.domain.island.IslandPermission.class)
+                                : java.util.EnumSet.of(permissions[0], permissions),
+                        false);
+        when(locations.findIsland(ISLAND))
+                .thenReturn(Optional.of(island.addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                        new PlayerUuid(player.getUniqueId()), PROFILE, role, java.time.Instant.now()))));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A role that may not spend the island bank cannot buy an upgrade with it")
+    void arolethatCannotSpendCannotBuy() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_DEPOSIT);
+
+        run("upgrades buy island_size", player);
+
+        verify(upgrades, never()).purchaseUpgrade(any(), any(), any(), any(ServerNodeId.class));
+        assertThat(player.nextMessage()).describedAs("and is told why").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A role that may spend the island bank buys an upgrade that asks for nothing more")
+    void arolethatCanSpendBuys() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+
+        run("upgrades buy island_size", player);
+
+        verify(upgrades).purchaseUpgrade(ISLAND, UpgradeId.SIZE, player.getUniqueId(), NODE);
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An upgrade whose file names a permission asks for that one too")
+    void anupgradeThatNamesAPermissionAsksForIt() throws Exception {
+        UpgradeId spawner = UpgradeId.of("spawner_rates");
+        when(upgrades.getDefinition(spawner))
+                .thenReturn(Optional.of(new UpgradeDefinition(
+                        spawner,
+                        "Spawner Rates",
+                        java.util.List.of(),
+                        com.uxplima.uxmskyblock.core.domain.island.IslandPermission.SPAWNER_UPGRADE)));
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+
+        run("upgrades buy spawner_rates", player);
+
+        verify(upgrades, never()).purchaseUpgrade(any(), any(), any(), any(ServerNodeId.class));
+
+        callerHolds(
+                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW,
+                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.SPAWNER_UPGRADE);
+
+        run("upgrades buy spawner_rates", player);
+
+        verify(upgrades).purchaseUpgrade(ISLAND, spawner, player.getUniqueId(), NODE);
     }
 
     @Test
