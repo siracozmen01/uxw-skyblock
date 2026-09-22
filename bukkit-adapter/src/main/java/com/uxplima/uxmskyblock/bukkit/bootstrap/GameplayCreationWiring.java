@@ -84,7 +84,11 @@ public final class GameplayCreationWiring {
                 config.worldConfig().islandSpawnY());
         this.locationService =
                 new IslandLocationService(persistence.islandStoragePort(), persistence.islandMutationLock());
-        this.leaderboardService = new IslandLeaderboardService(persistence.islandLeaderboardPort());
+        this.leaderboardService = new IslandLeaderboardService(
+                persistence.islandLeaderboardPort(),
+                100,
+                config.levelConfig().leaderboardFreshness(),
+                java.time.Clock.systemUTC());
 
         this.seasonService = new IslandSeasonService(
                 persistence.islandSeasonStoragePort(),

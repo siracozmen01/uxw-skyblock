@@ -20,13 +20,16 @@ public record LevelConfiguration(
         double dampingFactor,
         Map<String, Long> blockWeights,
         Map<String, Long> blockPrices,
-        Map<String, Long> spawnerWeights) {
+        Map<String, Long> spawnerWeights,
+        java.time.Duration leaderboardFreshness) {
 
     public static final long DEFAULT_POINTS_PER_LEVEL = 100L;
     public static final long DEFAULT_BANK_MINOR_UNITS_PER_POINT = 10_000L;
     public static final long DEFAULT_SPAWNER_WEIGHT = 25L;
     public static final long DEFAULT_QUEST_WEIGHT = 50L;
     public static final double DEFAULT_DAMPING_FACTOR = 0.85;
+    public static final java.time.Duration DEFAULT_LEADERBOARD_FRESHNESS =
+            com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService.DEFAULT_FRESHNESS;
 
     public LevelConfiguration {
         blockWeights = Collections.unmodifiableMap(new HashMap<>(blockWeights));
@@ -38,6 +41,32 @@ public record LevelConfiguration(
         if (dampingFactor <= 0.0 || dampingFactor > 1.0) {
             throw new IllegalArgumentException("dampingFactor must be in range (0.0, 1.0]: " + dampingFactor);
         }
+        Objects.requireNonNull(leaderboardFreshness, "leaderboardFreshness must not be null");
+        if (leaderboardFreshness.isNegative()) {
+            throw new IllegalArgumentException("leaderboardFreshness must not be negative: " + leaderboardFreshness);
+        }
+    }
+
+    /** The eight-argument shape, for a caller that names no leaderboard window. */
+    public LevelConfiguration(
+            long pointsPerLevel,
+            long bankMinorUnitsPerPoint,
+            long defaultSpawnerWeight,
+            long questWeight,
+            double dampingFactor,
+            Map<String, Long> blockWeights,
+            Map<String, Long> blockPrices,
+            Map<String, Long> spawnerWeights) {
+        this(
+                pointsPerLevel,
+                bankMinorUnitsPerPoint,
+                defaultSpawnerWeight,
+                questWeight,
+                dampingFactor,
+                blockWeights,
+                blockPrices,
+                spawnerWeights,
+                DEFAULT_LEADERBOARD_FRESHNESS);
     }
 
     public Map<String, Long> basePricesMinorUnits() {
@@ -149,6 +178,20 @@ public record LevelConfiguration(
                 dampingFactor,
                 blocks.isEmpty() ? defaultConfiguration().blockWeights() : blocks,
                 prices.isEmpty() ? defaultConfiguration().blockPrices() : prices,
-                spawners.isEmpty() ? defaultConfiguration().spawnerWeights() : spawners);
+                spawners.isEmpty() ? defaultConfiguration().spawnerWeights() : spawners,
+                leaderboardFreshness(rootNode));
+    }
+
+    /**
+     * How long a leaderboard is answered from memory before it is built again.
+     *
+     * <p>Building one is a sort across every island and the two callers are a command and an HTTP
+     * endpoint anybody may hammer, so it is worth holding. It used to be held for ever.
+     */
+    private static java.time.Duration leaderboardFreshness(ConfigurationNode rootNode) {
+        String raw = rootNode.node("leaderboard-freshness").getString();
+        return raw != null && !raw.isBlank()
+                ? com.uxplima.uxmlib.common.Durations.parse(raw)
+                : DEFAULT_LEADERBOARD_FRESHNESS;
     }
 }
