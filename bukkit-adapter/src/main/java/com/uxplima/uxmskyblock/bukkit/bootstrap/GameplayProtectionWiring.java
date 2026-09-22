@@ -28,6 +28,7 @@ public final class GameplayProtectionWiring {
     private final CategoricalInteractablesListener categoricalInteractablesListener;
     private final IslandRedstoneOptimizationListener redstoneOptimizationListener;
     private final AsyncStructureSuppressionListener structureSuppressionListener;
+    private final com.uxplima.uxmskyblock.bukkit.listener.IslandActionPermissionListener actionPermissionListener;
 
     public GameplayProtectionWiring(
             ConfigurationWiring config,
@@ -77,6 +78,11 @@ public final class GameplayProtectionWiring {
             return persistence.sessionAuthorityPort().findSession(uuid);
         });
 
+        // The permissions the protection rules never asked for: the bucket, the spawner, the animals
+        // and the crops. They ask the protection listener's own gate, so they cost no extra read.
+        this.actionPermissionListener = new com.uxplima.uxmskyblock.bukkit.listener.IslandActionPermissionListener(
+                protectionListener, config.messages());
+
         this.redstoneOptimizationListener =
                 new IslandRedstoneOptimizationListener(config.settingsConfig(), protectionListener::findIslandAt);
         this.structureSuppressionListener = new AsyncStructureSuppressionListener(config.worldConfig());
@@ -96,6 +102,11 @@ public final class GameplayProtectionWiring {
 
     public VoidProtectionListener voidProtectionListener() {
         return voidProtectionListener;
+    }
+
+    /** The rules for the island permissions the protection rules never asked for. */
+    public com.uxplima.uxmskyblock.bukkit.listener.IslandActionPermissionListener actionPermissionListener() {
+        return actionPermissionListener;
     }
 
     public CategoricalInteractablesListener categoricalInteractablesListener() {

@@ -517,6 +517,10 @@ public final class GameplayWiring {
         return protectionWiring.voidProtectionListener();
     }
 
+    public com.uxplima.uxmskyblock.bukkit.listener.IslandActionPermissionListener actionPermissionListener() {
+        return protectionWiring.actionPermissionListener();
+    }
+
     public CategoricalInteractablesListener categoricalInteractablesListener() {
         return protectionWiring.categoricalInteractablesListener();
     }
