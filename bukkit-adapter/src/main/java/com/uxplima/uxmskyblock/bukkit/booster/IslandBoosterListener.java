@@ -40,7 +40,16 @@ public final class IslandBoosterListener implements Listener {
     private final IslandBoosterService boosterService;
     private final BoosterConfiguration configuration;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
-    private final @Nullable SchedulerPort schedulerPort;
+    /**
+     * Where the reads go.
+     *
+     * <p>It used to be optional, and every place that used it carried a branch for its absence that
+     * read the database where it stood. Only the tests ever took that branch, so the tests were the
+     * only thing exercising a shape production never runs, and three queries on an event thread
+     * lived behind it. A listener without somewhere to put its reads has no business existing.
+     */
+    private final SchedulerPort schedulerPort;
+
     private final Clock clock;
     private final Map<UUID, IslandId> playerIslandCache = new ConcurrentHashMap<>();
 
@@ -71,13 +80,13 @@ public final class IslandBoosterListener implements Listener {
             IslandBoosterService boosterService,
             BoosterConfiguration configuration,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
-            @Nullable SchedulerPort schedulerPort,
+            SchedulerPort schedulerPort,
             Clock clock) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.boosterService = Objects.requireNonNull(boosterService, "boosterService must not be null");
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         this.sessionCoordinator = sessionCoordinator;
-        this.schedulerPort = schedulerPort;
+        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -86,25 +95,8 @@ public final class IslandBoosterListener implements Listener {
             IslandBoosterService boosterService,
             BoosterConfiguration configuration,
             @Nullable PlayerSessionCoordinator sessionCoordinator,
-            Clock clock) {
-        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null, clock);
-    }
-
-    public IslandBoosterListener(
-            IslandStoragePort islandStoragePort,
-            IslandBoosterService boosterService,
-            BoosterConfiguration configuration,
-            @Nullable PlayerSessionCoordinator sessionCoordinator,
-            @Nullable SchedulerPort schedulerPort) {
+            SchedulerPort schedulerPort) {
         this(islandStoragePort, boosterService, configuration, sessionCoordinator, schedulerPort, Clock.systemUTC());
-    }
-
-    public IslandBoosterListener(
-            IslandStoragePort islandStoragePort,
-            IslandBoosterService boosterService,
-            BoosterConfiguration configuration,
-            @Nullable PlayerSessionCoordinator sessionCoordinator) {
-        this(islandStoragePort, boosterService, configuration, sessionCoordinator, null, Clock.systemUTC());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -126,11 +118,7 @@ public final class IslandBoosterListener implements Listener {
             });
         };
 
-        if (schedulerPort != null) {
-            schedulerPort.async(task);
-        } else {
-            task.run();
-        }
+        schedulerPort.async(task);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -154,11 +142,7 @@ public final class IslandBoosterListener implements Listener {
             invalidatePlayer(playerUuid);
         };
 
-        if (schedulerPort != null) {
-            schedulerPort.async(task);
-        } else {
-            task.run();
-        }
+        schedulerPort.async(task);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -207,11 +191,6 @@ public final class IslandBoosterListener implements Listener {
         if (cached != null && cached.isFreshAt(now, configuration.multiplierCacheTtl())) {
             return cached.value();
         }
-        if (schedulerPort == null) {
-            // No scheduler means no thread to move the work to, which is the test harness and the
-            // one caller that constructs this listener without one. Reading directly is safe there.
-            return refreshNow(key);
-        }
         refreshLater(key);
         return cached != null ? cached.value() : 1.0;
     }
@@ -224,10 +203,6 @@ public final class IslandBoosterListener implements Listener {
     }
 
     private void refreshLater(MultiplierKey key) {
-        if (schedulerPort == null) {
-            refreshNow(key);
-            return;
-        }
         if (!refreshing.add(key)) {
             return;
         }
@@ -248,11 +223,7 @@ public final class IslandBoosterListener implements Listener {
             playerIslandCache.put(playerUuid, id);
             refreshLater(new MultiplierKey(id, BoosterCategory.MOB_EXP));
         });
-        if (schedulerPort != null) {
-            schedulerPort.async(task);
-        } else {
-            task.run();
-        }
+        schedulerPort.async(task);
     }
 
     /** Forgets what is remembered about a player, for a profile switch or a quit. */

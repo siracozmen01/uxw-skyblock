@@ -59,17 +59,20 @@ class NoEventHandlerReachesStorageInPlaceTest {
      * taken on trust: {@link #namedHelpersReallyRunOffTheThread()} fails if a call site of one of
      * them moves back onto the event thread.
      */
-    private static final List<String> RUNS_OFF_THREAD_ALREADY =
-            List.of("findIslandIdForPlayer(", "countOnlineIslandMembers(", "travelToDimension(");
+    private static final List<String> RUNS_OFF_THREAD_ALREADY = List.of(
+            "findIslandIdForPlayer(",
+            "countOnlineIslandMembers(",
+            "travelToDimension(",
+            "refreshNow(",
+            "executeTrigger(",
+            "notifyCompletion(");
 
     /** Single calls that read something the collaborator holds in memory rather than a row. */
-    private static final List<String> ANSWERED_FROM_MEMORY = List.of("missionService.findMission(");
+    private static final List<String> ANSWERED_FROM_MEMORY =
+            List.of("missionService.findMission(", "wardService.calculateRepulsion(");
 
     /** A call that reaches storage: a port, or an application service that holds one. */
-    private static final Pattern STORAGE_CALL = Pattern.compile("\\b\\w*(?:StoragePort|Port|Service)\\."
-            + "(?:find|save|count|load|delete|insert|update|has|is|resolve"
-            + "|getUpgradeTier|getCurrentTier|getEffectiveLimit)"
-            + "[A-Za-z]*\\(");
+    private static final Pattern STORAGE_CALL = Pattern.compile("\\b\\w*(?:StoragePort|Port|Service)\\.[a-z]\\w*\\(");
 
     /**
      * Collaborators that answer from memory, so a call onto one is not a query.

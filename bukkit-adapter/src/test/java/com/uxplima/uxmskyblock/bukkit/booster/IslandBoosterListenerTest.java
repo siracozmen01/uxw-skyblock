@@ -63,8 +63,15 @@ class IslandBoosterListenerTest extends MockBukkitHarness {
         fixedNow = Instant.parse("2026-09-19T12:00:00Z");
         Clock fixedClock = Clock.fixed(fixedNow, ZoneId.of("UTC"));
 
+        // A real scheduler that runs the work where it stands, so the test drives the same shape the
+        // server does rather than a branch that existed only for the absence of one.
         listener = new IslandBoosterListener(
-                mockStoragePort, mockBoosterService, configuration, mockSessionCoordinator, fixedClock);
+                mockStoragePort,
+                mockBoosterService,
+                configuration,
+                mockSessionCoordinator,
+                new com.uxplima.uxmskyblock.bukkit.test.InlineSchedulerPort(),
+                fixedClock);
 
         testPlayer = createPlayer("BoosterTester");
         islandId = new IslandId(UUID.randomUUID());
