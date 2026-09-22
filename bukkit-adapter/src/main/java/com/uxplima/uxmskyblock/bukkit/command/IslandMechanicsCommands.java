@@ -494,11 +494,11 @@ public final class IslandMechanicsCommands {
         long minutes = (seconds % 3600) / 60;
         long secs = seconds % 60;
         if (hours > 0) {
-            return String.format("%dh %dm %ds", hours, minutes, secs);
+            return String.format(Locale.ROOT, "%dh %dm %ds", hours, minutes, secs);
         }
         if (minutes > 0) {
-            return String.format("%dm %ds", minutes, secs);
+            return String.format(Locale.ROOT, "%dm %ds", minutes, secs);
         }
-        return String.format("%ds", secs);
+        return String.format(Locale.ROOT, "%ds", secs);
     }
 }

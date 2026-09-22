@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -179,7 +180,9 @@ public final class DatabaseDisasterBackupService {
         Objects.requireNonNull(requester, "requester must not be null");
         Objects.requireNonNull(backupSetId, "backupSetId must not be null");
 
-        String code = String.format("%04d", secureRandom.nextInt(10000));
+        // Locale.ROOT: a server whose default locale writes its own digits would issue a code that
+        // no keyboard types back and no answer ever equals.
+        String code = String.format(Locale.ROOT, "%04d", secureRandom.nextInt(10000));
         Instant expiresAt = clock.instant().plus(challengeTtl);
         pending.put(requester, new Pending(backupSetId, code, expiresAt));
         return new RestoreOutcome.CodeIssued(code, expiresAt);

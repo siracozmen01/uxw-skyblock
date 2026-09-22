@@ -183,6 +183,20 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("The quarantine remainder is written in ASCII digits on a server that writes its own")
+    void theRemainderIsAsciiEverywhere() throws Exception {
+        when(antiAbuse.getQuarantineRemaining(eq(ISLAND), any(Instant.class)))
+                .thenReturn(Optional.of(Duration.ofSeconds(3_661)));
+        java.util.Locale before = java.util.Locale.getDefault();
+        java.util.Locale.setDefault(java.util.Locale.forLanguageTag("ar-EG"));
+        try {
+            assertThat(String.join("\n", run("quarantine"))).contains("1h 1m 1s remaining");
+        } finally {
+            java.util.Locale.setDefault(before);
+        }
+    }
+
+    @Test
     @DisplayName("An island out of quarantine reads inactive")
     void noQuarantineReadsInactive() throws Exception {
         when(antiAbuse.getQuarantineRemaining(eq(ISLAND), any(Instant.class))).thenReturn(Optional.empty());

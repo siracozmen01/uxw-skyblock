@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -227,7 +228,9 @@ public final class IslandRecycleService {
         Objects.requireNonNull(islandId, "islandId must not be null");
 
         int randomDigits = secureRandom.nextInt(10000);
-        String code = String.format("%04d", randomDigits);
+        // Locale.ROOT: a server whose default locale writes its own digits would issue a code that
+        // no keyboard types back and no answer ever equals.
+        String code = String.format(Locale.ROOT, "%04d", randomDigits);
         Instant expiresAt = clock.instant().plus(challengeTtl);
         ResetChallenge challenge = new ResetChallenge(code, expiresAt);
 
