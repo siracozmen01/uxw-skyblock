@@ -137,6 +137,9 @@ public final class IntegrationWiring implements AutoCloseable {
         if (gameplay.shopMenu() != null) {
             gameplay.shopMenu().setBedrockFormService(this.bedrockFormService);
         }
+        if (gameplay.warpBrowseMenu() != null) {
+            gameplay.warpBrowseMenu().setBedrockFormService(this.bedrockFormService);
+        }
 
         this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin, persistence.islandStoragePort());
         this.webMapAdapter = new CompositeWebMapAdapter(
@@ -299,6 +302,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // Four subsystems that were running with no door. Every one of them had a service, a table
         // and a feature module, and no command a player could type.
         this.commandTree.setWarpService(gameplay.warpService());
+        this.commandTree.setWarpBrowseMenu(gameplay.warpBrowseMenu());
         this.commandTree.setSocialService(gameplay.socialService());
         this.commandTree.setAllianceService(gameplay.allianceService());
         this.commandTree.setRewardInboxService(gameplay.rewardInboxService());

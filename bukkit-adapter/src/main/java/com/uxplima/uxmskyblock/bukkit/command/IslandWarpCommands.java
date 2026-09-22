@@ -23,6 +23,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandWarpBrowseMenu;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.warp.BukkitSafeBlockInspector;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
@@ -63,8 +64,16 @@ public final class IslandWarpCommands {
     private final SchedulerPort schedulerPort;
     private final Messages messages;
 
+    /** The directory as a window. Absent on a node whose menus are off, and then the lines are sent. */
+    private volatile @Nullable IslandWarpBrowseMenu browseMenu;
+
     /** Where a new warp is written down for the island's members to read. */
     private final IslandActivityLog activityLog = new IslandActivityLog();
+
+    /** Tells this command group which window draws the public directory. */
+    public void useBrowseMenu(@Nullable IslandWarpBrowseMenu browseMenu) {
+        this.browseMenu = browseMenu;
+    }
 
     /** Tells this command group where to write the island's activity feed. */
     public void useActivityFeed(@Nullable ActivityFeedService service) {
@@ -166,6 +175,39 @@ public final class IslandWarpCommands {
     }
 
     /**
+     * Takes a player to the warp they picked out of the window.
+     *
+     * <p>The click arrives on the thread that owns the player and everything after it is storage,
+     * so it hops off first. It ends in the command's own visit flow, not a second one beside it
+     * that would drift from the gate, the ban list and the safe spot search.
+     */
+    private void visitFromTheDirectory(Player player, IslandWarpService service, IslandWarpBrowseMenu.Entry entry) {
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, "error.session_not_active");
+            return;
+        }
+        ProfileId profileId = optProfile.get();
+        IslandId islandId = entry.warp().islandId();
+        schedulerPort.async(() -> islandLocationService
+                .findIsland(islandId)
+                .ifPresentOrElse(
+                        island -> visitResolvedIsland(
+                                player,
+                                service,
+                                profileId,
+                                island,
+                                entry.ownerName(),
+                                entry.warp().name().value()),
+                        () -> onEntity(
+                                player,
+                                () -> send(
+                                        player,
+                                        "warp.island_unknown",
+                                        Placeholder.unparsed("owner", entry.ownerName())))));
+    }
+
+    /**
      * {@code /is warp browse <category>}: the directory, narrowed to one kind of warp.
      *
      * <p>getPublicWarpsByCategory was written with the warp work and had no caller, so a player
@@ -201,6 +243,11 @@ public final class IslandWarpCommands {
                     for (IslandWarp warp : warps) {
                         ownerNames.computeIfAbsent(warp.islandId(), this::ownerNameOf);
                     }
+                    IslandWarpBrowseMenu window = this.browseMenu;
+                    List<IslandWarpBrowseMenu.Entry> entries = window == null
+                            ? List.of()
+                            : IslandWarpBrowseMenu.entriesOf(warps, id -> ownerNames.getOrDefault(id, "?"));
+
                     onEntity(player, () -> {
                         if (only == null) {
                             send(player, "warp.browse_header");
@@ -209,6 +256,12 @@ public final class IslandWarpCommands {
                         }
                         if (warps.isEmpty()) {
                             send(player, "warp.browse_empty");
+                            return;
+                        }
+                        if (window != null) {
+                            // The icon a warp has carried since the warp work is drawn here and
+                            // nowhere else. The chat lines stay for a node whose menus are off.
+                            window.show(player, entries, entry -> visitFromTheDirectory(player, service, entry));
                             return;
                         }
                         for (IslandWarp warp : warps) {
@@ -508,31 +561,45 @@ public final class IslandWarpCommands {
                         return;
                     }
 
-                    IslandWarp warp;
-                    try {
-                        warp = service.resolveVisit(
-                                optIsland.get(), new PlayerUuid(player.getUniqueId()), profileId, WarpName.of(rawName));
-                    } catch (PlayerBannedFromIslandException banned) {
-                        onEntity(player, () -> send(player, "warp.visit_banned", Placeholder.unparsed("owner", owner)));
-                        return;
-                    } catch (IslandLockedException locked) {
-                        onEntity(player, () -> send(player, "warp.visit_locked", Placeholder.unparsed("owner", owner)));
-                        return;
-                    } catch (IslandClosedToVisitorsException closed) {
-                        onEntity(player, () -> send(player, "warp.visit_closed", Placeholder.unparsed("owner", owner)));
-                        return;
-                    } catch (WarpLockedException warpLocked) {
-                        onEntity(
-                                player,
-                                () -> send(player, "warp.visit_warp_locked", Placeholder.unparsed("name", rawName)));
-                        return;
-                    } catch (RuntimeException missing) {
-                        onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
-                        return;
-                    }
-
-                    travelToSafeSpot(player, service, warp, rawName);
+                    visitResolvedIsland(player, service, profileId, optIsland.get(), owner, rawName);
                 }));
+    }
+
+    /**
+     * Takes a player to one warp on an island that has already been found.
+     *
+     * <p>The gate, the ban list and the warp row are storage, so this expects to be off the thread
+     * the request arrived on. It is public because the browse window needs exactly this and
+     * duplicating it there would be two flows to keep in step: one of them would drift.
+     */
+    public void visitResolvedIsland(
+            Player player,
+            IslandWarpService service,
+            ProfileId profileId,
+            Island island,
+            String owner,
+            String rawName) {
+        IslandWarp warp;
+        try {
+            warp = service.resolveVisit(island, new PlayerUuid(player.getUniqueId()), profileId, WarpName.of(rawName));
+        } catch (PlayerBannedFromIslandException banned) {
+            onEntity(player, () -> send(player, "warp.visit_banned", Placeholder.unparsed("owner", owner)));
+            return;
+        } catch (IslandLockedException locked) {
+            onEntity(player, () -> send(player, "warp.visit_locked", Placeholder.unparsed("owner", owner)));
+            return;
+        } catch (IslandClosedToVisitorsException closed) {
+            onEntity(player, () -> send(player, "warp.visit_closed", Placeholder.unparsed("owner", owner)));
+            return;
+        } catch (WarpLockedException warpLocked) {
+            onEntity(player, () -> send(player, "warp.visit_warp_locked", Placeholder.unparsed("name", rawName)));
+            return;
+        } catch (RuntimeException missing) {
+            onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
+            return;
+        }
+
+        travelToSafeSpot(player, service, warp, rawName);
     }
 
     /** Finds the safe spot on the thread that owns the destination, then puts the player on it. */

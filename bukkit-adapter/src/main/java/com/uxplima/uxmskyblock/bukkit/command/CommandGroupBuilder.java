@@ -210,6 +210,7 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         warpCommands.useActivityFeed(tree.activityFeedService);
+        warpCommands.useBrowseMenu(tree.warpBrowseMenu);
 
         IslandSocialCommands socialCommands = new IslandSocialCommands(
                 () -> tree.socialService,

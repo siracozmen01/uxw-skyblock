@@ -441,6 +441,80 @@ class IslandWarpCommandsTest {
     }
 
     @Test
+    @DisplayName("The directory opens as a window, drawn with the icon each warp carries")
+    void browsingOpensAWindowOfIcons() throws Exception {
+        registerWithABrowseWindow();
+        when(warps.getPublicWarps(anyInt(), anyInt())).thenReturn(List.of(publicWarp()));
+
+        run("warp browse", player);
+
+        org.bukkit.inventory.Inventory window = player.getOpenInventory().getTopInventory();
+        org.bukkit.inventory.ItemStack tile = window.getItem(0);
+        assertThat(tile).describedAs("the first warp in the directory").isNotNull();
+        assertThat(tile.getType())
+                .describedAs("the icon the warp carries, drawn at last")
+                .isEqualTo(org.bukkit.Material.OAK_SIGN);
+    }
+
+    @Test
+    @DisplayName("Clicking a warp in the window takes the player there, through the command's own visit")
+    void clickingAWarpInTheWindowVisitsIt() throws Exception {
+        registerWithABrowseWindow();
+        when(warps.getPublicWarps(anyInt(), anyInt())).thenReturn(List.of(publicWarp()));
+        when(warps.resolveVisit(any(), any(PlayerUuid.class), eq(PROFILE), eq(WarpName.of("shop"))))
+                .thenReturn(publicWarp());
+
+        run("warp browse", player);
+        clickInTheWindow(0);
+
+        verify(warps).resolveVisit(any(), any(PlayerUuid.class), eq(PROFILE), eq(WarpName.of("shop")));
+        assertThat(teleportAttempted)
+                .describedAs("a click on the tile ends where /is warp visit ends")
+                .isTrue();
+    }
+
+    /**
+     * Clicks a slot in the window the player has open.
+     *
+     * <p>MockBukkit's own click helper is marked for removal, and this build treats a removal
+     * warning as an error. The event is what the helper sends, so it is sent here instead.
+     *
+     * <p>The teleport at the end of the click is unimplemented in MockBukkit and its exception
+     * reads to JUnit as an assumption failure, which turns a test into a silent skip. It is turned
+     * into a fact to assert on here, the way the command runner does.
+     */
+    private void clickInTheWindow(int slot) {
+        org.bukkit.event.inventory.InventoryClickEvent event = new org.bukkit.event.inventory.InventoryClickEvent(
+                player.getOpenInventory(),
+                org.bukkit.event.inventory.InventoryType.SlotType.CONTAINER,
+                slot,
+                org.bukkit.event.inventory.ClickType.LEFT,
+                org.bukkit.event.inventory.InventoryAction.PICKUP_ALL);
+        try {
+            server.getPluginManager().callEvent(event);
+        } catch (org.mockbukkit.mockbukkit.exception.UnimplementedOperationException unimplemented) {
+            assertThat(unimplemented.getStackTrace())
+                    .describedAs("only the teleport is allowed to be unimplemented here")
+                    .anyMatch(frame -> frame.getMethodName().contains("teleport"));
+            teleportAttempted = true;
+        }
+    }
+
+    /** Registers the tree again with the directory window wired, the way the bootstrap wires it. */
+    private void registerWithABrowseWindow() {
+        com.uxplima.uxmlib.gui.Guis.install(MockBukkit.createMockPlugin());
+        IslandWarpCommands commands = new IslandWarpCommands(
+                () -> warps,
+                locations,
+                scheduler,
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
+                sessions);
+        commands.useBrowseMenu(new com.uxplima.uxmskyblock.bukkit.menu.IslandWarpBrowseMenu(Messages.bundled()));
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.build());
+    }
+
+    @Test
     @DisplayName("Locking one warp reaches the setter that nothing used to call")
     void lockingOneWarpReachesTheSetter() throws Exception {
         run("warp lock shop", player);

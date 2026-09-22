@@ -553,6 +553,10 @@ public final class GameplayWiring {
         return socialWiring.warpService();
     }
 
+    public com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandWarpBrowseMenu warpBrowseMenu() {
+        return socialWiring.warpBrowseMenu();
+    }
+
     public IslandVaultService vaultService() {
         return socialWiring.vaultService();
     }

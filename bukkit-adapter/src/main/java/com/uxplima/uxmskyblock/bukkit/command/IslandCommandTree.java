@@ -112,6 +112,10 @@ public final class IslandCommandTree {
     volatile @Nullable IslandSeasonService seasonService;
     volatile @Nullable SkyblockReloader reloader;
     volatile @Nullable IslandWarpService warpService;
+
+    /** The window the public warp directory opens in, so its icons are drawn. */
+    volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandWarpBrowseMenu warpBrowseMenu;
+
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
     volatile @Nullable RewardInboxService rewardInboxService;
@@ -297,6 +301,11 @@ public final class IslandCommandTree {
     /** Hands the warp subsystem to the command that reaches it. */
     public void setWarpService(@Nullable IslandWarpService warpService) {
         this.warpService = warpService;
+    }
+
+    /** Hands the directory window to the browse command, so a warp's icon is seen. */
+    public void setWarpBrowseMenu(com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandWarpBrowseMenu warpBrowseMenu) {
+        this.warpBrowseMenu = warpBrowseMenu;
     }
 
     /** Hands the social subsystem to the commands that reach it. */

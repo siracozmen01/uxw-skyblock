@@ -5,6 +5,7 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandChatDeliveryAdapter;
 import com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandChatListener;
+import com.uxplima.uxmskyblock.bukkit.menu.IslandWarpBrowseMenu;
 import com.uxplima.uxmskyblock.bukkit.notification.IslandNotificationListener;
 import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultListener;
 import com.uxplima.uxmskyblock.bukkit.vault.IslandVaultWindow;
@@ -38,6 +39,7 @@ public final class SocialWiring {
     private final @Nullable IslandChatListener chatListener;
     private final SafeTeleportEngine safeTeleportEngine;
     private final IslandWarpService warpService;
+    private final @Nullable IslandWarpBrowseMenu warpBrowseMenu;
     private final IslandVaultService vaultService;
     private final HomeService homeService;
     private final ActivityFeedService activityFeedService;
@@ -85,6 +87,11 @@ public final class SocialWiring {
                             .map(visitorIslandId -> allianceService.canPrivilegedVisit(visitorIslandId, targetIslandId))
                             .orElse(false);
                 });
+
+        // The directory drew every warp's name and never its icon, which every warp has carried
+        // since the warp work. The window is what draws it.
+        this.warpBrowseMenu =
+                config.moduleSettings().isModuleEnabled("warps") ? new IslandWarpBrowseMenu(config.messages()) : null;
 
         this.vaultService = new IslandVaultService(
                 persistence.islandVaultStoragePort(),
@@ -167,6 +174,11 @@ public final class SocialWiring {
 
     public IslandWarpService warpService() {
         return warpService;
+    }
+
+    /** The window the public directory opens in. Absent when warps are off on this node. */
+    public @Nullable IslandWarpBrowseMenu warpBrowseMenu() {
+        return warpBrowseMenu;
     }
 
     public ActivityFeedService activityFeedService() {
