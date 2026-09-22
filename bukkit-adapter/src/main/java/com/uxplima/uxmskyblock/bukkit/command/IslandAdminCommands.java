@@ -111,7 +111,13 @@ public final class IslandAdminCommands {
                         || src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
                         || src.getSender().hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
                         || src.getSender().isOp())
-                .then(Cmd.literal("inactivity").then(Cmd.literal("scan").executes(this::executeAdminInactivityScan)))
+                // A scan archives and deletes islands, so it asks for management, not merely for a
+                // way into the admin branch. It asked for nothing of its own, and a moderator trusted
+                // only to inspect could start one.
+                .then(Cmd.literal("inactivity")
+                        .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                                || src.getSender().isOp())
+                        .then(Cmd.literal("scan").executes(this::executeAdminInactivityScan)))
                 .then(Cmd.literal("freeze")
                         .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
                                 || src.getSender().isOp())
