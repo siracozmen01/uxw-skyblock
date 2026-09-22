@@ -83,20 +83,19 @@ tasks.withType<Test>().configureEach {
     }
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
     maxHeapSize = "2g"
-    // The guard tests read source text, this module's and its siblings'. Gradle only sees the
-    // classes those sources compile to, so a change that leaves the classes alone, a comment or a
-    // resource another module reads, left the test task up to date and the guard never ran.
-    rootDir
-        .listFiles()
-        .orEmpty()
-        .filter { it.isDirectory && it.resolve("src/main").isDirectory }
-        .sortedBy { it.name }
-        .forEach { module ->
-            inputs
-                .dir(module.resolve("src/main"))
-                .withPropertyName("guardedSources-${module.name}")
-                .withPathSensitivity(PathSensitivity.RELATIVE)
-        }
+    // A guard reads files the compiler never turns into a class: the text of the sources, comments
+    // included, the resources another module reads, the documents and the version catalogue. Gradle
+    // reruns a test only when one of its inputs changes, so a change that left the classes alone kept
+    // the test up to date and the build green without running the guards that read it. The whole
+    // repository's text is declared, because a guard in one module reads another's.
+    inputs
+        .files(
+            rootProject.fileTree(rootProject.projectDir) {
+                include("**/src/main/**", "**/src/test/java/**", "docs/**", "gradle/libs.versions.toml")
+                exclude("**/build/**", ".gradle/**", "buildSrc/**")
+            },
+        ).withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("guardedText")
 }
 
 val verifyNoSkippedTests =
