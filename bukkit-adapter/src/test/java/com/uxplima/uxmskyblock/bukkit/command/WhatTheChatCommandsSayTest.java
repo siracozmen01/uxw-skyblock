@@ -155,6 +155,18 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A node another plugin's wildcard grants never lets a player read private island chat")
+    void anUndeclaredNodeNeverGrantsSpy() throws Exception {
+        // skyblock.* is what a server grants for some other skyblock plugin. The spy check used to
+        // accept skyblock.chat.spy as well as its own node, so that wildcard let a player read
+        // every island's private channel without anybody having meant to allow it.
+        player.addAttachment(MockBukkit.createMockPlugin(), "skyblock.chat.spy", true);
+
+        assertThat(run("spy")).singleElement().asString().contains("do not have permission to spy");
+        verify(chat, never()).toggleSpy(any());
+    }
+
+    @Test
     @DisplayName("Alliance chat says the player is now talking to the alliance")
     void allianceChatSaysWhereThePlayerIs() throws Exception {
         when(chat.getChannel(PROFILE)).thenReturn(IslandChatChannel.GLOBAL);

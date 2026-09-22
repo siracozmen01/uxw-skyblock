@@ -137,7 +137,7 @@ class IslandChatCommandsTest {
     @Test
     @DisplayName("Spy is its own branch and touches the channel not at all")
     void spyIsItsOwnBranch() throws Exception {
-        player.addAttachment(MockBukkit.createMockPlugin(), "skyblock.chat.spy", true);
+        player.addAttachment(MockBukkit.createMockPlugin(), "uxmskyblock.chat.spy", true);
 
         run("spy", player);
 

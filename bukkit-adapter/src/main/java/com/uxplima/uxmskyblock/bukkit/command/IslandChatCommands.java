@@ -241,7 +241,9 @@ public final class IslandChatCommands {
             send(player, "chat.not_enabled");
             return Cmd.OK;
         }
-        if (!player.hasPermission(CatalogPermissions.CHAT_SPY.node()) && !player.hasPermission("skyblock.chat.spy")) {
+        // Only the node this plugin declares. A second, undeclared node was accepted here too, and
+        // a skyblock.* wildcard granted for some other plugin let a player read private chat.
+        if (!player.hasPermission(CatalogPermissions.CHAT_SPY.node())) {
             send(player, "chat.spy_denied");
             return Cmd.OK;
         }
