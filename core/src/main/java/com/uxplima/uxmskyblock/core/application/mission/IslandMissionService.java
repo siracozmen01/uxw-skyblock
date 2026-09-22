@@ -221,20 +221,8 @@ public final class IslandMissionService {
         }
 
         Map<MissionId, MissionProgress> playerProgress = findAllProgress(islandId, profileId);
-        long before = Optional.ofNullable(playerProgress.get(def.id()))
-                .map(MissionProgress::progressCount)
-                .orElse(0L);
-        long room = Math.max(0L, def.requiredAmount() - before);
-        long credited = Math.min(amount, room);
-        if (credited <= 0) {
-            return Optional.of(new MissionSubmission(
-                    Optional.ofNullable(playerProgress.get(def.id()))
-                            .orElseGet(() -> MissionProgress.initial(def.id())),
-                    0L));
-        }
-
-        Advance advance = advance(playerProgress, def, credited, now);
-        if (advance == null) {
+        Advance advance = advance(playerProgress, def, amount, now);
+        if (advance == null || advance.credited() <= 0) {
             return Optional.of(new MissionSubmission(
                     Optional.ofNullable(playerProgress.get(def.id()))
                             .orElseGet(() -> MissionProgress.initial(def.id())),
@@ -251,7 +239,7 @@ public final class IslandMissionService {
             }
             tellSomebodyItFinished(islandId, profileId, def);
         }
-        return Optional.of(new MissionSubmission(next, credited));
+        return Optional.of(new MissionSubmission(next, advance.credited()));
     }
 
     public Optional<MissionProgress> submitManualItem(
@@ -302,8 +290,11 @@ public final class IslandMissionService {
         }
     }
 
-    /** One mission moved: where it now stands, and whether this caller is the one that finished it. */
-    private record Advance(MissionProgress progress, boolean finishedItNow) {}
+    /**
+     * One mission moved: where it now stands, whether this caller is the one that finished it, and
+     * how much of what it offered the mission took.
+     */
+    private record Advance(MissionProgress progress, boolean finishedItNow, long credited) {}
 
     /**
      * Moves one mission on by {@code amount}, atomically for that mission.
@@ -323,19 +314,25 @@ public final class IslandMissionService {
     private @Nullable Advance advance(
             Map<MissionId, MissionProgress> playerProgress, MissionDefinition def, long amount, Instant now) {
         boolean[] finishedItNow = {false};
+        long[] credited = {0L};
         MissionProgress next = playerProgress.compute(def.id(), (missionId, existing) -> {
             MissionProgress before = existing != null ? existing : MissionProgress.initial(missionId);
             if (before.completed()) {
                 return before;
             }
-            MissionProgress after = before.increment(amount, def.requiredAmount(), now);
+            // What the mission still wants is read here, under the key, not before it. Two hand ins
+            // that read it outside both took what was left, the second one's items went past the
+            // target, and the player was told they counted while nothing handed them back.
+            long take = Math.min(amount, Math.max(0L, def.requiredAmount() - before.progressCount()));
+            credited[0] = take;
+            MissionProgress after = before.increment(take, def.requiredAmount(), now);
             finishedItNow[0] = after.completed();
             return after;
         });
         if (next == null || (next.completed() && !finishedItNow[0])) {
             return null;
         }
-        return new Advance(next, finishedItNow[0]);
+        return new Advance(next, finishedItNow[0], credited[0]);
     }
 
     /**
