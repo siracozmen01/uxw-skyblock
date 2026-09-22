@@ -138,12 +138,16 @@ public final class IslandNavigationCommands {
             Location destination =
                     new Location(world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
             var unused = player.teleportAsync(destination).thenAccept(teleported -> {
+                // Said once the teleport has answered. It used to be said as the teleport was asked
+                // for, so a teleport another plugin cancelled still read as a welcome.
                 if (Boolean.TRUE.equals(teleported)) {
                     player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                     player.setFallDistance(0.0f);
+                    send(player, successKey, resolvers);
+                } else {
+                    send(player, "navigation.teleport_refused");
                 }
             });
-            send(player, successKey, resolvers);
         } else {
             send(player, "navigation.world_unloaded");
         }
@@ -170,21 +174,7 @@ public final class IslandNavigationCommands {
                     send(player, "navigation.no_island_yet");
                     return;
                 }
-                IslandLocation loc = optLoc.get();
-                World world = Bukkit.getWorld(loc.worldName());
-                if (world != null) {
-                    Location destination = new Location(
-                            world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
-                    var unused = player.teleportAsync(destination).thenAccept(teleported -> {
-                        if (Boolean.TRUE.equals(teleported)) {
-                            player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                            player.setFallDistance(0.0f);
-                        }
-                    });
-                    send(player, "navigation.home_success");
-                } else {
-                    send(player, "navigation.world_unloaded");
-                }
+                teleportToIslandLocation(player, optLoc.get(), "navigation.home_success");
             });
         });
 
@@ -258,10 +248,13 @@ public final class IslandNavigationCommands {
                                             "node", cross.targetNode().value()));
                         }
                         case RouteOutcome.Unavailable unavail -> {
-                            send(
-                                    player,
-                                    "navigation.visit_unavailable",
-                                    Placeholder.unparsed("reason", unavail.reasonCode()));
+                            // The reason is a code, and it used to be printed after a colon as it
+                            // stood, so a player read "error.network.cluster_unavailable".
+                            if (IslandNetworkRouter.ERROR_ISLAND_NOT_FOUND.equals(unavail.reasonCode())) {
+                                send(player, "error.island_not_found", Placeholder.unparsed("target", target));
+                            } else {
+                                send(player, "navigation.visit_unavailable");
+                            }
                         }
                     }
                 });
