@@ -31,6 +31,10 @@ dependencies {
 
     // Testing harness
     testImplementation(libs.mockbukkit)
+    // A booted test server needs a real wallet: without one the island bank refuses every move.
+    testImplementation(libs.vault.api) {
+        exclude(group = "org.bukkit")
+    }
     testImplementation(libs.archunit.junit)
     testImplementation(libs.jqwik)
 }

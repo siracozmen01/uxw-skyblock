@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -220,7 +221,8 @@ class SkyblockEconomyBridgeTest {
         SkyblockEconomyBridge sagaBridge =
                 new SkyblockEconomyBridge(mockEconomy, mockBankService, directScheduler, mockCoordinator);
 
-        when(mockEconomy.isPresent()).thenReturn(false);
+        when(mockEconomy.isPresent()).thenReturn(true);
+        when(mockEconomy.has(any(), org.mockito.ArgumentMatchers.anyDouble())).thenReturn(true);
         when(mockCoordinator.executeDeposit(
                         any(),
                         any(PlayerUuid.class),
@@ -303,5 +305,60 @@ class SkyblockEconomyBridgeTest {
         public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
             return () -> {};
         }
+    }
+
+    @Test
+    @DisplayName("With no economy plugin a deposit is refused and the island bank gains nothing")
+    void noEconomyNoDeposit() {
+        EconomySagaCoordinator coordinator = mock(EconomySagaCoordinator.class);
+        when(mockEconomy.isPresent()).thenReturn(false);
+        AtomicReference<BankTransactionOutcome> plain = new AtomicReference<>();
+        AtomicReference<BankTransactionOutcome> saga = new AtomicReference<>();
+
+        bridge.depositToIslandBank(mockPlayer, profileId, 1_000_000_000L, nodeId, plain::set);
+        new SkyblockEconomyBridge(mockEconomy, mockBankService, directScheduler, coordinator)
+                .depositToIslandBank(mockPlayer, profileId, 1_000_000_000L, nodeId, saga::set);
+
+        assertThat(List.of(plain.get(), saga.get()))
+                .allSatisfy(outcome -> assertThat(outcome)
+                        .isEqualTo(new BankTransactionOutcome.AuthorityRejected(
+                                BankTransactionOutcome.AuthorityRejected.Kind.NO_ECONOMY,
+                                "Deposit refused: no economy plugin is installed.")));
+        verify(mockBankService, never()).deposit(any(), any(), anyLong(), any());
+        verify(coordinator, never()).executeDeposit(any(), any(), any(), any(), anyLong(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("With no economy plugin a withdrawal is refused and the island bank loses nothing")
+    void noEconomyNoWithdrawal() {
+        EconomySagaCoordinator coordinator = mock(EconomySagaCoordinator.class);
+        when(mockEconomy.isPresent()).thenReturn(false);
+        AtomicReference<BankTransactionOutcome> plain = new AtomicReference<>();
+        AtomicReference<BankTransactionOutcome> saga = new AtomicReference<>();
+
+        bridge.withdrawFromIslandBank(mockPlayer, profileId, 50L, nodeId, plain::set);
+        new SkyblockEconomyBridge(mockEconomy, mockBankService, directScheduler, coordinator)
+                .withdrawFromIslandBank(mockPlayer, profileId, 50L, nodeId, saga::set);
+
+        assertThat(List.of(plain.get(), saga.get()))
+                .allSatisfy(outcome -> assertThat(outcome)
+                        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(
+                                BankTransactionOutcome.AuthorityRejected.class))
+                        .extracting(BankTransactionOutcome.AuthorityRejected::kind)
+                        .isEqualTo(BankTransactionOutcome.AuthorityRejected.Kind.NO_ECONOMY));
+        verify(mockBankService, never()).withdraw(any(), any(), anyLong(), any());
+        verify(coordinator, never()).executeWithdraw(any(), any(), any(), any(), anyLong(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A wallet that does not exist has no funds, pays nothing and takes nothing")
+    void aMissingWalletAnswersNo() {
+        when(mockEconomy.isPresent()).thenReturn(false);
+        BukkitVaultWalletAdapter wallet = new BukkitVaultWalletAdapter(mockEconomy);
+        PlayerUuid who = new PlayerUuid(playerUuid);
+
+        assertThat(wallet.hasFunds(who, 100L)).isFalse();
+        assertThat(wallet.withdraw(who, 100L)).isFalse();
+        assertThat(wallet.deposit(who, 100L)).isFalse();
     }
 }

@@ -117,6 +117,16 @@ public final class SkyblockEconomyBridge {
             return;
         }
 
+        // With no economy plugin there is no wallet. The wallet adapter used to answer every
+        // question about it with yes, so a deposit charged nothing and filled the island bank
+        // without limit, and a withdrawal emptied it into nothing and called that a success.
+        if (!economyBridge.isPresent()) {
+            callback.accept(new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_ECONOMY,
+                    "Deposit refused: no economy plugin is installed."));
+            return;
+        }
+
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         long minorUnits = dollars * 100L;
 
@@ -198,6 +208,16 @@ public final class SkyblockEconomyBridge {
             callback.accept(new BankTransactionOutcome.AuthorityRejected(
                     BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT,
                     "Withdraw amount must be greater than zero."));
+            return;
+        }
+
+        // With no economy plugin there is no wallet. The wallet adapter used to answer every
+        // question about it with yes, so a deposit charged nothing and filled the island bank
+        // without limit, and a withdrawal emptied it into nothing and called that a success.
+        if (!economyBridge.isPresent()) {
+            callback.accept(new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_ECONOMY,
+                    "Withdraw refused: no economy plugin is installed."));
             return;
         }
 

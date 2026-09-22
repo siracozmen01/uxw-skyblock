@@ -54,6 +54,8 @@ public sealed interface BankTransactionOutcome {
             WALLET_REFUSED,
             /** Money left one side, could not reach the other, and could not be put back. */
             REFUND_FAILED,
+            /** The server has no economy plugin, so there is no wallet to take from or give to. */
+            NO_ECONOMY,
             /** Anything else. */
             OTHER
         }

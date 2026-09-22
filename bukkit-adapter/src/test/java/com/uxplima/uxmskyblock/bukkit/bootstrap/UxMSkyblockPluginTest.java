@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Optional;
 
+import com.uxplima.uxmskyblock.bukkit.test.InMemoryVaultEconomy;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -19,9 +20,14 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
 
     private UxMSkyblockPlugin plugin;
 
+    private InMemoryVaultEconomy economy;
+
     @BeforeEach
     void setUp() {
         server.addSimpleWorld("world");
+        // A server that moves money has an economy plugin. Without one the island bank refuses every
+        // move, because there is no wallet to take from or pay into.
+        economy = InMemoryVaultEconomy.install(server, 1_000.0);
         plugin = MockBukkit.load(UxMSkyblockPlugin.class);
     }
 
@@ -160,6 +166,9 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
             assertThat(optBank).isPresent();
             assertThat(optBank.get().primaryBalanceMinorUnits()).isEqualTo(15000L);
         });
+        eventually(() -> assertThat(economy.balance(player))
+                .describedAs("the wallet paid 250 in and took 100 back")
+                .isEqualTo(850.0));
 
         // Execute biome change
         player.performCommand("is biome plains");

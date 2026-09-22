@@ -7,6 +7,9 @@ adventure      = "5.2.0"
 # UXPLIMA Toolkit
 uxmlib         = "5d34a0b073"
 
+# Test only: the Vault economy interface, so a booted test server can hold a real wallet
+vault-api      = "1.7.1"
+
 # Runtime Database Drivers (selected network drivers required at runtime; SQLite is provided by uxmlib-storage)
 sqlite-jdbc    = "3.49.1.0"
 mariadb-jdbc   = "3.5.3"
@@ -53,6 +56,7 @@ uxmlib-hud        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-hud",         
 uxmlib-bedrock    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-bedrock",              version.ref = "uxmlib" }
 uxmlib-condition  = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-condition",            version.ref = "uxmlib" }
 uxmlib-integration = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-integration",        version.ref = "uxmlib" }
+vault-api         = { module = "com.github.MilkBowl:VaultAPI",                          version.ref = "vault-api" }
 uxmlib-redis      = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-redis",                version.ref = "uxmlib" }
 lettuce-core      = { module = "io.lettuce:lettuce-core",                                version.ref = "lettuce" }
 
