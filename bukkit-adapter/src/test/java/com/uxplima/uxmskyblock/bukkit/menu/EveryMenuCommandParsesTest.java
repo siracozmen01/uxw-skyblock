@@ -121,6 +121,31 @@ class EveryMenuCommandParsesTest {
     }
 
     @Test
+    @DisplayName("Every verb the root itself declares parses and runs something")
+    void theRootVerbsParse() {
+        CommandDispatcher<CommandSourceStack> dispatcher = dispatcher();
+
+        assertRuns(dispatcher, "island help");
+        assertRuns(dispatcher, "island menu");
+        assertRuns(dispatcher, "island settings");
+        assertRuns(dispatcher, "island profile switch 00000000-0000-0000-0000-000000000001");
+    }
+
+    /** A line that parses whole and ends on a node that actually runs something. */
+    private static void assertRuns(CommandDispatcher<CommandSourceStack> dispatcher, String line) {
+        ParseResults<CommandSourceStack> parsed = dispatcher.parse(line, permittedSource());
+        assertThat(parsed.getReader().getRemaining())
+                .describedAs("what Brigadier could not read of \"%s\"", line)
+                .isEmpty();
+        assertThat(parsed.getContext().getNodes())
+                .describedAs("nodes matched by \"%s\"", line)
+                .isNotEmpty();
+        assertThat(parsed.getContext().getNodes().getLast().getNode().getCommand())
+                .describedAs("\"%s\" parses but runs nothing", line)
+                .isNotNull();
+    }
+
+    @Test
     @DisplayName("Every command a shipped menu runs parses against the real command tree")
     void everyMenuCommandParses() throws IOException {
         CommandDispatcher<CommandSourceStack> dispatcher = dispatcher();

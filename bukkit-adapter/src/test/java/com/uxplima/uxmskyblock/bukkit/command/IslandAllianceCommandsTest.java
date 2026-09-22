@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -97,6 +98,38 @@ class IslandAllianceCommandsTest {
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.build());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The invites list names one line per invitation waiting")
+    void theInvitesListNamesEach() throws Exception {
+        when(alliances.getPendingInvites(MINE))
+                .thenReturn(java.util.List.of(new com.uxplima.uxmskyblock.core.domain.alliance.IslandAllianceInvite(
+                        com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteId.random(),
+                        THEIRS,
+                        MINE,
+                        THEIR_PROFILE,
+                        java.time.Instant.now(),
+                        java.time.Instant.now().plusSeconds(300))));
+
+        run("alliance invites", me);
+
+        verify(alliances).getPendingInvites(MINE);
+        assertThat(me.nextMessage()).describedAs("the header").isNotNull();
+        assertThat(me.nextMessage()).describedAs("the one invitation").isNotNull();
+        assertThat(me.nextMessage()).describedAs("nothing after it").isNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An island nobody has invited says so rather than printing a header over nothing")
+    void noInvitesSaysSo() throws Exception {
+        when(alliances.getPendingInvites(MINE)).thenReturn(java.util.List.of());
+
+        run("alliance invites", me);
+
+        assertThat(me.nextMessage()).describedAs("the header").isNotNull();
+        assertThat(me.nextMessage()).describedAs("the empty line").isNotNull();
+        assertThat(me.nextMessage()).isNull();
     }
 
     @AfterEach

@@ -126,6 +126,20 @@ class IslandMechanicsCommandsTest {
         dispatcher.register(commands.buildBooster());
         dispatcher.register(commands.buildBorder());
         dispatcher.register(commands.buildBounds());
+        dispatcher.register(commands.buildMissions());
+        dispatcher.register(commands.buildChallenges());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Missions and challenges are the same door, and a node without them says so")
+    void missionsAndChallengesAreTheSameDoor() throws Exception {
+        run("missions", player);
+        assertThat(player.nextMessage()).describedAs("told the menu is off").isNotNull();
+
+        run("challenges", player);
+        assertThat(player.nextMessage())
+                .describedAs("the other word answers the same way")
+                .isNotNull();
     }
 
     @AfterEach

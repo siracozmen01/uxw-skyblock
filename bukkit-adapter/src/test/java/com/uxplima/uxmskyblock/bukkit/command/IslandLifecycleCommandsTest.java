@@ -141,6 +141,7 @@ class IslandLifecycleCommandsTest {
         dispatcher.register(commands.buildCreate());
         dispatcher.register(commands.buildReset());
         dispatcher.register(commands.buildDelete());
+        dispatcher.register(commands.buildDisband());
         dispatcher.register(commands.buildRename());
     }
 
@@ -204,6 +205,23 @@ class IslandLifecycleCommandsTest {
 
         verify(recycle).generateResetChallenge(PROFILE, ISLAND);
         verify(recycle, never()).executeReset(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("A bare /is disband is the same warning as /is reset and erases nothing either")
+    void disbandIsTheSameWarning() throws Exception {
+        run("disband", player);
+
+        verify(recycle).generateResetChallenge(PROFILE, ISLAND);
+        verify(recycle, never()).executeReset(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("Confirming under the disband word erases the same island, code and all")
+    void disbandConfirmErasesTheSameIsland() throws Exception {
+        run("disband confirm AB12CD", player);
+
+        verify(recycle).executeReset(PROFILE, ISLAND, "AB12CD", false);
     }
 
     @Test

@@ -18,8 +18,6 @@ import org.bukkit.command.CommandSender;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
-import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -53,6 +51,8 @@ class IslandBankCommandsTest {
     private ServerMock server;
     private PlayerMock player;
     private SkyblockEconomyBridge bridge;
+    private IslandLocationService locations;
+    private PlayerSessionCoordinator sessions;
     private IslandBankService bank;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
@@ -88,23 +88,118 @@ class IslandBankCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
+        this.locations = locations;
+        this.sessions = sessions;
+        registerWith(null);
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Upkeep status reads the bankruptcy record once, off the command thread")
+    void upkeepStatusReadsTheRecordOnce() throws Exception {
+        com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService upkeep =
+                mock(com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService.class);
+        when(upkeep.getBankruptcyRecord(org.mockito.ArgumentMatchers.eq(ISLAND), any()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord(
+                        ISLAND,
+                        com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus.SOLVENT,
+                        0L,
+                        null,
+                        java.time.Instant.now()));
+        registerWith(upkeep);
+
+        run("bank status", player);
+
+        verify(upkeep, org.mockito.Mockito.times(1))
+                .getBankruptcyRecord(org.mockito.ArgumentMatchers.eq(ISLAND), any());
+        assertThat(player.nextMessage()).describedAs("the header").isNotNull();
+        assertThat(player.nextMessage()).describedAs("the state").isNotNull();
+        assertThat(player.nextMessage()).describedAs("the debt").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Upkeep status on a locked island says what the player has to do about it")
+    void alockedIslandSaysWhatToDo() throws Exception {
+        com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService upkeep =
+                mock(com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService.class);
+        when(upkeep.getBankruptcyRecord(org.mockito.ArgumentMatchers.eq(ISLAND), any()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord(
+                        ISLAND,
+                        com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus.LOCKED,
+                        4200L,
+                        null,
+                        java.time.Instant.now()));
+        registerWith(upkeep);
+
+        run("bank status", player);
+
+        assertThat(player.nextMessage()).isNotNull();
+        assertThat(player.nextMessage()).isNotNull();
+        assertThat(player.nextMessage()).describedAs("what is owed").contains("42");
+        assertThat(player.nextMessage()).describedAs("the locked notice").isNotNull();
+        assertThat(player.nextMessage()).describedAs("the hint").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A node with no upkeep service says so rather than saying nothing")
+    void noUpkeepServiceIsAnAnswer() throws Exception {
+        run("bank status", player);
+
+        assertThat(player.nextMessage()).describedAs("told upkeep is off").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Paying the debt settles the arrears and says what it cost")
+    void payingTheDebtSettles() throws Exception {
+        com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService upkeep =
+                mock(com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService.class);
+        when(upkeep.settleArrears(org.mockito.ArgumentMatchers.eq(ISLAND), any(), any()))
+                .thenReturn(
+                        new com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult.Settled(4200L, 1000L));
+        registerWith(upkeep);
+
+        run("bank paydebt", player);
+
+        verify(upkeep).settleArrears(org.mockito.ArgumentMatchers.eq(ISLAND), any(), any());
+        assertThat(player.nextMessage())
+                .describedAs("what was paid and what is left")
+                .contains("42");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Paying a debt that is not there says there is nothing to pay")
+    void payingNothingSaysSo() throws Exception {
+        com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService upkeep =
+                mock(com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService.class);
+        when(upkeep.settleArrears(org.mockito.ArgumentMatchers.eq(ISLAND), any(), any()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult.NotInArrears());
+        registerWith(upkeep);
+
+        run("bank paydebt", player);
+
+        assertThat(player.nextMessage()).isNotNull();
+        assertThat(player.nextMessage()).describedAs("nothing else").isNull();
+    }
+
+    @AfterEach
+    void tearDown() {
+        MockBukkit.unmock();
+    }
+
+    /** Builds the command group again, this time with an upkeep service behind it. */
+    private void registerWith(
+            com.uxplima.uxmskyblock.core.application.bank.@org.jspecify.annotations.Nullable IslandBankruptcyService
+                    upkeep) {
         IslandBankCommands commands = new IslandBankCommands(
                 bank,
                 locations,
                 bridge,
                 inlineScheduler(),
                 ServerNodeId.of("node-1"),
-                () -> null,
-                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
+                () -> upkeep,
+                Messages.bundled(),
                 sessions);
-
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.build());
-    }
-
-    @AfterEach
-    void tearDown() {
-        MockBukkit.unmock();
     }
 
     private void run(String line, CommandSender sender) throws Exception {
