@@ -248,11 +248,12 @@ public final class GameplayWiring {
             if (!UpgradeId.SIZE.equals(upgradeId)) {
                 return;
             }
-            borderService
-                    .applyAllowance(islandId)
-                    .ifPresent(moved -> protectionListener
-                            .spatialIndex()
-                            .indexIsland(moved.island(), moved.location().worldName()));
+            borderService.applyAllowance(islandId).ifPresent(moved -> {
+                protectionListener
+                        .spatialIndex()
+                        .indexIsland(moved.island(), moved.location().worldName());
+                redrawTheEdgeFor(moved);
+            });
         });
 
         // The rest of the caches register as they are built, after the wiring that owns them.
@@ -411,6 +412,32 @@ public final class GameplayWiring {
 
     public WorldBorderPacketAdapter worldBorderAdapter() {
         return environmentWiring.worldBorderAdapter();
+    }
+
+    /**
+     * Shows the new edge to the members standing on the island when it grew.
+     *
+     * <p>Where a member is is a Bukkit question and the rule itself is not, so the rule lives in
+     * its own class and this hands it the answer.
+     */
+    private void redrawTheEdgeFor(IslandBorderService.Moved moved) {
+        var unused = new com.uxplima.uxmskyblock.bukkit.boundary.IslandEdgeRedraw(
+                        environmentWiring.boundaryService(), GameplayWiring::whereTheyStand)
+                .show(moved);
+    }
+
+    private static java.util.Optional<com.uxplima.uxmskyblock.bukkit.boundary.IslandEdgeRedraw.StandingAt>
+            whereTheyStand(com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid playerUuid) {
+        org.bukkit.entity.Player online = org.bukkit.Bukkit.getPlayer(playerUuid.value());
+        if (online == null) {
+            return java.util.Optional.empty();
+        }
+        org.bukkit.Location standing = online.getLocation();
+        if (standing == null) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(new com.uxplima.uxmskyblock.bukkit.boundary.IslandEdgeRedraw.StandingAt(
+                online.getWorld().getName(), standing.getBlockX(), standing.getBlockZ()));
     }
 
     public IslandBoundaryService boundaryService() {
