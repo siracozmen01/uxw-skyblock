@@ -241,14 +241,18 @@ public final class IslandBoosterListener implements Listener {
     }
 
     private void resolveIslandLater(UUID playerUuid) {
-        if (schedulerPort == null) {
-            findIslandIdForPlayer(playerUuid).ifPresent(id -> playerIslandCache.put(playerUuid, id));
-            return;
-        }
-        schedulerPort.async(() -> findIslandIdForPlayer(playerUuid).ifPresent(id -> {
+        // Built as a value and handed over, the way the join and quit handlers do it, so the one
+        // branch that runs it in place is the wiring with no scheduler at all rather than a second
+        // shape that has to be read on its own.
+        Runnable task = () -> findIslandIdForPlayer(playerUuid).ifPresent(id -> {
             playerIslandCache.put(playerUuid, id);
             refreshLater(new MultiplierKey(id, BoosterCategory.MOB_EXP));
-        }));
+        });
+        if (schedulerPort != null) {
+            schedulerPort.async(task);
+        } else {
+            task.run();
+        }
     }
 
     /** Forgets what is remembered about a player, for a profile switch or a quit. */

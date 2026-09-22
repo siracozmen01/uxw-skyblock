@@ -30,17 +30,66 @@ public final class IslandAdminFreezeService {
     private final @Nullable IslandVisitorEvictionPort visitorEvictionPort;
     private final @Nullable OutboxPort outboxPort;
 
+    /** How long a node may answer "is this island frozen" from memory before reading it again. */
+    public static final java.time.Duration DEFAULT_FREEZE_LOOKUP_TTL = java.time.Duration.ofSeconds(30);
+
+    private final java.time.Duration freezeLookupTtl;
+
+    /**
+     * Whether each island is frozen, and when that was read.
+     *
+     * <p>Every block a player breaks or places goes through this question first, and it read the
+     * freeze table every single time, on the thread the event arrived on. An island with no freeze
+     * record then ran a second query for the island itself, so building on a healthy island, which
+     * is what every player does all day, cost two queries per block.
+     *
+     * <p>A node writes its own freezes and unfreezes here as it makes them, so nothing an
+     * administrator does on this server waits. The window is only how long it may take to notice a
+     * freeze another node applied.
+     */
+    private final java.util.concurrent.ConcurrentMap<IslandId, Boolean> frozen =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final java.util.concurrent.ConcurrentMap<IslandId, java.time.Instant> readAt =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final java.time.Clock clock;
+
     public IslandAdminFreezeService(
             IslandStoragePort islandStoragePort,
             IslandMutationLock mutationLock,
             IslandAdminFreezePort freezeStoragePort,
             @Nullable IslandVisitorEvictionPort visitorEvictionPort,
             @Nullable OutboxPort outboxPort) {
+        this(
+                islandStoragePort,
+                mutationLock,
+                freezeStoragePort,
+                visitorEvictionPort,
+                outboxPort,
+                DEFAULT_FREEZE_LOOKUP_TTL,
+                java.time.Clock.systemUTC());
+    }
+
+    /** The canonical constructor, carrying how long an answer may be given from memory. */
+    public IslandAdminFreezeService(
+            IslandStoragePort islandStoragePort,
+            IslandMutationLock mutationLock,
+            IslandAdminFreezePort freezeStoragePort,
+            @Nullable IslandVisitorEvictionPort visitorEvictionPort,
+            @Nullable OutboxPort outboxPort,
+            java.time.Duration freezeLookupTtl,
+            java.time.Clock clock) {
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.mutationLock = Objects.requireNonNull(mutationLock, "mutationLock must not be null");
         this.freezeStoragePort = Objects.requireNonNull(freezeStoragePort, "freezeStoragePort must not be null");
         this.visitorEvictionPort = visitorEvictionPort;
         this.outboxPort = outboxPort;
+        this.freezeLookupTtl = Objects.requireNonNull(freezeLookupTtl, "freezeLookupTtl must not be null");
+        if (freezeLookupTtl.isNegative()) {
+            throw new IllegalArgumentException("freezeLookupTtl must not be negative: " + freezeLookupTtl);
+        }
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
     public IslandAdminFreezeService(
@@ -92,6 +141,7 @@ public final class IslandAdminFreezeService {
             visitorEvictionPort.evictNonStaffVisitors(islandId, reason);
         }
 
+        remember(islandId, true);
         return true;
     }
 
@@ -131,18 +181,59 @@ public final class IslandAdminFreezeService {
             islandStoragePort.saveIsland(unfrozenIsland, location);
         }
 
+        remember(islandId, false);
         return true;
     }
 
+    /**
+     * Whether an administrator has frozen this island.
+     *
+     * <p>Answered from memory when it was read recently enough, because the protection path asks it
+     * for every block anybody touches.
+     *
+     * <p>It used to fall back to reading the island itself when there was no freeze record, which is
+     * a second query for an answer the one caller already holds: the protection listener has the
+     * island in its hand and reads {@code island.isFrozen()} on the same line. The island's own
+     * administrative state stays the island's to report.
+     */
     public boolean isFrozen(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
-        return freezeStoragePort
+        java.time.Instant now = clock.instant();
+        java.time.Instant lastRead = readAt.get(islandId);
+        Boolean cached = frozen.get(islandId);
+        if (cached != null && lastRead != null && lastRead.plus(freezeLookupTtl).isAfter(now)) {
+            return cached;
+        }
+        boolean fresh = freezeStoragePort
                 .findFreezeRecord(islandId)
                 .map(IslandFreezeRecord::isFrozen)
-                .orElseGet(() -> islandStoragePort
-                        .findIslandById(islandId)
-                        .map(Island::isFrozen)
-                        .orElse(false));
+                .orElse(false);
+        frozen.put(islandId, fresh);
+        readAt.put(islandId, now);
+        return fresh;
+    }
+
+    /** Remembers what this node just did, so nothing it did waits for the window. */
+    private void remember(IslandId islandId, boolean isFrozen) {
+        frozen.put(islandId, isFrozen);
+        readAt.put(islandId, clock.instant());
+    }
+
+    /**
+     * Lets go of what is remembered about an island.
+     *
+     * <p>An island id is a fresh uuid every time, so holding an erased one never gives a wrong
+     * answer. It simply never lets go.
+     */
+    public void forgetIsland(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        frozen.remove(islandId);
+        readAt.remove(islandId);
+    }
+
+    /** How many islands this node is holding an answer for, for a caller that wants to say so. */
+    public int islandsHeldInMemory() {
+        return frozen.size();
     }
 
     public Optional<IslandFreezeRecord> getFreezeRecord(IslandId islandId) {

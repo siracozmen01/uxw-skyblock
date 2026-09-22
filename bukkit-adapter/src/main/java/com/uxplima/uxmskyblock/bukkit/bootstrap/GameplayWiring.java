@@ -266,6 +266,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(temporaryAccessService::forgetIsland);
         this.cacheEviction.whenForgotten(this.adminWiring.antiAbuseService()::forgetIsland);
         this.cacheEviction.whenForgotten(this.economicWiring.bankruptcyService()::forgetIsland);
+        this.cacheEviction.whenForgotten(freezeService::forgetIsland);
 
         this.protectionWiring = new GameplayProtectionWiring(
                 config, persistence, authority, protectionListener, temporaryAccessService);
