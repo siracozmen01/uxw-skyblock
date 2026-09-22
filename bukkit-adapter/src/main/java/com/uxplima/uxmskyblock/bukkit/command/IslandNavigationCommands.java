@@ -333,12 +333,14 @@ public final class IslandNavigationCommands {
         float pitch = current.getPitch();
 
         schedulerPort.async(() -> {
-            boolean updated = islandLocationService.updateSpawn(profileId, currentWorld, x, y, z, yaw, pitch);
+            IslandLocationService.SpawnUpdate update =
+                    islandLocationService.updateSpawn(profileId, currentWorld, x, y, z, yaw, pitch);
             schedulerPort.onEntity(playerUuid, () -> {
-                if (updated) {
-                    send(player, "navigation.spawn_updated");
-                } else {
-                    send(player, "error.no_island");
+                switch (update) {
+                    case UPDATED -> send(player, "navigation.spawn_updated");
+                    case NO_ISLAND -> send(player, "error.no_island");
+                    case NOT_ALLOWED -> send(player, "navigation.spawn_not_allowed");
+                    case OUTSIDE_THE_ISLAND -> send(player, "navigation.spawn_outside");
                 }
             });
         });

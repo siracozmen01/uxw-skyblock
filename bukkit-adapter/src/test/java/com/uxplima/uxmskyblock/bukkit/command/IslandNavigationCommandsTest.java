@@ -284,6 +284,8 @@ class IslandNavigationCommandsTest {
     @Test
     @DisplayName("/is setspawn writes the spot the player is standing on, not the island centre")
     void setSpawnWritesWhereThePlayerStands() throws Exception {
+        when(locations.updateSpawn(any(), anyString(), anyDouble(), anyDouble(), anyDouble(), anyFloat(), anyFloat()))
+                .thenReturn(com.uxplima.uxmskyblock.core.application.island.IslandLocationService.SpawnUpdate.UPDATED);
         player.teleport(new Location(islandWorld, 12.5, 70.0, -8.5, 90.0f, 10.0f));
 
         run("setspawn", player);

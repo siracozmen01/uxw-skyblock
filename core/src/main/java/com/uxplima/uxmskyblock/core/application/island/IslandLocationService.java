@@ -7,6 +7,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 
 /**
  * Application service managing island spatial locations, homes, and spawn points.
@@ -52,14 +53,35 @@ public final class IslandLocationService {
         return islandStoragePort.findLocationByIslandId(islandId);
     }
 
-    public boolean updateSpawn(
+    /** What became of a request to move an island's spawn. */
+    public enum SpawnUpdate {
+        /** The spawn is where the caller stood. */
+        UPDATED,
+        /** The caller belongs to no island. */
+        NO_ISLAND,
+        /** The caller's role may not change the island's settings. */
+        NOT_ALLOWED,
+        /** The spot is not on the island: another world, or outside its bounds. */
+        OUTSIDE_THE_ISLAND
+    }
+
+    /**
+     * Moves the island's spawn to where the caller stands, if that is on the island and the caller
+     * may change it.
+     *
+     * <p>Nothing was checked here before. A member could stand inside somebody else's locked island,
+     * or in any world at all, set that as their own island's spawn, and walk in with {@code /is home}.
+     * Their friends walked in with {@code /is visit}, because a visit asks whether the island it names
+     * is open, not where its spawn is. The lowest role on the island could move it too.
+     */
+    public SpawnUpdate updateSpawn(
             ProfileId profileId, String worldName, double x, double y, double z, float yaw, float pitch) {
         Objects.requireNonNull(profileId, "profileId must not be null");
         Objects.requireNonNull(worldName, "worldName must not be null");
 
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
         if (optIslandId.isEmpty()) {
-            return false;
+            return SpawnUpdate.NO_ISLAND;
         }
 
         IslandId islandId = optIslandId.get();
@@ -70,14 +92,23 @@ public final class IslandLocationService {
             Optional<Island> optIsland = islandStoragePort.findIslandById(islandId);
             Optional<IslandLocation> optLoc = islandStoragePort.findLocationByIslandId(islandId);
             if (optIsland.isEmpty() || optLoc.isEmpty()) {
-                return false;
+                return SpawnUpdate.NO_ISLAND;
+            }
+            Island island = optIsland.get();
+            if (!island.isOwner(profileId) && !island.hasPermission(profileId, IslandPermission.SETTINGS_MODIFY)) {
+                return SpawnUpdate.NOT_ALLOWED;
+            }
+            IslandLocation current = optLoc.get();
+            if (!current.worldName().equals(worldName)
+                    || !current.bounds().contains((int) Math.floor(x), (int) Math.floor(z))) {
+                return SpawnUpdate.OUTSIDE_THE_ISLAND;
             }
 
             IslandLocation updatedLocation =
-                    new IslandLocation(islandId, worldName, optLoc.get().bounds(), x, y, z, yaw, pitch);
+                    new IslandLocation(islandId, worldName, current.bounds(), x, y, z, yaw, pitch);
 
-            islandStoragePort.saveIsland(optIsland.get(), updatedLocation);
-            return true;
+            islandStoragePort.saveIsland(island, updatedLocation);
+            return SpawnUpdate.UPDATED;
         });
     }
 }
