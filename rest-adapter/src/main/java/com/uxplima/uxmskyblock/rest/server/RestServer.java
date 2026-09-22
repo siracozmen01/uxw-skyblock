@@ -1,5 +1,8 @@
 package com.uxplima.uxmskyblock.rest.server;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -85,7 +88,7 @@ public final class RestServer implements AutoCloseable {
                 return;
             }
             String token = authHeader.substring("Bearer ".length()).trim();
-            if (!token.equals(config.bearerToken())) {
+            if (!tokenMatches(token)) {
                 ctx.status(HttpStatus.UNAUTHORIZED).json(Map.of("error", "Invalid bearer token"));
                 ctx.skipRemainingHandlers();
             }
@@ -259,8 +262,57 @@ public final class RestServer implements AutoCloseable {
     public record IdempotentDepositRecord(
             IslandId islandId, long amount, String reason, HttpStatus status, Map<String, Object> responseBody) {}
 
-    private final java.util.concurrent.ConcurrentMap<String, IdempotentDepositRecord> idempotencyCache =
+    /** A remembered deposit and when it was remembered. */
+    private record RememberedDeposit(IdempotentDepositRecord record, Instant storedAt) {}
+
+    /**
+     * Deposits already made, so a retry is answered rather than made again.
+     *
+     * <p>The key comes from the caller, and nothing ever removed one. A web store retrying, or a
+     * caller with the token sending fresh keys on purpose, grew this map for the life of the
+     * process. It is bounded twice now: by how long a key is worth remembering, and by how many a
+     * node will hold at once whatever the clock says.
+     */
+    private final java.util.concurrent.ConcurrentMap<String, RememberedDeposit> idempotencyCache =
             new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Drops what is too old, and then the oldest of what is left if there is still too much. */
+    private void pruneIdempotency(Instant now) {
+        Duration retention = config.idempotencyRetention();
+        idempotencyCache
+                .entrySet()
+                .removeIf(entry -> entry.getValue().storedAt().plus(retention).isBefore(now));
+
+        int capacity = config.idempotencyCapacity();
+        int over = idempotencyCache.size() - capacity;
+        if (over <= 0) {
+            return;
+        }
+        idempotencyCache.entrySet().stream()
+                .sorted(java.util.Comparator.comparing(entry -> entry.getValue().storedAt()))
+                .limit(over)
+                .map(Map.Entry::getKey)
+                .toList()
+                .forEach(idempotencyCache::remove);
+    }
+
+    /** Remembers a deposit's answer, and drops what has aged out or overflowed the ceiling. */
+    private void rememberDeposit(String idempotencyKey, IdempotentDepositRecord record) {
+        Instant now = Instant.now();
+        idempotencyCache.put(idempotencyKey, new RememberedDeposit(record, now));
+        // Pruned after the write, so the ceiling holds after every one of them rather than before.
+        pruneIdempotency(now);
+    }
+
+    /** Remembers one deposit, for a test that drives the bound rather than the endpoint. */
+    void rememberDepositForTest(String idempotencyKey, IdempotentDepositRecord record) {
+        rememberDeposit(idempotencyKey, record);
+    }
+
+    /** How many deposits this node is remembering, for a caller that wants to say so. */
+    int idempotencyEntries() {
+        return idempotencyCache.size();
+    }
 
     private void handleBankDeposit(Context ctx) {
         String rawId = ctx.pathParam("id");
@@ -329,7 +381,8 @@ public final class RestServer implements AutoCloseable {
             return;
         }
 
-        IdempotentDepositRecord cached = idempotencyCache.get(idempotencyKey);
+        RememberedDeposit remembered = idempotencyCache.get(idempotencyKey);
+        IdempotentDepositRecord cached = remembered != null ? remembered.record() : null;
         if (cached != null) {
             if (cached.islandId().equals(islandId)
                     && cached.amount() == amount
@@ -367,8 +420,7 @@ public final class RestServer implements AutoCloseable {
                     "islandId", islandId.value().toString(),
                     "newBalanceMinorUnits", success.updatedBank().primaryBalanceMinorUnits(),
                     "transactionId", success.transaction().transactionId().toString());
-            idempotencyCache.put(
-                    idempotencyKey, new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
+            rememberDeposit(idempotencyKey, new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
             ctx.status(HttpStatus.OK).json(resp);
         } else if (outcome instanceof BankTransactionOutcome.DuplicateOperation dup) {
             if ("APPLIED".equalsIgnoreCase(dup.status()) && dup.resultPayload() != null) {
@@ -394,7 +446,7 @@ public final class RestServer implements AutoCloseable {
                                 "newBalanceMinorUnits",
                                         cachedJson.get("newBalanceMinorUnits").getAsLong(),
                                 "transactionId", cachedJson.get("transactionId").getAsString());
-                        idempotencyCache.put(
+                        rememberDeposit(
                                 idempotencyKey,
                                 new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.OK, resp));
                         ctx.status(HttpStatus.OK).json(resp);
@@ -429,7 +481,7 @@ public final class RestServer implements AutoCloseable {
                     "status", "FAILED",
                     "islandId", islandId.value().toString(),
                     "error", outcome.toString());
-            idempotencyCache.put(
+            rememberDeposit(
                     idempotencyKey,
                     new IdempotentDepositRecord(islandId, amount, reason, HttpStatus.UNPROCESSABLE_CONTENT, resp));
             ctx.status(HttpStatus.UNPROCESSABLE_CONTENT).json(resp);
@@ -449,7 +501,33 @@ public final class RestServer implements AutoCloseable {
         String token = header != null && header.startsWith("Bearer ")
                 ? header.substring("Bearer ".length()).trim()
                 : ctx.queryParam("token");
-        return token != null && token.equals(config.bearerToken());
+        return token != null && tokenMatches(token);
+    }
+
+    /**
+     * Whether a presented token is this node's token, compared in a time nobody can read.
+     *
+     * <p>{@code String.equals} stops at the first byte that differs, so how long a refusal takes
+     * says how much of the token was right. An attacker who can time the answers walks the token out
+     * one byte at a time, and this is the door to an endpoint that moves money.
+     *
+     * <p>Both sides are hashed first so the comparison is over two arrays of the same length
+     * whatever the presented token was, and the length of the real token leaks no more than its
+     * bytes do.
+     */
+    boolean tokenMatches(String presented) {
+        byte[] presentedDigest = sha256(presented);
+        byte[] expectedDigest = sha256(config.bearerToken());
+        return MessageDigest.isEqual(presentedDigest, expectedDigest);
+    }
+
+    private static byte[] sha256(String value) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            // Every Java runtime carries SHA-256. A runtime that does not cannot authenticate anybody.
+            throw new IllegalStateException("SHA-256 is missing from this runtime", impossible);
+        }
     }
 
     /**

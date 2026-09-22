@@ -14,7 +14,23 @@ import org.spongepowered.configurate.ConfigurationNode;
  * on every copy of the plugin, is a hole rather than a feature. The operator turns it on and sets
  * the token, and the token is refused if it is still the shipped one.
  */
-public record RestApiConfiguration(boolean enabled, String host, int port, String bearerToken) {
+public record RestApiConfiguration(
+        boolean enabled,
+        String host,
+        int port,
+        String bearerToken,
+        java.time.Duration idempotencyRetention,
+        int idempotencyCapacity) {
+
+    public RestApiConfiguration(boolean enabled, String host, int port, String bearerToken) {
+        this(
+                enabled,
+                host,
+                port,
+                bearerToken,
+                RestConfiguration.DEFAULT_IDEMPOTENCY_RETENTION,
+                RestConfiguration.DEFAULT_IDEMPOTENCY_CAPACITY);
+    }
 
     /** The token the file ships with. A node that is enabled while still holding it does not start. */
     public static final String UNSET_TOKEN = "change-me";
@@ -46,7 +62,13 @@ public record RestApiConfiguration(boolean enabled, String host, int port, Strin
         if (token == null) {
             token = UNSET_TOKEN;
         }
-        return new RestApiConfiguration(enabled, host.trim(), port, token.trim());
+        String retentionRaw = rest.node("idempotency-retention").getString();
+        java.time.Duration retention = retentionRaw != null && !retentionRaw.isBlank()
+                ? com.uxplima.uxmlib.common.Durations.parse(retentionRaw)
+                : RestConfiguration.DEFAULT_IDEMPOTENCY_RETENTION;
+        int capacity = rest.node("idempotency-capacity").getInt(RestConfiguration.DEFAULT_IDEMPOTENCY_CAPACITY);
+
+        return new RestApiConfiguration(enabled, host.trim(), port, token.trim(), retention, capacity);
     }
 
     /**
@@ -64,6 +86,7 @@ public record RestApiConfiguration(boolean enabled, String host, int port, Strin
 
     /** The shape the REST module reads, which knows nothing of this plugin's configuration file. */
     public RestConfiguration toRestConfiguration() {
-        return new RestConfiguration(enabled, host.toLowerCase(Locale.ROOT), port, bearerToken);
+        return new RestConfiguration(
+                enabled, host.toLowerCase(Locale.ROOT), port, bearerToken, idempotencyRetention, idempotencyCapacity);
     }
 }
