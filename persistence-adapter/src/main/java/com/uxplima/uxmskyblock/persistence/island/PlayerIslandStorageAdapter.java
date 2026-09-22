@@ -4,8 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -190,23 +188,12 @@ public final class PlayerIslandStorageAdapter implements IslandStoragePort, Isla
     @Override
     public List<Island> findAllByWorld(String worldName) {
         Objects.requireNonNull(worldName, "worldName");
-        String sql = "SELECT island_id FROM island_locations WHERE world_name = ?";
+        // Six queries, whatever the world holds. This used to read a list of island ids and then
+        // load each of them on its own, and each of those is five queries plus one per role: a
+        // world with ten thousand islands was sixty thousand round trips, on every restart and
+        // again on every upkeep sweep and every inactivity scan.
         try (Connection conn = database.connection()) {
-            List<IslandId> ids = new ArrayList<>();
-            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setString(1, worldName);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        ids.add(IslandId.of(UUID.fromString(rs.getString("island_id"))));
-                    }
-                }
-            }
-
-            List<Island> islands = new ArrayList<>(ids.size());
-            for (IslandId id : ids) {
-                PlayerIslandQueryHelper.loadIsland(conn, id).ifPresent(islands::add);
-            }
-            return Collections.unmodifiableList(islands);
+            return PlayerIslandQueryHelper.loadIslandsByWorld(conn, worldName);
         } catch (SQLException e) {
             throw new IslandPersistenceException("Failed to list islands for world " + worldName, e);
         }

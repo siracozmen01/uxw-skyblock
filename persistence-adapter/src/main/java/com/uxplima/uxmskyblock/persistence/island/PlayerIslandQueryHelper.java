@@ -5,8 +5,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -27,6 +30,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
 import com.uxplima.uxmskyblock.core.domain.island.ResidencyState;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Query and result mapping helper for {@link PlayerIslandStorageAdapter}.
@@ -135,6 +139,211 @@ final class PlayerIslandQueryHelper {
                 economicState,
                 administrativeState,
                 freezeReason));
+    }
+
+    /**
+     * Every island in one world, read in a fixed number of queries.
+     *
+     * <p>This used to be a list of island ids and then {@link #loadIsland} for each of them, and
+     * each of those is five queries plus one for every role: a world with ten thousand islands was
+     * sixty thousand round trips. The bank upkeep sweep and the inactivity scan each walk every
+     * island in the world on a schedule, and the spatial index and the web map each walk them at
+     * startup, so it was sixty thousand round trips a day and again on every restart.
+     *
+     * <p>It is six queries now, whatever the world holds: the islands, their places, their roles,
+     * the permissions on those roles, their members and their flags. Everything is joined in memory
+     * against {@code island_locations} for the world, so the database does the filtering once.
+     */
+    static List<Island> loadIslandsByWorld(Connection conn, String worldName) throws SQLException {
+        Map<String, IslandCore> cores = new LinkedHashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT i.id, i.owner_profile_id, i.owner_account_uuid, i.created_at, i.lifecycle,
+                       i.economic_state, i.administrative_state, i.freeze_reason,
+                       l.center_x, l.center_z, l.min_x, l.min_z, l.max_x, l.max_z
+                FROM islands i
+                JOIN island_locations l ON l.island_id = i.id
+                WHERE l.world_name = ?
+                """)) {
+            stmt.setString(1, worldName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String id = rs.getString("id");
+                    int minX = rs.getInt("min_x");
+                    int maxX = rs.getInt("max_x");
+                    IslandBounds bounds = new IslandBounds(
+                            minX,
+                            rs.getInt("min_z"),
+                            maxX,
+                            rs.getInt("max_z"),
+                            rs.getInt("center_x"),
+                            rs.getInt("center_z"),
+                            (maxX - minX) / 2);
+                    cores.put(
+                            id,
+                            new IslandCore(
+                                    IslandId.of(UUID.fromString(id)),
+                                    bounds,
+                                    PlayerUuid.of(UUID.fromString(rs.getString("owner_account_uuid"))),
+                                    ProfileId.of(UUID.fromString(rs.getString("owner_profile_id"))),
+                                    rs.getTimestamp("created_at").toInstant(),
+                                    readEnum(rs.getString("lifecycle"), IslandLifecycle.ACTIVE, IslandLifecycle.class),
+                                    readEnum(rs.getString("economic_state"), EconomicState.NORMAL, EconomicState.class),
+                                    readEnum(
+                                            rs.getString("administrative_state"),
+                                            AdministrativeState.NORMAL,
+                                            AdministrativeState.class),
+                                    rs.getString("freeze_reason")));
+                }
+            }
+        }
+        if (cores.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, Set<IslandPermission>> permissions = new HashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT p.island_id, p.role_id, p.permission
+                FROM island_role_permissions p
+                JOIN island_locations l ON l.island_id = p.island_id
+                WHERE l.world_name = ?
+                """)) {
+            stmt.setString(1, worldName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Set<IslandPermission> held = permissions.computeIfAbsent(
+                            rs.getString("island_id") + '\u001f' + rs.getString("role_id"),
+                            key -> EnumSet.noneOf(IslandPermission.class));
+                    try {
+                        held.add(IslandPermission.valueOf(rs.getString("permission")));
+                    } catch (IllegalArgumentException expected) {
+                        // A permission a later release added. Skipped, exactly as one island is.
+                    }
+                }
+            }
+        }
+
+        Map<String, Map<String, IslandRole>> roles = new HashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT r.island_id, r.role_id, r.weight, r.display_name, r.is_system
+                FROM island_roles r
+                JOIN island_locations l ON l.island_id = r.island_id
+                WHERE l.world_name = ?
+                """)) {
+            stmt.setString(1, worldName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String islandId = rs.getString("island_id");
+                    String roleId = rs.getString("role_id");
+                    roles.computeIfAbsent(islandId, key -> new HashMap<>())
+                            .put(
+                                    roleId,
+                                    new IslandRole(
+                                            roleId,
+                                            rs.getInt("weight"),
+                                            rs.getString("display_name"),
+                                            permissions.getOrDefault(
+                                                    islandId + '\u001f' + roleId,
+                                                    EnumSet.noneOf(IslandPermission.class)),
+                                            rs.getBoolean("is_system")));
+                }
+            }
+        }
+
+        Map<String, Map<ProfileId, IslandMember>> members = new HashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT m.island_id, m.player_uuid, m.profile_id, m.role_id, m.joined_at
+                FROM island_members m
+                JOIN island_locations l ON l.island_id = m.island_id
+                WHERE l.world_name = ?
+                """)) {
+            stmt.setString(1, worldName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String islandId = rs.getString("island_id");
+                    ProfileId profileId = ProfileId.of(UUID.fromString(rs.getString("profile_id")));
+                    IslandRole role = roles.getOrDefault(islandId, Map.of())
+                            .getOrDefault(rs.getString("role_id"), IslandRole.VISITOR);
+                    members.computeIfAbsent(islandId, key -> new HashMap<>())
+                            .put(
+                                    profileId,
+                                    new IslandMember(
+                                            PlayerUuid.of(UUID.fromString(rs.getString("player_uuid"))),
+                                            profileId,
+                                            role,
+                                            rs.getTimestamp("joined_at").toInstant()));
+                }
+            }
+        }
+
+        Map<String, Map<String, Boolean>> flags = new HashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT f.island_id, f.flag_name, f.flag_value
+                FROM island_flags f
+                JOIN island_locations l ON l.island_id = f.island_id
+                WHERE l.world_name = ?
+                """)) {
+            stmt.setString(1, worldName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    flags.computeIfAbsent(rs.getString("island_id"), key -> new HashMap<>())
+                            .put(rs.getString("flag_name"), rs.getBoolean("flag_value"));
+                }
+            }
+        }
+
+        List<Island> islands = new ArrayList<>(cores.size());
+        for (var entry : cores.entrySet()) {
+            String id = entry.getKey();
+            IslandCore core = entry.getValue();
+            Map<String, Boolean> values = new HashMap<>(IslandFlags.defaults().values());
+            values.putAll(flags.getOrDefault(id, Map.of()));
+            Map<ProfileId, IslandMember> islandMembers = members.getOrDefault(id, Map.of());
+            if (!islandMembers.containsKey(core.ownerProfileId())) {
+                // An island whose owner is not among its members cannot be built, and one broken
+                // record must not stop a sweep across every island in the world.
+                LOGGER.log(Level.WARNING, "Island {0} has no membership row for its owner and is skipped.", id);
+                continue;
+            }
+            islands.add(new Island(
+                    core.islandId(),
+                    core.bounds(),
+                    core.ownerUuid(),
+                    core.ownerProfileId(),
+                    islandMembers,
+                    roles.getOrDefault(id, Map.of()),
+                    new IslandFlags(values),
+                    core.createdAt(),
+                    core.lifecycle(),
+                    ResidencyState.UNLOADED,
+                    core.economicState(),
+                    core.administrativeState(),
+                    core.freezeReason()));
+        }
+        return List.copyOf(islands);
+    }
+
+    /** One island's own row, before its roles, members and flags are hung on it. */
+    private record IslandCore(
+            IslandId islandId,
+            IslandBounds bounds,
+            PlayerUuid ownerUuid,
+            ProfileId ownerProfileId,
+            Instant createdAt,
+            IslandLifecycle lifecycle,
+            EconomicState economicState,
+            AdministrativeState administrativeState,
+            @Nullable String freezeReason) {}
+
+    /** A stored value a later release may not know, read as the default rather than as a failure. */
+    private static <E extends Enum<E>> E readEnum(@Nullable String stored, E fallback, Class<E> type) {
+        if (stored == null) {
+            return fallback;
+        }
+        try {
+            return Enum.valueOf(type, stored);
+        } catch (IllegalArgumentException unknown) {
+            return fallback;
+        }
     }
 
     static Map<String, IslandRole> loadRoles(Connection conn, String islandIdStr) throws SQLException {
