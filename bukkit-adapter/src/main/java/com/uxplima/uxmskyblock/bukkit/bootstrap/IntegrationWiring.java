@@ -17,6 +17,7 @@ import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
+import com.uxplima.uxmskyblock.bukkit.integration.placeholder.PlaceholderCacheEviction;
 import com.uxplima.uxmskyblock.bukkit.integration.placeholder.SkyblockPlaceholderExpansion;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine;
@@ -346,7 +347,9 @@ public final class IntegrationWiring implements AutoCloseable {
         this.authorityHeartbeat = scheduler.repeatAsync(
                 authorityService::heartbeat, authorityHeartbeatInterval, authorityHeartbeatInterval);
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
-        plugin.getServer().getPluginManager().registerEvents(placeholderExpansion, plugin);
+        plugin.getServer()
+                .getPluginManager()
+                .registerEvents(new PlaceholderCacheEviction(placeholderExpansion), plugin);
         commandTree.register(plugin);
         apiBridge.register();
         economyBridge.recoverPendingSagas(serverNodeId);

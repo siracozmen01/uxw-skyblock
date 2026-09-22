@@ -13,10 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.bukkit.OfflinePlayer;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerQuitEvent;
 
 import com.uxplima.uxmlib.hook.placeholder.PlaceholderExpansions;
 import com.uxplima.uxmlib.hook.placeholder.PlaceholderProvider;
@@ -43,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Serves player and island placeholders with zero main-thread database blocking using an
  * asynchronous refreshing in-memory snapshot cache.
  */
-public final class SkyblockPlaceholderExpansion implements PlaceholderProvider, Listener {
+public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
 
     public static final String IDENTIFIER = "skyblock";
     public static final long CACHE_TTL_MS = 5000L;
@@ -160,18 +156,6 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider, 
         if (playerUuid != null) {
             playerCache.remove(playerUuid);
         }
-    }
-
-    /**
-     * Forgets a player who left.
-     *
-     * <p>Nothing called {@link #invalidate} before this, so the cache kept one line for every player
-     * who had ever joined for as long as the server ran. A player who comes back is read again on
-     * their first placeholder, which is what happens on a first join too.
-     */
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        invalidate(event.getPlayer().getUniqueId());
     }
 
     /** Whether this node still holds a cached line for the player. */
