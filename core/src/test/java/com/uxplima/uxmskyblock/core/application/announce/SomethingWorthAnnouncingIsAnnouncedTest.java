@@ -72,11 +72,24 @@ class SomethingWorthAnnouncingIsAnnouncedTest {
         }
     }
 
+    /**
+     * A service holding one live invite between these two islands.
+     *
+     * <p>The invite window is built around the clock this runs on, because accepting one reads that
+     * clock. It was written around a fixed date instead, so these tests passed until that date's
+     * five minutes ran out and then failed on every machine, for good.
+     */
     private static IslandAllianceService allianceServiceThatAccepts(IslandId a, IslandId b) {
         IslandAllianceStoragePort storage = mock(IslandAllianceStoragePort.class);
+        Instant issued = Instant.now();
         when(storage.findInvite(a, b))
                 .thenReturn(Optional.of(new IslandAllianceInvite(
-                        AllianceInviteId.random(), a, b, new ProfileId(UUID.randomUUID()), NOW, NOW.plusSeconds(300))));
+                        AllianceInviteId.random(),
+                        a,
+                        b,
+                        new ProfileId(UUID.randomUUID()),
+                        issued,
+                        issued.plusSeconds(300))));
         when(storage.countAlliances(any())).thenReturn(0);
         return new IslandAllianceService(storage);
     }
