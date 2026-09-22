@@ -5,8 +5,6 @@ import java.util.List;
 import java.util.Objects;
 
 import org.bukkit.Location;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Monster;
@@ -32,6 +30,27 @@ public final class KineticWardListener implements Listener {
 
     private final ProtectionConfiguration config;
     private final KineticWardService wardService;
+
+    /**
+     * What this interaction fires, as the operator wrote it.
+     *
+     * <p>A sound and a particle were written into this file, so a server that wanted a different
+     * note, or none, or a title as well, had nowhere to say so. A node built without one fires
+     * nothing, which is the same thing said in the file as an empty list.
+     */
+    private volatile com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects
+            effects;
+
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer
+            effectPlayer;
+
+    /** Tells this rule what the operator wrote for it. */
+    public void useEffects(
+            com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer player) {
+        this.effects = effects;
+        this.effectPlayer = player;
+    }
 
     public KineticWardListener(ProtectionConfiguration config) {
         this.config = Objects.requireNonNull(config, "config must not be null");
@@ -98,11 +117,10 @@ public final class KineticWardListener implements Listener {
             bukkitEntity.setVelocity(new Vector(rep.velocityX(), rep.velocityY(), rep.velocityZ()));
         }
 
-        try {
-            world.playSound(center, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1.0f, 1.2f);
-            world.spawnParticle(Particle.CRIT, center.clone().add(0, 0.5, 0), 20, 0.8, 0.2, 0.8, 0.1);
-        } catch (Exception ignored) {
-            // MockBukkit or minimal server fallback
+        com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects written = this.effects;
+        com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
+        if (written != null && plays != null) {
+            plays.fireAt(written, "kinetic-ward", center.clone().add(0, 0.5, 0));
         }
     }
 

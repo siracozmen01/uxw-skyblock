@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.EffectsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InteractablesConfiguration;
@@ -41,6 +42,7 @@ import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
+import com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
@@ -197,6 +199,12 @@ public final class ConfigurationLoader {
                 plugin, dataDir, "levels.conf", LevelConfiguration::load, LevelConfiguration.defaultConfiguration());
         BiomeConfiguration biomeConfig = loadConfig(
                 plugin, dataDir, "biomes.conf", BiomeConfiguration::load, BiomeConfiguration.defaultConfiguration());
+        InteractionEffects effectsConfig = loadConfig(
+                plugin,
+                dataDir,
+                "effects.conf",
+                EffectsConfiguration::load,
+                EffectsConfiguration.defaultConfiguration());
         DimensionConfiguration dimensionConfig = loadConfig(
                 plugin,
                 dataDir,
@@ -280,6 +288,7 @@ public final class ConfigurationLoader {
                 missionConfig,
                 levelConfig,
                 biomeConfig,
+                effectsConfig,
                 dimensionConfig,
                 limitConfig,
                 antiAbuseConfig,

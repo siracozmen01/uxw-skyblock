@@ -14,6 +14,7 @@ import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.DiscordConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.EffectsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.HomeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.InactivityConfiguration;
@@ -41,6 +42,7 @@ import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
+import com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 
@@ -85,6 +87,7 @@ public final class ConfigurationWiring {
     private final MissionConfiguration missionConfig;
     private final LevelConfiguration levelConfig;
     private final BiomeConfiguration biomeConfig;
+    private final InteractionEffects effectsConfig;
     private final DimensionConfiguration dimensionConfig;
     private final LimitConfiguration limitConfig;
     private final AntiAbuseConfiguration antiAbuseConfig;
@@ -153,6 +156,7 @@ public final class ConfigurationWiring {
             MissionConfiguration missionConfig,
             LevelConfiguration levelConfig,
             BiomeConfiguration biomeConfig,
+            InteractionEffects effectsConfig,
             DimensionConfiguration dimensionConfig,
             LimitConfiguration limitConfig,
             AntiAbuseConfiguration antiAbuseConfig,
@@ -186,6 +190,7 @@ public final class ConfigurationWiring {
         this.missionConfig = Objects.requireNonNull(missionConfig, "missionConfig must not be null");
         this.levelConfig = Objects.requireNonNull(levelConfig, "levelConfig must not be null");
         this.biomeConfig = Objects.requireNonNull(biomeConfig, "biomeConfig must not be null");
+        this.effectsConfig = Objects.requireNonNull(effectsConfig, "effectsConfig must not be null");
         this.dimensionConfig = Objects.requireNonNull(dimensionConfig, "dimensionConfig must not be null");
         this.limitConfig = Objects.requireNonNull(limitConfig, "limitConfig must not be null");
         this.antiAbuseConfig = Objects.requireNonNull(antiAbuseConfig, "antiAbuseConfig must not be null");
@@ -261,6 +266,7 @@ public final class ConfigurationWiring {
                 missionConfig,
                 levelConfig,
                 BiomeConfiguration.defaultConfiguration(),
+                EffectsConfiguration.defaultConfiguration(),
                 dimensionConfig,
                 limitConfig,
                 antiAbuseConfig,
@@ -407,6 +413,11 @@ public final class ConfigurationWiring {
     /** Which biomes this server offers and what an island has to reach first. */
     public BiomeConfiguration biomeConfig() {
         return biomeConfig;
+    }
+
+    /** What every interaction fires, as the operator wrote it. */
+    public InteractionEffects effectsConfig() {
+        return effectsConfig;
     }
 
     public DimensionConfiguration dimensionConfig() {

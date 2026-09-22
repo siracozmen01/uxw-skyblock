@@ -8,8 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -31,6 +29,26 @@ import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
  * while preventing placed obsidian dupe exploits.
  */
 public final class ObsidianRecoveryListener implements Listener {
+
+    /**
+     * What this interaction fires, as the operator wrote it.
+     *
+     * <p>A sound and a particle were written into this file. A node built without a list fires
+     * nothing, which is the same thing said in the file as an empty list.
+     */
+    private volatile com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects
+            effects;
+
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer
+            effectPlayer;
+
+    /** Tells this rule what the operator wrote for it. */
+    public void useEffects(
+            com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer player) {
+        this.effects = effects;
+        this.effectPlayer = player;
+    }
 
     private final ProtectionConfiguration config;
     private final Clock clock;
@@ -96,13 +114,10 @@ public final class ObsidianRecoveryListener implements Listener {
         updateBucket(player, item);
 
         if (loc.getWorld() != null) {
-            loc.getWorld().playSound(loc, Sound.ITEM_BUCKET_FILL_LAVA, 1.0f, 1.0f);
-            try {
-                loc.getWorld()
-                        .spawnParticle(
-                                Particle.CAMPFIRE_COSY_SMOKE, loc.clone().add(0.5, 0.5, 0.5), 6, 0.2, 0.2, 0.2, 0.02);
-            } catch (Exception ignored) {
-                // Fallback for mocked world without particle support
+            com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects written = this.effects;
+            com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
+            if (written != null && plays != null) {
+                plays.fireAt(written, "obsidian-recovery", loc.clone().add(0.5, 0.5, 0.5));
             }
         }
     }

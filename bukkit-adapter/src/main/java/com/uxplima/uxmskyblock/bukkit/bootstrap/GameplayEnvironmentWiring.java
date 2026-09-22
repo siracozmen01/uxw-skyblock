@@ -99,6 +99,9 @@ public final class GameplayEnvironmentWiring {
             // Nothing called the scan before, so every island started each boot at zero and could
             // place its whole allowance again.
             this.limitListener.useReconciler(this.limitReconciler);
+            this.limitListener.useEffects(
+                    config.effectsConfig(),
+                    new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(config.messages(), scheduler));
         }
     }
 

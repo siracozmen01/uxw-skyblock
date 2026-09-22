@@ -49,6 +49,12 @@ public final class GameplayProtectionWiring {
         this.kineticWardListener = new KineticWardListener(config.protectionConfig(), this.kineticWardService);
 
         this.obsidianRecoveryListener = new ObsidianRecoveryListener(config.protectionConfig());
+
+        // What every interaction fires is the operator's list, not two lines of Java each.
+        com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer effectPlayer =
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(config.messages());
+        this.kineticWardListener.useEffects(config.effectsConfig(), effectPlayer);
+        this.obsidianRecoveryListener.useEffects(config.effectsConfig(), effectPlayer);
         this.voidProtectionListener = new VoidProtectionListener(
                 config.protectionConfig(),
                 config.settingsConfig(),
