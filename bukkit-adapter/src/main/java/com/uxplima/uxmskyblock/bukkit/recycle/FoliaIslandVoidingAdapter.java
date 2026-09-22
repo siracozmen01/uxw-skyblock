@@ -1,6 +1,9 @@
 package com.uxplima.uxmskyblock.bukkit.recycle;
 
+import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -58,6 +61,7 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
         int maxChunkZ = bounds.maxZ() >> 4;
 
         List<CompletableFuture<Void>> chunkFutures = new ArrayList<>();
+        Deque<Runnable> waiting = new ArrayDeque<>();
 
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
@@ -66,7 +70,7 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                 CompletableFuture<Void> chunkFuture = new CompletableFuture<>();
                 chunkFutures.add(chunkFuture);
 
-                schedulerPort.onRegion(worldName, chunkX, chunkZ, () -> {
+                waiting.add(() -> schedulerPort.onRegion(worldName, chunkX, chunkZ, () -> {
                     try {
                         World world = Bukkit.getWorld(worldName);
                         if (world == null) {
@@ -129,13 +133,38 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                     } catch (Throwable t) {
                         chunkFuture.completeExceptionally(t);
                     }
-                });
+                }));
             }
         }
 
         if (chunkFutures.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
+        startAtTheRateAllowed(waiting);
         return CompletableFuture.allOf(chunkFutures.toArray(CompletableFuture<?>[]::new));
+    }
+
+    /**
+     * Starts the waiting chunks no faster than the operator allows.
+     *
+     * <p>Every chunk of the island used to be handed to its region at once. An island of two
+     * hundred blocks a side is a hundred and sixty nine of them, each clearing every block in its
+     * own column, and all of them landing on the same tick. The operator's file has named a rate
+     * for this since the performance work, one number for an ordinary server and a smaller one for
+     * a server already behind, and nothing read either.
+     *
+     * <p>The rate is read again for every second rather than once at the start, so a server that
+     * falls behind halfway through a reset finishes the rest of it slower.
+     */
+    private void startAtTheRateAllowed(Deque<Runnable> waiting) {
+        int rate = backpressureController == null
+                ? Integer.MAX_VALUE
+                : Math.max(1, backpressureController.resolveChunkDeletionRate());
+        for (int started = 0; started < rate && !waiting.isEmpty(); started++) {
+            waiting.poll().run();
+        }
+        if (!waiting.isEmpty()) {
+            schedulerPort.asyncAfter(Duration.ofSeconds(1), () -> startAtTheRateAllowed(waiting));
+        }
     }
 }
