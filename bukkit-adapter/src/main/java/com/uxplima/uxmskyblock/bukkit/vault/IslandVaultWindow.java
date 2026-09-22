@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.vault;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -27,6 +28,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultActionType;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry;
@@ -47,6 +49,11 @@ import org.jspecify.annotations.Nullable;
  * freely. A menu engine window is the wrong shape: every slot would have to be a button.
  */
 public final class IslandVaultWindow {
+
+    /** How a moment is written in the log, in the server's own zone. */
+    private static final java.time.format.DateTimeFormatter WHEN = java.time.format.DateTimeFormatter.ofPattern(
+                    "yyyy-MM-dd HH:mm", Locale.ROOT)
+            .withZone(java.time.ZoneId.systemDefault());
 
     /**
      * Marks an open vault window and carries what the close handler needs to commit it.
@@ -143,6 +150,80 @@ public final class IslandVaultWindow {
                                 player, "vault.busy", Placeholder.unparsed("page", Integer.toString(page))));
             }
         });
+    }
+
+    /**
+     * Sends the island's management what the vault has seen.
+     *
+     * <p>The audit entries were written and no one could read them: the service call that returns
+     * them had no caller anywhere. A record nobody can look at is not a record.
+     *
+     * <p>The bar is the island's management permission, not the one that opens the vault. Every
+     * member can open the chest; who took what out of it is the owner's question.
+     */
+    public void showLog(Player player, int limit) {
+        Objects.requireNonNull(player, "player must not be null");
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            messages.send(player, "error.session_not_active");
+            return;
+        }
+        ProfileId profileId = optProfile.get();
+
+        schedulerPort.async(() -> {
+            Optional<Island> optIsland =
+                    islandStoragePort.findIslandIdByProfileId(profileId).flatMap(islandStoragePort::findIslandById);
+            if (optIsland.isEmpty()) {
+                schedulerPort.onEntity(playerUuid, () -> messages.send(player, "error.no_island"));
+                return;
+            }
+            Island island = optIsland.get();
+            if (!roleOf(island, profileId).hasPermission(IslandPermission.SETTINGS_MODIFY)) {
+                schedulerPort.onEntity(playerUuid, () -> messages.send(player, "vault.log_no_permission"));
+                return;
+            }
+
+            List<VaultAuditLogEntry> entries = vaultService.getRecentAuditLogs(island.id(), limit);
+            schedulerPort.onEntity(playerUuid, () -> sendLog(player, island, entries));
+        });
+    }
+
+    private void sendLog(Player player, Island island, List<VaultAuditLogEntry> entries) {
+        if (entries.isEmpty()) {
+            messages.send(player, "vault.log_empty");
+            return;
+        }
+        messages.send(player, "vault.log_header", Placeholder.unparsed("count", Integer.toString(entries.size())));
+        for (VaultAuditLogEntry entry : entries) {
+            messages.send(
+                    player,
+                    "vault.log_entry",
+                    Placeholder.unparsed("actor", nameOf(island, entry.actorProfileId())),
+                    Placeholder.unparsed("action", entry.actionType().name().toLowerCase(Locale.ROOT)),
+                    Placeholder.unparsed("quantity", Integer.toString(entry.quantity())),
+                    Placeholder.unparsed("item", entry.itemSummary()),
+                    Placeholder.unparsed("page", Integer.toString(entry.page())),
+                    Placeholder.unparsed("slot", Integer.toString(entry.slot())),
+                    Placeholder.unparsed("when", WHEN.format(entry.createdAt())));
+        }
+    }
+
+    /**
+     * The name behind a profile id, or the id itself when the island no longer holds that member.
+     *
+     * <p>The island is already in hand, so this costs no lookup. A member who has left keeps their
+     * entries: a record that forgets who did something is worth less than the id.
+     */
+    private static String nameOf(Island island, String actorProfileId) {
+        for (IslandMember member : island.members().values()) {
+            if (member.profileId().toString().equals(actorProfileId)) {
+                String name =
+                        Bukkit.getOfflinePlayer(member.playerUuid().value()).getName();
+                return name != null ? name : actorProfileId;
+            }
+        }
+        return actorProfileId;
     }
 
     private void show(

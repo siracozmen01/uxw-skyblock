@@ -90,6 +90,9 @@ public final class IslandCommandTree {
     final Messages messages;
     final HomeConfiguration homeConfiguration;
     volatile @Nullable HomeService homeService;
+    /** How many log lines a caller who names no number gets. */
+    private static final int DEFAULT_VAULT_LOG_LINES = 10;
+
     private volatile @Nullable IslandVaultWindow vaultWindow;
     volatile @Nullable ActivityFeedService activityFeedService;
     final ServerNodeId serverNodeId;
@@ -344,6 +347,12 @@ public final class IslandCommandTree {
     private LiteralArgumentBuilder<CommandSourceStack> vaultBranch(String verb) {
         return Cmd.literal(verb)
                 .executes(ctx -> executeVault(ctx, 1))
+                .then(Cmd.literal("log")
+                        .executes(ctx -> executeVaultLog(ctx, DEFAULT_VAULT_LOG_LINES))
+                        .then(Cmd.argument("lines", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                                .executes(ctx -> executeVaultLog(
+                                        ctx,
+                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "lines")))))
                 .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                         .executes(ctx -> executeVault(
                                 ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page"))));
@@ -508,6 +517,20 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         window.open(player, page);
+        return Cmd.OK;
+    }
+
+    private int executeVaultLog(CommandContext<CommandSourceStack> ctx, int lines) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        IslandVaultWindow window = this.vaultWindow;
+        if (window == null) {
+            send(player, "vault.disabled");
+            return Cmd.OK;
+        }
+        window.showLog(player, lines);
         return Cmd.OK;
     }
 
