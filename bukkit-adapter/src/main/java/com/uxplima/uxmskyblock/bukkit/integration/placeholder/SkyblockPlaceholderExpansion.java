@@ -77,7 +77,14 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     private final Set<UUID> refreshingPlayers = ConcurrentHashMap.newKeySet();
 
     private final Map<LeaderboardCategory, List<LeaderboardEntry>> cachedLeaderboards = new ConcurrentHashMap<>();
-    private final Map<UUID, Integer> cachedPlayerRanks = new ConcurrentHashMap<>();
+    /**
+     * Each island's place on the level board, replaced whole on every refresh.
+     *
+     * <p>Writing the new places over the old ones left an island that fell off the board holding the
+     * place it last had, so two islands could both read third and a deleted island kept its rank.
+     */
+    private volatile Map<UUID, Integer> cachedPlayerRanks = Map.of();
+
     private final AtomicBoolean refreshingLeaderboards = new AtomicBoolean(false);
     private volatile long lastLeaderboardRefreshMs = 0;
 
@@ -297,9 +304,11 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
                 List<LeaderboardEntry> top = leaderboardPort.fetchTopIslands(cat, 100);
                 cachedLeaderboards.put(cat, top);
                 if (cat == LeaderboardCategory.LEVEL) {
+                    Map<UUID, Integer> ranks = new HashMap<>();
                     for (int i = 0; i < top.size(); i++) {
-                        cachedPlayerRanks.put(top.get(i).islandId().value(), i + 1);
+                        ranks.putIfAbsent(top.get(i).islandId().value(), i + 1);
                     }
+                    cachedPlayerRanks = Map.copyOf(ranks);
                 }
             } catch (Exception ex) {
                 LOGGER.log(java.util.logging.Level.FINEST, "Failed to refresh leaderboard for " + cat, ex);

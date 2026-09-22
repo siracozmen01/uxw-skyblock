@@ -124,6 +124,31 @@ class SkyblockPlaceholderExpansionTest {
     }
 
     @Test
+    @DisplayName("An island that falls off the level board no longer reads its old place")
+    void anIslandOffTheBoardLosesItsPlace() {
+        IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 50);
+        Island island = Island.create(islandId, bounds, new PlayerUuid(playerUuid), profileId, Instant.now());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(island));
+        IslandId rival = new IslandId(UUID.randomUUID());
+        when(mockLeaderboard.fetchTopIslands(eq(LeaderboardCategory.LEVEL), eq(100)))
+                .thenReturn(List.of(
+                        new LeaderboardEntry(1, islandId, "Island-1", 500L, "500"),
+                        new LeaderboardEntry(2, rival, "Island-2", 400L, "400")));
+        expansion.refreshPlayerDataSync(playerUuid);
+        expansion.refreshLeaderboardsSync();
+        assertThat(expansion.onRequest(mockPlayer, "island_leaderboard_rank")).isEqualTo("1");
+
+        when(mockLeaderboard.fetchTopIslands(eq(LeaderboardCategory.LEVEL), eq(100)))
+                .thenReturn(List.of(new LeaderboardEntry(1, rival, "Island-2", 400L, "400")));
+        expansion.refreshLeaderboardsSync();
+
+        assertThat(expansion.onRequest(mockPlayer, "island_leaderboard_rank"))
+                .describedAs("the place of an island no longer on the board")
+                .isEqualTo("N/A");
+    }
+
+    @Test
     @DisplayName("resolves global leaderboard placeholders without player from cached data")
     void resolvesGlobalLeaderboardPlaceholders() {
         LeaderboardEntry entry = new LeaderboardEntry(1, islandId, "Island-1", 9999L, "9999");
