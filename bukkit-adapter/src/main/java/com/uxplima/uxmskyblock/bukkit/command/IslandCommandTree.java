@@ -108,6 +108,11 @@ public final class IslandCommandTree {
     volatile @Nullable BackupService backupService;
     volatile @Nullable StorageBucket backupBucket;
     volatile @Nullable IslandBackupService islandBackupService;
+
+    /** The whole database, for the day the database is gone. */
+    volatile com.uxplima.uxmskyblock.core.application.backup.@Nullable DatabaseDisasterBackupService
+            databaseBackupService;
+
     volatile @Nullable IslandMembershipService membershipService;
     volatile @Nullable IslandSeasonService seasonService;
     volatile @Nullable SkyblockReloader reloader;
@@ -368,6 +373,12 @@ public final class IslandCommandTree {
     /** The thing that makes the backups {@code /is admin restore} puts back. */
     public void setIslandBackupService(@Nullable IslandBackupService islandBackupService) {
         this.islandBackupService = islandBackupService;
+    }
+
+    /** Hands the whole database backup to the command that takes one. */
+    public void setDatabaseBackupService(
+            com.uxplima.uxmskyblock.core.application.backup.@Nullable DatabaseDisasterBackupService service) {
+        this.databaseBackupService = service;
     }
 
     /** Who belongs to an island, and what they may do on it. */

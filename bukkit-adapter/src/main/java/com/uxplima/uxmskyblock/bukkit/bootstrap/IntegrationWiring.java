@@ -293,6 +293,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setBackupService(gameplay.backupService());
         this.commandTree.setBackupBucket(gameplay.backupBucket());
         this.commandTree.setIslandBackupService(gameplay.islandBackupService());
+        this.commandTree.setDatabaseBackupService(gameplay.databaseBackupService());
         this.commandTree.setMembershipService(gameplay.membershipService());
         this.commandTree.setSeasonService(gameplay.seasonService());
         // A reload reads the catalogues and the menus and nothing else: no service is re-bound and

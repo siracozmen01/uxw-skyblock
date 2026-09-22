@@ -130,6 +130,7 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.worldName,
                 tree.messages);
+        adminCommands.useDatabaseBackup(() -> tree.databaseBackupService);
 
         IslandLifecycleCommands lifecycleCommands = new IslandLifecycleCommands(
                 tree.createIslandUseCase,

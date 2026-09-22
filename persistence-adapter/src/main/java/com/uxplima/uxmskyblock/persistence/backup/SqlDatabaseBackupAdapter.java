@@ -160,6 +160,25 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
         }
     }
 
+    /**
+     * Which dialect the live database speaks.
+     *
+     * <p>A dialect this backup has no dump rules for is refused rather than guessed at. An export
+     * written for the wrong dialect is worse than no export, because it is only wrong on the day it
+     * is restored.
+     */
+    @Override
+    public DatabaseBackupDialect liveDialect() {
+        return switch (database.dialect()) {
+            case SQLITE -> DatabaseBackupDialect.SQLITE;
+            case MYSQL -> DatabaseBackupDialect.MARIADB;
+            case POSTGRES -> DatabaseBackupDialect.POSTGRESQL;
+            case H2, GENERIC ->
+                throw new IllegalStateException(
+                        "No disaster backup is written for the " + database.dialect() + " dialect");
+        };
+    }
+
     private void checkDialectMatch(DatabaseBackupDialect requestedDialect) {
         Dialect dbDialect = database.dialect();
         boolean matches =

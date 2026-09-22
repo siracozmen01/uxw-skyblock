@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.bukkit.recycle.NbtIslandBackupAdapter;
 import com.uxplima.uxmskyblock.bukkit.snapshot.WorldDimensionSnapshotAdapter;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService;
 import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.freeze.IslandAdminFreezeService;
 import com.uxplima.uxmskyblock.core.application.inactivity.IslandInactivityService;
@@ -46,6 +47,7 @@ public final class AdminWiring {
     private final BackupService backupService;
     private final IslandRestoreService islandRestoreService;
     private final IslandBackupService islandBackupService;
+    private final DatabaseDisasterBackupService databaseBackupService;
     private final IslandAntiAbuseService antiAbuseService;
     private final @Nullable IslandAntiAbuseListener antiAbuseListener;
 
@@ -126,6 +128,11 @@ public final class AdminWiring {
                 this.worldDimensionSnapshotPort,
                 pluginVersionOf(plugin));
 
+        // The second kind of backup the persistence specification publishes. The port, its adapter
+        // and the word in the catalog table were all written and no command drove any of them.
+        this.databaseBackupService = new DatabaseDisasterBackupService(
+                this.backupService, persistence.databaseBackupPort(), pluginVersionOf(plugin));
+
         this.antiAbuseService = new IslandAntiAbuseService(
                 persistence.antiAbuseStoragePort(),
                 config.antiAbuseConfig().purgeInventoryOnReset(),
@@ -205,6 +212,11 @@ public final class AdminWiring {
 
     public BackupService backupService() {
         return backupService;
+    }
+
+    /** What takes the whole database out, for the day the database is gone. */
+    public DatabaseDisasterBackupService databaseBackupService() {
+        return databaseBackupService;
     }
 
     public IslandRestoreService islandRestoreService() {

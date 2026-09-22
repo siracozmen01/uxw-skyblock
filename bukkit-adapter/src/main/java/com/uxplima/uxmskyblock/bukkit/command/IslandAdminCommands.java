@@ -97,6 +97,14 @@ public final class IslandAdminCommands {
                 messages);
     }
 
+    /** Tells the restore half what takes a whole database backup. */
+    public void useDatabaseBackup(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.core.application.backup.@Nullable DatabaseDisasterBackupService>
+                    provider) {
+        this.restoreCommands.useDatabaseBackup(provider);
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> buildAdmin() {
         return Cmd.literal("admin")
                 .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())

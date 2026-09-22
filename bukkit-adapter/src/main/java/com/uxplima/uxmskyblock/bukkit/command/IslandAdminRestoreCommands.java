@@ -24,6 +24,7 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.permission.CatalogPermissions;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.backup.BackupService;
+import com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService;
 import com.uxplima.uxmskyblock.core.application.backup.IslandBackupService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
@@ -57,6 +58,10 @@ public final class IslandAdminRestoreCommands {
     private final Supplier<@Nullable IslandRecycleService> recycleServiceProvider;
     private final Supplier<@Nullable StorageBucket> backupBucketProvider;
     private final Supplier<@Nullable IslandBackupService> islandBackupServiceProvider;
+
+    /** The whole database backup the persistence specification publishes and nothing ever took. */
+    private volatile Supplier<@Nullable DatabaseDisasterBackupService> databaseBackupServiceProvider = () -> null;
+
     private final IslandLocationService islandLocationService;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
     private final SchedulerPort schedulerPort;
@@ -183,7 +188,49 @@ public final class IslandAdminRestoreCommands {
                 .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
                         || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                         || src.getSender().isOp())
+                // The specification publishes two kinds of backup. This is the second one, and
+                // until now nothing could take it: the port, its adapter and the word in the
+                // catalog table were all written and no command drove any of them.
+                .then(Cmd.literal("database").executes(this::executeDatabaseBackup))
                 .then(Cmd.argument("island", StringArgumentType.word()).executes(this::executeBackup));
+    }
+
+    /** Tells this command group what takes a whole database backup. */
+    public void useDatabaseBackup(Supplier<@Nullable DatabaseDisasterBackupService> provider) {
+        this.databaseBackupServiceProvider = Objects.requireNonNull(provider, "provider must not be null");
+    }
+
+    private int executeDatabaseBackup(CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        DatabaseDisasterBackupService service = databaseBackupServiceProvider.get();
+        if (service == null) {
+            send(sender, "admin.backup_not_configured");
+            return Cmd.OK;
+        }
+
+        schedulerPort.async(() -> {
+            StorageBucket bucket = backupBucketProvider.get();
+            if (bucket == null) {
+                send(sender, "admin.restore_not_configured");
+                return;
+            }
+            send(sender, "admin.database_backup_starting");
+
+            // Reading every table and sending the result somewhere is what this is, so it runs off
+            // the thread the command arrived on and nothing here touches the game.
+            switch (service.backupDatabase(bucket)) {
+                case DatabaseDisasterBackupService.Outcome.Success success ->
+                    send(
+                            sender,
+                            "admin.database_backup_success",
+                            Placeholder.unparsed("backup", success.backupSetId().toString()),
+                            Placeholder.unparsed("dialect", success.dialect().name()),
+                            Placeholder.unparsed("bytes", Long.toString(success.bytes())));
+                case DatabaseDisasterBackupService.Outcome.Failure failure ->
+                    send(sender, "admin.backup_failed", Placeholder.unparsed("reason", failure.reason()));
+            }
+        });
+        return Cmd.OK;
     }
 
     private int executeBackup(CommandContext<CommandSourceStack> ctx) {

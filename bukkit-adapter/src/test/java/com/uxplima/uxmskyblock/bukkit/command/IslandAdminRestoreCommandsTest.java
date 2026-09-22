@@ -78,6 +78,7 @@ class IslandAdminRestoreCommandsTest {
     private BackupService backups;
     private BackupCatalogPort catalog;
     private IslandRecycleService recycle;
+    private IslandAdminRestoreCommands commands;
     private IslandBackupService islandBackups;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
@@ -170,7 +171,7 @@ class IslandAdminRestoreCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(admin.getUniqueId())).thenReturn(Optional.of(ADMIN_PROFILE));
 
-        IslandAdminRestoreCommands commands = new IslandAdminRestoreCommands(
+        commands = new IslandAdminRestoreCommands(
                 () -> restore,
                 () -> backups,
                 () -> recycle,
@@ -196,6 +197,45 @@ class IslandAdminRestoreCommandsTest {
         CommandSourceStack source = mock(CommandSourceStack.class);
         when(source.getSender()).thenReturn(sender);
         dispatcher.execute(line, source);
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The whole database can be backed up, which nothing could ask for before")
+    void thewholeDatabaseCanBeBackedUp() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        when(service.backupDatabase(any()))
+                .thenReturn(
+                        new com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.Outcome
+                                .Success(
+                                BackupSetId.random(),
+                                com.uxplima.uxmskyblock.core.domain.backup.DatabaseBackupDialect.SQLITE,
+                                4096L));
+        commands.useDatabaseBackup(() -> service);
+
+        run("backup database", admin);
+
+        verify(service).backupDatabase(org.mockito.ArgumentMatchers.eq(CONFIGURED_BUCKET));
+        assertThat(admin.nextMessage()).describedAs("it says it started").isNotNull();
+        assertThat(admin.nextMessage()).describedAs("and what came of it").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A node with nothing to take a database backup with says so rather than nothing")
+    void nodatabaseBackupIsAnAnswer() throws Exception {
+        run("backup database", admin);
+
+        assertThat(admin.nextMessage()).isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Backing up an island still means the island, not the database")
+    void anislandBackupIsStillAnIslandBackup() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        commands.useDatabaseBackup(() -> service);
+
+        run("backup " + ISLAND.value(), admin);
+
+        verify(service, org.mockito.Mockito.never()).backupDatabase(any());
     }
 
     @Test
