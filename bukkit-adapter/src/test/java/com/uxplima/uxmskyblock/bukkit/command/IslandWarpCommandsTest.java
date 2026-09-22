@@ -131,6 +131,52 @@ class IslandWarpCommandsTest {
         teleportAttempted = false;
     }
 
+    @org.junit.jupiter.api.Test
+    @DisplayName("Moving a warp puts it where the player is standing")
+    void movingAWarpPutsItHere() throws Exception {
+        com.uxplima.uxmskyblock.core.domain.warp.IslandWarp moved =
+                mock(com.uxplima.uxmskyblock.core.domain.warp.IslandWarp.class);
+        when(moved.name()).thenReturn(com.uxplima.uxmskyblock.core.domain.warp.WarpName.of("home"));
+        when(warps.relocateWarp(any(), any(), any(), any())).thenReturn(moved);
+
+        run("warp move home", player);
+
+        org.mockito.ArgumentCaptor<com.uxplima.uxmskyblock.core.domain.warp.WarpLocation> where =
+                org.mockito.ArgumentCaptor.forClass(com.uxplima.uxmskyblock.core.domain.warp.WarpLocation.class);
+        verify(warps)
+                .relocateWarp(
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(PROFILE),
+                        org.mockito.ArgumentMatchers.eq(com.uxplima.uxmskyblock.core.domain.warp.WarpName.of("home")),
+                        where.capture());
+        assertThat(where.getValue().worldName())
+                .describedAs("where the player is standing, read before anything went async")
+                .isEqualTo(player.getLocation().getWorld().getName());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Moving a warp this island does not have says so")
+    void movingAnUnknownWarpSaysSo() throws Exception {
+        when(warps.relocateWarp(any(), any(), any(), any()))
+                .thenThrow(new com.uxplima.uxmskyblock.core.domain.warp.WarpNotFoundException(ISLAND, "nowhere"));
+
+        run("warp move nowhere", player);
+
+        assertThat(player.nextMessage())
+                .describedAs("told there is no such warp")
+                .isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A role that may not touch warps cannot move one either")
+    void arefusedRoleCannotMove() throws Exception {
+        when(warps.relocateWarp(any(), any(), any(), any())).thenThrow(new SecurityException("no"));
+
+        run("warp move home", player);
+
+        assertThat(player.nextMessage()).describedAs("the refusal").isNotNull();
+    }
+
     @AfterEach
     void tearDown() {
         MockBukkit.unmock();

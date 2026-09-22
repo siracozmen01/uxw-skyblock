@@ -43,6 +43,7 @@ import com.uxplima.uxmskyblock.core.domain.warp.WarpCategory;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLocation;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpName;
+import com.uxplima.uxmskyblock.core.domain.warp.WarpNotFoundException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -100,6 +101,8 @@ public final class IslandWarpCommands {
                                 .executes(ctx -> executeCreate(ctx, WarpCategory.GENERAL))
                                 .then(Cmd.argument("category", StringArgumentType.word())
                                         .executes(this::executeCreateWithCategory))))
+                .then(Cmd.literal("move")
+                        .then(Cmd.argument("name", StringArgumentType.word()).executes(this::executeMove)))
                 .then(Cmd.literal("delete")
                         .then(Cmd.argument("name", StringArgumentType.word()).executes(this::executeDelete)))
                 .then(Cmd.literal("lock")
@@ -181,6 +184,57 @@ public final class IslandWarpCommands {
                         }
                     });
                 }));
+    }
+
+    /**
+     * {@code /is warp move <name>}: puts an existing warp where the player is standing.
+     *
+     * <p>relocateWarp was written with the warp work and had no caller anywhere, so a warp put down
+     * in the wrong place could only be deleted and made again, which loses whatever a visitor had
+     * bookmarked about it.
+     */
+    private int executeMove(CommandContext<CommandSourceStack> ctx) {
+        String rawName = StringArgumentType.getString(ctx, "name");
+        if (!(ctx.getSource().getSender() instanceof Player standing)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        Location at = standing.getLocation();
+        if (at == null || at.getWorld() == null) {
+            send(standing, "warp.location_unreadable");
+            return Cmd.OK;
+        }
+        // Read where the player is now, on the thread that owns them, before anything goes async.
+        WarpLocation where =
+                new WarpLocation(at.getWorld().getName(), at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch());
+
+        return onOwnIsland(ctx, (player, service, island) -> {
+            ProfileId profileId = activeProfile(player).orElse(null);
+            if (profileId == null) {
+                onEntity(player, () -> send(player, "error.session_not_active"));
+                return;
+            }
+            try {
+                IslandWarp moved = service.relocateWarp(island, profileId, WarpName.of(rawName), where);
+                onEntity(
+                        player,
+                        () -> send(
+                                player,
+                                "warp.moved",
+                                Placeholder.unparsed("name", moved.name().value())));
+            } catch (SecurityException denied) {
+                onEntity(player, () -> send(player, "warp.no_permission"));
+            } catch (WarpNotFoundException missing) {
+                onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
+            } catch (RuntimeException refused) {
+                onEntity(
+                        player,
+                        () -> send(
+                                player,
+                                "warp.refused",
+                                Placeholder.unparsed("reason", String.valueOf(refused.getMessage()))));
+            }
+        });
     }
 
     private int executeCreateWithCategory(CommandContext<CommandSourceStack> ctx) {
