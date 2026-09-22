@@ -59,6 +59,8 @@ class IslandActivityCommandsTest {
     private PlayerMock player;
     private ActivityFeedService feed;
     private CommandDispatcher<CommandSourceStack> dispatcher;
+    private IslandLocationService locations;
+    private PlayerSessionCoordinator sessions;
 
     private static SchedulerPort inlineScheduler() {
         SchedulerPort scheduler = mock(SchedulerPort.class);
@@ -86,7 +88,7 @@ class IslandActivityCommandsTest {
                 ActivityVisibility.MEMBERS_ONLY,
                 "bank.deposit",
                 1,
-                "{\"amount\":250}",
+                com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(java.util.Map.of("amount", "250")),
                 when);
     }
 
@@ -98,10 +100,10 @@ class IslandActivityCommandsTest {
         feed = mock(ActivityFeedService.class);
         when(feed.getRecentActivities(anyString(), anyInt())).thenReturn(List.of());
 
-        IslandLocationService locations = mock(IslandLocationService.class);
+        locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
 
-        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
         IslandActivityCommands commands = new IslandActivityCommands(
@@ -124,6 +126,155 @@ class IslandActivityCommandsTest {
         CommandSourceStack source = mock(CommandSourceStack.class);
         when(source.getSender()).thenReturn(sender);
         dispatcher.execute(line, source);
+    }
+
+    /** An event of this type, carrying this payload, written this long ago. */
+    private static ActivityEvent eventOf(String payloadTypeId, String payload, Instant when) {
+        return new ActivityEvent(
+                UUID.randomUUID(),
+                ISLAND.value().toString(),
+                PROFILE,
+                ActivityEventType.BANK_DEPOSIT,
+                ActivityVisibility.MEMBERS_ONLY,
+                payloadTypeId,
+                1,
+                payload,
+                when);
+    }
+
+    /** The same command over the real catalogue, for the lines a player actually reads. */
+    private CommandDispatcher<CommandSourceStack> overTheRealCatalogue() {
+        IslandActivityCommands commands =
+                new IslandActivityCommands(() -> feed, locations, inlineScheduler(), Messages.bundled(), sessions);
+        CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
+        tree.register(commands.build());
+        return tree;
+    }
+
+    private void runOn(CommandDispatcher<CommandSourceStack> tree, String line) throws Exception {
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(player);
+        tree.execute(line, source);
+    }
+
+    /** The last thing the player was told, which is the entry when there is exactly one. */
+    private String lastLine() {
+        String last = null;
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            last = line;
+        }
+        return java.util.Objects.requireNonNull(last, "the player was told nothing at all");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An entry whose type the catalogue answers is written in that type's own words")
+    void anentryOfAKnownTypeUsesItsOwnLine() throws Exception {
+        when(feed.getRecentActivities(anyString(), anyInt()))
+                .thenReturn(List.of(eventOf(
+                        "activity.bank_deposit",
+                        com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                java.util.Map.of("player", "Ayse", "amount", "250")),
+                        Instant.now().minus(java.time.Duration.ofHours(2)))));
+
+        runOn(overTheRealCatalogue(), "activity");
+
+        assertThat(lastLine())
+                .describedAs("the type's own sentence, carrying what the writer put in it")
+                .contains("Ayse")
+                .contains("250")
+                .contains("2h")
+                // The words belong to activity.bank_deposit and to nothing else. Without them this
+                // passes on the fallback line too, because that one prints the whole payload as the
+                // body and the payload holds both of those values as plain text.
+                .contains("into the bank")
+                .doesNotContain("BANK_DEPOSIT");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An entry whose type the catalogue does not answer still reaches the player")
+    void anentryOfAnUnknownTypeFallsBack() throws Exception {
+        when(feed.getRecentActivities(anyString(), anyInt()))
+                .thenReturn(List.of(eventOf(
+                        "something.nobody.wrote",
+                        com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                java.util.Map.of("body", "a thing happened")),
+                        Instant.now().minus(java.time.Duration.ofMinutes(5)))));
+
+        runOn(overTheRealCatalogue(), "activity");
+
+        assertThat(lastLine())
+                .describedAs("a type added later must not go unread until somebody writes a line for it")
+                .contains("a thing happened")
+                .contains("5m")
+                .describedAs("and it is the fallback line, which names the type it could not write")
+                .contains("BANK_DEPOSIT");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("How long ago is said in the coarsest unit that is still true")
+    void howlongAgoIsTheCoarsestTrueUnit() throws Exception {
+        record Case(java.time.Duration since, String reads) {}
+        List<Case> cases = List.of(
+                new Case(java.time.Duration.ofSeconds(30), "0m"),
+                new Case(java.time.Duration.ofMinutes(5), "5m"),
+                new Case(java.time.Duration.ofMinutes(59), "59m"),
+                new Case(java.time.Duration.ofHours(3), "3h"),
+                new Case(java.time.Duration.ofHours(47), "1d"),
+                new Case(java.time.Duration.ofDays(4), "4d"));
+
+        for (Case one : cases) {
+            when(feed.getRecentActivities(anyString(), anyInt()))
+                    .thenReturn(List.of(eventOf(
+                            "something.nobody.wrote",
+                            com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                    java.util.Map.of("body", "x")),
+                            Instant.now().minus(one.since()))));
+
+            runOn(overTheRealCatalogue(), "activity");
+
+            assertThat(lastLine()).describedAs("%s ago", one.since()).contains(one.reads());
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An entry written in the future is not written in negative time")
+    void afutureEntryReadsAsNow() throws Exception {
+        when(feed.getRecentActivities(anyString(), anyInt()))
+                .thenReturn(List.of(eventOf(
+                        "something.nobody.wrote",
+                        com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(java.util.Map.of("body", "x")),
+                        Instant.now().plus(java.time.Duration.ofHours(1)))));
+
+        runOn(overTheRealCatalogue(), "activity");
+
+        assertThat(lastLine())
+                .describedAs("two nodes whose clocks disagree must not make a player read -1h ago")
+                .contains("0m");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A node with the feed switched off says so rather than saying nothing")
+    void thefeedBeingOffIsAnAnswer() throws Exception {
+        IslandActivityCommands off =
+                new IslandActivityCommands(() -> null, locations, inlineScheduler(), Messages.bundled(), sessions);
+        CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
+        tree.register(off.build());
+
+        runOn(tree, "activity");
+
+        assertThat(lastLine()).isNotEmpty();
+        verify(feed, org.mockito.Mockito.never()).getRecentActivities(anyString(), anyInt());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A player whose session is not ready is told, and the feed is never asked")
+    void asessionThatIsNotReadyIsAnAnswer() throws Exception {
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.empty());
+
+        runOn(overTheRealCatalogue(), "activity");
+
+        assertThat(lastLine()).isNotEmpty();
+        verify(feed, org.mockito.Mockito.never()).getRecentActivities(anyString(), anyInt());
     }
 
     @Test
