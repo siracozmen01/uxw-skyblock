@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.IntSupplier;
 
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Walks every block of one chunk's column, a tick's worth at a time.
@@ -32,7 +33,7 @@ public final class BudgetedBlockPass {
         boolean apply(int x, int y, int z);
     }
 
-    private final SchedulerPort scheduler;
+    private final @Nullable SchedulerPort scheduler;
     private final String worldName;
     private final int chunkX;
     private final int chunkZ;
@@ -52,7 +53,7 @@ public final class BudgetedBlockPass {
     private boolean again;
 
     private BudgetedBlockPass(
-            SchedulerPort scheduler,
+            @Nullable SchedulerPort scheduler,
             String worldName,
             int chunkX,
             int chunkZ,
@@ -64,7 +65,7 @@ public final class BudgetedBlockPass {
             int maxY,
             IntSupplier budget,
             BlockWork work) {
-        this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
+        this.scheduler = scheduler;
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
@@ -85,9 +86,13 @@ public final class BudgetedBlockPass {
      *
      * <p>The caller is expected to be on that thread already, which is where both callers are: this
      * is the body of their region task, not something to hand to another one.
+     *
+     * <p>A caller with no scheduler has nowhere to hand the region back to, so there is no tick to
+     * protect and the walk runs to the end in place. That is what a node built without one does
+     * everywhere else too.
      */
     public static CompletableFuture<Void> over(
-            SchedulerPort scheduler,
+            @Nullable SchedulerPort scheduler,
             String worldName,
             int chunkX,
             int chunkZ,
@@ -122,7 +127,8 @@ public final class BudgetedBlockPass {
     }
 
     private void slice() {
-        int allowed = Math.max(1, budget.getAsInt());
+        SchedulerPort handBack = this.scheduler;
+        int allowed = handBack == null ? Integer.MAX_VALUE : Math.max(1, budget.getAsInt());
         int written = 0;
         try {
             while (x <= endX) {
@@ -133,7 +139,10 @@ public final class BudgetedBlockPass {
                         }
                         y++;
                         if (written >= allowed) {
-                            scheduler.onRegion(worldName, chunkX, chunkZ, this::run);
+                            java.util.Objects.requireNonNull(
+                                            handBack,
+                                            "a budget is only spent when there is a " + "region to hand back to")
+                                    .onRegion(worldName, chunkX, chunkZ, this::run);
                             return;
                         }
                     }

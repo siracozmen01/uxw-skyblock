@@ -25,7 +25,9 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.plugin.Plugin;
 
 import com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration;
+import com.uxplima.uxmskyblock.bukkit.performance.BudgetedBlockPass;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.snapshot.WorldDimensionSnapshotPort;
 import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
@@ -54,16 +56,34 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
     private final @Nullable IslandStoragePort islandStoragePort;
     private final @Nullable SchedulerPort schedulerPort;
     private final @Nullable DimensionConfiguration dimensionConfiguration;
+    private final @Nullable AdaptiveBackpressureController backpressureController;
 
     public WorldDimensionSnapshotAdapter(
             Plugin plugin,
             @Nullable IslandStoragePort islandStoragePort,
             @Nullable SchedulerPort schedulerPort,
             @Nullable DimensionConfiguration dimensionConfiguration) {
+        this(plugin, islandStoragePort, schedulerPort, dimensionConfiguration, null);
+    }
+
+    public WorldDimensionSnapshotAdapter(
+            Plugin plugin,
+            @Nullable IslandStoragePort islandStoragePort,
+            @Nullable SchedulerPort schedulerPort,
+            @Nullable DimensionConfiguration dimensionConfiguration,
+            @Nullable AdaptiveBackpressureController backpressureController) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.islandStoragePort = islandStoragePort;
         this.schedulerPort = schedulerPort;
         this.dimensionConfiguration = dimensionConfiguration;
+        this.backpressureController = backpressureController;
+    }
+
+    /** How many blocks one tick may put back, or every one of them on a node with no controller. */
+    private int blocksPerTick() {
+        return backpressureController == null
+                ? Integer.MAX_VALUE
+                : Math.max(1, backpressureController.resolveBlockPasteBatchSize());
     }
 
     public WorldDimensionSnapshotAdapter(Plugin plugin, @Nullable IslandStoragePort islandStoragePort) {
@@ -291,34 +311,56 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                                         Map<BlockCoord, String> snapshotBlocks =
                                                 chunkBlockMap.getOrDefault(chunkKey, Map.of());
 
-                                        for (int x = startX; x <= endX; x++) {
-                                            for (int z = startZ; z <= endZ; z++) {
-                                                for (int y = minY; y < maxY; y++) {
-                                                    Block block = chunk.getBlock(x & 15, y, z & 15);
-                                                    BlockCoord coord = new BlockCoord(x, y, z);
-                                                    String blockDataStr = snapshotBlocks.get(coord);
-
-                                                    if (blockDataStr != null) {
-                                                        clearContainerIfPresent(block);
-                                                        try {
-                                                            block.setBlockData(
-                                                                    Bukkit.createBlockData(blockDataStr), false);
-                                                        } catch (Exception e) {
-                                                            plugin.getLogger()
-                                                                    .fine(() -> "Skipping invalid block state restore: "
-                                                                            + e.getMessage());
-                                                        }
-                                                        clearContainerIfPresent(block);
-                                                    } else if (!block.isEmpty()) {
-                                                        // Not in snapshot -> clear occupied block to air
-                                                        // deterministically
-                                                        clearContainerIfPresent(block);
-                                                        block.setType(Material.AIR, false);
+                                        // Putting a chunk back used to be every block in its
+                                        // column on one tick, and an island is a hundred and more
+                                        // chunks of that. The budget is the operator's, read again
+                                        // for every slice.
+                                        var unused = BudgetedBlockPass.over(
+                                                        schedulerPort,
+                                                        finalWorld.getName(),
+                                                        finalCx,
+                                                        finalCz,
+                                                        startX,
+                                                        endX,
+                                                        startZ,
+                                                        endZ,
+                                                        minY,
+                                                        maxY,
+                                                        this::blocksPerTick,
+                                                        (x, y, z) -> {
+                                                            Block block = chunk.getBlock(x & 15, y, z & 15);
+                                                            String blockDataStr =
+                                                                    snapshotBlocks.get(new BlockCoord(x, y, z));
+                                                            if (blockDataStr != null) {
+                                                                clearContainerIfPresent(block);
+                                                                try {
+                                                                    block.setBlockData(
+                                                                            Bukkit.createBlockData(blockDataStr),
+                                                                            false);
+                                                                } catch (Exception e) {
+                                                                    plugin.getLogger()
+                                                                            .fine(() ->
+                                                                                    "Skipping invalid block state restore: "
+                                                                                            + e.getMessage());
+                                                                }
+                                                                clearContainerIfPresent(block);
+                                                                return true;
+                                                            }
+                                                            if (!block.isEmpty()) {
+                                                                // Not in the snapshot: clear it, deterministically.
+                                                                clearContainerIfPresent(block);
+                                                                block.setType(Material.AIR, false);
+                                                                return true;
+                                                            }
+                                                            return false;
+                                                        })
+                                                .whenComplete((res, ex) -> {
+                                                    if (ex == null) {
+                                                        chunkFuture.complete(null);
+                                                    } else {
+                                                        chunkFuture.completeExceptionally(ex);
                                                     }
-                                                }
-                                            }
-                                        }
-                                        chunkFuture.complete(null);
+                                                });
                                     } catch (Throwable t) {
                                         chunkFuture.completeExceptionally(t);
                                     }

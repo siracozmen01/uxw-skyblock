@@ -86,7 +86,13 @@ public final class AdminWiring {
                 persistence.islandMutationLock());
 
         this.worldDimensionSnapshotPort = new WorldDimensionSnapshotAdapter(
-                plugin, persistence.islandStoragePort(), scheduler, config.dimensionConfig());
+                plugin,
+                persistence.islandStoragePort(),
+                scheduler,
+                config.dimensionConfig(),
+                // Putting an island back writes as many blocks as clearing one, so it is paced by
+                // the same number the operator set for clearing.
+                backpressureController);
         this.islandBackupAdapter = new NbtIslandBackupAdapter(
                 plugin.getDataFolder(), this.worldDimensionSnapshotPort, persistence.gameModeHierarchyStoragePort());
         this.recycleService = new IslandRecycleService(
