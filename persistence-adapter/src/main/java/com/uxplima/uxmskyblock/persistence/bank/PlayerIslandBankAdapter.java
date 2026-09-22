@@ -147,32 +147,11 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
             tx.begin(connection);
             try {
                 // Step 1: Idempotency check on processed_operations
-                String checkOpSql = """
-                        SELECT operation_id, status, result_code, result_payload
-                        FROM processed_operations
-                        WHERE (operation_scope = ? AND actor_id = ? AND idempotency_key = ?)
-                           OR operation_id = ?
-                        """;
-                try (PreparedStatement ps = connection.prepareStatement(checkOpSql)) {
-                    ps.setString(1, effectiveScope);
-                    ps.setString(2, actorUuid.toString());
-                    ps.setString(3, idempotencyKey);
-                    ps.setString(4, operationId.toString());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            UUID existingOpId = UUID.fromString(rs.getString("operation_id"));
-                            String status = rs.getString("status");
-                            String resultCode = rs.getString("result_code");
-                            String resultPayload = rs.getString("result_payload");
-                            tx.rollbackQuietly(connection);
-                            return new BankTransactionOutcome.DuplicateOperation(
-                                    existingOpId,
-                                    "Operation already recorded with status " + status + " (" + resultCode + ")",
-                                    status,
-                                    resultCode,
-                                    resultPayload);
-                        }
-                    }
+                BankTransactionOutcome.DuplicateOperation recorded =
+                        recordedOperation(connection, effectiveScope, actorUuid, idempotencyKey, operationId);
+                if (recorded != null) {
+                    tx.rollbackQuietly(connection);
+                    return recorded;
                 }
 
                 // Step 2: Insert PENDING reservation in processed_operations
@@ -189,6 +168,23 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     ps.setString(4, idempotencyKey);
                     ps.setString(5, islandId.value().toString());
                     ps.executeUpdate();
+                } catch (SQLException collided) {
+                    // Another request with the same scope, actor and key reserved it between the check
+                    // above and this insert, and the engine held this one on the unique index until that
+                    // one committed. That is the same request, not a failure: roll this draft back and
+                    // answer with what the other one recorded. It used to surface as a persistence
+                    // error, so a caller retrying one deposit got a server error for its own retry.
+                    if (!isUniqueViolation(collided)) {
+                        throw collided;
+                    }
+                    tx.rollbackQuietly(connection);
+                    BankTransactionOutcome.DuplicateOperation winner =
+                            recordedOperation(connection, effectiveScope, actorUuid, idempotencyKey, operationId);
+                    tx.rollbackQuietly(connection);
+                    if (winner != null) {
+                        return winner;
+                    }
+                    throw collided;
                 }
 
                 // Step 3: Authority lease verification with row locking
@@ -439,5 +435,58 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
     @Override
     public List<BankTransaction> getTransactionHistory(IslandId islandId, int limit) {
         return ledger.getTransactionHistory(islandId, limit);
+    }
+
+    /** What processed_operations already holds for this request, or null when it holds nothing. */
+    private static BankTransactionOutcome.@Nullable DuplicateOperation recordedOperation(
+            Connection connection, String scope, UUID actorUuid, String idempotencyKey, UUID operationId)
+            throws SQLException {
+        String checkOpSql = """
+                SELECT operation_id, status, result_code, result_payload
+                FROM processed_operations
+                WHERE (operation_scope = ? AND actor_id = ? AND idempotency_key = ?)
+                   OR operation_id = ?
+                """;
+        try (PreparedStatement ps = connection.prepareStatement(checkOpSql)) {
+            ps.setString(1, scope);
+            ps.setString(2, actorUuid.toString());
+            ps.setString(3, idempotencyKey);
+            ps.setString(4, operationId.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                UUID existingOpId = UUID.fromString(rs.getString("operation_id"));
+                String status = rs.getString("status");
+                String resultCode = rs.getString("result_code");
+                String resultPayload = rs.getString("result_payload");
+                return new BankTransactionOutcome.DuplicateOperation(
+                        existingOpId,
+                        "Operation already recorded with status " + status + " (" + resultCode + ")",
+                        status,
+                        resultCode,
+                        resultPayload);
+            }
+        }
+    }
+
+    /** Whether the engine refused a row because a unique index already held its key. */
+    private static boolean isUniqueViolation(SQLException e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLIntegrityConstraintViolationException) {
+                return true;
+            }
+            if (cause instanceof SQLException sql) {
+                String state = sql.getSQLState();
+                if (state != null && state.startsWith("23")) {
+                    return true;
+                }
+                // SQLite reports a constraint as error code 19 and no SQL state.
+                if (sql.getErrorCode() == 19) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
