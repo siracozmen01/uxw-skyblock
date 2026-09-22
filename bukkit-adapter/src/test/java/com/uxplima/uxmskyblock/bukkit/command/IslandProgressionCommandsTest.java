@@ -270,6 +270,43 @@ class IslandProgressionCommandsTest {
                         new PlayerUuid(player.getUniqueId()), PROFILE, role, java.time.Instant.now()))));
     }
 
+    @org.junit.jupiter.api.Test
+    @DisplayName("The board tells a player where their own island stands")
+    void theboardNamesTheCallersOwnPlace() throws Exception {
+        when(leaderboard.getTop(any(LeaderboardCategory.class), anyInt())).thenReturn(List.of());
+        when(leaderboard.getRank(LeaderboardCategory.LEVEL, ISLAND)).thenReturn(java.util.OptionalInt.of(42));
+
+        run("top", player);
+
+        String last = null;
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            last = line;
+        }
+        // This catalogue renders a key as the key, so the line the player got is the key itself.
+        assertThat(last)
+                .describedAs("a board prints ten and a server has hundreds, so a player outside the "
+                        + "ten used to learn nothing from a board about them")
+                .isEqualTo("leaderboard.your_rank");
+        verify(leaderboard).getRank(LeaderboardCategory.LEVEL, ISLAND);
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An island the board does not hold is told so, which is not the same as no island")
+    void anunplacedIslandIsToldSo() throws Exception {
+        when(leaderboard.getTop(any(LeaderboardCategory.class), anyInt())).thenReturn(List.of());
+        when(leaderboard.getRank(any(LeaderboardCategory.class), any())).thenReturn(java.util.OptionalInt.empty());
+
+        run("top", player);
+
+        String last = null;
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            last = line;
+        }
+        assertThat(last)
+                .describedAs("not on the board is a different answer from having no island")
+                .isEqualTo("leaderboard.your_rank_unplaced");
+    }
+
     @Test
     @DisplayName("A biome the plugin publishes is applied to an island that has reached its level")
     void aKnownBiomeIsApplied() throws Exception {

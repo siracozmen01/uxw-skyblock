@@ -291,6 +291,11 @@ public final class IslandProgressionCommands {
 
         schedulerPort.async(() -> {
             var entries = islandLeaderboardService.getTop(cat, 10);
+            // Where the caller's own island stands. The board prints ten and a server has hundreds,
+            // so a player outside the ten used to learn nothing at all from a board about them. The
+            // rank is read off the same cached board, not the database; only finding out which
+            // island is theirs is a read, and only a player has one.
+            Rank ownRank = rankOf(src.getSender(), cat);
             schedulerPort.onGlobal(() -> {
                 Audience audience = src.getSender();
                 Component categoryName = messages.renderPlain(
@@ -311,10 +316,45 @@ public final class IslandProgressionCommands {
                                 Placeholder.unparsed("score", entry.formattedScore()));
                     }
                 }
+                if (ownRank == Rank.NOT_PLACED) {
+                    send(src.getSender(), "leaderboard.your_rank_unplaced");
+                } else if (ownRank.place() > 0) {
+                    send(
+                            src.getSender(),
+                            "leaderboard.your_rank",
+                            Placeholder.unparsed("rank", Integer.toString(ownRank.place())));
+                }
             });
         });
 
         return Cmd.OK;
+    }
+
+    /**
+     * Where one sender's island stands on a board, or nothing to say.
+     *
+     * <p>A console has no island and a player without one has none either, and neither wants a line
+     * about a rank. An island the board does not hold is a different answer from no island at all:
+     * the board holds as many as the operator's cache capacity, and being past the end of it is
+     * worth saying.
+     */
+    private Rank rankOf(Audience sender, LeaderboardCategory category) {
+        if (!(sender instanceof Player player)) {
+            return Rank.NOTHING_TO_SAY;
+        }
+        return activeProfile(player)
+                .flatMap(islandLocationService::findIslandId)
+                .map(islandId -> {
+                    java.util.OptionalInt place = islandLeaderboardService.getRank(category, islandId);
+                    return place.isPresent() ? new Rank(place.getAsInt()) : Rank.NOT_PLACED;
+                })
+                .orElse(Rank.NOTHING_TO_SAY);
+    }
+
+    /** A place on the board, or one of the two ways there is no place to name. */
+    private record Rank(int place) {
+        static final Rank NOTHING_TO_SAY = new Rank(0);
+        static final Rank NOT_PLACED = new Rank(-1);
     }
 
     private int executeBiomeChange(CommandContext<CommandSourceStack> ctx) {
