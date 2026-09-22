@@ -341,9 +341,24 @@ class IslandVaultServiceTest {
         @Override
         public boolean abortEditSession(VaultSessionId sessionId) {
             VaultEditSession session = sessions.get(sessionId);
-            if (session == null) {
+            if (session == null || session.state() != VaultSessionState.ACTIVE) {
+                // The real store aborts under WHERE state = 'ACTIVE' and reports what it changed.
                 return false;
             }
+            sessions.put(
+                    sessionId,
+                    new VaultEditSession(
+                            session.sessionId(),
+                            session.islandId(),
+                            session.page(),
+                            session.playerUuid(),
+                            session.leaseEpoch(),
+                            session.basePageVersion(),
+                            VaultSessionState.ABORTED,
+                            session.escrowJournal(),
+                            session.openedAt(),
+                            session.expiresAt(),
+                            Instant.now()));
             VaultPage p = pages.get(session.page());
             if (p != null && sessionId.equals(p.activeSessionId())) {
                 VaultPage unlocked = new VaultPage(

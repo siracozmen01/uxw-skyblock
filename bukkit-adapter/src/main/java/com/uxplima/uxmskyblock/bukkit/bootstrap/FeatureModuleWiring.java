@@ -129,7 +129,8 @@ public final class FeatureModuleWiring implements AutoCloseable {
                     new WarpFeatureModule(gameplay.warpService(), gameplay.safeTeleportEngine(), config.warpConfig()));
         }
         if (config.moduleSettings().isModuleEnabled("vault")) {
-            this.moduleRegistry.register(new VaultFeatureModule(gameplay.vaultService(), config.vaultConfig()));
+            this.moduleRegistry.register(
+                    new VaultFeatureModule(gameplay.vaultService(), config.vaultConfig(), gameplay.scheduler()));
         }
         if (config.moduleSettings().isModuleEnabled("chat")) {
             this.moduleRegistry.register(new ChatFeatureModule(gameplay.chatService(), config.chatConfig()));

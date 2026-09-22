@@ -10,7 +10,13 @@ import org.spongepowered.configurate.ConfigurationNode;
  * Configuration holder for island vault paged storage, lease timeouts, and audit logging parameters.
  */
 public record VaultConfiguration(
-        boolean enabled, int basePages, int maxPages, int slotsPerPage, Duration leaseDuration, int auditLogLimit) {
+        boolean enabled,
+        int basePages,
+        int maxPages,
+        int slotsPerPage,
+        Duration leaseDuration,
+        int auditLogLimit,
+        Duration expiredSessionSweepInterval) {
 
     public static final boolean DEFAULT_ENABLED = true;
     public static final int DEFAULT_BASE_PAGES = 1;
@@ -19,8 +25,16 @@ public record VaultConfiguration(
     public static final Duration DEFAULT_LEASE_DURATION = Duration.ofSeconds(60);
     public static final int DEFAULT_AUDIT_LOG_LIMIT = 50;
 
+    /** How often the sessions whose lease ran out are closed, when the operator names no number. */
+    public static final Duration DEFAULT_EXPIRED_SESSION_SWEEP_INTERVAL = Duration.ofMinutes(5);
+
     public VaultConfiguration {
         Objects.requireNonNull(leaseDuration, "leaseDuration must not be null");
+        Objects.requireNonNull(expiredSessionSweepInterval, "expiredSessionSweepInterval must not be null");
+        if (expiredSessionSweepInterval.isNegative() || expiredSessionSweepInterval.isZero()) {
+            throw new IllegalArgumentException(
+                    "expiredSessionSweepInterval must be positive: " + expiredSessionSweepInterval);
+        }
         if (basePages < 1) {
             throw new IllegalArgumentException("basePages must be >= 1: " + basePages);
         }
@@ -44,7 +58,8 @@ public record VaultConfiguration(
                 DEFAULT_MAX_PAGES,
                 DEFAULT_SLOTS_PER_PAGE,
                 DEFAULT_LEASE_DURATION,
-                DEFAULT_AUDIT_LOG_LIMIT);
+                DEFAULT_AUDIT_LOG_LIMIT,
+                DEFAULT_EXPIRED_SESSION_SWEEP_INTERVAL);
     }
 
     public static VaultConfiguration load(ConfigurationNode rootNode) {
@@ -69,6 +84,13 @@ public record VaultConfiguration(
 
         int auditLogLimit = node.node("audit-log-limit").getInt(DEFAULT_AUDIT_LOG_LIMIT);
 
-        return new VaultConfiguration(enabled, basePages, maxPages, slotsPerPage, leaseDuration, auditLogLimit);
+        String sweepRaw = node.node("expired-session-sweep-interval").getString();
+        Duration sweepInterval = DEFAULT_EXPIRED_SESSION_SWEEP_INTERVAL;
+        if (sweepRaw != null && !sweepRaw.isBlank()) {
+            sweepInterval = Durations.parse(sweepRaw);
+        }
+
+        return new VaultConfiguration(
+                enabled, basePages, maxPages, slotsPerPage, leaseDuration, auditLogLimit, sweepInterval);
     }
 }

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Level;
 
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -35,6 +36,9 @@ import org.jspecify.annotations.Nullable;
  * write-ahead escrow transfers, dual-slot recovery, and rolling audit logs.
  */
 public final class IslandVaultService {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandVaultService.class.getName());
 
     public static final int DEFAULT_BASE_PAGES = 1;
     public static final int DEFAULT_MAX_PAGES = 10;
@@ -272,6 +276,42 @@ public final class IslandVaultService {
     public boolean abortVaultPage(VaultSessionId sessionId) {
         Objects.requireNonNull(sessionId, "sessionId must not be null");
         return storagePort.abortEditSession(sessionId);
+    }
+
+    /**
+     * Closes the windows nobody is standing at any more.
+     *
+     * <p>A vault page is held under a lease, and a player who crashes or is disconnected mid edit
+     * leaves the session ACTIVE and the page pointing at it. The query that finds those was written
+     * and had no caller anywhere, so the rows piled up for as long as the server ran and every one
+     * of them still named a page.
+     *
+     * <p>Taking the page over already worked, because acquiring a lease aborts an expired one on the
+     * way past. What did not work was anybody doing it without a player asking: a page whose owner
+     * never came back stayed pointed at a session that had ended, and nothing said so.
+     *
+     * @return how many windows were closed
+     */
+    public int closeExpiredSessions() {
+        int closed = 0;
+        for (VaultEditSession session : storagePort.findExpiredActiveSessions()) {
+            try {
+                if (storagePort.abortEditSession(session.sessionId())) {
+                    closed++;
+                }
+            } catch (RuntimeException e) {
+                LOGGER.log(
+                        Level.WARNING,
+                        e,
+                        () -> "Closing the expired vault session " + session.sessionId() + " failed. The rest are "
+                                + "still tried.");
+            }
+        }
+        if (closed > 0) {
+            int total = closed;
+            LOGGER.fine(() -> "Closed " + total + " vault sessions whose lease had run out.");
+        }
+        return closed;
     }
 
     /**

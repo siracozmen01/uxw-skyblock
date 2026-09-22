@@ -428,20 +428,28 @@ public final class SqlVaultSessionStore {
     }
 
     public List<VaultEditSession> findExpiredActiveSessions() {
+        // The cutoff is bound rather than written as CURRENT_TIMESTAMP, because expires_at was
+        // written with setTimestamp and CURRENT_TIMESTAMP is the database's own clock in the
+        // database's own zone. Comparing the two compares two clocks: under SQLite the driver
+        // stores the timestamp as a number and CURRENT_TIMESTAMP is text, so every live session
+        // read as expired, and on a server whose zone is not the JVM's the lease was off by the
+        // difference. Binding the cutoff sends both sides through the same conversion.
         String sql = """
                 SELECT session_id, island_id, page, player_uuid, lease_epoch, base_page_version, state, escrow_journal, opened_at, expires_at, closed_at
                 FROM vault_edit_sessions
-                WHERE state = 'ACTIVE' AND expires_at < CURRENT_TIMESTAMP
+                WHERE state = 'ACTIVE' AND expires_at < ?
                 """;
 
         try (Connection conn = database.connection();
-                PreparedStatement stmt = conn.prepareStatement(sql);
-                ResultSet rs = stmt.executeQuery()) {
-            List<VaultEditSession> list = new ArrayList<>();
-            while (rs.next()) {
-                list.add(mapVaultEditSession(rs));
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setTimestamp(1, Timestamp.from(Instant.now()));
+            try (ResultSet rs = stmt.executeQuery()) {
+                List<VaultEditSession> list = new ArrayList<>();
+                while (rs.next()) {
+                    list.add(mapVaultEditSession(rs));
+                }
+                return list;
             }
-            return list;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to query expired active vault edit sessions", e);
         }

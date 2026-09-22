@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
+import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.vault.EscrowTransferRecord;
@@ -213,6 +214,78 @@ class SqlIslandVaultStorageAdapterSqliteTest {
         Optional<VaultEditSession> abortedSession = adapter.findSession(sessionId);
         assertThat(abortedSession).isPresent();
         assertThat(abortedSession.get().state()).isEqualTo(VaultSessionState.ABORTED);
+    }
+
+    @Test
+    @DisplayName("A lease that is still running is never reported as expired")
+    void aLiveLeaseIsNotExpired() {
+        adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
+        assertThat(adapter.acquireEditSession(ISLAND_ID, 1, OWNER_UUID, Duration.ofMinutes(10)))
+                .isPresent();
+
+        // The query used to compare a timestamp written by the JVM against the database's own
+        // CURRENT_TIMESTAMP. Two clocks, and under SQLite two types, so a lease a minute old read
+        // as expired and the sweep would have taken the page off a player who was editing it.
+        assertThat(adapter.findExpiredActiveSessions())
+                .describedAs("a ten minute lease, one moment old")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("The sweep closes a lease whose holder never came back and unlocks its page")
+    void theSweepClosesTheStaleLeaseOverTheRealStore() {
+        adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
+        adapter.createPage(ISLAND_ID, 2, new byte[] {2}, OWNER_PROFILE.toString());
+        Optional<VaultEditSession> abandoned =
+                adapter.acquireEditSession(ISLAND_ID, 1, OWNER_UUID, Duration.ofMillis(5));
+        Optional<VaultEditSession> open = adapter.acquireEditSession(ISLAND_ID, 2, OWNER_UUID, Duration.ofSeconds(60));
+        assertThat(abandoned).isPresent();
+        assertThat(open).isPresent();
+        waitPast(Duration.ofMillis(5));
+
+        IslandVaultService service = new IslandVaultService(adapter, null, 1, 10, Duration.ofSeconds(60));
+        assertThat(service.closeExpiredSessions())
+                .describedAs("sessions closed")
+                .isEqualTo(1);
+
+        Optional<VaultEditSession> closed = adapter.findSession(abandoned.get().sessionId());
+        assertThat(closed).isPresent();
+        assertThat(closed.get().state()).isEqualTo(VaultSessionState.ABORTED);
+        assertThat(adapter.findPage(ISLAND_ID, 1).orElseThrow().activeSessionId())
+                .describedAs("the page the crashed player held is free again")
+                .isNull();
+
+        Optional<VaultEditSession> stillOpen = adapter.findSession(open.get().sessionId());
+        assertThat(stillOpen).isPresent();
+        assertThat(stillOpen.get().state())
+                .describedAs("a lease still running is left alone")
+                .isEqualTo(VaultSessionState.ACTIVE);
+        assertThat(adapter.findPage(ISLAND_ID, 2).orElseThrow().activeSessionId())
+                .isEqualTo(open.get().sessionId());
+    }
+
+    @Test
+    @DisplayName("A second sweep over the same rows closes nothing more")
+    void theSweepIsIdempotent() {
+        adapter.createPage(ISLAND_ID, 1, new byte[] {1}, OWNER_PROFILE.toString());
+        assertThat(adapter.acquireEditSession(ISLAND_ID, 1, OWNER_UUID, Duration.ofMillis(5)))
+                .isPresent();
+        waitPast(Duration.ofMillis(5));
+
+        IslandVaultService service = new IslandVaultService(adapter, null, 1, 10, Duration.ofSeconds(60));
+        assertThat(service.closeExpiredSessions()).isEqualTo(1);
+        assertThat(service.closeExpiredSessions())
+                .describedAs("nothing left to close, and no row written twice")
+                .isZero();
+        assertThat(adapter.findExpiredActiveSessions()).isEmpty();
+    }
+
+    private static void waitPast(Duration lease) {
+        try {
+            Thread.sleep(lease.toMillis() + 60L);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test
