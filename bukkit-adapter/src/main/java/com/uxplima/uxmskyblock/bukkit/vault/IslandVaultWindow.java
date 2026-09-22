@@ -50,6 +50,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandVaultWindow {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandVaultWindow.class.getName());
+
     /** How a moment is written in the log, in the server's own zone. */
     private static final java.time.format.DateTimeFormatter WHEN = java.time.format.DateTimeFormatter.ofPattern(
                     "yyyy-MM-dd HH:mm", Locale.ROOT)
@@ -271,6 +274,30 @@ public final class IslandVaultWindow {
             inventory.setItem(slot, stored[slot]);
         }
         player.openInventory(inventory);
+        closeBeforeTheLeaseRunsOut(player, holder);
+    }
+
+    /**
+     * Closes the window while its lease still holds, so what it saves is saved.
+     *
+     * <p>The lease was never renewed and the window never closed, so a player who left it open past
+     * the lease closed it onto a refused commit. The page kept what it held, the player kept what
+     * they had taken out of it, and opening it again handed the same items over a second time. The
+     * window now closes at five sixths of the lease, which is when the save still lands.
+     */
+    void closeBeforeTheLeaseRunsOut(Player player, VaultHolder holder) {
+        java.time.Duration lease = configuration.leaseDuration();
+        java.time.Duration closeAt = lease.multipliedBy(5).dividedBy(6);
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        schedulerPort.asyncAfter(
+                closeAt,
+                () -> schedulerPort.onEntity(playerUuid, () -> {
+                    if (player.isOnline()
+                            && player.getOpenInventory().getTopInventory().getHolder() == holder) {
+                        messages.send(player, "vault.closed_to_save");
+                        player.closeInventory();
+                    }
+                }));
     }
 
     /**
@@ -307,7 +334,7 @@ public final class IslandVaultWindow {
                 // Telling them it was refused and keeping the items is losing them.
                 schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                     messages.send(player, "vault.commit_refused");
-                    returnWhatThePlayerAdded(player, holder.openedWith(), contents);
+                    settleTheRefusedCommit(player, holder, contents);
                 });
             }
         });
@@ -326,23 +353,26 @@ public final class IslandVaultWindow {
     }
 
     /**
-     * Gives back everything the window held that the stored page did not.
+     * Puts the player back where the stored page says they are, after a refused commit.
      *
-     * <p>A refused commit leaves the page as it was when the window opened, so the difference is
-     * exactly what the player put in and nothing that is already safely stored. Handing back the
-     * whole window instead would duplicate every stack that never moved.
+     * <p>A refused commit leaves the page as it was when the window opened. What the window held at
+     * close and the page did not is what the player put in, and it goes back to them. What the page
+     * held and the window no longer did is what the player took out, and the page still holds it, so
+     * it comes back out of the player's inventory. Handing back only what was put in let a player take
+     * a page's items, let the commit be refused, and take them again.
      *
-     * <p>What does not fit is dropped where they stand. An item on the ground can be picked up; an
-     * item that was never written and never returned cannot.
+     * <p>What does not fit is dropped where they stand. What the player no longer holds cannot be
+     * taken back, and is written to the log with who and what, for an administrator to settle.
      */
-    private void returnWhatThePlayerAdded(Player player, List<ItemStack> openedWith, ItemStack[] atClose) {
-        List<ItemStack> alreadyStored = new ArrayList<>();
-        for (ItemStack stack : openedWith) {
+    private void settleTheRefusedCommit(Player player, VaultHolder holder, ItemStack[] atClose) {
+        List<ItemStack> stillInThePage = new ArrayList<>();
+        for (ItemStack stack : holder.openedWith()) {
             if (!stack.getType().isAir()) {
-                alreadyStored.add(stack.clone());
+                stillInThePage.add(stack.clone());
             }
         }
 
+        List<ItemStack> putIn = new ArrayList<>();
         for (ItemStack stack : atClose) {
             if (stack == null || stack.getType().isAir()) {
                 continue;
@@ -350,7 +380,7 @@ public final class IslandVaultWindow {
             ItemStack owed = stack.clone();
             // Take this stack's amount out of what the page still holds, stack by stack, so a player
             // who added ten to a stack of five gets ten back and not fifteen.
-            for (Iterator<ItemStack> stored = alreadyStored.iterator(); stored.hasNext() && owed.getAmount() > 0; ) {
+            for (Iterator<ItemStack> stored = stillInThePage.iterator(); stored.hasNext() && owed.getAmount() > 0; ) {
                 ItemStack candidate = stored.next();
                 if (!candidate.isSimilar(owed)) {
                     continue;
@@ -363,9 +393,21 @@ public final class IslandVaultWindow {
                 }
             }
             if (owed.getAmount() > 0) {
-                for (ItemStack overflow : player.getInventory().addItem(owed).values()) {
-                    player.getWorld().dropItemNaturally(player.getLocation(), overflow);
-                }
+                putIn.add(owed);
+            }
+        }
+
+        // What is left of the page is what the player took out and the page still holds.
+        for (ItemStack takenOut : stillInThePage) {
+            for (ItemStack kept : player.getInventory().removeItem(takenOut).values()) {
+                LOGGER.warning(() -> player.getName() + " took " + kept.getAmount() + " " + kept.getType()
+                        + " out of vault page " + holder.page() + " of island " + holder.islandId()
+                        + " under a refused save and no longer holds them. The page still holds them.");
+            }
+        }
+        for (ItemStack owed : putIn) {
+            for (ItemStack overflow : player.getInventory().addItem(owed).values()) {
+                player.getWorld().dropItemNaturally(player.getLocation(), overflow);
             }
         }
     }
