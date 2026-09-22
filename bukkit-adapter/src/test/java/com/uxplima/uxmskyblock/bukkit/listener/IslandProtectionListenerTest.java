@@ -119,6 +119,53 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A refused break says why, in the sentence the operator wrote")
+    void arefusedBreakSaysWhy() {
+        Block block = world.getBlockAt(50, 64, 50);
+        block.setType(Material.STONE);
+
+        listener.onBlockBreak(new BlockBreakEvent(block, visitorPlayer));
+
+        assertThat(visitorPlayer.nextMessage())
+                .describedAs("every refusal here used to be silent, and five written sentences "
+                        + "sat in the catalogue with nothing to send them")
+                .isNotNull();
+    }
+
+    @Test
+    @DisplayName("A refused place says why")
+    void arefusedPlaceSaysWhy() {
+        Block block = world.getBlockAt(50, 64, 50);
+        Block placedAgainst = world.getBlockAt(50, 63, 50);
+
+        listener.onBlockPlace(new BlockPlaceEvent(
+                block,
+                block.getState(),
+                placedAgainst,
+                new ItemStack(Material.COBBLESTONE),
+                visitorPlayer,
+                true,
+                EquipmentSlot.HAND));
+
+        assertThat(visitorPlayer.nextMessage()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("A refused interaction says why")
+    void arefusedInteractionSaysWhy() {
+        Block block = world.getBlockAt(50, 64, 50);
+
+        listener.onPlayerInteract(new PlayerInteractEvent(
+                visitorPlayer,
+                Action.RIGHT_CLICK_BLOCK,
+                new ItemStack(Material.STICK),
+                block,
+                org.bukkit.block.BlockFace.UP));
+
+        assertThat(visitorPlayer.nextMessage()).isNotNull();
+    }
+
+    @Test
     @DisplayName("admin with bypass permission can break blocks anywhere")
     void adminCanBypassBlockBreak() {
         visitorPlayer.addAttachment(

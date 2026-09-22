@@ -16,6 +16,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 
@@ -32,7 +34,9 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandFlags;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.permission.PermissionKey;
+import com.uxplima.uxmskyblock.core.domain.permission.StandardPermissions;
 import com.uxplima.uxmskyblock.core.domain.profile.ProfileType;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import org.jspecify.annotations.Nullable;
@@ -257,6 +261,7 @@ public final class IslandProtectionListener implements Listener {
                             && !hasTemporaryAccess(
                                     playerUuid, profileId, island.id(), PermissionKey.of("uxm:block.break")))) {
                 event.setCancelled(true);
+                player.sendMessage(messages.render(player, "protection.block_break_denied"));
             }
         });
     }
@@ -283,6 +288,7 @@ public final class IslandProtectionListener implements Listener {
                             && !hasTemporaryAccess(
                                     playerUuid, profileId, island.id(), PermissionKey.of("uxm:block.place")))) {
                 event.setCancelled(true);
+                player.sendMessage(messages.render(player, "protection.block_place_denied"));
             }
         });
     }
@@ -312,8 +318,94 @@ public final class IslandProtectionListener implements Listener {
                             && !hasTemporaryAccess(
                                     playerUuid, profileId, island.id(), PermissionKey.of("uxm:interact")))) {
                 event.setCancelled(true);
+                player.sendMessage(messages.render(player, "protection.interact_denied"));
             }
         });
+    }
+
+    /**
+     * The container a player just opened, against the permission their role holds.
+     *
+     * <p>The role editor publishes six container permissions and nothing ever read one, so a role
+     * saying a member may not open a chest let them open every chest on the island. The interact
+     * rule is not the same rule: it says whether a player may touch anything here at all, and a
+     * member who may build is past it long before they reach a chest.
+     *
+     * <p>An inventory held by no block is the player's own, or a window this plugin drew. Neither
+     * belongs to an island and neither is checked here.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onContainerOpen(InventoryOpenEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) {
+            return;
+        }
+        Location location = blockLocationOf(event.getInventory());
+        if (location == null) {
+            return;
+        }
+        IslandPermission required = containerPermissionOf(event.getInventory().getType());
+        if (required == null) {
+            return;
+        }
+        if (player.hasPermission("uxmskyblock.admin.bypass")) {
+            return;
+        }
+
+        findIslandAt(location).ifPresent(island -> {
+            if (isIslandFrozen(island)) {
+                if (!isStaffInspector(player)) {
+                    event.setCancelled(true);
+                    player.sendMessage(messages.render(player, "protection.frozen"));
+                }
+                return;
+            }
+            PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+            ProfileId profileId = activeProfiles.get(playerUuid);
+            PermissionKey key = StandardPermissions.fromIslandPermission(required);
+            if (profileId == null
+                    || (!accessService.checkPermission(island, profileId, required)
+                            && (key == null || !hasTemporaryAccess(playerUuid, profileId, island.id(), key)))) {
+                event.setCancelled(true);
+                player.sendMessage(messages.render(player, "protection.chest_access_denied"));
+            }
+        });
+    }
+
+    /**
+     * Where the block holding this inventory stands, or null when no block holds it.
+     *
+     * <p>The holder answers this and the inventory's own location does not: a window this plugin
+     * draws is an inventory like any other, and asking it where it is gets an answer that means
+     * nothing. A block holder is a container in the world and nothing else is.
+     */
+    private static @Nullable Location blockLocationOf(org.bukkit.inventory.Inventory inventory) {
+        return switch (inventory.getHolder()) {
+            case org.bukkit.inventory.BlockInventoryHolder block ->
+                block.getBlock().getLocation();
+            case org.bukkit.block.DoubleChest chest -> chest.getLocation();
+            case null, default -> null;
+        };
+    }
+
+    /**
+     * Which permission an inventory type asks for, or null when it asks for none of ours.
+     *
+     * <p>A container the permission list does not name by itself is a chest as far as this rule
+     * goes: an operator who takes container access off a role means every container, and a hopper
+     * holding the same items as the chest beside it is not an exception they intended.
+     */
+    private static @Nullable IslandPermission containerPermissionOf(InventoryType type) {
+        return switch (type) {
+            case FURNACE, BLAST_FURNACE, SMOKER -> IslandPermission.FURNACE_USE;
+            case SHULKER_BOX -> IslandPermission.SHULKER_OPEN;
+            case BARREL -> IslandPermission.BARREL_OPEN;
+            case ANVIL, SMITHING -> IslandPermission.ANVIL_USE;
+            case BEACON -> IslandPermission.BEACON_MODIFY;
+            // An ender chest is not on this list. What it shows is the player's own, wherever
+            // they open it, so an island has nothing to protect there.
+            case CHEST, DISPENSER, DROPPER, HOPPER, BREWING, CHISELED_BOOKSHELF -> IslandPermission.CHEST_OPEN;
+            default -> null;
+        };
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -332,6 +424,7 @@ public final class IslandProtectionListener implements Listener {
                 }
                 if (!island.flags().isEnabled(IslandFlags.PVP)) {
                     event.setCancelled(true);
+                    damager.sendMessage(messages.render(damager, "protection.pvp_denied"));
                     return;
                 }
                 if (allianceService != null && allianceService.isFriendlyFireShieldingEnabled()) {
