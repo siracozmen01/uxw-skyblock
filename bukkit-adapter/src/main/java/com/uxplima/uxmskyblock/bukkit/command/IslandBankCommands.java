@@ -304,24 +304,25 @@ public final class IslandBankCommands {
      * their role said. The shipped member role does not hold the withdraw permission and has been
      * able to withdraw all along.
      *
-     * <p>The role lives in a row, so it is read off the thread the command arrived on, and the move
-     * is run back on the player's own thread, which is where it ran before. A caller with no island
-     * is not refused here: the move itself answers that, and it answers it better.
+     * <p>The role lives in a row, so it is read off the thread the command arrived on. The move runs
+     * there too, because the move is the bridge and the bridge does its own storage work off the
+     * thread as well: hopping back onto the player only to hop straight off again buys nothing and
+     * costs a tick. The refusal is a message, and a message finds the player's thread by itself.
+     *
+     * <p>A caller with no island is not refused here: the move itself answers that, and it answers
+     * it better.
      */
     private void ifTheRoleAllowsIt(Player player, ProfileId profileId, IslandPermission permission, Runnable move) {
         schedulerPort.async(() -> {
             Optional<Island> island =
                     islandLocationService.findIslandId(profileId).flatMap(islandLocationService::findIsland);
-            boolean refused = island.isPresent()
+            if (island.isPresent()
                     && !island.get().isOwner(profileId)
-                    && !island.get().hasPermission(profileId, permission);
-            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                if (refused) {
-                    send(player, "bank.permission_denied");
-                    return;
-                }
-                move.run();
-            });
+                    && !island.get().hasPermission(profileId, permission)) {
+                send(player, "bank.permission_denied");
+                return;
+            }
+            move.run();
         });
     }
 
