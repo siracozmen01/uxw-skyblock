@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.core.application.event;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -29,6 +30,15 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
     private final Duration pollInterval;
     private final Duration retryBackoff;
     private final int maxRetries;
+    /** How long a delivered event is kept before it is deleted. */
+    public static final Duration DEFAULT_PROCESSED_RETENTION = Duration.ofDays(7);
+
+    /** How often the delivered events are swept. */
+    public static final Duration DEFAULT_PURGE_INTERVAL = Duration.ofHours(1);
+
+    private final Duration processedRetention;
+    private final Duration purgeInterval;
+    private final AtomicReference<AutoCloseable> purgeTask = new AtomicReference<>(null);
     private final List<OutboxEventConsumer> consumers = new CopyOnWriteArrayList<>();
     private final AtomicReference<AutoCloseable> pollingTask = new AtomicReference<>(null);
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -41,7 +51,9 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
             int batchSize,
             Duration pollInterval,
             Duration retryBackoff,
-            int maxRetries) {
+            int maxRetries,
+            Duration processedRetention,
+            Duration purgeInterval) {
         this.outboxPort = Objects.requireNonNull(outboxPort, "outboxPort must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.workerId = Objects.requireNonNull(workerId, "workerId must not be null");
@@ -50,6 +62,36 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
         this.pollInterval = Objects.requireNonNull(pollInterval, "pollInterval must not be null");
         this.retryBackoff = Objects.requireNonNull(retryBackoff, "retryBackoff must not be null");
         this.maxRetries = maxRetries > 0 ? maxRetries : 5;
+        this.processedRetention = Objects.requireNonNull(processedRetention, "processedRetention must not be null");
+        if (processedRetention.isNegative()) {
+            throw new IllegalArgumentException("processedRetention must not be negative: " + processedRetention);
+        }
+        this.purgeInterval = Objects.requireNonNull(purgeInterval, "purgeInterval must not be null");
+        if (purgeInterval.isNegative() || purgeInterval.isZero()) {
+            throw new IllegalArgumentException("purgeInterval must be positive: " + purgeInterval);
+        }
+    }
+
+    public TransactionalOutboxDispatcher(
+            OutboxPort outboxPort,
+            SchedulerPort schedulerPort,
+            String workerId,
+            Duration leaseDuration,
+            int batchSize,
+            Duration pollInterval,
+            Duration retryBackoff,
+            int maxRetries) {
+        this(
+                outboxPort,
+                schedulerPort,
+                workerId,
+                leaseDuration,
+                batchSize,
+                pollInterval,
+                retryBackoff,
+                maxRetries,
+                DEFAULT_PROCESSED_RETENTION,
+                DEFAULT_PURGE_INTERVAL);
     }
 
     public TransactionalOutboxDispatcher(OutboxPort outboxPort, SchedulerPort schedulerPort, String workerId) {
@@ -61,7 +103,31 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
                 50,
                 Duration.ofSeconds(2),
                 Duration.ofSeconds(5),
-                5);
+                5,
+                DEFAULT_PROCESSED_RETENTION,
+                DEFAULT_PURGE_INTERVAL);
+    }
+
+    /**
+     * Deletes what has been delivered and is old enough not to be worth keeping.
+     *
+     * <p>Nothing deleted a delivered event, so every island created, renamed or erased and every
+     * bank transaction left a row with its payload in the table for as long as the server lived. A
+     * dead lettered event is never deleted: it is the record of what failed.
+     *
+     * @return how many rows went
+     */
+    public int purgeDelivered() {
+        try {
+            int purged = outboxPort.purgeProcessedBefore(Instant.now().minus(processedRetention));
+            if (purged > 0) {
+                LOGGER.fine(() -> "Purged " + purged + " delivered outbox events.");
+            }
+            return purged;
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, e, () -> "Purging delivered outbox events failed. The dispatcher carries on.");
+            return 0;
+        }
     }
 
     public void registerConsumer(OutboxEventConsumer consumer) {
@@ -72,6 +138,9 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
         if (running.compareAndSet(false, true)) {
             AutoCloseable task = schedulerPort.repeatAsync(this::dispatchBatch, pollInterval, pollInterval);
             pollingTask.set(task);
+            // Delivered events were never deleted, so the table only grew. The sweep is its own
+            // schedule because it is rare work and the polling loop is not.
+            purgeTask.set(schedulerPort.repeatAsync(this::purgeDelivered, purgeInterval, purgeInterval));
             LOGGER.info(() -> "TransactionalOutboxDispatcher started with workerId=" + workerId);
         }
     }
@@ -135,11 +204,13 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
     @SuppressWarnings("EmptyCatch")
     public synchronized void close() {
         running.set(false);
-        AutoCloseable task = pollingTask.getAndSet(null);
-        if (task != null) {
-            try {
-                task.close();
-            } catch (Exception ignored) {
+        for (AtomicReference<AutoCloseable> holder : List.of(pollingTask, purgeTask)) {
+            AutoCloseable task = holder.getAndSet(null);
+            if (task != null) {
+                try {
+                    task.close();
+                } catch (Exception ignored) {
+                }
             }
         }
         LOGGER.info("TransactionalOutboxDispatcher stopped.");

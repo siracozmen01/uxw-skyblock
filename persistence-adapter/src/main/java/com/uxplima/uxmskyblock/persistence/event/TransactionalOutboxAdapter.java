@@ -351,6 +351,22 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
         }
     }
 
+    @Override
+    public int purgeProcessedBefore(Instant before) {
+        Objects.requireNonNull(before, "before must not be null");
+        // Only what was delivered. A dead lettered event is the record of what failed and is waiting
+        // for somebody to look at it, so it stays however old it is.
+        String sql = "DELETE FROM outbox_events WHERE status = 'PROCESSED' AND processed_at IS NOT NULL "
+                + "AND processed_at < ?";
+        try (Connection connection = database.connection();
+                PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(before));
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new OutboxPersistenceException("Failed to purge delivered outbox events", e);
+        }
+    }
+
     private static OutboxEventRecord mapRecord(ResultSet rs) throws SQLException {
         EventId eventId = EventId.fromString(rs.getString("event_id"));
         String eventType = rs.getString("event_type");

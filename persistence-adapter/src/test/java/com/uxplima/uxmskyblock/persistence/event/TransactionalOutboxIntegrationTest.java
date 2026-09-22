@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.persistence.event;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
@@ -89,6 +90,75 @@ class TransactionalOutboxIntegrationTest {
     @DisplayName("PostgreSQL: outbox staging, claiming with SKIP LOCKED, completion, and dead-letter handling")
     void postgresOutboxLifecycle() {
         testOutboxLifecycle(postgresAdapter);
+    }
+
+    @Test
+    @Order(3)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
+    @DisplayName("MariaDB: a delivered event old enough is swept, and nothing else is")
+    void mariaDbSweepsDelivered() throws Exception {
+        assertOnlyOldDeliveredEventsGo(mariaDatabase, mariaAdapter);
+    }
+
+    @Test
+    @Order(4)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
+    @DisplayName("PostgreSQL: a delivered event old enough is swept, and nothing else is")
+    void postgresSweepsDelivered() throws Exception {
+        assertOnlyOldDeliveredEventsGo(postgresDatabase, postgresAdapter);
+    }
+
+    /**
+     * Nothing ever deleted a delivered event, so every island created, renamed or erased and every
+     * bank transaction left a row with its payload in the table for as long as the server lived.
+     *
+     * <p>What must survive the sweep matters as much as what goes: an event still waiting to be
+     * delivered, one delivered a moment ago, and above all a dead lettered one, which is the record
+     * of what failed and is waiting for somebody to look at it.
+     */
+    private void assertOnlyOldDeliveredEventsGo(Database db, TransactionalOutboxAdapter adapter) throws Exception {
+        Instant now = Instant.now();
+        EventId old = stagedWith(db, "PROCESSED", now.minus(Duration.ofDays(30)));
+        EventId recent = stagedWith(db, "PROCESSED", now.minus(Duration.ofMinutes(5)));
+        EventId pending = stagedWith(db, "PENDING", null);
+        EventId dead = stagedWith(db, "DEAD_LETTER", now.minus(Duration.ofDays(30)));
+
+        int purged = adapter.purgeProcessedBefore(now.minus(Duration.ofDays(7)));
+
+        assertThat(purged).describedAs("rows swept").isEqualTo(1);
+        assertThat(adapter.findById(old))
+                .describedAs("a delivered event a month old")
+                .isEmpty();
+        assertThat(adapter.findById(recent))
+                .describedAs("a delivered event five minutes old")
+                .isPresent();
+        assertThat(adapter.findById(pending))
+                .describedAs("an event still waiting to be delivered")
+                .isPresent();
+        assertThat(adapter.findById(dead))
+                .describedAs("a dead lettered event, which is the record of what failed")
+                .isPresent();
+    }
+
+    /** Writes one row in a given state, with a delivery time the test chooses. */
+    private EventId stagedWith(Database db, String status, @org.jspecify.annotations.Nullable Instant processedAt)
+            throws Exception {
+        EventId eventId = EventId.random();
+        try (java.sql.Connection conn = db.connection();
+                java.sql.PreparedStatement stmt = conn.prepareStatement("""
+                        INSERT INTO outbox_events (event_id, event_type, aggregate_id, payload, status, processed_at)
+                        VALUES (?, 'ISLAND_CREATED', 'isl-sweep', '{}', ?, ?)
+                        """)) {
+            stmt.setString(1, eventId.value().toString());
+            stmt.setString(2, status);
+            if (processedAt == null) {
+                stmt.setNull(3, java.sql.Types.TIMESTAMP);
+            } else {
+                stmt.setTimestamp(3, java.sql.Timestamp.from(processedAt));
+            }
+            stmt.executeUpdate();
+        }
+        return eventId;
     }
 
     private void testOutboxLifecycle(TransactionalOutboxAdapter adapter) {

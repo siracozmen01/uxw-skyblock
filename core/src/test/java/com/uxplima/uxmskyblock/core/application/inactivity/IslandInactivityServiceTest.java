@@ -575,5 +575,10 @@ class IslandInactivityServiceTest {
         public int getPendingCount() {
             return stagedEventTypes.size();
         }
+
+        @Override
+        public int purgeProcessedBefore(java.time.Instant before) {
+            return 0;
+        }
     }
 }

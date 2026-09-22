@@ -292,5 +292,10 @@ class SwitchProfileUseCaseTest {
         public int getPendingCount() {
             return stagedTypes.size();
         }
+
+        @Override
+        public int purgeProcessedBefore(java.time.Instant before) {
+            return 0;
+        }
     }
 }

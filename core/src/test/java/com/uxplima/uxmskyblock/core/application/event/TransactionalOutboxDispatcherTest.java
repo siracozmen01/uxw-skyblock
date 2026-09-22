@@ -138,6 +138,52 @@ class TransactionalOutboxDispatcherTest {
         assertThat(processed).isEqualTo(0);
     }
 
+    @Test
+    @DisplayName("Delivered events are swept, and the cutoff is the retention behind now")
+    void deliveredEventsAreSwept() {
+        InMemoryOutboxPort port = new InMemoryOutboxPort();
+        TransactionalOutboxDispatcher dispatcher = new TransactionalOutboxDispatcher(
+                port,
+                new StubSchedulerPort(),
+                "worker-1",
+                java.time.Duration.ofSeconds(30),
+                50,
+                java.time.Duration.ofSeconds(2),
+                java.time.Duration.ofSeconds(5),
+                5,
+                java.time.Duration.ofDays(7),
+                java.time.Duration.ofHours(1));
+
+        java.time.Instant before = java.time.Instant.now();
+        dispatcher.purgeDelivered();
+
+        assertThat(port.purgesAskedFor).describedAs("sweeps asked for").hasSize(1);
+        assertThat(port.purgesAskedFor.get(0))
+                .describedAs("a week behind the moment of the sweep")
+                .isBetween(
+                        before.minus(java.time.Duration.ofDays(7)).minusSeconds(5),
+                        java.time.Instant.now()
+                                .minus(java.time.Duration.ofDays(7))
+                                .plusSeconds(5));
+    }
+
+    @Test
+    @DisplayName("A sweep that throws does not stop the dispatcher")
+    void aFailingSweepIsSurvived() {
+        OutboxPort angry = new InMemoryOutboxPort() {
+            @Override
+            public synchronized int purgeProcessedBefore(java.time.Instant before) {
+                throw new IllegalStateException("the database is gone");
+            }
+        };
+        TransactionalOutboxDispatcher dispatcher =
+                new TransactionalOutboxDispatcher(angry, new StubSchedulerPort(), "worker-1");
+
+        assertThat(dispatcher.purgeDelivered())
+                .describedAs("nothing swept, and no exception out")
+                .isZero();
+    }
+
     private static class InMemoryOutboxPort implements OutboxPort {
         private final List<OutboxEventRecord> events = new ArrayList<>();
         final List<EventId> completedEvents = new ArrayList<>();
@@ -203,6 +249,14 @@ class TransactionalOutboxDispatcherTest {
             return (int) events.stream()
                     .filter(e -> e.status() == OutboxStatus.PENDING)
                     .count();
+        }
+
+        final List<java.time.Instant> purgesAskedFor = new ArrayList<>();
+
+        @Override
+        public synchronized int purgeProcessedBefore(java.time.Instant before) {
+            purgesAskedFor.add(before);
+            return 0;
         }
     }
 

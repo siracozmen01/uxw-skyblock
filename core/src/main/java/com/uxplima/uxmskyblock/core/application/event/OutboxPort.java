@@ -48,4 +48,17 @@ public interface OutboxPort {
      * Gets the count of pending events.
      */
     int getPendingCount();
+
+    /**
+     * Deletes events that were delivered before {@code before}, and answers how many went.
+     *
+     * <p>A delivered event is a row nobody will read again. Nothing deleted one, so every island
+     * created, renamed or erased and every bank transaction left a row with its payload in the table
+     * for as long as the server lived. A dead lettered event is never deleted here: it is the record
+     * of what failed and it is waiting for somebody to look at it.
+     *
+     * @param before the moment before which a delivered event is no longer worth keeping
+     * @return how many rows went
+     */
+    int purgeProcessedBefore(java.time.Instant before);
 }

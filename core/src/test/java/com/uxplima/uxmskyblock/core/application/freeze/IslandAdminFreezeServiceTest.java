@@ -313,5 +313,10 @@ class IslandAdminFreezeServiceTest {
         public int getPendingCount() {
             return stagedEvents.size();
         }
+
+        @Override
+        public int purgeProcessedBefore(java.time.Instant before) {
+            return 0;
+        }
     }
 }
