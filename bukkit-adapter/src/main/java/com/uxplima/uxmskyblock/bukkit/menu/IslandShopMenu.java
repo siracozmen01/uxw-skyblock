@@ -22,6 +22,7 @@ import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -215,7 +216,7 @@ public final class IslandShopMenu {
     void trade(Player player, IslandId islandId, Material material, int amount, boolean buying) {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         if (!buying) {
-            int held = countOf(player, material);
+            int held = TradableStacks.countOf(player, material);
             if (held < amount) {
                 messages.send(
                         player,
@@ -225,7 +226,7 @@ public final class IslandShopMenu {
                         Placeholder.unparsed("amount", Integer.toString(amount)));
                 return;
             }
-            take(player, material, amount);
+            TradableStacks.take(player, material, amount);
         }
 
         schedulerPort.async(() -> {
@@ -240,7 +241,7 @@ public final class IslandShopMenu {
             Player player, Material material, int amount, boolean buying, IslandShopService.TradeResult result) {
         if (result instanceof IslandShopService.TradeResult.Traded traded) {
             if (buying) {
-                give(player, material, amount);
+                TradableStacks.give(player, material, amount);
             }
             messages.send(
                     player,
@@ -255,7 +256,7 @@ public final class IslandShopMenu {
 
         if (!buying) {
             // Items handed to a shop that did not pay are items nobody has.
-            give(player, material, amount);
+            TradableStacks.give(player, material, amount);
         }
         switch (result) {
             case IslandShopService.TradeResult.Traded ignored -> {
@@ -272,47 +273,6 @@ public final class IslandShopMenu {
                         Placeholder.unparsed("balance", money(poor.balance())));
             case IslandShopService.TradeResult.Refused refused ->
                 messages.send(player, "shop.refused", Placeholder.unparsed("reason", refused.reason()));
-        }
-    }
-
-    private static int countOf(Player player, Material material) {
-        int held = 0;
-        for (ItemStack stack : player.getInventory().getContents()) {
-            if (stack != null && stack.getType() == material) {
-                held += stack.getAmount();
-            }
-        }
-        return held;
-    }
-
-    private static void take(Player player, Material material, int amount) {
-        int remaining = amount;
-        for (int slot = 0; slot < player.getInventory().getSize() && remaining > 0; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (stack == null || stack.getType() != material) {
-                continue;
-            }
-            int taken = Math.min(stack.getAmount(), remaining);
-            remaining -= taken;
-            if (taken >= stack.getAmount()) {
-                player.getInventory().setItem(slot, null);
-            } else {
-                stack.setAmount(stack.getAmount() - taken);
-            }
-        }
-    }
-
-    /** What does not fit is dropped where they stand, because an item on the ground can be picked up. */
-    private static void give(Player player, Material material, int amount) {
-        int remaining = amount;
-        while (remaining > 0) {
-            int stackSize = Math.min(remaining, material.getMaxStackSize());
-            for (ItemStack overflow : player.getInventory()
-                    .addItem(new ItemStack(material, stackSize))
-                    .values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), overflow);
-            }
-            remaining -= stackSize;
         }
     }
 

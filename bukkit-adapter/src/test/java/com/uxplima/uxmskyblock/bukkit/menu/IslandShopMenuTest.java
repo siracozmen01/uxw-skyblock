@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.bukkit.Material;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 
 import com.uxplima.uxmlib.gui.Guis;
@@ -195,5 +196,20 @@ class IslandShopMenuTest {
         assertThat(player.getWorld().getEntities())
                 .describedAs("what was paid for is on the ground rather than nowhere")
                 .isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("An enchanted sword is not the sword the shop priced")
+    void anEnchantedSwordIsNotOnOffer() {
+        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD, 1);
+        sword.addUnsafeEnchantment(Enchantment.SHARPNESS, 3);
+        player.getInventory().addItem(sword);
+
+        menu.trade(player, ISLAND, Material.DIAMOND_SWORD, 1, false);
+
+        verify(shop, never()).sell(any(), any(), anyString(), anyLong(), any());
+        assertThat(countOf(Material.DIAMOND_SWORD))
+                .describedAs("the shop priced a sword, not this one")
+                .isEqualTo(1);
     }
 }

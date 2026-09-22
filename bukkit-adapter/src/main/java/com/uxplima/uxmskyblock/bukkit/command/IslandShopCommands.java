@@ -7,7 +7,6 @@ import java.util.function.Supplier;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
@@ -22,6 +21,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandShopMenu;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -160,11 +160,7 @@ public final class IslandShopCommands {
                 if (result instanceof IslandShopService.TradeResult.Traded traded) {
                     // What does not fit is dropped where they stand. An item on the ground can be
                     // picked up; an item that was paid for and never handed over cannot.
-                    for (ItemStack overflow : player.getInventory()
-                            .addItem(new ItemStack(material, amount))
-                            .values()) {
-                        player.getWorld().dropItemNaturally(player.getLocation(), overflow);
-                    }
+                    TradableStacks.give(player, material, amount);
                     reportTraded(player, "shop.bought", traded);
                     return;
                 }
@@ -198,7 +194,7 @@ public final class IslandShopCommands {
 
         // The inventory is read and taken here, on the thread that owns the player, because that is
         // the only thread that may touch it. Everything after this is the bank, so it goes away.
-        int held = countOf(player, material);
+        int held = TradableStacks.countOf(player, material);
         if (held < amount) {
             send(
                     player,
@@ -208,7 +204,7 @@ public final class IslandShopCommands {
                     Placeholder.unparsed("amount", Integer.toString(amount)));
             return Cmd.OK;
         }
-        take(player, material, amount);
+        TradableStacks.take(player, material, amount);
 
         ProfileId profileId = optProfile.get();
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
@@ -216,14 +212,14 @@ public final class IslandShopCommands {
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
             if (optIsland.isEmpty()) {
                 schedulerPort.onEntity(playerUuid, () -> {
-                    giveBack(player, material, amount);
+                    TradableStacks.give(player, material, amount);
                     send(player, "error.no_island");
                 });
                 return;
             }
             if (!mayTrade(optIsland.get(), profileId)) {
                 schedulerPort.onEntity(playerUuid, () -> {
-                    giveBack(player, material, amount);
+                    TradableStacks.give(player, material, amount);
                     send(player, "shop.permission_denied");
                 });
                 return;
@@ -236,7 +232,7 @@ public final class IslandShopCommands {
                     return;
                 }
                 // Items handed to a shop that did not pay are items nobody has.
-                giveBack(player, material, amount);
+                TradableStacks.give(player, material, amount);
                 report(player, result);
             });
         });
@@ -328,46 +324,6 @@ public final class IslandShopCommands {
                         Placeholder.unparsed("balance", money(poor.balance())));
             case IslandShopService.TradeResult.Refused refused ->
                 send(player, "shop.refused", Placeholder.unparsed("reason", refused.reason()));
-        }
-    }
-
-    private static int countOf(Player player, Material material) {
-        int held = 0;
-        for (ItemStack stack : player.getInventory().getContents()) {
-            if (stack != null && stack.getType() == material) {
-                held += stack.getAmount();
-            }
-        }
-        return held;
-    }
-
-    private static void take(Player player, Material material, int amount) {
-        int remaining = amount;
-        for (int slot = 0; slot < player.getInventory().getSize() && remaining > 0; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (stack == null || stack.getType() != material) {
-                continue;
-            }
-            int taken = Math.min(stack.getAmount(), remaining);
-            remaining -= taken;
-            if (taken >= stack.getAmount()) {
-                player.getInventory().setItem(slot, null);
-            } else {
-                stack.setAmount(stack.getAmount() - taken);
-            }
-        }
-    }
-
-    private static void giveBack(Player player, Material material, int amount) {
-        int remaining = amount;
-        while (remaining > 0) {
-            int stackSize = Math.min(remaining, material.getMaxStackSize());
-            for (ItemStack overflow : player.getInventory()
-                    .addItem(new ItemStack(material, stackSize))
-                    .values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), overflow);
-            }
-            remaining -= stackSize;
         }
     }
 

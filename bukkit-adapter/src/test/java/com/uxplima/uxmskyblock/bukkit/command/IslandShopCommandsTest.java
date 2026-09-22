@@ -17,6 +17,7 @@ import java.util.UUID;
 
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -304,5 +305,20 @@ class IslandShopCommandsTest {
         run("shop", server.getConsoleSender());
 
         verify(shop, never()).buy(any(), any(), anyString(), anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("An enchanted sword is not the sword the shop priced")
+    void anEnchantedSwordIsNotOnOffer() throws Exception {
+        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD, 1);
+        sword.addUnsafeEnchantment(Enchantment.SHARPNESS, 3);
+        player.getInventory().addItem(sword);
+
+        run("shop sell diamond_sword 1", player);
+
+        verify(shop, never()).sell(any(), any(), anyString(), anyLong(), any());
+        assertThat(countOf(Material.DIAMOND_SWORD))
+                .describedAs("the shop priced a sword, not this one")
+                .isEqualTo(1);
     }
 }
