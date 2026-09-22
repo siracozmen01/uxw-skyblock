@@ -44,6 +44,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.name.IslandName;
+import com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.jspecify.annotations.Nullable;
@@ -53,6 +54,9 @@ import org.jspecify.annotations.Nullable;
  * /is create, /is reset, /is delete, /is rename
  */
 public final class IslandLifecycleCommands {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandLifecycleCommands.class.getName());
 
     /**
      * What the operator wrote for the milestones this command group reaches.
@@ -339,7 +343,10 @@ public final class IslandLifecycleCommands {
                             Placeholder.unparsed("preset", unknown.presetId()),
                             Placeholder.unparsed("presets", availablePresetIds()));
                 } else if (result instanceof CreateIslandUseCase.CreateIslandResult.Failure failure) {
-                    send(player, "create.failed", Placeholder.unparsed("reason", failure.reason()));
+                    // The reason is an exception's message, which can be a database's own words. It
+                    // goes to the log; the player reads a line in their own language.
+                    LOGGER.warning(() -> "Creating an island for " + player.getName() + " failed: " + failure.reason());
+                    send(player, "create.failed");
                 }
             });
         });
@@ -515,12 +522,14 @@ public final class IslandLifecycleCommands {
                                 send(player, "reset.success_hint");
                             }
                             case RecycleResult.NotOwner no -> send(player, "reset.not_owner");
-                            case RecycleResult.InvalidChallenge ic ->
-                                send(player, "reset.invalid_challenge", Placeholder.unparsed("reason", ic.reason()));
+                            case RecycleResult.InvalidChallenge ic -> send(player, "reset.invalid_challenge");
                             case RecycleResult.IslandNotFound nf -> send(player, "reset.island_not_found");
                             case RecycleResult.AlreadyRunning ar -> send(player, "reset.already_running");
-                            case RecycleResult.Failure f ->
-                                send(player, "reset.failed", Placeholder.unparsed("reason", f.reason()));
+                            case RecycleResult.Failure f -> {
+                                LOGGER.warning(() -> "Resetting island " + islandId + " for " + player.getName()
+                                        + " failed: " + f.reason());
+                                send(player, "reset.failed");
+                            }
                         }
                     });
                 });
@@ -586,8 +595,25 @@ public final class IslandLifecycleCommands {
                     markers.onIslandChanged(optIslandId.get());
                 }
                 send(player, "name.renamed", Placeholder.unparsed("name", newName.value()));
-            } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
-                send(player, "name.rename_failed", Placeholder.unparsed("reason", String.valueOf(e.getMessage())));
+            } catch (IslandNameRefusedException refused) {
+                switch (refused.reason()) {
+                    case LENGTH ->
+                        send(
+                                player,
+                                "name.refused_length",
+                                Placeholder.unparsed("min", Integer.toString(IslandName.MIN_LENGTH)),
+                                Placeholder.unparsed("max", Integer.toString(IslandName.MAX_LENGTH)));
+                    case CHARACTERS -> send(player, "name.refused_characters");
+                    case RESERVED -> send(player, "name.refused_reserved");
+                    case UNSAFE -> send(player, "name.refused_unsafe");
+                }
+            } catch (SecurityException e) {
+                send(player, "name.refused_permission");
+            } catch (IllegalStateException e) {
+                send(player, "name.refused_taken");
+            } catch (IllegalArgumentException e) {
+                // The island went away between finding it and renaming it.
+                send(player, "name.requires_island");
             }
         });
         return Cmd.OK;

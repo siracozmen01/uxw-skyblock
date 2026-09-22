@@ -169,4 +169,37 @@ class IslandNameServiceTest {
                         org.mockito.ArgumentMatchers.argThat(
                                 event -> event != null && "ISLAND_NAME_RESET".equals(event.eventType())));
     }
+
+    @Test
+    @DisplayName("Each refused name says why in a way a player can be told, not only in a sentence")
+    void eachRefusalCarriesItsReason() {
+        assertThatThrownBy(() -> nameService.renameIsland(islandId, ownerProfileId, "ab"))
+                .isInstanceOfSatisfying(
+                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.class,
+                        refused -> org.assertj.core.api.Assertions.assertThat(refused.reason())
+                                .isEqualTo(
+                                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.Reason
+                                                .LENGTH));
+        assertThatThrownBy(() -> nameService.renameIsland(islandId, ownerProfileId, "Sky*Citadel!"))
+                .isInstanceOfSatisfying(
+                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.class,
+                        refused -> org.assertj.core.api.Assertions.assertThat(refused.reason())
+                                .isEqualTo(
+                                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.Reason
+                                                .CHARACTERS));
+        assertThatThrownBy(() -> nameService.renameIsland(islandId, ownerProfileId, "admin"))
+                .isInstanceOfSatisfying(
+                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.class,
+                        refused -> org.assertj.core.api.Assertions.assertThat(refused.reason())
+                                .isEqualTo(
+                                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.Reason
+                                                .RESERVED));
+        assertThatThrownBy(() -> nameService.renameIsland(islandId, ownerProfileId, "My_Vulgarity"))
+                .isInstanceOfSatisfying(
+                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.class,
+                        refused -> org.assertj.core.api.Assertions.assertThat(refused.reason())
+                                .isEqualTo(
+                                        com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException.Reason
+                                                .UNSAFE));
+    }
 }

@@ -13,17 +13,25 @@ import java.util.regex.Pattern;
  */
 public record IslandName(String value) {
 
+    /** The shortest a name may be. */
+    public static final int MIN_LENGTH = 3;
+
+    /** The longest a name may be. */
+    public static final int MAX_LENGTH = 16;
+
     private static final Pattern VALID_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9_ -]{1,14}[a-zA-Z0-9]$");
 
     public IslandName {
         Objects.requireNonNull(value, "Island name value must not be null");
         String trimmed = value.trim();
-        if (trimmed.length() < 3 || trimmed.length() > 16) {
-            throw new IllegalArgumentException(
+        if (trimmed.length() < MIN_LENGTH || trimmed.length() > MAX_LENGTH) {
+            throw new IslandNameRefusedException(
+                    IslandNameRefusedException.Reason.LENGTH,
                     "Island name length must be between 3 and 16 characters: " + trimmed.length());
         }
         if (!VALID_NAME_PATTERN.matcher(trimmed).matches()) {
-            throw new IllegalArgumentException(
+            throw new IslandNameRefusedException(
+                    IslandNameRefusedException.Reason.CHARACTERS,
                     "Island name contains invalid characters. Must be alphanumeric with optional spaces, underscores, or hyphens: "
                             + trimmed);
         }

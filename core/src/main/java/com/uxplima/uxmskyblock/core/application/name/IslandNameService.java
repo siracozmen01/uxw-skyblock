@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.name.IslandName;
+import com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -93,13 +94,16 @@ public final class IslandNameService {
 
         // Reserved names check
         if (RESERVED_NAMES.contains(normalized)) {
-            throw new IllegalArgumentException("Island name '" + islandName.value() + "' is a reserved keyword");
+            throw new IslandNameRefusedException(
+                    IslandNameRefusedException.Reason.RESERVED,
+                    "Island name '" + islandName.value() + "' is a reserved keyword");
         }
 
         // Profanity filter check
         for (String badWord : profanityFilter) {
             if (normalized.contains(badWord)) {
-                throw new IllegalArgumentException("Island name violates language safety policy");
+                throw new IslandNameRefusedException(
+                        IslandNameRefusedException.Reason.UNSAFE, "Island name violates language safety policy");
             }
         }
 
