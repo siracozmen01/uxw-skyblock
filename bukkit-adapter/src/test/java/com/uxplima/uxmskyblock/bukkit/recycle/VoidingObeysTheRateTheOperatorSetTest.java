@@ -50,10 +50,27 @@ class VoidingObeysTheRateTheOperatorSetTest {
         private final List<Runnable> waiting = new ArrayList<>();
         private int startedInThisBatch;
 
+        /** The running total of blocks cleared, as it stood at the start of each region task. */
+        private final List<Integer> sliceStarts = new ArrayList<>();
+
+        java.util.function.IntSupplier clearedSoFar = () -> 0;
+
         @Override
         public void onRegion(String worldName, int chunkX, int chunkZ, Runnable task) {
             startedInThisBatch++;
+            sliceStarts.add(clearedSoFar.getAsInt());
             task.run();
+        }
+
+        /** How much each region task cleared before handing the region back. */
+        List<Integer> sliceSizes() {
+            List<Integer> sizes = new ArrayList<>();
+            List<Integer> points = new ArrayList<>(sliceStarts);
+            points.add(clearedSoFar.getAsInt());
+            for (int i = 1; i < points.size(); i++) {
+                sizes.add(points.get(i) - points.get(i - 1));
+            }
+            return sizes;
         }
 
         @Override
@@ -135,6 +152,11 @@ class VoidingObeysTheRateTheOperatorSetTest {
         field.set(null, s);
     }
 
+    /** One chunk, so the only thing being paced is the blocks inside it. */
+    private static IslandBounds oneChunkWide() {
+        return IslandBounds.fromCenterAndRadius(8, 8, 3);
+    }
+
     /** An island covering sixteen chunks, so a rate below sixteen has something to hold back. */
     private static IslandBounds sixteenChunksWide() {
         return IslandBounds.fromCenterAndRadius(0, 0, 20);
@@ -182,6 +204,41 @@ class VoidingObeysTheRateTheOperatorSetTest {
         assertThat(slow.batches.get(0))
                 .describedAs("and the smaller one for a server already behind")
                 .isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("No tick clears more blocks than the operator allows")
+    void aticksWorthOfClearingIsWhatTheOperatorSet() {
+        // Every block in range is occupied, so every position costs one write.
+        java.util.concurrent.atomic.AtomicInteger cleared = new java.util.concurrent.atomic.AtomicInteger();
+        Block occupied = mock(Block.class);
+        when(occupied.isEmpty()).thenReturn(false);
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    cleared.incrementAndGet();
+                    return null;
+                })
+                .when(occupied)
+                .setType(
+                        org.mockito.ArgumentMatchers.any(org.bukkit.Material.class),
+                        org.mockito.ArgumentMatchers.anyBoolean());
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(occupied);
+
+        PacingScheduler scheduler = new PacingScheduler();
+        scheduler.clearedSoFar = cleared::get;
+        AdaptiveBackpressureController controller =
+                new AdaptiveBackpressureController(() -> 20.0, true, 19.5, 4, 2, 100, 50);
+        FoliaIslandVoidingAdapter adapter = new FoliaIslandVoidingAdapter(scheduler, controller);
+
+        var unused = adapter.voidIslandChunks(IslandId.of(UUID.randomUUID()), "skyblock_world", oneChunkWide());
+        scheduler.runEverythingThatWaited();
+
+        assertThat(scheduler.sliceSizes())
+                .describedAs("a chunk column used to be cleared on one tick, however many blocks it held")
+                .isNotEmpty()
+                .allSatisfy(written -> assertThat(written).isLessThanOrEqualTo(4));
+        assertThat(cleared.get())
+                .describedAs("and every block in range is still cleared")
+                .isPositive();
     }
 
     @Test

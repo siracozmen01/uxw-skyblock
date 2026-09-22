@@ -18,6 +18,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
+import com.uxplima.uxmskyblock.bukkit.performance.BudgetedBlockPass;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandVoidingPort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -113,23 +114,34 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
                         int minY = world.getMinHeight();
                         int maxY = world.getMaxHeight();
 
-                        for (int x = startX; x <= endX; x++) {
-                            for (int z = startZ; z <= endZ; z++) {
-                                for (int y = minY; y < maxY; y++) {
+                        // A chunk column is tens of thousands of blocks and they used to be
+                        // cleared on one tick, with the region that owns them doing nothing else
+                        // meanwhile. The budget is what the operator's file has always said.
+                        CompletableFuture<Void> cleared = BudgetedBlockPass.over(
+                                schedulerPort,
+                                worldName,
+                                chunkX,
+                                chunkZ,
+                                startX,
+                                endX,
+                                startZ,
+                                endZ,
+                                minY,
+                                maxY,
+                                this::blocksPerTick,
+                                (x, y, z) -> {
                                     Block block = world.getBlockAt(x, y, z);
-                                    if (!block.isEmpty()) {
-                                        block.setType(Material.AIR, false);
+                                    if (block.isEmpty()) {
+                                        return false;
                                     }
-                                }
-                            }
-                        }
+                                    block.setType(Material.AIR, false);
+                                    return true;
+                                });
 
-                        if (playerTeleports.isEmpty()) {
-                            chunkFuture.complete(null);
-                        } else {
-                            var unused = CompletableFuture.allOf(playerTeleports.toArray(CompletableFuture<?>[]::new))
-                                    .whenComplete((res, ex) -> chunkFuture.complete(null));
-                        }
+                        List<CompletableFuture<?>> waitingOn = new ArrayList<>(playerTeleports);
+                        waitingOn.add(cleared);
+                        var unused = CompletableFuture.allOf(waitingOn.toArray(CompletableFuture<?>[]::new))
+                                .whenComplete((res, ex) -> chunkFuture.complete(null));
                     } catch (Throwable t) {
                         chunkFuture.completeExceptionally(t);
                     }
@@ -142,6 +154,13 @@ public final class FoliaIslandVoidingAdapter implements IslandVoidingPort {
         }
         startAtTheRateAllowed(waiting);
         return CompletableFuture.allOf(chunkFutures.toArray(CompletableFuture<?>[]::new));
+    }
+
+    /** How many blocks one tick may clear, or every one of them on a node with no controller. */
+    private int blocksPerTick() {
+        return backpressureController == null
+                ? Integer.MAX_VALUE
+                : Math.max(1, backpressureController.resolveBlockPasteBatchSize());
     }
 
     /**
