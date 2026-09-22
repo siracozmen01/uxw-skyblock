@@ -80,7 +80,10 @@ class EveryMenuWordIsTranslatableTest {
         provider.loadBundledDefaults(EveryMenuWordIsTranslatableTest.class.getClassLoader());
         Set<String> answered = provider.getKeys("en");
 
-        Pattern key = Pattern.compile("\"@(menu\\.[a-z_0-9.]+)\"");
+        // Every key a window quotes, not only the ones under menu. A tile that names
+        // "@error.no_island" is asking the same catalogue the same way, and reading only one
+        // namespace is how the next one gets in without being asked about.
+        Pattern key = Pattern.compile("\"@([a-z][a-z_0-9.]*)\"");
         TreeSet<String> unanswered = new TreeSet<>();
         int found = 0;
 
