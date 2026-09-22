@@ -7,6 +7,7 @@ import org.bukkit.entity.Player;
 import com.uxplima.uxmlib.condition.ItemStore;
 import com.uxplima.uxmlib.condition.OperandResolver;
 import com.uxplima.uxmlib.condition.action.ActionContext;
+import com.uxplima.uxmlib.condition.action.ActionCostException;
 import com.uxplima.uxmlib.condition.action.ActionList;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import org.jspecify.annotations.Nullable;
@@ -25,6 +26,9 @@ import org.jspecify.annotations.Nullable;
  * saying so and better than a bar that never goes away.
  */
 public final class InteractionEffectPlayer {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(InteractionEffectPlayer.class.getName());
 
     private final @Nullable SchedulerPort schedulerPort;
 
@@ -51,7 +55,20 @@ public final class InteractionEffectPlayer {
         if (list.actions().isEmpty()) {
             return;
         }
-        list.run(contextFor(player));
+        try {
+            list.run(contextFor(player));
+        } catch (ActionCostException unpaid) {
+            // A price nobody can pay is the operator's own gate doing its job. The engine charges
+            // every cost before it runs anything, so nothing has happened and nobody is half
+            // charged. It is said quietly rather than thrown, because the thing this interaction
+            // was about has already happened and must not be undone by a cosmetic line.
+            LOGGER.fine(() -> "The " + interaction + " list asked " + player.getName()
+                    + " for something they could not pay, so none of it ran: " + unpaid.getMessage());
+        } catch (RuntimeException failed) {
+            // One line that cannot be carried out is one line. The interaction still happened.
+            LOGGER.warning(() -> "The " + interaction + " list could not be carried out for " + player.getName() + ": "
+                    + failed.getMessage());
+        }
     }
 
     /** The context an action reads: who it is about, who hears it, and what they are holding. */
