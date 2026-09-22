@@ -129,6 +129,49 @@ class AMissionRewardIsHandedOutOnceTest {
     }
 
     @Test
+    @DisplayName("Whoever is listening is told once, when the mission crosses its target")
+    void thelistenerIsToldOnce() {
+        InMemoryMissionStorage storage = new InMemoryMissionStorage();
+        IslandMissionService service = new IslandMissionService(storage, new CountingRewards());
+        service.registerMission(missionNeeding(2L));
+        List<IslandMissionService.MissionFinished> told = new ArrayList<>();
+        service.setFinishedListener(told::add);
+
+        service.handleTrigger(ISLAND, PROFILE, MissionTriggerType.BLOCK_BREAK, "STONE", 1L, NOW);
+        assertThat(told).describedAs("one short of the target").isEmpty();
+
+        service.handleTrigger(ISLAND, PROFILE, MissionTriggerType.BLOCK_BREAK, "STONE", 1L, NOW);
+        service.handleTrigger(ISLAND, PROFILE, MissionTriggerType.BLOCK_BREAK, "STONE", 1L, NOW);
+
+        assertThat(told)
+                .describedAs("finished once, however many blocks come after")
+                .hasSize(1);
+        assertThat(told.get(0).islandId()).isEqualTo(ISLAND);
+        assertThat(told.get(0).profileId()).isEqualTo(PROFILE);
+        assertThat(told.get(0).definition().id()).isEqualTo(MISSION);
+    }
+
+    @Test
+    @DisplayName("A listener that throws does not stop the mission from paying out")
+    void afailingListenerChangesNothing() {
+        InMemoryMissionStorage storage = new InMemoryMissionStorage();
+        CountingRewards rewards = new CountingRewards();
+        IslandMissionService service = new IslandMissionService(storage, rewards);
+        service.registerMission(missionNeeding(1L));
+        service.setFinishedListener(finished -> {
+            throw new IllegalStateException("the feed is gone");
+        });
+
+        service.handleTrigger(ISLAND, PROFILE, MissionTriggerType.BLOCK_BREAK, "STONE", 1L, NOW);
+
+        assertThat(rewards.dispatched.get())
+                .describedAs("a feed that is not listening must not change what a mission does")
+                .isEqualTo(1);
+        assertThat(service.findProgress(ISLAND, PROFILE, MISSION).orElseThrow().completed())
+                .isTrue();
+    }
+
+    @Test
     @DisplayName("A mission already finished is not finished again by a later block")
     void afinishedMissionStaysFinished() {
         InMemoryMissionStorage storage = new InMemoryMissionStorage();

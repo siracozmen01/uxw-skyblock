@@ -26,12 +26,14 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterApplyResult;
 import com.uxplima.uxmskyblock.core.domain.booster.BoosterCategory;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -57,6 +59,14 @@ public final class IslandMechanicsCommands {
     private final Supplier<@Nullable IslandMissionsMenu> missionsMenuProvider;
     private final Supplier<@Nullable IslandBoundaryService> boundaryServiceProvider;
     private final Messages messages;
+
+    /** Where a booster somebody started is written down for the island's members to read. */
+    private final IslandActivityLog activityLog = new IslandActivityLog();
+
+    /** Tells this command group where to write the island's activity feed. */
+    public void useActivityFeed(@Nullable ActivityFeedService service) {
+        this.activityLog.useService(service);
+    }
 
     public IslandMechanicsCommands(
             IslandLocationService islandLocationService,
@@ -284,6 +294,8 @@ public final class IslandMechanicsCommands {
         }
 
         ProfileId boosterProfile = optProfile.get();
+        // Read on the thread that owns this player, because the feed line is written off it.
+        String playerName = player.getName();
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = islandLocationService.findIslandId(boosterProfile);
             if (optIsland.isEmpty()) {
@@ -292,9 +304,31 @@ public final class IslandMechanicsCommands {
             }
             BoosterApplyResult result = boosterService.applyBooster(
                     optIsland.get(), optCategory.get(), multiplier, duration, Instant.now());
+            if (isApplied(result)) {
+                activityLog.recordForMembers(
+                        optIsland.get(),
+                        boosterProfile,
+                        ActivityEventType.BOOSTER_ACTIVATED,
+                        "activity.booster_activated",
+                        java.util.Map.of(
+                                "player",
+                                playerName,
+                                "category",
+                                optCategory.get().name(),
+                                "multiplier",
+                                String.format(java.util.Locale.ROOT, "%.2f", multiplier)));
+            }
             reportBoosterResult(player, optCategory.get(), result);
         });
         return Cmd.OK;
+    }
+
+    /** Whether the booster is now running. A refused one is not worth a line in the feed. */
+    private static boolean isApplied(BoosterApplyResult result) {
+        return result instanceof BoosterApplyResult.Success
+                || result instanceof BoosterApplyResult.DurationExtended
+                || result instanceof BoosterApplyResult.MultiplierStacked
+                || result instanceof BoosterApplyResult.Replaced;
     }
 
     private int executeMissions(CommandContext<CommandSourceStack> ctx) {

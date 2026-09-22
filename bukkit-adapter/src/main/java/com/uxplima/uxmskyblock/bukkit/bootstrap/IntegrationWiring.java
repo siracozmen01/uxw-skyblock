@@ -274,6 +274,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // Nothing ever wrote an activity event, so every island's feed was empty for as long as the
         // server ran.
         this.commandTree.useActivityFeed(gameplay.activityFeedService());
+        tellTheFeedWhenAMissionFinishes(gameplay);
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setVaultWindow(gameplay.vaultWindow());
@@ -379,6 +380,34 @@ public final class IntegrationWiring implements AutoCloseable {
                             "Sweeping the notifications already read failed. The next sweep retries.",
                             e);
         }
+    }
+
+    /**
+     * Writes a finished mission into the island's feed.
+     *
+     * <p>Only the mission service knows the moment a mission crosses its target: it happens inside
+     * an advance, and the callers that trigger it are block breaks and hand-ins that know nothing
+     * about it. The write is a row, so it hops off whichever thread the last block break arrived on.
+     */
+    private void tellTheFeedWhenAMissionFinishes(GameplayWiring gameplay) {
+        com.uxplima.uxmskyblock.core.application.mission.IslandMissionService missions = gameplay.missionService();
+        if (missions == null) {
+            return;
+        }
+        missions.setFinishedListener(finished -> scheduler.async(() -> {
+            try {
+                activityFeedService.record(
+                        finished.islandId().value().toString(),
+                        finished.profileId(),
+                        com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType.MISSION_COMPLETED,
+                        com.uxplima.uxmskyblock.core.domain.activity.ActivityVisibility.MEMBERS_ONLY,
+                        "activity.mission_completed",
+                        java.util.Map.of("mission", finished.definition().displayName()));
+            } catch (RuntimeException e) {
+                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                        .log(java.util.logging.Level.WARNING, "Writing a finished mission into the feed failed.", e);
+            }
+        }));
     }
 
     /**

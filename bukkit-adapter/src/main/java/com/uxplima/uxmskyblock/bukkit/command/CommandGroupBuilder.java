@@ -140,6 +140,7 @@ final class CommandGroupBuilder {
                 () -> tree.features.resetMenu(),
                 () -> tree.nameService,
                 tree.messages);
+        lifecycleCommands.useActivityFeed(tree.activityFeedService);
 
         IslandNavigationCommands navigationCommands = new IslandNavigationCommands(
                 tree.islandLocationService,
@@ -174,6 +175,7 @@ final class CommandGroupBuilder {
                 () -> tree.features.missionsMenu(),
                 () -> tree.features.boundaryService(),
                 tree.messages);
+        mechanicsCommands.useActivityFeed(tree.activityFeedService);
 
         lifecycleCommands.useMarkerSynchroniser(tree.markerSynchroniser);
 

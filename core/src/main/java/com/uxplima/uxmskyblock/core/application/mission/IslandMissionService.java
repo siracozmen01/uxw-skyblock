@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -25,8 +26,21 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandMissionService {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandMissionService.class.getName());
+
     private final IslandMissionStoragePort storagePort;
     private final @Nullable IslandMissionRewardPort rewardPort;
+
+    /**
+     * Told when a mission is finished, once, by whoever finished it.
+     *
+     * <p>The island's activity feed wants to know, and only this class can tell it: the moment a
+     * mission crosses its target is inside the advance, not in any caller. It is a listener rather
+     * than a port because it is a side channel: a feed that is not listening must not change what a
+     * mission does.
+     */
+    private volatile @Nullable Consumer<MissionFinished> finishedListener;
 
     private final Map<MissionId, MissionDefinition> missionCatalog = new ConcurrentHashMap<>();
     private final Map<String, Map<MissionId, MissionProgress>> progressCache = new ConcurrentHashMap<>();
@@ -171,8 +185,11 @@ public final class IslandMissionService {
             }
             updated.add(next);
 
-            if (advance.finishedItNow() && rewardPort != null) {
-                rewardPort.dispatchReward(islandId, profileId, def);
+            if (advance.finishedItNow()) {
+                if (rewardPort != null) {
+                    rewardPort.dispatchReward(islandId, profileId, def);
+                }
+                tellSomebodyItFinished(islandId, profileId, def);
             }
         }
         return updated;
@@ -228,8 +245,11 @@ public final class IslandMissionService {
         dirtyEntries.remove(dirtyKey(islandId, profileId, def.id()));
         storagePort.saveProgress(islandId, profileId, next);
 
-        if (advance.finishedItNow() && rewardPort != null) {
-            rewardPort.dispatchReward(islandId, profileId, def);
+        if (advance.finishedItNow()) {
+            if (rewardPort != null) {
+                rewardPort.dispatchReward(islandId, profileId, def);
+            }
+            tellSomebodyItFinished(islandId, profileId, def);
         }
         return Optional.of(new MissionSubmission(next, credited));
     }
@@ -250,6 +270,36 @@ public final class IslandMissionService {
         }
 
         return submitManualItems(islandId, profileId, missionId, amount, now).map(MissionSubmission::progress);
+    }
+
+    /** A mission somebody just finished. */
+    public record MissionFinished(IslandId islandId, ProfileId profileId, MissionDefinition definition) {
+        public MissionFinished {
+            Objects.requireNonNull(islandId, "islandId must not be null");
+            Objects.requireNonNull(profileId, "profileId must not be null");
+            Objects.requireNonNull(definition, "definition must not be null");
+        }
+    }
+
+    /** Tells this service who to tell when a mission is finished. */
+    public void setFinishedListener(@Nullable Consumer<MissionFinished> listener) {
+        this.finishedListener = listener;
+    }
+
+    /** Tells whoever is listening, without letting them change what the mission did. */
+    private void tellSomebodyItFinished(IslandId islandId, ProfileId profileId, MissionDefinition def) {
+        Consumer<MissionFinished> listener = this.finishedListener;
+        if (listener == null) {
+            return;
+        }
+        try {
+            listener.accept(new MissionFinished(islandId, profileId, def));
+        } catch (RuntimeException e) {
+            LOGGER.log(
+                    java.util.logging.Level.WARNING,
+                    e,
+                    () -> "Telling somebody that mission " + def.id() + " finished failed.");
+        }
     }
 
     /** One mission moved: where it now stands, and whether this caller is the one that finished it. */

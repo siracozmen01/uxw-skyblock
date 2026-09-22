@@ -28,6 +28,7 @@ import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
 import com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.webmap.IslandMarkerSynchroniser;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -36,6 +37,7 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService.RecycleResult;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -66,6 +68,14 @@ public final class IslandLifecycleCommands {
     private final Supplier<@Nullable IslandResetConfirmationMenu> resetMenuProvider;
     private final Supplier<@Nullable IslandNameService> nameServiceProvider;
     private final Messages messages;
+
+    /** Where the preset a new island started from is written down as its feed's first line. */
+    private final IslandActivityLog activityLog = new IslandActivityLog();
+
+    /** Tells this command group where to write the island's activity feed. */
+    public void useActivityFeed(@Nullable ActivityFeedService service) {
+        this.activityLog.useService(service);
+    }
 
     public IslandLifecycleCommands(
             CreateIslandUseCase createIslandUseCase,
@@ -215,6 +225,16 @@ public final class IslandLifecycleCommands {
 
             schedulerPort.onEntity(playerUuid, () -> {
                 if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
+                    activityLog.recordForMembers(
+                            success.island().id(),
+                            profileId,
+                            ActivityEventType.TEMPLATE_APPLIED,
+                            "activity.template_applied",
+                            java.util.Map.of(
+                                    "player",
+                                    player.getName(),
+                                    "preset",
+                                    success.preset().id()));
                     protectionListener.cacheIsland(success.island());
                     IslandMarkerSynchroniser markers = this.markerSynchroniser;
                     if (markers != null) {
