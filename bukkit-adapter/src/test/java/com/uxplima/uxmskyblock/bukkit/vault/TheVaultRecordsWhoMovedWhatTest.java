@@ -191,7 +191,7 @@ class TheVaultRecordsWhoMovedWhatTest {
     private List<VaultAuditLogEntry> commit(List<ItemStack> openedWith, ItemStack[] atClose) {
         PlayerMock player = server.addPlayer();
         IslandVaultWindow.VaultHolder holder = new IslandVaultWindow.VaultHolder(
-                islandId, 1, actor, UUID.randomUUID().toString(), openedWith);
+                islandId, 1, actor, UUID.randomUUID().toString(), openedWith, true, true);
 
         window.commit(player, holder, atClose);
 

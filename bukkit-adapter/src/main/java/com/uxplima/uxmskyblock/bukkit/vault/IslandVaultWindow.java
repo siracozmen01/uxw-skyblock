@@ -63,9 +63,20 @@ public final class IslandVaultWindow {
      * difference between it and what the window holds at close is what the player put in, and that
      * is what has to go back to them. The same difference, read slot by slot, is what the audit log
      * records.
+     *
+     * <p>{@code mayDeposit} and {@code mayWithdraw} are what the viewer's role lets them do with the
+     * page. They are read once, where the page is opened, and carried here so a click can ask the
+     * holder rather than the database: that is the only way to answer on the thread a click arrives
+     * on.
      */
     public record VaultHolder(
-            IslandId islandId, int page, ProfileId profileId, String sessionId, List<ItemStack> openedWith)
+            IslandId islandId,
+            int page,
+            ProfileId profileId,
+            String sessionId,
+            List<ItemStack> openedWith,
+            boolean mayDeposit,
+            boolean mayWithdraw)
             implements InventoryHolder {
 
         public VaultHolder {
@@ -132,7 +143,10 @@ public final class IslandVaultWindow {
             try {
                 IslandVaultService.VaultOpenResult opened = vaultService.openVaultPage(
                         island, profileId, role, page, player.getUniqueId(), configuration.leaseDuration());
-                schedulerPort.onEntity(playerUuid, () -> show(player, island.id(), page, profileId, opened));
+                boolean mayDeposit = role.hasPermission(IslandPermission.VAULT_DEPOSIT);
+                boolean mayWithdraw = role.hasPermission(IslandPermission.VAULT_WITHDRAW);
+                schedulerPort.onEntity(
+                        playerUuid, () -> show(player, island.id(), page, profileId, opened, mayDeposit, mayWithdraw));
             } catch (VaultPermissionDeniedException denied) {
                 schedulerPort.onEntity(playerUuid, () -> messages.send(player, "vault.no_permission"));
             } catch (VaultPageLimitExceededException limit) {
@@ -231,7 +245,9 @@ public final class IslandVaultWindow {
             IslandId islandId,
             int page,
             ProfileId profileId,
-            IslandVaultService.VaultOpenResult opened) {
+            IslandVaultService.VaultOpenResult opened,
+            boolean mayDeposit,
+            boolean mayWithdraw) {
         if (!player.isOnline()) {
             vaultService.abortVaultPage(opened.session().sessionId());
             return;
@@ -243,7 +259,9 @@ public final class IslandVaultWindow {
                 page,
                 profileId,
                 opened.session().sessionId().value().toString(),
-                snapshotOf(stored, configuration.slotsPerPage()));
+                snapshotOf(stored, configuration.slotsPerPage()),
+                mayDeposit,
+                mayWithdraw);
         Inventory inventory = Bukkit.createInventory(
                 holder,
                 configuration.slotsPerPage(),
@@ -253,6 +271,17 @@ public final class IslandVaultWindow {
             inventory.setItem(slot, stored[slot]);
         }
         player.openInventory(inventory);
+    }
+
+    /**
+     * Tells a player their role does not let them move items that way.
+     *
+     * <p>The two directions read differently to the player: one says they may not take anything
+     * out, the other that they may not put anything in. The window says it because the window owns
+     * the catalogue, and the click arrives on the player's own thread already.
+     */
+    public void sayTheRoleRefused(Player player, boolean takingOut) {
+        messages.send(player, takingOut ? "vault.no_withdraw" : "vault.no_deposit");
     }
 
     /**

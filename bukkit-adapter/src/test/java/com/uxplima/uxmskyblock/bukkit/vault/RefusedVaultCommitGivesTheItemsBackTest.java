@@ -89,7 +89,9 @@ class RefusedVaultCommitGivesTheItemsBackTest {
                 1,
                 new ProfileId(UUID.randomUUID()),
                 UUID.randomUUID().toString(),
-                openedWith);
+                openedWith,
+                true,
+                true);
     }
 
     private static int countOf(Player player, Material material) {
