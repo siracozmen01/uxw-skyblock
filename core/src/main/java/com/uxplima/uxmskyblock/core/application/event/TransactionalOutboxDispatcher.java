@@ -36,6 +36,10 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
     /** How often the delivered events are swept. */
     public static final Duration DEFAULT_PURGE_INTERVAL = Duration.ofHours(1);
 
+    /** Where the marks that make a redelivery a no-op live, when this node keeps any. */
+    private final java.util.concurrent.atomic.AtomicReference<ConsumerInboxPort> consumerInbox =
+            new java.util.concurrent.atomic.AtomicReference<>(null);
+
     private final Duration processedRetention;
     private final Duration purgeInterval;
     private final AtomicReference<AutoCloseable> purgeTask = new AtomicReference<>(null);
@@ -119,15 +123,35 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
      */
     public int purgeDelivered() {
         try {
-            int purged = outboxPort.purgeProcessedBefore(Instant.now().minus(processedRetention));
+            Instant cutoff = Instant.now().minus(processedRetention);
+            int purged = outboxPort.purgeProcessedBefore(cutoff);
             if (purged > 0) {
                 LOGGER.fine(() -> "Purged " + purged + " delivered outbox events.");
+            }
+            ConsumerInboxPort inbox = consumerInbox.get();
+            if (inbox != null) {
+                // The marks are only worth keeping for as long as the events they are about, since
+                // an event that is gone can never be delivered again.
+                int marks = inbox.purgeProcessedBefore(cutoff);
+                if (marks > 0) {
+                    LOGGER.fine(() -> "Purged " + marks + " consumer inbox marks.");
+                }
             }
             return purged;
         } catch (RuntimeException e) {
             LOGGER.log(Level.WARNING, e, () -> "Purging delivered outbox events failed. The dispatcher carries on.");
             return 0;
         }
+    }
+
+    /**
+     * Where the inbox marks live, so the sweep that empties the outbox empties them too.
+     *
+     * <p>One row per consumer per event, and nothing ever deleted one. The schema carries an index
+     * on the time a mark was made and it exists for exactly this sweep.
+     */
+    public void sweepInboxToo(ConsumerInboxPort inboxPort) {
+        consumerInbox.set(Objects.requireNonNull(inboxPort, "inboxPort must not be null"));
     }
 
     public void registerConsumer(OutboxEventConsumer consumer) {

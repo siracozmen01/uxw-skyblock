@@ -98,6 +98,30 @@ class InboxDeduplicatingConsumerTest {
         assertThat(acknowledged.get()).isFalse();
     }
 
+    @Test
+    @DisplayName("An event whose handler threw is delivered again rather than read as a duplicate")
+    void afailedEventIsNotSwallowed() throws Exception {
+        StubConsumerInboxPort inbox = new StubConsumerInboxPort();
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        InboxDeduplicatingConsumer consumer = new InboxDeduplicatingConsumer("a-consumer", inbox, event -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new IllegalStateException("the first delivery failed");
+            }
+        });
+
+        OutboxEventRecord event = createEvent(EventId.random());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> consumer.onEvent(event, () -> {}))
+                .isInstanceOf(IllegalStateException.class);
+
+        // The mark went down before the work, so without taking it back the retry the broker is
+        // about to make would be read as a duplicate and the event handled by nobody.
+        consumer.onEvent(event, () -> {});
+
+        assertThat(attempts.get())
+                .describedAs("deliveries the handler actually saw")
+                .isEqualTo(2);
+    }
+
     private static class StubConsumerInboxPort implements ConsumerInboxPort {
         private final Set<String> processed = new HashSet<>();
 
@@ -109,6 +133,18 @@ class InboxDeduplicatingConsumerTest {
         @Override
         public synchronized boolean isProcessed(String consumerName, EventId eventId) {
             return processed.contains(consumerName + ":" + eventId.value());
+        }
+
+        @Override
+        public synchronized void forget(String consumerName, EventId eventId) {
+            processed.remove(consumerName + ":" + eventId.value());
+        }
+
+        @Override
+        public synchronized int purgeProcessedBefore(java.time.Instant before) {
+            int held = processed.size();
+            processed.clear();
+            return held;
         }
     }
 }

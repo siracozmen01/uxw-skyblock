@@ -48,6 +48,18 @@ public final class InboxDeduplicatingConsumer implements StreamEventHandler {
             delegate.consume(event);
             acknowledge.run();
         } catch (Exception e) {
+            // The mark went down before the work, so a handler that threw has left a mark for work
+            // that never happened. The acknowledgment is withheld so the broker retries, and the
+            // retry would be read as a duplicate and dropped unless the mark is taken back first.
+            try {
+                inboxPort.forget(consumerName, event.eventId());
+            } catch (RuntimeException failed) {
+                LOGGER.log(
+                        Level.SEVERE,
+                        failed,
+                        () -> "Event " + event.eventId() + " failed in " + consumerName + " and its inbox mark "
+                                + "could not be taken back, so a retry of it will be read as a duplicate.");
+            }
             LOGGER.log(Level.WARNING, "Consumer " + consumerName + " failed to process event " + event.eventId(), e);
             throw e;
         }

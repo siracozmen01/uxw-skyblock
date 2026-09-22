@@ -29,6 +29,7 @@ import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
+import com.uxplima.uxmskyblock.core.application.event.DeduplicatingOutboxConsumer;
 import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
 import com.uxplima.uxmskyblock.core.application.flag.IslandFlagService;
@@ -159,9 +160,15 @@ public final class IntegrationWiring implements AutoCloseable {
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistence.outboxPort(), gameplay.scheduler(), serverNodeId.value() + "-outbox");
         this.eventTransport = this.clusterTransport.eventTransport();
-        this.outboxDispatcher.registerConsumer(event -> {
-            this.eventTransport.publish("uxmskyblock:stream:domain_events", event);
-        });
+        // Delivery is at least once: a worker whose claim lease runs out while it is delivering
+        // loses the row to another worker, which delivers it again. The consumer inbox was built
+        // for exactly that and nothing ever wrote a row to it, so a fenced claim published the
+        // same event twice.
+        this.outboxDispatcher.sweepInboxToo(persistence.consumerInboxPort());
+        this.outboxDispatcher.registerConsumer(new DeduplicatingOutboxConsumer(
+                serverNodeId.value() + "-event-transport",
+                persistence.consumerInboxPort(),
+                event -> this.eventTransport.publish("uxmskyblock:stream:domain_events", event)));
 
         this.velocityBridge = new BukkitVelocityBridge(plugin, gameplay.scheduler());
         this.clusterRoutingDirectory = this.clusterTransport.clusterRoutingDirectory();

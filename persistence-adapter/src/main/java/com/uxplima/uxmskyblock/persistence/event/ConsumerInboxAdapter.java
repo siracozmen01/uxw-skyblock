@@ -62,6 +62,37 @@ public final class ConsumerInboxAdapter implements ConsumerInboxPort {
     }
 
     @Override
+    public void forget(String consumerName, EventId eventId) {
+        Objects.requireNonNull(consumerName, "consumerName");
+        Objects.requireNonNull(eventId, "eventId");
+
+        String sql = "DELETE FROM consumer_inbox WHERE consumer_name = ? AND event_id = ?";
+        try (Connection connection = database.connection();
+                PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, consumerName);
+            ps.setString(2, eventId.value().toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new OutboxPersistenceException(
+                    "Failed to take back the consumer inbox entry for " + consumerName + ":" + eventId, e);
+        }
+    }
+
+    @Override
+    public int purgeProcessedBefore(java.time.Instant before) {
+        Objects.requireNonNull(before, "before");
+
+        String sql = "DELETE FROM consumer_inbox WHERE processed_at < ?";
+        try (Connection connection = database.connection();
+                PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, java.sql.Timestamp.from(before));
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new OutboxPersistenceException("Failed to sweep the consumer inbox", e);
+        }
+    }
+
+    @Override
     public boolean isProcessed(String consumerName, EventId eventId) {
         Objects.requireNonNull(consumerName, "consumerName");
         Objects.requireNonNull(eventId, "eventId");
