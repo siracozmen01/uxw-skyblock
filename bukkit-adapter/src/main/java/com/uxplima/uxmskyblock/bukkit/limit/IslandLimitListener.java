@@ -46,7 +46,7 @@ public final class IslandLimitListener implements Listener {
      * <p>The sound was written into this file, so a server that wanted a different note, or none,
      * or a title as well, had nowhere to say so. A node built without a list fires nothing.
      */
-    private volatile com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects
             effects;
 
     private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer
@@ -54,7 +54,7 @@ public final class IslandLimitListener implements Listener {
 
     /** Tells this rule what the operator wrote for it. */
     public void useEffects(
-            com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
             com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer player) {
         this.effects = effects;
         this.effectPlayer = player;
@@ -124,10 +124,10 @@ public final class IslandLimitListener implements Listener {
                     Placeholder.unparsed("count", Integer.toString(current)),
                     Placeholder.unparsed("max", Integer.toString(max))));
             Location pLoc = player.getLocation();
-            com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects written = this.effects;
+            com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;
             com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
             if (pLoc != null && written != null && plays != null) {
-                plays.fire(written, "limit-refused", player, pLoc);
+                plays.fire(written, "limit-refused", player);
             }
         }
     }

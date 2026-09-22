@@ -38,7 +38,7 @@ public final class KineticWardListener implements Listener {
      * note, or none, or a title as well, had nowhere to say so. A node built without one fires
      * nothing, which is the same thing said in the file as an empty list.
      */
-    private volatile com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects
             effects;
 
     private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer
@@ -46,7 +46,7 @@ public final class KineticWardListener implements Listener {
 
     /** Tells this rule what the operator wrote for it. */
     public void useEffects(
-            com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
             com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer player) {
         this.effects = effects;
         this.effectPlayer = player;
@@ -74,10 +74,15 @@ public final class KineticWardListener implements Listener {
             return;
         }
 
-        triggerKineticWave(dest);
+        triggerKineticWave(dest, event.getPlayer());
     }
 
+    /** The wave with nobody to show it to, for a caller that only has a place. */
     public void triggerKineticWave(Location center) {
+        triggerKineticWave(center, null);
+    }
+
+    public void triggerKineticWave(Location center, org.bukkit.entity.@org.jspecify.annotations.Nullable Player who) {
         World world = center.getWorld();
         if (world == null) {
             return;
@@ -117,10 +122,12 @@ public final class KineticWardListener implements Listener {
             bukkitEntity.setVelocity(new Vector(rep.velocityX(), rep.velocityY(), rep.velocityZ()));
         }
 
-        com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects written = this.effects;
+        com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;
         com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
-        if (written != null && plays != null) {
-            plays.fireAt(written, "kinetic-ward", center.clone().add(0, 0.5, 0));
+        // The player who just arrived is who this happened to, so they are who hears it. An
+        // audience left empty renders every line and drops it.
+        if (written != null && plays != null && who != null) {
+            plays.fire(written, "kinetic-ward", who);
         }
     }
 

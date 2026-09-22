@@ -101,7 +101,7 @@ public final class GameplayEnvironmentWiring {
             this.limitListener.useReconciler(this.limitReconciler);
             this.limitListener.useEffects(
                     config.effectsConfig(),
-                    new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(config.messages(), scheduler));
+                    new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler));
         }
     }
 

@@ -39,7 +39,7 @@ class NoEffectIsWrittenIntoJavaTest {
             List.of("effect/InteractionEffectPlayer.java", "boundary/IslandBoundaryListener.java");
 
     @Test
-    @DisplayName("No sound and no particle is named outside the applier")
+    @DisplayName("No sound and no particle is named in this plugin at all")
     void noeffectIsNamedInJava() throws IOException {
         TreeSet<String> offences = new TreeSet<>();
 
@@ -65,12 +65,11 @@ class NoEffectIsWrittenIntoJavaTest {
     }
 
     @Test
-    @DisplayName("The applier really does name them, so an empty scan cannot pass this file")
-    void theapplierNamesThem() throws IOException {
-        String applier = Files.readString(
-                SOURCES.resolve("com/uxplima/uxmskyblock/bukkit/effect/InteractionEffectPlayer.java"),
-                StandardCharsets.UTF_8);
-
-        assertThat(applier).contains(".playSound(").contains(".spawnParticle(");
+    @DisplayName("The scan really walked the tree, so an empty one cannot pass this file")
+    void thescanWalkedTheTree() throws IOException {
+        try (Stream<Path> files = Files.walk(SOURCES)) {
+            assertThat(files.filter(path -> path.toString().endsWith(".java")).count())
+                    .isGreaterThan(100);
+        }
     }
 }

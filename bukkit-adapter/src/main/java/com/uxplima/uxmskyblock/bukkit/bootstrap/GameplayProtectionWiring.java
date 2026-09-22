@@ -52,7 +52,7 @@ public final class GameplayProtectionWiring {
 
         // What every interaction fires is the operator's list, not two lines of Java each.
         com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer effectPlayer =
-                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(config.messages());
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer();
         this.kineticWardListener.useEffects(config.effectsConfig(), effectPlayer);
         this.obsidianRecoveryListener.useEffects(config.effectsConfig(), effectPlayer);
         this.voidProtectionListener = new VoidProtectionListener(

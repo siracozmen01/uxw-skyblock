@@ -36,7 +36,7 @@ public final class ObsidianRecoveryListener implements Listener {
      * <p>A sound and a particle were written into this file. A node built without a list fires
      * nothing, which is the same thing said in the file as an empty list.
      */
-    private volatile com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects
             effects;
 
     private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer
@@ -44,7 +44,7 @@ public final class ObsidianRecoveryListener implements Listener {
 
     /** Tells this rule what the operator wrote for it. */
     public void useEffects(
-            com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
             com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer player) {
         this.effects = effects;
         this.effectPlayer = player;
@@ -114,10 +114,10 @@ public final class ObsidianRecoveryListener implements Listener {
         updateBucket(player, item);
 
         if (loc.getWorld() != null) {
-            com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects written = this.effects;
+            com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;
             com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
             if (written != null && plays != null) {
-                plays.fireAt(written, "obsidian-recovery", loc.clone().add(0.5, 0.5, 0.5));
+                plays.fire(written, "obsidian-recovery", player);
             }
         }
     }

@@ -2,8 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.uxplima.uxmskyblock.core.domain.effect.InteractionEffect;
-import com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects;
+import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.spongepowered.configurate.ConfigurationNode;
@@ -13,8 +12,8 @@ import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
  * What an interaction fires comes off the operator's file.
  *
  * <p>Four interactions had a sound written into Java and two of those a particle as well. The file
- * is where those live now, and what this plugin ships with is what it used to do, so a server that
- * never opens the file sees no change.
+ * is where those live now, written in the family's own grammar and read by the library's action
+ * engine, so a line copied out of any other plugin's file means here what it means there.
  */
 class EffectsConfigurationTest {
 
@@ -24,22 +23,22 @@ class EffectsConfigurationTest {
     }
 
     @Test
-    @DisplayName("What the operator wrote is what fires, in the order they wrote it")
+    @DisplayName("What the operator wrote is what fires, all of it")
     void theoperatorsListIsTheOne() throws Exception {
         InteractionEffects effects = load("""
                 effects {
                   mission-completed = [
-                    "title:mission.done",
-                    "sound:UI_TOAST_CHALLENGE_COMPLETE 1.0 1.0",
-                    "particle:HEART 5 0.3 0.3 0.3 0.0"
+                    "[title] <green>Done",
+                    "[sound] ui.toast.challenge_complete 1.0 1.0",
+                    "[particle] HEART 5 0.3"
                   ]
                 }
                 """);
 
-        assertThat(effects.of("mission-completed"))
-                .extracting(InteractionEffect::kind)
-                .containsExactly(
-                        InteractionEffect.Kind.TITLE, InteractionEffect.Kind.SOUND, InteractionEffect.Kind.PARTICLE);
+        assertThat(effects.of("mission-completed").actions())
+                .describedAs("in the order the operator wrote them")
+                .hasSize(3);
+        assertThat(effects.names("mission-completed")).isTrue();
     }
 
     @Test
@@ -51,26 +50,39 @@ class EffectsConfigurationTest {
                 }
                 """);
 
-        assertThat(effects.of("kinetic-ward")).isEmpty();
+        assertThat(effects.of("kinetic-ward").actions()).isEmpty();
         assertThat(effects.names("kinetic-ward")).isFalse();
     }
 
     @Test
-    @DisplayName("A line the file cannot make sense of is skipped and the rest still fire")
+    @DisplayName("An interaction nobody named fires nothing")
+    void anunnamedInteractionFiresNothing() throws Exception {
+        InteractionEffects effects = load("""
+                effects {
+                  kinetic-ward = ["[sound] block.note_block.bass 1.0 1.0"]
+                }
+                """);
+
+        assertThat(effects.of("something-else").actions()).isEmpty();
+        assertThat(InteractionEffects.none().of("kinetic-ward").actions()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A line the engine cannot read is skipped and the rest still fire")
     void abadLineIsSkipped() throws Exception {
         InteractionEffects effects = load("""
                 effects {
                   limit-refused = [
-                    "fireworks:BIG",
-                    "sound:BLOCK_NOTE_BLOCK_BASS 1.0 0.5"
+                    "[fireworks] BIG",
+                    "[sound] block.note_block.bass 1.0 0.5"
                   ]
                 }
                 """);
 
-        assertThat(effects.of("limit-refused"))
-                .describedAs("an island nobody can build on because one line has a typo is worse")
+        assertThat(effects.of("limit-refused").actions())
+                .describedAs("the engine's own parser throws on the first line it cannot read, and a "
+                        + "list built in one call would be dropped whole, taking the sound with it")
                 .hasSize(1);
-        assertThat(effects.of("limit-refused").get(0).name()).isEqualTo("BLOCK_NOTE_BLOCK_BASS");
     }
 
     @Test
@@ -78,20 +90,13 @@ class EffectsConfigurationTest {
     void nofileMeansTheShippedBehaviour() throws Exception {
         InteractionEffects shipped = EffectsConfiguration.defaultConfiguration();
 
-        assertThat(shipped.of("kinetic-ward"))
-                .extracting(InteractionEffect::name)
-                .containsExactly("ENTITY_PLAYER_ATTACK_SWEEP", "CRIT");
-        assertThat(shipped.of("obsidian-recovery"))
-                .extracting(InteractionEffect::name)
-                .containsExactly("ITEM_BUCKET_FILL_LAVA", "CAMPFIRE_COSY_SMOKE");
-        assertThat(shipped.of("limit-refused"))
-                .extracting(InteractionEffect::name)
-                .containsExactly("BLOCK_NOTE_BLOCK_BASS");
-        assertThat(shipped.of("mission-completed"))
-                .extracting(InteractionEffect::name)
-                .containsExactly("UI_TOAST_CHALLENGE_COMPLETE");
+        assertThat(shipped.of("kinetic-ward").actions()).hasSize(2);
+        assertThat(shipped.of("obsidian-recovery").actions()).hasSize(2);
+        assertThat(shipped.of("limit-refused").actions()).hasSize(1);
+        assertThat(shipped.of("mission-completed").actions()).hasSize(1);
 
-        assertThat(load("nothing { }")).isEqualTo(shipped);
+        assertThat(load("nothing { }").byInteraction().keySet())
+                .isEqualTo(shipped.byInteraction().keySet());
     }
 
     @Test
@@ -102,9 +107,31 @@ class EffectsConfigurationTest {
                 .build()
                 .load();
 
-        assertThat(EffectsConfiguration.load(root))
+        InteractionEffects fromTheFile = EffectsConfiguration.load(root);
+        InteractionEffects shipped = EffectsConfiguration.defaultConfiguration();
+
+        assertThat(fromTheFile.byInteraction().keySet())
                 .describedAs("a file that ships saying one thing while the code falls back to another "
                         + "is two answers to one question")
-                .isEqualTo(EffectsConfiguration.defaultConfiguration());
+                .isEqualTo(shipped.byInteraction().keySet());
+        for (String interaction : shipped.byInteraction().keySet()) {
+            assertThat(fromTheFile.of(interaction).actions())
+                    .describedAs("%s", interaction)
+                    .hasSameSizeAs(shipped.of(interaction).actions());
+        }
+    }
+
+    @Test
+    @DisplayName("Every line the shipped file carries is a line the engine really read")
+    void everyshippedLineWasRead() {
+        InteractionEffects shipped = EffectsConfiguration.defaultConfiguration();
+
+        assertThat(shipped.byInteraction())
+                .allSatisfy((interaction, list) -> assertThat(list.actions())
+                        .describedAs(
+                                "%s: a line the engine could not read is dropped, so a shipped "
+                                        + "interaction with none left is a grammar this plugin got wrong",
+                                interaction)
+                        .isNotEmpty());
     }
 }

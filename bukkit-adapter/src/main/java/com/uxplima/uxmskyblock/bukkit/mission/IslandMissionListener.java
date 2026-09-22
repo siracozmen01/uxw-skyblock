@@ -47,7 +47,7 @@ public final class IslandMissionListener implements Listener {
      * <p>The sound was written into this file, so a server that wanted a different note, or none,
      * or a title as well, had nowhere to say so. A node built without a list fires nothing.
      */
-    private volatile com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects
             effects;
 
     private volatile com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer
@@ -55,7 +55,7 @@ public final class IslandMissionListener implements Listener {
 
     /** Tells this rule what the operator wrote for it. */
     public void useEffects(
-            com.uxplima.uxmskyblock.core.domain.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffects effects,
             com.uxplima.uxmskyblock.bukkit.effect.@org.jspecify.annotations.Nullable InteractionEffectPlayer player) {
         this.effects = effects;
         this.effectPlayer = player;
@@ -199,10 +199,10 @@ public final class IslandMissionListener implements Listener {
                     player, "missions.completed_announce", Placeholder.unparsed("mission", def.displayName())));
             try {
                 Location loc = player.getLocation();
-                com.uxplima.uxmskyblock.core.domain.effect.InteractionEffects written = this.effects;
+                com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;
                 com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
                 if (loc != null && written != null && plays != null) {
-                    plays.fire(written, "mission-completed", player, loc);
+                    plays.fire(written, "mission-completed", player);
                 }
             } catch (Throwable ignored) {
                 // Sound playback failure is non-fatal
