@@ -180,6 +180,12 @@ public final class IntegrationWiring implements AutoCloseable {
                 config.discordConfig().avatarUrl(),
                 config.discordConfig().rateLimitPerSecond());
 
+        // The service was built, given a URL per topic, rate limited and queued, and nothing ever
+        // told it anything: not one of its notification methods had a caller. These are the two
+        // that know when something worth announcing happened.
+        gameplay.allianceService().setAnnouncer(this.discordService);
+        gameplay.freezeService().setAnnouncer(this.discordService);
+
         this.commandTree = new IslandCommandTree(
                 gameplay.createIslandUseCase(),
                 gameplay.locationService(),

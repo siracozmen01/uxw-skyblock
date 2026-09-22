@@ -7,7 +7,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
+import com.uxplima.uxmskyblock.core.application.announce.IslandAnnouncer;
 import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceId;
 import com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteExpiredException;
@@ -20,6 +22,7 @@ import com.uxplima.uxmskyblock.core.domain.alliance.IslandAllianceInvite;
 import com.uxplima.uxmskyblock.core.domain.alliance.SelfAllianceNotAllowedException;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Domain application service coordinating bilateral island alliances, handshake invitations,
@@ -39,6 +42,11 @@ public final class IslandAllianceService {
      * should have applied, at the moment two allies stop being allies mid fight.
      */
     public static final Duration ALLIANCE_CACHE_TTL = Duration.ofSeconds(30);
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandAllianceService.class.getName());
+
+    private @Nullable IslandAnnouncer announcer;
 
     private final IslandAllianceStoragePort storagePort;
     private final int maxAllies;
@@ -162,8 +170,10 @@ public final class IslandAllianceService {
         AlliancePair pair = AlliancePair.of(senderIsland, targetIsland);
         IslandId first = IslandId.fromString(pair.first());
         IslandId second = IslandId.fromString(pair.second());
-        return mutationLock.inside(
+        IslandAlliance alliance = mutationLock.inside(
                 first, () -> mutationLock.inside(second, () -> writeAlliance(senderIsland, targetIsland, now)));
+        announce("ALLIANCE_FORMED", senderIsland, targetIsland);
+        return alliance;
     }
 
     /** Counts both islands against the cap and writes the alliance. Runs inside both locks. */
@@ -202,6 +212,35 @@ public final class IslandAllianceService {
         Objects.requireNonNull(islandB, "islandB must not be null");
         storagePort.removeAlliance(islandA, islandB);
         forgetAnswersFor(islandA, islandB);
+        announce("ALLIANCE_DISSOLVED", islandA, islandB);
+    }
+
+    /**
+     * Tells whoever is listening that two islands changed their standing.
+     *
+     * <p>Only after the write, and never in a way that can undo it: an announcement that throws is
+     * logged and the alliance stands. A node with nowhere to announce to does nothing here.
+     */
+    private void announce(String action, IslandId one, IslandId other) {
+        IslandAnnouncer listener = this.announcer;
+        if (listener == null) {
+            return;
+        }
+        try {
+            AlliancePair pair = AlliancePair.of(one, other);
+            listener.notifyAlliance(
+                    pair.first() + " & " + pair.second(),
+                    action,
+                    one.value().toString(),
+                    other.value().toString());
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, e, () -> "An alliance announcement failed. The alliance itself stands.");
+        }
+    }
+
+    /** Where to announce a change of standing, or nothing when this node announces nowhere. */
+    public void setAnnouncer(@Nullable IslandAnnouncer announcer) {
+        this.announcer = announcer;
     }
 
     /**

@@ -3,7 +3,9 @@ package com.uxplima.uxmskyblock.core.application.freeze;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.logging.Level;
 
+import com.uxplima.uxmskyblock.core.application.announce.IslandAnnouncer;
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -54,6 +56,11 @@ public final class IslandAdminFreezeService {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     private final java.time.Clock clock;
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandAdminFreezeService.class.getName());
+
+    private @Nullable IslandAnnouncer announcer;
 
     public IslandAdminFreezeService(
             IslandStoragePort islandStoragePort,
@@ -142,6 +149,7 @@ public final class IslandAdminFreezeService {
         }
 
         remember(islandId, true);
+        announce("ISLAND_FROZEN", "high", islandId, actor, reason);
         return true;
     }
 
@@ -182,6 +190,7 @@ public final class IslandAdminFreezeService {
         }
 
         remember(islandId, false);
+        announce("ISLAND_UNFROZEN", "medium", islandId, actor, null);
         return true;
     }
 
@@ -229,6 +238,36 @@ public final class IslandAdminFreezeService {
         Objects.requireNonNull(islandId, "islandId must not be null");
         frozen.remove(islandId);
         readAt.remove(islandId);
+    }
+
+    /**
+     * Tells whoever is listening that an administrator froze or unfroze an island.
+     *
+     * <p>Only after the write, and never in a way that can undo it: an announcement that throws is
+     * logged and the freeze stands. A node with nowhere to announce to does nothing here.
+     */
+    private void announce(String eventType, String severity, IslandId islandId, String actor, @Nullable String reason) {
+        IslandAnnouncer listener = this.announcer;
+        if (listener == null) {
+            return;
+        }
+        try {
+            java.util.Map<String, String> details = reason == null
+                    ? java.util.Map.of("island", islandId.value().toString(), "actor", actor)
+                    : java.util.Map.of("island", islandId.value().toString(), "actor", actor, "reason", reason);
+            listener.notifyAdminAudit(
+                    eventType,
+                    severity,
+                    actor + " " + eventType.toLowerCase(java.util.Locale.ROOT) + " " + islandId,
+                    details);
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, e, () -> "An administrative announcement failed. The change itself stands.");
+        }
+    }
+
+    /** Where to announce an administrative change, or nothing when this node announces nowhere. */
+    public void setAnnouncer(@Nullable IslandAnnouncer announcer) {
+        this.announcer = announcer;
     }
 
     /** How many islands this node is holding an answer for, for a caller that wants to say so. */

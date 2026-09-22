@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.uxplima.uxmskyblock.core.application.announce.IslandAnnouncer;
 import com.uxplima.uxmskyblock.core.domain.discord.DiscordEmbed;
 import com.uxplima.uxmskyblock.core.domain.discord.DiscordTopic;
 import com.uxplima.uxmskyblock.core.domain.discord.DiscordWebhookPayload;
@@ -25,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * non-blocking token-bucket rate limiting, categorized topic routing,
  * and rich embed formatting.
  */
-public final class IslandDiscordWebhookService implements AutoCloseable {
+public final class IslandDiscordWebhookService implements AutoCloseable, IslandAnnouncer {
 
     public static final String DEFAULT_USERNAME = "UXPLIMA Skyblock";
     public static final double DEFAULT_RATE_LIMIT = 2.0; // 2 requests/second
@@ -160,6 +161,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
         dispatch(DiscordTopic.LEADERBOARDS, DiscordWebhookPayload.ofEmbed(embed));
     }
 
+    @Override
     public void notifyAlliance(String allianceName, String action, String actorName, String targetName) {
         Objects.requireNonNull(allianceName, "allianceName must not be null");
         Objects.requireNonNull(action, "action must not be null");
@@ -180,6 +182,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable {
         dispatch(DiscordTopic.ALLIANCES, DiscordWebhookPayload.ofEmbed(embed));
     }
 
+    @Override
     public void notifyAdminAudit(String eventType, String severity, String description, Map<String, String> details) {
         Objects.requireNonNull(eventType, "eventType must not be null");
         Objects.requireNonNull(severity, "severity must not be null");
