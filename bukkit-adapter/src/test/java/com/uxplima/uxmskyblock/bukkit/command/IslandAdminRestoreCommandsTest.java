@@ -200,6 +200,73 @@ class IslandAdminRestoreCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("Asking to put the whole database back gives a code and writes nothing")
+    void thedatabaseRestoreAsksFirst() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        BackupSetId id = BackupSetId.random();
+        when(service.requestRestore(any(), any()))
+                .thenReturn(
+                        new com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.RestoreOutcome
+                                .CodeIssued("1234", java.time.Instant.now().plusSeconds(60)));
+        commands.useDatabaseBackup(() -> service);
+
+        run("restore database " + id, admin);
+
+        verify(service).requestRestore(any(), org.mockito.ArgumentMatchers.eq(id));
+        verify(service, org.mockito.Mockito.never()).restoreDatabase(any(), any(), any(), any());
+        assertThat(admin.nextMessage()).describedAs("the code and what to type").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The code typed back is the code the service is given")
+    void thecodeIsHandedOn() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        BackupSetId id = BackupSetId.random();
+        when(service.restoreDatabase(any(), any(), any(), any()))
+                .thenReturn(
+                        new com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.RestoreOutcome
+                                .Restored(id, 4096L));
+        commands.useDatabaseBackup(() -> service);
+
+        run("restore database " + id + " 1234", admin);
+
+        verify(service)
+                .restoreDatabase(
+                        org.mockito.ArgumentMatchers.eq(CONFIGURED_BUCKET),
+                        org.mockito.ArgumentMatchers.eq(id),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq("1234"));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A refusal is said out loud rather than swallowed")
+    void arefusalIsSaid() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        BackupSetId id = BackupSetId.random();
+        when(service.restoreDatabase(any(), any(), any(), any()))
+                .thenReturn(
+                        new com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.RestoreOutcome
+                                .Refused("that is not the code"));
+        commands.useDatabaseBackup(() -> service);
+
+        run("restore database " + id + " 0000", admin);
+
+        assertThat(admin.nextMessage()).describedAs("it says it started").isNotNull();
+        assertThat(admin.nextMessage()).describedAs("and that it was refused").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A word that is not a backup identifier is refused rather than passed on")
+    void agarbageIdentifierIsRefused() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        commands.useDatabaseBackup(() -> service);
+
+        run("restore database nonsense", admin);
+
+        verify(service, org.mockito.Mockito.never()).requestRestore(any(), any());
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("The whole database can be backed up, which nothing could ask for before")
     void thewholeDatabaseCanBeBackedUp() throws Exception {
         var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);

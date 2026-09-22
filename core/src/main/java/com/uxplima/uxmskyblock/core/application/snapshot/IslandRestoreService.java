@@ -73,10 +73,18 @@ public final class IslandRestoreService {
         Objects.requireNonNull(bucket, "bucket must not be null");
         Objects.requireNonNull(rootPrefix, "rootPrefix must not be null");
 
-        // 1. Disaster recovery boundary guard
-        if (manifest.backupType() == BackupType.DATABASE_DISASTER_BACKUP && !disasterRecoveryConfirmed) {
-            return new RestoreOutcome.Failure(
-                    "Database disaster backup restore requires explicit disaster recovery confirmation");
+        // 1. Disaster recovery boundary guard.
+        //
+        // A whole database is never put back as a side effect of putting one island back. This used
+        // to be a question the caller could answer yes to, and the one caller there is answers yes
+        // to everything, so a backup set holding a whole database dump would have been handed to
+        // the island relational restore as though it were one island's rows. Until the database
+        // backup could be taken at all, nothing could reach this; it can be taken now.
+        //
+        // Putting a whole database back has its own service, its own confirmation code and its own
+        // dialect check. It is not this door with a flag turned on.
+        if (manifest.backupType() == BackupType.DATABASE_DISASTER_BACKUP) {
+            return new RestoreOutcome.Failure("A whole database backup is never restored through an island restore");
         }
 
         String normalizedPrefix =

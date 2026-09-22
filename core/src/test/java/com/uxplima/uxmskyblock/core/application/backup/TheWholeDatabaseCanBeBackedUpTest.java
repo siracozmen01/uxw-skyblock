@@ -108,6 +108,152 @@ class TheWholeDatabaseCanBeBackedUpTest {
                 .isInstanceOf(DatabaseDisasterBackupService.Outcome.Failure.class);
     }
 
+    /** A publisher that finds this manifest, this marker and this artifact in storage. */
+    private static BackupService publisherHolding(
+            com.uxplima.uxmskyblock.core.domain.backup.BackupSetId backupSetId,
+            BackupType type,
+            String dialectName,
+            byte[] artifact,
+            boolean markerThere) {
+        com.uxplima.uxmskyblock.core.application.storage.ObjectStoragePort destination =
+                mock(com.uxplima.uxmskyblock.core.application.storage.ObjectStoragePort.class);
+        String prefix = DatabaseDisasterBackupService.prefixFor(backupSetId);
+        when(destination.exists(any(), any())).thenReturn(markerThere);
+        when(destination.getObject(
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(
+                                prefix + "/" + DatabaseDisasterBackupService.DATABASE_ARTIFACT)))
+                .thenReturn(java.util.Optional.of(artifact));
+
+        BackupService publisher = mock(BackupService.class);
+        when(publisher.storageDestinations()).thenReturn(java.util.List.of(destination));
+        when(publisher.loadManifest(any(), any()))
+                .thenReturn(java.util.Optional.of(new BackupManifest(
+                        backupSetId,
+                        type,
+                        "DATABASE",
+                        dialectName,
+                        java.time.Instant.now(),
+                        1L,
+                        1L,
+                        1,
+                        "1.0.0",
+                        Map.of(
+                                DatabaseDisasterBackupService.DATABASE_ARTIFACT,
+                                new com.uxplima.uxmskyblock.core.domain.backup.BackupArtifact(
+                                        DatabaseDisasterBackupService.DATABASE_ARTIFACT,
+                                        artifact.length,
+                                        BackupService.computeSha256(artifact))),
+                        "CONSISTENT")));
+        return publisher;
+    }
+
+    @Test
+    @DisplayName("Putting one back asks for four digits first, and does nothing until they come back")
+    void puttingOneBackAsksFirst() {
+        var backupSetId = com.uxplima.uxmskyblock.core.domain.backup.BackupSetId.random();
+        DatabaseBackupPort port = mock(DatabaseBackupPort.class);
+        when(port.liveDialect()).thenReturn(DatabaseBackupDialect.SQLITE);
+        DatabaseDisasterBackupService service = new DatabaseDisasterBackupService(
+                publisherHolding(backupSetId, BackupType.DATABASE_DISASTER_BACKUP, "SQLITE", DUMP, true),
+                port,
+                "1.0.0");
+        var requester = com.uxplima.uxmskyblock.core.domain.identity.ProfileId.of(java.util.UUID.randomUUID());
+
+        var issued = service.requestRestore(requester, backupSetId);
+
+        assertThat(issued)
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(
+                        DatabaseDisasterBackupService.RestoreOutcome.CodeIssued.class))
+                .extracting(DatabaseDisasterBackupService.RestoreOutcome.CodeIssued::code)
+                .asString()
+                .hasSize(4);
+        verify(port, never()).restoreDatabaseBackup(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+
+        var done = service.restoreDatabase(
+                BUCKET,
+                backupSetId,
+                requester,
+                ((DatabaseDisasterBackupService.RestoreOutcome.CodeIssued) issued).code());
+
+        assertThat(done).isInstanceOf(DatabaseDisasterBackupService.RestoreOutcome.Restored.class);
+        verify(port).restoreDatabaseBackup(DUMP, DatabaseBackupDialect.SQLITE, true);
+    }
+
+    @Test
+    @DisplayName("The wrong four digits write nothing")
+    void thewrongCodeWritesNothing() {
+        var backupSetId = com.uxplima.uxmskyblock.core.domain.backup.BackupSetId.random();
+        DatabaseBackupPort port = mock(DatabaseBackupPort.class);
+        when(port.liveDialect()).thenReturn(DatabaseBackupDialect.SQLITE);
+        DatabaseDisasterBackupService service = new DatabaseDisasterBackupService(
+                publisherHolding(backupSetId, BackupType.DATABASE_DISASTER_BACKUP, "SQLITE", DUMP, true),
+                port,
+                "1.0.0");
+        var requester = com.uxplima.uxmskyblock.core.domain.identity.ProfileId.of(java.util.UUID.randomUUID());
+        var unused = service.requestRestore(requester, backupSetId);
+
+        assertThat(service.restoreDatabase(BUCKET, backupSetId, requester, "0000"))
+                .isInstanceOf(DatabaseDisasterBackupService.RestoreOutcome.Refused.class);
+        assertThat(service.restoreDatabase(BUCKET, backupSetId, requester, null))
+                .describedAs("and no code at all is not a code")
+                .isInstanceOf(DatabaseDisasterBackupService.RestoreOutcome.Refused.class);
+    }
+
+    @Test
+    @DisplayName("A backup out of another dialect is refused, because the dump is written in its words")
+    void anotherDialectIsRefused() {
+        var backupSetId = com.uxplima.uxmskyblock.core.domain.backup.BackupSetId.random();
+        DatabaseBackupPort port = mock(DatabaseBackupPort.class);
+        when(port.liveDialect()).thenReturn(DatabaseBackupDialect.SQLITE);
+        DatabaseDisasterBackupService service = new DatabaseDisasterBackupService(
+                publisherHolding(backupSetId, BackupType.DATABASE_DISASTER_BACKUP, "POSTGRESQL", DUMP, true),
+                port,
+                "1.0.0");
+        var requester = com.uxplima.uxmskyblock.core.domain.identity.ProfileId.of(java.util.UUID.randomUUID());
+        var issued = (DatabaseDisasterBackupService.RestoreOutcome.CodeIssued)
+                service.requestRestore(requester, backupSetId);
+
+        assertThat(service.restoreDatabase(BUCKET, backupSetId, requester, issued.code()))
+                .isInstanceOf(DatabaseDisasterBackupService.RestoreOutcome.Refused.class);
+        verify(port, never()).restoreDatabaseBackup(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    @DisplayName("A set that never finished publishing is refused, marker and all")
+    void anunfinishedSetIsRefused() {
+        var backupSetId = com.uxplima.uxmskyblock.core.domain.backup.BackupSetId.random();
+        DatabaseBackupPort port = mock(DatabaseBackupPort.class);
+        when(port.liveDialect()).thenReturn(DatabaseBackupDialect.SQLITE);
+        DatabaseDisasterBackupService service = new DatabaseDisasterBackupService(
+                publisherHolding(backupSetId, BackupType.DATABASE_DISASTER_BACKUP, "SQLITE", DUMP, false),
+                port,
+                "1.0.0");
+        var requester = com.uxplima.uxmskyblock.core.domain.identity.ProfileId.of(java.util.UUID.randomUUID());
+        var issued = (DatabaseDisasterBackupService.RestoreOutcome.CodeIssued)
+                service.requestRestore(requester, backupSetId);
+
+        assertThat(service.restoreDatabase(BUCKET, backupSetId, requester, issued.code()))
+                .isInstanceOf(DatabaseDisasterBackupService.RestoreOutcome.Refused.class);
+    }
+
+    @Test
+    @DisplayName("A set that is not a database backup is refused before it is read")
+    void anislandSetIsRefused() {
+        var backupSetId = com.uxplima.uxmskyblock.core.domain.backup.BackupSetId.random();
+        DatabaseBackupPort port = mock(DatabaseBackupPort.class);
+        when(port.liveDialect()).thenReturn(DatabaseBackupDialect.SQLITE);
+        DatabaseDisasterBackupService service = new DatabaseDisasterBackupService(
+                publisherHolding(backupSetId, BackupType.ROOT_BACKUP, "SQLITE", DUMP, true), port, "1.0.0");
+        var requester = com.uxplima.uxmskyblock.core.domain.identity.ProfileId.of(java.util.UUID.randomUUID());
+        var issued = (DatabaseDisasterBackupService.RestoreOutcome.CodeIssued)
+                service.requestRestore(requester, backupSetId);
+
+        assertThat(service.restoreDatabase(BUCKET, backupSetId, requester, issued.code()))
+                .isInstanceOf(DatabaseDisasterBackupService.RestoreOutcome.Refused.class);
+        verify(port, never()).restoreDatabaseBackup(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
     @Test
     @DisplayName("A disaster backup is written apart from the island ones, so neither can hide the other")
     void adisasterBackupHasItsOwnPlace() {

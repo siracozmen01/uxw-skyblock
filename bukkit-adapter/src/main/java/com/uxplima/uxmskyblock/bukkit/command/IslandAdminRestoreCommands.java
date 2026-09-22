@@ -286,10 +286,111 @@ public final class IslandAdminRestoreCommands {
                 .requires(src -> src.getSender().hasPermission("uxmskyblock.admin.restore")
                         || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                         || src.getSender().isOp())
+                // Putting the whole database back is its own verb. It is not an island restore
+                // with a flag turned on, and the island restore refuses a database backup set.
+                .then(Cmd.literal("database")
+                        .then(Cmd.argument("backupId", StringArgumentType.word())
+                                .executes(this::executeDatabaseRestoreRequest)
+                                .then(Cmd.argument("code", StringArgumentType.word())
+                                        .executes(this::executeDatabaseRestoreConfirm))))
                 .then(Cmd.argument("backupId", StringArgumentType.word())
                         .executes(ctx -> executeAdminRestore(ctx, RestoreMode.safeDefault()))
                         .then(Cmd.argument("mode", StringArgumentType.word())
                                 .executes(this::executeAdminRestoreWithMode)));
+    }
+
+    /**
+     * {@code /is admin restore database <backupId>}: asks, and gives back a code.
+     *
+     * <p>Putting one of these back replaces every island, every bank and every inventory on the
+     * server at once. An island reset asks for four digits before it erases one island, so this
+     * asks for four before it erases all of them.
+     */
+    private int executeDatabaseRestoreRequest(CommandContext<CommandSourceStack> ctx) {
+        return withDatabaseRestore(ctx, (sender, service, requester, backupSetId) -> {
+            DatabaseDisasterBackupService.RestoreOutcome outcome = service.requestRestore(requester, backupSetId);
+            if (outcome instanceof DatabaseDisasterBackupService.RestoreOutcome.CodeIssued issued) {
+                send(
+                        sender,
+                        "admin.database_restore_confirm",
+                        Placeholder.unparsed("backup", backupSetId.toString()),
+                        Placeholder.unparsed("code", issued.code()));
+            }
+        });
+    }
+
+    /** {@code /is admin restore database <backupId> <code>}: and then does it. */
+    private int executeDatabaseRestoreConfirm(CommandContext<CommandSourceStack> ctx) {
+        String code = StringArgumentType.getString(ctx, "code");
+        return withDatabaseRestore(ctx, (sender, service, requester, backupSetId) -> {
+            StorageBucket bucket = backupBucketProvider.get();
+            if (bucket == null) {
+                send(sender, "admin.restore_not_configured");
+                return;
+            }
+            send(sender, "admin.database_restore_starting", Placeholder.unparsed("backup", backupSetId.toString()));
+            switch (service.restoreDatabase(bucket, backupSetId, requester, code)) {
+                case DatabaseDisasterBackupService.RestoreOutcome.Restored done ->
+                    send(
+                            sender,
+                            "admin.database_restore_success",
+                            Placeholder.unparsed("backup", done.backupSetId().toString()),
+                            Placeholder.unparsed("bytes", Long.toString(done.bytes())));
+                case DatabaseDisasterBackupService.RestoreOutcome.Refused refused ->
+                    send(sender, "admin.database_restore_refused", Placeholder.unparsed("reason", refused.reason()));
+                case DatabaseDisasterBackupService.RestoreOutcome.CodeIssued ignored ->
+                    send(sender, "admin.database_restore_refused", Placeholder.unparsed("reason", "unexpected"));
+            }
+        });
+    }
+
+    @FunctionalInterface
+    private interface DatabaseRestoreWork {
+        void run(
+                CommandSender sender,
+                DatabaseDisasterBackupService service,
+                ProfileId requester,
+                BackupSetId backupSetId);
+    }
+
+    /** Resolves what both halves of the database restore need, and says why when it cannot. */
+    private int withDatabaseRestore(CommandContext<CommandSourceStack> ctx, DatabaseRestoreWork work) {
+        CommandSender sender = ctx.getSource().getSender();
+        DatabaseDisasterBackupService service = databaseBackupServiceProvider.get();
+        if (service == null) {
+            send(sender, "admin.backup_not_configured");
+            return Cmd.OK;
+        }
+        Optional<ProfileId> optRequester = requesterOf(sender);
+        if (optRequester.isEmpty()) {
+            send(sender, "admin.database_restore_needs_a_profile");
+            return Cmd.OK;
+        }
+        String raw = StringArgumentType.getString(ctx, "backupId");
+        BackupSetId backupSetId;
+        try {
+            backupSetId = BackupSetId.fromString(raw);
+        } catch (RuntimeException notAnId) {
+            send(sender, "admin.restore_unknown_backup", Placeholder.unparsed("backup", raw));
+            return Cmd.OK;
+        }
+        ProfileId requester = optRequester.get();
+        schedulerPort.async(() -> work.run(sender, service, requester, backupSetId));
+        return Cmd.OK;
+    }
+
+    /**
+     * Who is asking, as a profile.
+     *
+     * <p>The code is held against the asker, so the asker has to be somebody the plugin can name.
+     * A console has no profile and so cannot hold a code; it is not shut out of anything it could
+     * do before, because before this nothing could do it at all.
+     */
+    private Optional<ProfileId> requesterOf(CommandSender sender) {
+        if (sessionCoordinator == null || !(sender instanceof org.bukkit.entity.Player player)) {
+            return Optional.empty();
+        }
+        return sessionCoordinator.activeProfile(player.getUniqueId());
     }
 
     public int executeAdminRestoreWithMode(CommandContext<CommandSourceStack> ctx) {
