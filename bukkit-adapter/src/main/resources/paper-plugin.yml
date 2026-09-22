@@ -16,4 +16,19 @@ dependencies:
     mcMMO:
       load: BEFORE
       required: false
+    floodgate:
+      load: BEFORE
+      required: false
+    Geyser-Spigot:
+      load: BEFORE
+      required: false
+    dynmap:
+      load: BEFORE
+      required: false
+    BlueMap:
+      load: BEFORE
+      required: false
+    Pl3xMap:
+      load: BEFORE
+      required: false
 
