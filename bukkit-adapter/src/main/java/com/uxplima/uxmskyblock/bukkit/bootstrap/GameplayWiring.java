@@ -360,6 +360,10 @@ public final class GameplayWiring {
         return socialWiring.allianceService();
     }
 
+    public com.uxplima.uxmskyblock.core.application.shop.IslandShopService shopService() {
+        return economicWiring.shopService();
+    }
+
     public DynamicPricingEngine dynamicPricingEngine() {
         return economicWiring.dynamicPricingEngine();
     }

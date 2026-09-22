@@ -412,6 +412,7 @@ public final class IslandCommandTree {
                 .then(groups.seasonCommands().buildSeason())
                 .then(groups.reloadCommands().buildReload())
                 .then(groups.upgradeCommands().build())
+                .then(groups.shopCommands().build())
                 // The menu file and the documents both say upgrades; a player typing the singular
                 // should not be told there is no such command.
                 .then(groups.upgradeCommands().buildUnder("upgrade"))

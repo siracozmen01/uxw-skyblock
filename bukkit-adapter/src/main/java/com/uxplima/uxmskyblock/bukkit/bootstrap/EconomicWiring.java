@@ -26,6 +26,7 @@ import com.uxplima.uxmskyblock.core.application.reward.RewardClaimCoordinator;
 import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.shop.DynamicPricingEngine;
+import com.uxplima.uxmskyblock.core.application.shop.IslandShopService;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
 import com.uxplima.uxmskyblock.core.domain.level.MaterialValuationIndex;
@@ -40,6 +41,7 @@ public final class EconomicWiring {
 
     private final IslandBankService bankService;
     private final DynamicPricingEngine dynamicPricingEngine;
+    private final IslandShopService shopService;
     private final IslandBankruptcyService bankruptcyService;
     private final @Nullable IslandBankruptcyListener bankruptcyListener;
     private final @Nullable FoliaIslandChunkScanner chunkScanner;
@@ -71,6 +73,7 @@ public final class EconomicWiring {
         // an item in it: every price it could be asked for was absent. What it trades is the
         // operator's file, read here, once.
         config.shopConfig().items().forEach(this.dynamicPricingEngine::registerItem);
+        this.shopService = new IslandShopService(this.dynamicPricingEngine, this.bankService);
         this.upgradeService = new IslandUpgradeService(
                 persistence.islandUpgradeStoragePort(),
                 config.upgradesConfig().definitions(),
@@ -189,6 +192,11 @@ public final class EconomicWiring {
 
     public IslandBankService bankService() {
         return bankService;
+    }
+
+    /** Buying and selling, settled against the island bank. */
+    public IslandShopService shopService() {
+        return shopService;
     }
 
     public DynamicPricingEngine dynamicPricingEngine() {

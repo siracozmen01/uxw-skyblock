@@ -78,6 +78,13 @@ public final class IslandBankService {
         return execute(islandId, playerUuid, -amountMinorUnits, "Bank withdrawal", serverNodeId);
     }
 
+    /** Takes money out of the island bank, saying what for. */
+    public BankTransactionOutcome withdrawFromIsland(
+            IslandId islandId, PlayerUuid playerUuid, long amountMinorUnits, String reason, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return execute(islandId, playerUuid, -amountMinorUnits, reason, serverNodeId);
+    }
+
     public BankTransactionOutcome deposit(
             ProfileId profileId, PlayerUuid playerUuid, long amountMinorUnits, ServerNodeId serverNodeId) {
         Objects.requireNonNull(profileId, "profileId must not be null");
