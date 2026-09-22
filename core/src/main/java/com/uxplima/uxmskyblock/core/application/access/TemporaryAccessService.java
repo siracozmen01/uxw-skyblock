@@ -15,12 +15,14 @@ import com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant;
 import com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrantNotFoundException;
 import com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessInvalidAnchorException;
 import com.uxplima.uxmskyblock.core.domain.access.TerminationPolicy;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.permission.PermissionKey;
 import com.uxplima.uxmskyblock.core.domain.permission.StandardPermissions;
 import com.uxplima.uxmskyblock.core.domain.profile.ProfileType;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
+import com.uxplima.uxmskyblock.core.domain.social.SocialSubjectRef;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -99,6 +101,18 @@ public final class TemporaryAccessService {
     /** How many roots this node is answering from memory, for a caller that wants to say so. */
     public int rootsHeldInMemory() {
         return grantsByRoot.size();
+    }
+
+    /**
+     * Lets go of everything remembered about an island.
+     *
+     * <p>An island id is a fresh uuid every time, so holding an erased one never gives a wrong
+     * answer. It simply never lets go, and a server that has made a hundred thousand islands over a
+     * year is carrying a hundred thousand entries saying each of them has no grants.
+     */
+    public void forgetIsland(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        forgetRoot(SocialSubjectRef.ISLAND_TYPE, islandId.value().toString());
     }
 
     /**

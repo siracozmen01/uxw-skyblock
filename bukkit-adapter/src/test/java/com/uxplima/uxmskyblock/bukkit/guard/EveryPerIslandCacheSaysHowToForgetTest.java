@@ -39,13 +39,16 @@ class EveryPerIslandCacheSaysHowToForgetTest {
      * Services whose per island map is not a cache, with the reason.
      *
      * <p>The mutation lock gives its own lock back when nobody wants it, counted rather than
-     * cleared. The bankruptcy and quarantine records are the state itself rather than a copy of
-     * something else, and each one is removed when it is settled or served.
+     * cleared. The recycle, membership and alliance maps hold work that is in flight, and each entry
+     * is removed when that work ends.
+     *
+     * <p>The bankruptcy and quarantine services were on this list on the same reasoning, and it had
+     * stopped being true: each of them answers a question on the movement path and remembers the
+     * answer, so each holds an entry for every island anybody has walked on, healthy or not. Both
+     * offer a way to forget one now, and both are checked here like the rest.
      */
     private static final List<String> NOT_A_CACHE = List.of(
             "island/IslandMutationLock.java",
-            "bank/IslandBankruptcyService.java",
-            "antiabuse/IslandAntiAbuseService.java",
             "recycle/IslandRecycleService.java",
             "membership/IslandMembershipService.java",
             "alliance/IslandAllianceService.java");
@@ -98,6 +101,27 @@ class EveryPerIslandCacheSaysHowToForgetTest {
         assertThat(wiring)
                 .describedAs("the generated dimensions must be let go")
                 .contains("resetIslandDimensions");
+        assertThat(wiring)
+                .describedAs("the three that answer a question on the movement path and remember it")
+                .contains("temporaryAccessService::forgetIsland")
+                .contains("antiAbuseService()::forgetIsland")
+                .contains("bankruptcyService()::forgetIsland");
+    }
+
+    @Test
+    @DisplayName("A cache keyed by something other than an island id is registered too")
+    void aCacheKeyedByAStringIsRegisteredToo() throws IOException {
+        // The temporary access grants are kept per root, and a root is a type and a key rather than
+        // an IslandId, so the scan above cannot see the map at all. It is still one entry per island
+        // anybody has touched a block on, so it is named here by hand.
+        String service = Files.readString(
+                Path.of("../core/src/main/java/com/uxplima/uxmskyblock/core/application/access/"
+                        + "TemporaryAccessService.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(service)
+                .describedAs("the grants kept per root must be let go when the island is erased")
+                .contains("public void forgetIsland(IslandId islandId)");
     }
 
     @Test

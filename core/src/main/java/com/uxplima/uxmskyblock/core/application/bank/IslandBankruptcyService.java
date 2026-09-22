@@ -300,8 +300,22 @@ public final class IslandBankruptcyService {
     }
 
     /**
-     * Cleans up bankruptcy persistence when an island is deleted or reset.
+     * Lets go of everything remembered about an island, and of its row.
+     *
+     * <p>A player walking onto a healthy island puts a record saying so into the cache, so the cache
+     * holds an entry for every island anybody has visited and nothing removed one. An island id is a
+     * fresh uuid every time, so an erased island's entry is never read again.
      */
+    public void forgetIsland(IslandId islandId) {
+        deleteIslandBankruptcy(islandId);
+    }
+
+    /** How many islands this node is holding a record for, for a caller that wants to say so. */
+    public int islandsHeldInMemory() {
+        return bankruptcyCache.size();
+    }
+
+    /** Cleans up bankruptcy persistence when an island is deleted or reset. */
     public void deleteIslandBankruptcy(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         bankruptcyStoragePort.deleteByIslandId(islandId);

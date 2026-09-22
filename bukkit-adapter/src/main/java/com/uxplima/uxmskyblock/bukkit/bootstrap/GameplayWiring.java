@@ -259,6 +259,13 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.environmentWiring.limitService()::clearIsland);
         this.cacheEviction.whenForgotten(this.environmentWiring.dimensionService()::resetIslandDimensions);
         this.cacheEviction.whenForgotten(this.economicWiring.worthService()::forgetIsland);
+        // Three more that hold something for every island a player has merely walked on. Each of
+        // them answers a question on the movement or interaction path, and each of them remembers
+        // the answer so the path is not a query. An island id is a fresh uuid every time, so an
+        // erased island's entry is never read again and nothing was letting go of it.
+        this.cacheEviction.whenForgotten(temporaryAccessService::forgetIsland);
+        this.cacheEviction.whenForgotten(this.adminWiring.antiAbuseService()::forgetIsland);
+        this.cacheEviction.whenForgotten(this.economicWiring.bankruptcyService()::forgetIsland);
 
         this.protectionWiring = new GameplayProtectionWiring(
                 config, persistence, authority, protectionListener, temporaryAccessService);

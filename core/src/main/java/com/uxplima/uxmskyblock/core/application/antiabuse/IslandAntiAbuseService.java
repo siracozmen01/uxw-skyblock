@@ -345,6 +345,24 @@ public final class IslandAntiAbuseService {
     }
 
     /**
+     * Lets go of everything remembered about an island.
+     *
+     * <p>{@link #knownClean} holds an entry for every island anybody has walked on, and nothing ever
+     * removed one. An island id is a fresh uuid every time, so an erased island's entry is never
+     * read again and never freed either.
+     */
+    public void forgetIsland(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        activeQuarantines.remove(islandId);
+        knownClean.remove(islandId);
+    }
+
+    /** How many islands this node is holding something for, for a caller that wants to say so. */
+    public int islandsHeldInMemory() {
+        return activeQuarantines.size() + knownClean.size();
+    }
+
+    /**
      * Administratively terminates quarantine protection for an island early.
      *
      * @param islandId target island ID
