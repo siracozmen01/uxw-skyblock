@@ -37,6 +37,7 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
     private final String defaultUsername;
     private final @Nullable String defaultAvatarUrl;
     private final double rateLimitPerSecond;
+    private final DiscordEmbedTexts texts;
 
     private final BlockingQueue<WebhookTask> queue = new LinkedBlockingQueue<>(1000);
     private final AtomicInteger inFlight = new AtomicInteger(0);
@@ -52,6 +53,25 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
             String defaultUsername,
             @Nullable String defaultAvatarUrl,
             double rateLimitPerSecond) {
+        this(
+                clientPort,
+                webhookUrls,
+                enabled,
+                defaultUsername,
+                defaultAvatarUrl,
+                rateLimitPerSecond,
+                DiscordEmbedTexts.english());
+    }
+
+    public IslandDiscordWebhookService(
+            DiscordWebhookClientPort clientPort,
+            Map<DiscordTopic, String> webhookUrls,
+            boolean enabled,
+            String defaultUsername,
+            @Nullable String defaultAvatarUrl,
+            double rateLimitPerSecond,
+            DiscordEmbedTexts texts) {
+        this.texts = Objects.requireNonNull(texts, "texts must not be null");
         this.clientPort = Objects.requireNonNull(clientPort, "clientPort must not be null");
         this.webhookUrls = new EnumMap<>(DiscordTopic.class);
         if (webhookUrls != null) {
@@ -106,22 +126,28 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
         Objects.requireNonNull(islandName, "islandName must not be null");
         Objects.requireNonNull(leaderName, "leaderName must not be null");
 
+        DiscordEmbedTexts.Milestone says = texts.milestone();
+        // Locale.ROOT, so a level reads with the same digits on every server.
+        String levelText = String.format(Locale.ROOT, "%,d", level);
+        Map<String, String> values = Map.of("island", islandName, "leader", leaderName, "level", levelText);
         DiscordEmbed.Builder embedBuilder = DiscordEmbed.builder()
-                .title("🌟 Island Level Milestone Reached!")
-                .description(
-                        "Island **" + islandName + "** has achieved Level **" + String.format("%,d", level) + "**!")
-                .color(0xFFD700) // Gold
-                .addField("Leader", leaderName, true)
-                .addField("Island Level", String.format("%,d", level), true)
+                .title(DiscordEmbedTexts.fill(says.title(), values))
+                .description(DiscordEmbedTexts.fill(says.description(), values))
+                .color(says.color())
+                .addField(DiscordEmbedTexts.fill(says.leaderField(), values), leaderName, true)
+                .addField(DiscordEmbedTexts.fill(says.levelField(), values), levelText, true)
                 .timestamp(Instant.now())
-                .footer("UXPLIMA Skyblock Milestones");
+                .footer(DiscordEmbedTexts.fill(says.footer(), values));
 
         if (members != null && !members.isEmpty()) {
             String memberList = String.join(", ", members);
             if (memberList.length() > 500) {
                 memberList = memberList.substring(0, 497) + "...";
             }
-            embedBuilder.addField("Members (" + members.size() + ")", memberList, false);
+            embedBuilder.addField(
+                    DiscordEmbedTexts.fill(says.membersField(), Map.of("count", Integer.toString(members.size()))),
+                    memberList,
+                    false);
         }
 
         dispatch(DiscordTopic.MILESTONES, DiscordWebhookPayload.ofEmbed(embedBuilder.build()));
@@ -132,31 +158,32 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
         Objects.requireNonNull(metricName, "metricName must not be null");
         Objects.requireNonNull(topEntries, "topEntries must not be null");
 
+        DiscordEmbedTexts.Leaderboard says = texts.leaderboard();
         StringBuilder sb = new StringBuilder();
         int max = Math.min(topEntries.size(), 10);
         for (int i = 0; i < max; i++) {
             LeaderboardEntry entry = topEntries.get(i);
-            String medal =
+            String place =
                     switch (entry.rank()) {
-                        case 1 -> "🥇";
-                        case 2 -> "🥈";
-                        case 3 -> "🥉";
-                        default -> "`#" + entry.rank() + "`";
+                        case 1 -> says.firstPlace();
+                        case 2 -> says.secondPlace();
+                        case 3 -> says.thirdPlace();
+                        default ->
+                            DiscordEmbedTexts.fill(says.otherPlace(), Map.of("rank", Integer.toString(entry.rank())));
                     };
-            sb.append(medal)
-                    .append(" **")
-                    .append(entry.islandName())
-                    .append("**: ")
-                    .append(entry.formattedScore())
+            sb.append(DiscordEmbedTexts.fill(
+                            says.line(),
+                            Map.of("place", place, "island", entry.islandName(), "score", entry.formattedScore())))
                     .append("\n");
         }
 
+        Map<String, String> values = Map.of("metric", metricName);
         DiscordEmbed embed = DiscordEmbed.builder()
-                .title("🏆 Top Islands Leaderboard: " + metricName)
-                .description(sb.length() > 0 ? sb.toString() : "No leaderboard entries recorded.")
-                .color(0xFFA500) // Amber / Orange
+                .title(DiscordEmbedTexts.fill(says.title(), values))
+                .description(sb.length() > 0 ? sb.toString() : DiscordEmbedTexts.fill(says.empty(), values))
+                .color(says.color())
                 .timestamp(Instant.now())
-                .footer("UXPLIMA Skyblock Leaderboard")
+                .footer(DiscordEmbedTexts.fill(says.footer(), values))
                 .build();
 
         dispatch(DiscordTopic.LEADERBOARDS, DiscordWebhookPayload.ofEmbed(embed));
@@ -169,15 +196,18 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
         Objects.requireNonNull(actorName, "actorName must not be null");
         Objects.requireNonNull(targetName, "targetName must not be null");
 
+        DiscordEmbedTexts.Alliance says = texts.alliance();
+        Map<String, String> values =
+                Map.of("alliance", allianceName, "action", action, "actor", actorName, "target", targetName);
         DiscordEmbed embed = DiscordEmbed.builder()
-                .title("⚔️ Diplomatic Event: " + action)
-                .description("Alliance update concerning **" + allianceName + "**.")
-                .color(0x3498DB) // Blue
-                .addField("Alliance", allianceName, true)
-                .addField("Initiated By", actorName, true)
-                .addField("Target", targetName, true)
+                .title(DiscordEmbedTexts.fill(says.title(), values))
+                .description(DiscordEmbedTexts.fill(says.description(), values))
+                .color(says.color())
+                .addField(DiscordEmbedTexts.fill(says.allianceField(), values), allianceName, true)
+                .addField(DiscordEmbedTexts.fill(says.actorField(), values), actorName, true)
+                .addField(DiscordEmbedTexts.fill(says.targetField(), values), targetName, true)
                 .timestamp(Instant.now())
-                .footer("UXPLIMA Skyblock Diplomacy")
+                .footer(DiscordEmbedTexts.fill(says.footer(), values))
                 .build();
 
         dispatch(DiscordTopic.ALLIANCES, DiscordWebhookPayload.ofEmbed(embed));
@@ -189,19 +219,21 @@ public final class IslandDiscordWebhookService implements AutoCloseable, IslandA
         Objects.requireNonNull(severity, "severity must not be null");
         Objects.requireNonNull(description, "description must not be null");
 
+        DiscordEmbedTexts.Audit says = texts.audit();
         int color =
                 switch (severity.toLowerCase(Locale.ROOT)) {
-                    case "critical", "high" -> 0xE74C3C; // Red
-                    case "medium", "warn" -> 0xE67E22; // Orange
-                    default -> 0x95A5A6; // Gray
+                    case "critical", "high" -> says.highColor();
+                    case "medium", "warn" -> says.mediumColor();
+                    default -> says.lowColor();
                 };
 
+        Map<String, String> values = Map.of("severity", severity.toUpperCase(Locale.ROOT), "event", eventType);
         DiscordEmbed.Builder builder = DiscordEmbed.builder()
-                .title("🛡️ Staff Audit Alert [" + severity.toUpperCase(Locale.ROOT) + "]: " + eventType)
+                .title(DiscordEmbedTexts.fill(says.title(), values))
                 .description(description)
                 .color(color)
                 .timestamp(Instant.now())
-                .footer("UXPLIMA Skyblock Administrative Audit");
+                .footer(DiscordEmbedTexts.fill(says.footer(), values));
 
         if (details != null) {
             for (Map.Entry<String, String> entry : details.entrySet()) {

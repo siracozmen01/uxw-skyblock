@@ -233,7 +233,8 @@ public final class IntegrationWiring implements AutoCloseable {
                 config.discordConfig().enabled(),
                 config.discordConfig().botUsername(),
                 config.discordConfig().avatarUrl(),
-                config.discordConfig().rateLimitPerSecond());
+                config.discordConfig().rateLimitPerSecond(),
+                config.discordConfig().embeds());
 
         // The service was built, given a URL per topic, rate limited and queued, and nothing ever
         // told it anything: not one of its notification methods had a caller. These are the two
