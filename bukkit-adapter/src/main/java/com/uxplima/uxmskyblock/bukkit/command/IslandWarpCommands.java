@@ -91,7 +91,16 @@ public final class IslandWarpCommands {
         return Cmd.literal("warp")
                 .executes(this::executeList)
                 .then(Cmd.literal("list").executes(this::executeList))
-                .then(Cmd.literal("browse").executes(this::executeBrowse))
+                .then(Cmd.literal("browse")
+                        .executes(ctx -> executeBrowse(ctx, null))
+                        .then(Cmd.argument("category", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    for (WarpCategory category : WarpCategory.values()) {
+                                        builder.suggest(category.name().toLowerCase(java.util.Locale.ROOT));
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(this::executeBrowseInCategory)))
                 .then(Cmd.literal("visit")
                         .then(Cmd.argument("owner", StringArgumentType.word())
                                 .then(Cmd.argument("name", StringArgumentType.word())
@@ -125,7 +134,9 @@ public final class IslandWarpCommands {
      * <p>Both are {@code /is warp browse}. The document names them and the tree did not.
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildExplore(String verb) {
-        return Cmd.literal(verb).executes(this::executeBrowse);
+        return Cmd.literal(verb)
+                .executes(ctx -> executeBrowse(ctx, null))
+                .then(Cmd.argument("category", StringArgumentType.word()).executes(this::executeBrowseInCategory));
     }
 
     private int executeList(CommandContext<CommandSourceStack> ctx) {
@@ -154,11 +165,34 @@ public final class IslandWarpCommands {
         });
     }
 
-    private int executeBrowse(CommandContext<CommandSourceStack> ctx) {
+    /**
+     * {@code /is warp browse <category>}: the directory, narrowed to one kind of warp.
+     *
+     * <p>getPublicWarpsByCategory was written with the warp work and had no caller, so a player
+     * looking for a shop read every public warp on the server and picked the shops out by eye.
+     */
+    private int executeBrowseInCategory(CommandContext<CommandSourceStack> ctx) {
+        String raw = StringArgumentType.getString(ctx, "category");
+        for (WarpCategory category : WarpCategory.values()) {
+            if (category.name().equalsIgnoreCase(raw)) {
+                return executeBrowse(ctx, category);
+            }
+        }
+        send(
+                ctx.getSource().getSender(),
+                "warp.unknown_category",
+                Placeholder.unparsed("category", raw),
+                Placeholder.unparsed("categories", categoryNames()));
+        return Cmd.OK;
+    }
+
+    private int executeBrowse(CommandContext<CommandSourceStack> ctx, @Nullable WarpCategory only) {
         return withService(
                 ctx,
                 (player, service, profileId) -> schedulerPort.async(() -> {
-                    List<IslandWarp> warps = service.getPublicWarps(PAGE_SIZE, 0);
+                    List<IslandWarp> warps = only == null
+                            ? service.getPublicWarps(PAGE_SIZE, 0)
+                            : service.getPublicWarpsByCategory(only, PAGE_SIZE, 0);
                     // The listing used to name the warp and nothing else, so a player who saw one
                     // they liked had no word to type after /is warp visit. The owner is resolved
                     // once per island rather than once per warp: a shop island with six public
@@ -168,7 +202,11 @@ public final class IslandWarpCommands {
                         ownerNames.computeIfAbsent(warp.islandId(), this::ownerNameOf);
                     }
                     onEntity(player, () -> {
-                        send(player, "warp.browse_header");
+                        if (only == null) {
+                            send(player, "warp.browse_header");
+                        } else {
+                            send(player, "warp.browse_header_category", Placeholder.unparsed("category", only.name()));
+                        }
                         if (warps.isEmpty()) {
                             send(player, "warp.browse_empty");
                             return;

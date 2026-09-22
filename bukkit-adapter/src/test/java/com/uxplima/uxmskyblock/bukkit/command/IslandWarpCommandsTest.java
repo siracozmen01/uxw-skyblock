@@ -177,6 +177,48 @@ class IslandWarpCommandsTest {
         assertThat(player.nextMessage()).describedAs("the refusal").isNotNull();
     }
 
+    @org.junit.jupiter.api.Test
+    @DisplayName("Browsing a category asks for that category, not for every public warp")
+    void browsingACategoryNarrowsTheRead() throws Exception {
+        when(warps.getPublicWarpsByCategory(
+                        any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of());
+
+        run("warp browse shops", player);
+
+        verify(warps)
+                .getPublicWarpsByCategory(
+                        org.mockito.ArgumentMatchers.eq(com.uxplima.uxmskyblock.core.domain.warp.WarpCategory.SHOPS),
+                        org.mockito.ArgumentMatchers.anyInt(),
+                        org.mockito.ArgumentMatchers.anyInt());
+        verify(warps, org.mockito.Mockito.never())
+                .getPublicWarps(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Browsing without a category still reads every public warp")
+    void browsingWithoutACategoryReadsEverything() throws Exception {
+        when(warps.getPublicWarps(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of());
+
+        run("warp browse", player);
+
+        verify(warps).getPublicWarps(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A word that is not a category is refused, and the categories are named")
+    void anunknownCategoryIsRefused() throws Exception {
+        run("warp browse nonsense", player);
+
+        verify(warps, org.mockito.Mockito.never())
+                .getPublicWarpsByCategory(
+                        any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
+        assertThat(player.nextMessage())
+                .describedAs("the refusal names what to type instead")
+                .isNotNull();
+    }
+
     @AfterEach
     void tearDown() {
         MockBukkit.unmock();
