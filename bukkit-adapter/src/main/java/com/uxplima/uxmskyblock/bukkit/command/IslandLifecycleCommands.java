@@ -506,7 +506,11 @@ public final class IslandLifecycleCommands {
                                         player.setTotalExperience(0);
                                     }
                                 }
-                                player.teleport(player.getWorld().getSpawnLocation());
+                                // Asynchronous, because Folia throws on a synchronous teleport, and
+                                // that left the player standing where their island had been with no
+                                // word that it was gone.
+                                var unusedTeleport =
+                                        player.teleportAsync(player.getWorld().getSpawnLocation());
                                 send(player, "reset.success");
                                 send(player, "reset.success_hint");
                             }

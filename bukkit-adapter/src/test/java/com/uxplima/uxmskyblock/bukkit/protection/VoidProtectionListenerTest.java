@@ -39,7 +39,7 @@ class VoidProtectionListenerTest extends MockBukkitHarness {
     @BeforeEach
     void setUp() {
         server.addSimpleWorld("skyblock_world");
-        player = createPlayer("Alex");
+        player = createRegionThreadedPlayer("Alex");
         protectionConfig = ProtectionConfiguration.defaultConfiguration();
         settingsConfig = SettingsConfiguration.defaultConfiguration();
 

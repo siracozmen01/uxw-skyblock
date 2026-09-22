@@ -41,6 +41,13 @@ public abstract class MockBukkitHarness {
         return server.addPlayer(name);
     }
 
+    /** A player that refuses a synchronous teleport, the way Folia does. */
+    protected PlayerMock createRegionThreadedPlayer(String name) {
+        RegionThreadedPlayerMock player = new RegionThreadedPlayerMock(server, name);
+        server.addPlayer(player);
+        return player;
+    }
+
     protected static void eventually(Runnable assertion) {
         long start = System.currentTimeMillis();
         AssertionError last = null;

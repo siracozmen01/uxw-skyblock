@@ -159,7 +159,9 @@ public final class VoidProtectionListener implements Listener {
         // Zero-velocity reset & clear fall distance to prevent carryover deaths
         player.setVelocity(new Vector(0, 0, 0));
         player.setFallDistance(0.0f);
-        player.teleport(destination);
+        // Asynchronous, because Folia refuses a synchronous teleport outright: it threw here, so a
+        // player who fell off an island on a region threaded server fell to their death anyway.
+        var unused = player.teleportAsync(destination);
 
         // Grant 10-second fall damage shield
         Instant now = Instant.now(clock);
