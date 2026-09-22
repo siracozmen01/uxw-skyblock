@@ -34,6 +34,8 @@ import com.uxplima.uxmskyblock.core.domain.bank.IslandBankruptcyRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.jspecify.annotations.Nullable;
 
@@ -248,41 +250,79 @@ public final class IslandBankCommands {
         }
         ProfileId profileId = optProfile.get();
 
-        economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
-            if (outcome instanceof BankTransactionOutcome.Success deposited) {
-                writeToTheFeed(
-                        deposited, profileId, ActivityEventType.BANK_DEPOSIT, "activity.bank_deposit", player, amount);
-                send(player, "bank.deposit_success", Placeholder.unparsed("amount", Long.toString(amount)));
-                IslandBankruptcyService bService = bankruptcyServiceProvider.get();
-                if (bService != null && bService.policy().autoRemediateOnDeposit()) {
-                    // The bridge answers a refused deposit on the caller's own thread and a settled
-                    // one off it, so which thread this outcome arrives on depends on the branch
-                    // taken inside the bridge. Reading and settling arrears is two more round trips
-                    // to the database either way, so it asks for the scheduler itself rather than
-                    // trusting the thread it was handed.
-                    schedulerPort.async(() -> islandLocationService
-                            .findIslandId(profileId)
-                            .ifPresent(islandId -> {
-                                BankruptcyRemediationResult rem =
-                                        bService.settleArrears(islandId, Instant.now(), serverNodeId);
-                                if (rem instanceof BankruptcyRemediationResult.Settled settled) {
-                                    send(
-                                            player,
-                                            "bank.auto_settled",
-                                            Placeholder.unparsed("amount", money(settled.amountPaid())));
-                                }
-                            }));
-                }
-            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                send(player, "bank.wallet_insufficient");
-            } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
-                send(player, "bank.deposit_rejected", Placeholder.unparsed("reason", rej.reason()));
-            } else {
-                send(player, "bank.deposit_failed", Placeholder.unparsed("reason", String.valueOf(outcome)));
-            }
-        });
+        ifTheRoleAllowsIt(
+                player,
+                profileId,
+                IslandPermission.BANK_DEPOSIT,
+                () -> economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
+                    if (outcome instanceof BankTransactionOutcome.Success deposited) {
+                        writeToTheFeed(
+                                deposited,
+                                profileId,
+                                ActivityEventType.BANK_DEPOSIT,
+                                "activity.bank_deposit",
+                                player,
+                                amount);
+                        send(player, "bank.deposit_success", Placeholder.unparsed("amount", Long.toString(amount)));
+                        IslandBankruptcyService bService = bankruptcyServiceProvider.get();
+                        if (bService != null && bService.policy().autoRemediateOnDeposit()) {
+                            // The bridge answers a refused deposit on the caller's own thread and a settled
+                            // one off it, so which thread this outcome arrives on depends on the branch
+                            // taken inside the bridge. Reading and settling arrears is two more round trips
+                            // to the database either way, so it asks for the scheduler itself rather than
+                            // trusting the thread it was handed.
+                            schedulerPort.async(() -> islandLocationService
+                                    .findIslandId(profileId)
+                                    .ifPresent(islandId -> {
+                                        BankruptcyRemediationResult rem =
+                                                bService.settleArrears(islandId, Instant.now(), serverNodeId);
+                                        if (rem instanceof BankruptcyRemediationResult.Settled settled) {
+                                            send(
+                                                    player,
+                                                    "bank.auto_settled",
+                                                    Placeholder.unparsed("amount", money(settled.amountPaid())));
+                                        }
+                                    }));
+                        }
+                    } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                        send(player, "bank.wallet_insufficient");
+                    } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
+                        send(player, "bank.deposit_rejected", Placeholder.unparsed("reason", rej.reason()));
+                    } else {
+                        send(player, "bank.deposit_failed", Placeholder.unparsed("reason", String.valueOf(outcome)));
+                    }
+                }));
 
         return Cmd.OK;
+    }
+
+    /**
+     * Runs a money move only when the caller's role allows it.
+     *
+     * <p>The role editor has published a deposit permission and a withdraw permission since the
+     * permission work and the bank read neither, so a member could empty the island bank whatever
+     * their role said. The shipped member role does not hold the withdraw permission and has been
+     * able to withdraw all along.
+     *
+     * <p>The role lives in a row, so it is read off the thread the command arrived on, and the move
+     * is run back on the player's own thread, which is where it ran before. A caller with no island
+     * is not refused here: the move itself answers that, and it answers it better.
+     */
+    private void ifTheRoleAllowsIt(Player player, ProfileId profileId, IslandPermission permission, Runnable move) {
+        schedulerPort.async(() -> {
+            Optional<Island> island =
+                    islandLocationService.findIslandId(profileId).flatMap(islandLocationService::findIsland);
+            boolean refused = island.isPresent()
+                    && !island.get().isOwner(profileId)
+                    && !island.get().hasPermission(profileId, permission);
+            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                if (refused) {
+                    send(player, "bank.permission_denied");
+                    return;
+                }
+                move.run();
+            });
+        });
     }
 
     /**
@@ -325,24 +365,28 @@ public final class IslandBankCommands {
         }
         ProfileId profileId = optProfile.get();
 
-        economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
-            if (outcome instanceof BankTransactionOutcome.Success withdrawn) {
-                writeToTheFeed(
-                        withdrawn,
-                        profileId,
-                        ActivityEventType.BANK_WITHDRAW,
-                        "activity.bank_withdraw",
-                        player,
-                        amount);
-                send(player, "bank.withdraw_success", Placeholder.unparsed("amount", Long.toString(amount)));
-            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
-                send(player, "bank.withdraw_insufficient");
-            } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
-                send(player, "bank.withdraw_rejected", Placeholder.unparsed("reason", rej.reason()));
-            } else {
-                send(player, "bank.withdraw_failed", Placeholder.unparsed("reason", String.valueOf(outcome)));
-            }
-        });
+        ifTheRoleAllowsIt(
+                player,
+                profileId,
+                IslandPermission.BANK_WITHDRAW,
+                () -> economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
+                    if (outcome instanceof BankTransactionOutcome.Success withdrawn) {
+                        writeToTheFeed(
+                                withdrawn,
+                                profileId,
+                                ActivityEventType.BANK_WITHDRAW,
+                                "activity.bank_withdraw",
+                                player,
+                                amount);
+                        send(player, "bank.withdraw_success", Placeholder.unparsed("amount", Long.toString(amount)));
+                    } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
+                        send(player, "bank.withdraw_insufficient");
+                    } else if (outcome instanceof BankTransactionOutcome.AuthorityRejected rej) {
+                        send(player, "bank.withdraw_rejected", Placeholder.unparsed("reason", rej.reason()));
+                    } else {
+                        send(player, "bank.withdraw_failed", Placeholder.unparsed("reason", String.valueOf(outcome)));
+                    }
+                }));
 
         return Cmd.OK;
     }

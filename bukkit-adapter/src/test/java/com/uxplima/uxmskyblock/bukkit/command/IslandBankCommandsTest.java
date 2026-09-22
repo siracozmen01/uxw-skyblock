@@ -208,6 +208,80 @@ class IslandBankCommandsTest {
         dispatcher.execute(line, source);
     }
 
+    /** Puts the caller on the island as a member holding exactly these permissions. */
+    private void callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission... permissions) {
+        com.uxplima.uxmskyblock.core.domain.island.Island island =
+                com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                        ISLAND,
+                        com.uxplima.uxmskyblock.core.domain.island.IslandBounds.fromCenterAndRadius(0, 0, 64),
+                        new PlayerUuid(UUID.randomUUID()),
+                        new ProfileId(UUID.randomUUID()),
+                        java.time.Instant.now());
+        com.uxplima.uxmskyblock.core.domain.island.IslandRole role =
+                new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                        "CUSTOM",
+                        400,
+                        "Custom",
+                        permissions.length == 0
+                                ? java.util.EnumSet.noneOf(
+                                        com.uxplima.uxmskyblock.core.domain.island.IslandPermission.class)
+                                : java.util.EnumSet.of(permissions[0], permissions),
+                        false);
+        when(locations.findIsland(ISLAND))
+                .thenReturn(Optional.of(island.addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                        new PlayerUuid(player.getUniqueId()), PROFILE, role, java.time.Instant.now()))));
+    }
+
+    @Test
+    @DisplayName("A member whose role holds no withdraw permission cannot empty the island bank")
+    void arolewithoutWithdrawIsRefused() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_DEPOSIT);
+
+        run("bank withdraw 250", player);
+
+        verify(bridge, never()).withdrawFromIslandBank(any(), any(), anyLong(), any(), any());
+        assertThat(player.nextMessage())
+                .describedAs("the role editor said no and the bank never read it")
+                .isNotNull();
+    }
+
+    @Test
+    @DisplayName("A member whose role holds the withdraw permission withdraws")
+    void arolewithWithdrawGoesThrough() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+
+        run("bank withdraw 250", player);
+
+        verify(bridge).withdrawFromIslandBank(any(), eq(PROFILE), eq(250L), any(ServerNodeId.class), any());
+    }
+
+    @Test
+    @DisplayName("A member whose role holds no deposit permission cannot put money in either")
+    void arolewithoutDepositIsRefused() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+
+        run("bank deposit 250", player);
+
+        verify(bridge, never()).depositToIslandBank(any(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    @DisplayName("The owner moves money whatever the roles say")
+    void theOwnerIsNeverRefused() throws Exception {
+        com.uxplima.uxmskyblock.core.domain.island.Island island =
+                com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                        ISLAND,
+                        com.uxplima.uxmskyblock.core.domain.island.IslandBounds.fromCenterAndRadius(0, 0, 64),
+                        new PlayerUuid(player.getUniqueId()),
+                        PROFILE,
+                        java.time.Instant.now());
+        when(locations.findIsland(ISLAND)).thenReturn(Optional.of(island));
+
+        run("bank withdraw 250", player);
+
+        verify(bridge).withdrawFromIslandBank(any(), eq(PROFILE), eq(250L), any(ServerNodeId.class), any());
+    }
+
     @Test
     @DisplayName("Depositing names the amount the player typed")
     void depositingNamesTheAmount() throws Exception {
