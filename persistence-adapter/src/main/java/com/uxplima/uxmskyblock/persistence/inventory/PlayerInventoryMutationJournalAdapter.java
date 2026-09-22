@@ -458,4 +458,23 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
                     "Failed to load participant for " + operationId + " index " + participantIndex, e);
         }
     }
+
+    @Override
+    public int purgeSettledBefore(Instant before) {
+        java.util.Objects.requireNonNull(before, "before must not be null");
+
+        // A journal in RECOVERY_REQUIRED is never deleted: that state means a crash left something
+        // nobody has reconciled, and the row is the only record of it. The participants go with the
+        // journal on their own, through the foreign key.
+        String purgeSql = "DELETE FROM inventory_mutation_journals WHERE state IN (?, ?) AND updated_at < ?";
+        try (Connection conn = database.connection();
+                PreparedStatement ps = conn.prepareStatement(purgeSql)) {
+            ps.setString(1, InventoryMutationJournalState.COMMITTED.name());
+            ps.setString(2, InventoryMutationJournalState.ABORTED.name());
+            ps.setTimestamp(3, java.sql.Timestamp.from(before));
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new InventoryPersistenceException("Failed to purge settled inventory journals before " + before, e);
+        }
+    }
 }

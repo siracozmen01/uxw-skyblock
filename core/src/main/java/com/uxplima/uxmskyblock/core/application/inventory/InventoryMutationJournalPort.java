@@ -113,4 +113,19 @@ public interface InventoryMutationJournalPort {
      */
     Optional<InventoryMutationParticipantRecord> loadParticipant(
             InventoryMutationOperationId operationId, int participantIndex);
+
+    /**
+     * Deletes the journals that have nothing left to recover.
+     *
+     * <p>A journal is a write-ahead record of an inventory mutation, kept so a crash in the middle
+     * can be finished or undone. Once it has committed or been aborted it has done its job, and
+     * nothing ever deleted one: the table held every economic item movement a server had ever made,
+     * and its participant rows with it.
+     *
+     * <p>A journal in RECOVERY_REQUIRED is never deleted. That state means a crash left something
+     * nobody has reconciled, and deleting it would throw away the only record of it.
+     *
+     * @return how many journals were deleted
+     */
+    int purgeSettledBefore(java.time.Instant before);
 }

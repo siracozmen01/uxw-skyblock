@@ -204,5 +204,14 @@ class EconomySagaCoordinatorTest {
                             && !s.expiresAt().isAfter(expiredBefore))
                     .toList();
         }
+
+        @Override
+        public int purgeSettledBefore(Instant before) {
+            int held = map.size();
+            map.values()
+                    .removeIf(saga -> (saga.state() == SagaState.COMMITTED || saga.state() == SagaState.ROLLED_BACK)
+                            && saga.updatedAt().isBefore(before));
+            return held - map.size();
+        }
     }
 }

@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -439,6 +440,76 @@ class PlayerInventoryMutationJournalSqliteTest {
                 Duration.ofMinutes(1));
         assertThat(conflictOutcome.isConflict()).isTrue();
         assertThat(conflictOutcome.rejectionReason()).contains("OPERATION_CONFLICT");
+    }
+
+    @Test
+    @DisplayName("A journal that has settled is swept with its participants, and a live one is kept")
+    void settledJournalsAreSwept() throws SQLException {
+        PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
+        ProfileId profile = ProfileId.of(UUID.randomUUID());
+        seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false, 1L);
+        inventoryAdapter.initializeInventory(
+                ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {0}));
+
+        InventoryMutationOperationId committed = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 1L, committed, "TRADE", "fp1", "fp2", "payload", Duration.ofMinutes(1));
+        journalAdapter.commitMutation(player, profile, NODE_A, 1L, 1L, committed, new byte[] {9});
+
+        InventoryMutationOperationId aborted = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 2L, aborted, "TRADE", "fp2", "fp3", "payload", Duration.ofMinutes(1));
+        journalAdapter.abortIntent(player, profile, NODE_A, 1L, aborted);
+
+        InventoryMutationOperationId open = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 2L, open, "TRADE", "fp2", "fp3", "payload", Duration.ofMinutes(1));
+
+        // Everything written above is younger than the cutoff below until it is pushed back.
+        ageEveryJournal(database, Instant.parse("2020-01-01T00:00:00Z"));
+
+        assertThat(journalAdapter.purgeSettledBefore(Instant.parse("2021-01-01T00:00:00Z")))
+                .describedAs("the committed one and the aborted one")
+                .isEqualTo(2);
+
+        assertThat(journalAdapter.loadJournal(committed)).isEmpty();
+        assertThat(journalAdapter.loadJournal(aborted)).isEmpty();
+        assertThat(journalAdapter.loadParticipant(committed, 0))
+                .describedAs("the participants go with the journal")
+                .isEmpty();
+        assertThat(journalAdapter.loadJournal(open))
+                .describedAs("an intent nobody has finished has everything left to recover")
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("A settled journal that is not old enough is kept")
+    void arecentSettledJournalIsKept() {
+        PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
+        ProfileId profile = ProfileId.of(UUID.randomUUID());
+        seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false, 1L);
+        inventoryAdapter.initializeInventory(
+                ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {0}));
+
+        InventoryMutationOperationId opId = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 1L, opId, "TRADE", "fp1", "fp2", "payload", Duration.ofMinutes(1));
+        journalAdapter.commitMutation(player, profile, NODE_A, 1L, 1L, opId, new byte[] {9});
+
+        assertThat(journalAdapter.purgeSettledBefore(Instant.parse("2020-01-01T00:00:00Z")))
+                .describedAs("settled, but written long after the cutoff")
+                .isZero();
+        assertThat(journalAdapter.loadJournal(opId)).isPresent();
+    }
+
+    /** Pushes every journal's updated_at back, so a sweep with a cutoff can see them. */
+    private static void ageEveryJournal(Database database, Instant to) throws SQLException {
+        try (java.sql.Connection conn = database.connection();
+                java.sql.PreparedStatement ps =
+                        conn.prepareStatement("UPDATE inventory_mutation_journals SET updated_at = ?")) {
+            ps.setTimestamp(1, java.sql.Timestamp.from(to));
+            ps.executeUpdate();
+        }
     }
 
     @Test

@@ -68,6 +68,8 @@ public final class IntegrationWiring implements AutoCloseable {
     private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
     private final NotificationService notificationService;
     private final com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService activityFeedService;
+    private final com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort economySagaPort;
+    private final com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort journalPort;
     private final NotificationConfiguration notificationConfig;
 
     private @org.jspecify.annotations.Nullable AutoCloseable notificationSweep;
@@ -182,6 +184,8 @@ public final class IntegrationWiring implements AutoCloseable {
         this.recycleService = gameplay.recycleService();
         this.notificationService = gameplay.notificationService();
         this.activityFeedService = gameplay.activityFeedService();
+        this.economySagaPort = persistence.economySagaPort();
+        this.journalPort = persistence.mutationJournalPort();
         this.notificationConfig = config.notificationConfig();
         this.authorityService = new IslandAuthorityService(
                 persistence.islandAuthorityPort(),
@@ -331,6 +335,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 () -> {
                     sweepReadNotifications();
                     sweepOldActivity();
+                    sweepSettledRecoveryRecords();
                 },
                 notificationConfig.sweepInterval(),
                 notificationConfig.sweepInterval());
@@ -355,6 +360,34 @@ public final class IntegrationWiring implements AutoCloseable {
                     .log(
                             java.util.logging.Level.WARNING,
                             "Sweeping the activity feed failed. The next sweep retries.",
+                            e);
+        }
+    }
+
+    /**
+     * Deletes the recovery records that have nothing left to recover.
+     *
+     * <p>A write-ahead inventory journal and an economy saga exist so a crash in the middle of
+     * something can be finished or undone. Once one has committed or been undone it has done its
+     * job, and nothing ever deleted one: the tables held every economic item movement and every
+     * external money movement a server had ever made. A journal a crash left unreconciled stays,
+     * and so does a saga that failed.
+     */
+    private void sweepSettledRecoveryRecords() {
+        java.time.Instant before = java.time.Instant.now().minus(notificationConfig.recoveryRetention());
+        try {
+            int journals = journalPort.purgeSettledBefore(before);
+            int sagas = economySagaPort.purgeSettledBefore(before);
+            if (journals + sagas > 0) {
+                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                        .fine(() -> "Swept " + journals + " settled inventory journals and " + sagas
+                                + " settled economy sagas.");
+            }
+        } catch (RuntimeException e) {
+            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                    .log(
+                            java.util.logging.Level.WARNING,
+                            "Sweeping the settled recovery records failed. The next sweep retries.",
                             e);
         }
     }

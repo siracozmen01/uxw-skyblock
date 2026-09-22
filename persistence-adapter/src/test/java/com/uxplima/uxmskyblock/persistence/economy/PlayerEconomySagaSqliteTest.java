@@ -50,6 +50,49 @@ class PlayerEconomySagaSqliteTest {
     }
 
     @Test
+    @DisplayName("A saga that has settled is swept, and one still running or failed is kept")
+    void settledSagasAreSwept() {
+        SagaId committed = newSaga(SagaState.COMMITTED, now.minusSeconds(600));
+        SagaId rolledBack = newSaga(SagaState.ROLLED_BACK, now.minusSeconds(600));
+        SagaId failed = newSaga(SagaState.FAILED, now.minusSeconds(600));
+        SagaId running = newSaga(SagaState.STARTED, now.minusSeconds(600));
+        SagaId recent = newSaga(SagaState.COMMITTED, now);
+
+        assertThat(adapter.purgeSettledBefore(now.minusSeconds(300)))
+                .describedAs("committed and rolled back, and old enough")
+                .isEqualTo(2);
+
+        assertThat(adapter.findSagaById(committed)).isEmpty();
+        assertThat(adapter.findSagaById(rolledBack)).isEmpty();
+        assertThat(adapter.findSagaById(failed))
+                .describedAs("a money movement that went wrong is the evidence an operator needs")
+                .isPresent();
+        assertThat(adapter.findSagaById(running))
+                .describedAs("a saga still running has everything left to recover")
+                .isPresent();
+        assertThat(adapter.findSagaById(recent))
+                .describedAs("settled, but not old enough yet")
+                .isPresent();
+    }
+
+    private SagaId newSaga(SagaState state, java.time.Instant updatedAt) {
+        SagaId sagaId = SagaId.random();
+        adapter.createSaga(new EconomySagaRecord(
+                sagaId,
+                playerUuid,
+                profileId,
+                islandId,
+                SagaType.DEPOSIT,
+                state,
+                1000L,
+                "VAULT",
+                now.plusSeconds(60),
+                now.minusSeconds(900),
+                updatedAt));
+        return sagaId;
+    }
+
+    @Test
     @DisplayName("createSaga and findSagaById round-trips state correctly")
     void createAndFindRoundTrip() {
         SagaId sagaId = SagaId.random();

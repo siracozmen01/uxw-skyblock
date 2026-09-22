@@ -128,6 +128,23 @@ public final class PlayerEconomySagaAdapter implements EconomySagaPort {
         }
     }
 
+    @Override
+    public int purgeSettledBefore(Instant before) {
+        Objects.requireNonNull(before, "before must not be null");
+
+        // A failed saga is kept: a money movement that went wrong is the evidence an operator needs.
+        String sql = "DELETE FROM economy_sagas WHERE state IN (?, ?) AND updated_at < ?";
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, SagaState.COMMITTED.name());
+            stmt.setString(2, SagaState.ROLLED_BACK.name());
+            stmt.setTimestamp(3, Timestamp.from(before));
+            return stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to purge settled economy sagas before " + before, e);
+        }
+    }
+
     private static EconomySagaRecord mapRow(ResultSet rs) throws SQLException {
         SagaId sagaId = SagaId.of(rs.getString("saga_id"));
         PlayerUuid playerUuid = new PlayerUuid(UUID.fromString(rs.getString("player_uuid")));

@@ -178,6 +178,88 @@ class PlayerInventoryMutationJournalIntegrationTest {
                 postgresDatabase, postgresInventoryAdapter, postgresFinalizationAdapter, postgresJournalAdapter);
     }
 
+    @Test
+    @Order(9)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
+    @DisplayName("MariaDB: a journal that has settled is swept with its participants")
+    void mariaDbSettledJournalsAreSwept() throws Exception {
+        verifySettledJournalsAreSwept(mariaDatabase, mariaInventoryAdapter, mariaJournalAdapter);
+    }
+
+    @Test
+    @Order(10)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
+    @DisplayName("PostgreSQL: a journal that has settled is swept with its participants")
+    void postgresSettledJournalsAreSwept() throws Exception {
+        verifySettledJournalsAreSwept(postgresDatabase, postgresInventoryAdapter, postgresJournalAdapter);
+    }
+
+    /**
+     * A settled journal has nothing left to recover, and nothing ever deleted one.
+     *
+     * <p>What must survive matters as much: an intent nobody finished, because that is exactly the
+     * crash the journal exists for.
+     */
+    private static void verifySettledJournalsAreSwept(
+            Database database,
+            PlayerProfileInventoryAdapter invAdapter,
+            PlayerInventoryMutationJournalAdapter journalAdapter)
+            throws Exception {
+        PlayerUuid player = PlayerUuid.of(UUID.randomUUID());
+        ProfileId profile = ProfileId.of(UUID.randomUUID());
+        seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", false, 1L);
+        invAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {0}));
+
+        InventoryMutationOperationId committed = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                committed,
+                "TRADE",
+                "fp1",
+                "fp2",
+                "{\"kind\": \"trade\"}",
+                Duration.ofMinutes(1));
+        journalAdapter.commitMutation(player, profile, NODE_A, 1L, 1L, committed, new byte[] {9});
+
+        InventoryMutationOperationId open = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                2L,
+                open,
+                "TRADE",
+                "fp2",
+                "fp3",
+                "{\"kind\": \"trade\"}",
+                Duration.ofMinutes(1));
+
+        // Only these two are pushed back. The class shares one container across its ordered tests,
+        // and aging every journal would sweep what an earlier test left behind.
+        try (java.sql.Connection conn = database.connection();
+                java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "UPDATE inventory_mutation_journals SET updated_at = ? WHERE operation_id IN (?, ?)")) {
+            ps.setTimestamp(1, java.sql.Timestamp.from(java.time.Instant.parse("2020-01-01T00:00:00Z")));
+            ps.setString(2, committed.value().toString());
+            ps.setString(3, open.value().toString());
+            ps.executeUpdate();
+        }
+
+        assertThat(journalAdapter.purgeSettledBefore(java.time.Instant.parse("2021-01-01T00:00:00Z")))
+                .describedAs("the committed one, and not the intent")
+                .isEqualTo(1);
+        assertThat(journalAdapter.loadJournal(committed)).isEmpty();
+        assertThat(journalAdapter.loadParticipant(committed, 0))
+                .describedAs("the participants go with the journal through the foreign key")
+                .isEmpty();
+        assertThat(journalAdapter.loadJournal(open)).isPresent();
+    }
+
     // ==========================================
     // Verification Helpers
     // ==========================================

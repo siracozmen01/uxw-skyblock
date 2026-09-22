@@ -240,5 +240,10 @@ class JournaledInventoryMutationServiceTest {
                 InventoryMutationOperationId operationId, int participantIndex) {
             return Optional.empty();
         }
+
+        @Override
+        public int purgeSettledBefore(java.time.Instant before) {
+            return 0;
+        }
     }
 }

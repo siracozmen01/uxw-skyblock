@@ -13,7 +13,8 @@ import org.spongepowered.configurate.ConfigurationNode;
  * to be set. Both exist now, because a table that only grows is the other half of a table that has
  * finally started being written to.
  */
-public record NotificationConfiguration(Duration readRetention, Duration sweepInterval, Duration activityRetention) {
+public record NotificationConfiguration(
+        Duration readRetention, Duration sweepInterval, Duration activityRetention, Duration recoveryRetention) {
 
     /** How long a notification a player has already read is kept. */
     public static final Duration DEFAULT_READ_RETENTION = Duration.ofDays(7);
@@ -29,6 +30,15 @@ public record NotificationConfiguration(Duration readRetention, Duration sweepIn
      */
     public static final Duration DEFAULT_ACTIVITY_RETENTION = Duration.ofDays(30);
 
+    /**
+     * How long a settled recovery record is kept.
+     *
+     * <p>A write-ahead journal and an economy saga exist so a crash in the middle of something can
+     * be finished or undone. Once one has committed or been undone it has nothing left to recover,
+     * and a week is far longer than any crash takes to notice.
+     */
+    public static final Duration DEFAULT_RECOVERY_RETENTION = Duration.ofDays(7);
+
     public NotificationConfiguration {
         Objects.requireNonNull(readRetention, "readRetention must not be null");
         Objects.requireNonNull(sweepInterval, "sweepInterval must not be null");
@@ -42,11 +52,15 @@ public record NotificationConfiguration(Duration readRetention, Duration sweepIn
         if (activityRetention.isNegative() || activityRetention.isZero()) {
             throw new IllegalArgumentException("activity-retention must be positive: " + activityRetention);
         }
+        Objects.requireNonNull(recoveryRetention, "recoveryRetention must not be null");
+        if (recoveryRetention.isNegative() || recoveryRetention.isZero()) {
+            throw new IllegalArgumentException("recovery-retention must be positive: " + recoveryRetention);
+        }
     }
 
     public static NotificationConfiguration defaultConfiguration() {
         return new NotificationConfiguration(
-                DEFAULT_READ_RETENTION, DEFAULT_SWEEP_INTERVAL, DEFAULT_ACTIVITY_RETENTION);
+                DEFAULT_READ_RETENTION, DEFAULT_SWEEP_INTERVAL, DEFAULT_ACTIVITY_RETENTION, DEFAULT_RECOVERY_RETENTION);
     }
 
     public static NotificationConfiguration load(ConfigurationNode rootNode) {
@@ -58,7 +72,8 @@ public record NotificationConfiguration(Duration readRetention, Duration sweepIn
         return new NotificationConfiguration(
                 readDuration(node.node("read-retention"), DEFAULT_READ_RETENTION),
                 readDuration(node.node("sweep-interval"), DEFAULT_SWEEP_INTERVAL),
-                readDuration(node.node("activity-retention"), DEFAULT_ACTIVITY_RETENTION));
+                readDuration(node.node("activity-retention"), DEFAULT_ACTIVITY_RETENTION),
+                readDuration(node.node("recovery-retention"), DEFAULT_RECOVERY_RETENTION));
     }
 
     /**
