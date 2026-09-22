@@ -2,7 +2,6 @@ package com.uxplima.uxmskyblock.persistence.storage.s3;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,7 +65,7 @@ final class S3MultipartUpload {
 
     String uploadPart(StorageBucket bucket, String objectKey, String uploadId, int partNumber, byte[] partData)
             throws IOException {
-        String query = "partNumber=" + partNumber + "&uploadId=" + URLEncoder.encode(uploadId, StandardCharsets.UTF_8);
+        String query = "partNumber=" + partNumber + "&uploadId=" + AwsSigV4Signer.rfc3986Encode(uploadId, false);
         URI uri = requests.objectUri(bucket, objectKey, query);
 
         Map<String, List<String>> headers = new LinkedHashMap<>();
@@ -86,7 +85,7 @@ final class S3MultipartUpload {
 
     void completeMultipartUpload(StorageBucket bucket, String objectKey, String uploadId, List<PartETag> parts)
             throws IOException {
-        String query = "uploadId=" + URLEncoder.encode(uploadId, StandardCharsets.UTF_8);
+        String query = "uploadId=" + AwsSigV4Signer.rfc3986Encode(uploadId, false);
         URI uri = requests.objectUri(bucket, objectKey, query);
 
         StringBuilder xml = new StringBuilder("<CompleteMultipartUpload>");
@@ -118,7 +117,7 @@ final class S3MultipartUpload {
 
     void abortMultipartUpload(StorageBucket bucket, String objectKey, String uploadId) {
         try {
-            String query = "uploadId=" + URLEncoder.encode(uploadId, StandardCharsets.UTF_8);
+            String query = "uploadId=" + AwsSigV4Signer.rfc3986Encode(uploadId, false);
             URI uri = requests.objectUri(bucket, objectKey, query);
 
             S3HttpRequest unsigned = S3HttpRequest.of("DELETE", uri, Map.of());

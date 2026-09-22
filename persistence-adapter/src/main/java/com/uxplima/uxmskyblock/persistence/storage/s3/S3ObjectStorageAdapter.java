@@ -4,8 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -327,9 +325,7 @@ public final class S3ObjectStorageAdapter implements ObjectStoragePort {
         Objects.requireNonNull(bucket, "bucket must not be null");
         String sanitizedPrefix = requests.sanitizeKey(prefix != null ? prefix : "");
         String query = "list-type=2"
-                + (sanitizedPrefix.isEmpty()
-                        ? ""
-                        : "&prefix=" + URLEncoder.encode(sanitizedPrefix, StandardCharsets.UTF_8));
+                + (sanitizedPrefix.isEmpty() ? "" : "&prefix=" + AwsSigV4Signer.rfc3986Encode(sanitizedPrefix, false));
 
         URI uri = requests.bucketUri(bucket, query);
         S3HttpRequest unsigned = S3HttpRequest.of("GET", uri, Map.of());

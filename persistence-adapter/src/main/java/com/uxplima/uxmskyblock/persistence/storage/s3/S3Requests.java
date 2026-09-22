@@ -78,22 +78,10 @@ final class S3Requests {
 
     URI bucketUri(StorageBucket bucket, @Nullable String query) {
         String bucketName = bucket.name();
-        URI base = configuration.endpoint();
-        String scheme = base.getScheme() != null ? base.getScheme() : "https";
-        String host = base.getHost();
-        int port = base.getPort();
-
-        try {
-            if (configuration.addressingMode() == S3AddressingMode.PATH_STYLE) {
-                String path = "/" + bucketName;
-                return new URI(scheme, null, host, port, path, query, null);
-            } else {
-                String virtualHost = bucketName + "." + host;
-                return new URI(scheme, null, virtualHost, port, "/", query, null);
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid URI construction for bucket: " + bucketName, e);
+        if (configuration.addressingMode() == S3AddressingMode.PATH_STYLE) {
+            return assemble(host(), "/" + AwsSigV4Signer.rfc3986Encode(bucketName, false), query);
         }
+        return assemble(bucketName + "." + host(), "/", query);
     }
 
     URI objectUri(StorageBucket bucket, String objectKey, @Nullable String query) {
@@ -101,24 +89,40 @@ final class S3Requests {
         if (configuration.pathPrefix() != null && !configuration.pathPrefix().isBlank()) {
             sanitizedKey = configuration.pathPrefix().trim() + "/" + sanitizedKey;
         }
-
+        String encodedKey = AwsSigV4Signer.rfc3986Encode(sanitizedKey, true);
         String bucketName = bucket.name();
+
+        if (configuration.addressingMode() == S3AddressingMode.PATH_STYLE) {
+            return assemble(host(), "/" + AwsSigV4Signer.rfc3986Encode(bucketName, false) + "/" + encodedKey, query);
+        }
+        return assemble(bucketName + "." + host(), "/" + encodedKey, query);
+    }
+
+    /** The endpoint's host, with its port when it names one. */
+    private String host() {
+        URI base = configuration.endpoint();
+        return base.getPort() < 0 ? base.getHost() : base.getHost() + ":" + base.getPort();
+    }
+
+    /**
+     * Builds the URI out of parts that are already encoded.
+     *
+     * <p>{@code new URI(scheme, host, path, query, fragment)} encodes the path its own way, and its
+     * way is not the signer's: it leaves a plus and a comma alone where RFC 3986 encoding does not.
+     * The request then went to one path and was signed over another. Everything here is encoded
+     * once, by the encoder the signature uses, and handed over already finished.
+     */
+    private URI assemble(String host, String encodedPath, @Nullable String encodedQuery) {
         URI base = configuration.endpoint();
         String scheme = base.getScheme() != null ? base.getScheme() : "https";
-        String host = base.getHost();
-        int port = base.getPort();
-
+        String uri = scheme + "://" + host + encodedPath;
+        if (encodedQuery != null && !encodedQuery.isEmpty()) {
+            uri = uri + "?" + encodedQuery;
+        }
         try {
-            if (configuration.addressingMode() == S3AddressingMode.PATH_STYLE) {
-                String path = "/" + bucketName + "/" + sanitizedKey;
-                return new URI(scheme, null, host, port, path, query, null);
-            } else {
-                String virtualHost = bucketName + "." + host;
-                String path = "/" + sanitizedKey;
-                return new URI(scheme, null, virtualHost, port, path, query, null);
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid URI construction for key: " + objectKey, e);
+            return URI.create(uri);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid URI construction for " + uri, e);
         }
     }
 

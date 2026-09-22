@@ -42,6 +42,11 @@ public final class AwsSigV4Signer {
     /**
      * Signs an HTTP request using SigV4 and returns a new {@link S3HttpRequest} with authentication headers attached.
      *
+     * <p>The URI is signed exactly as it will be sent. Whoever builds it owns the encoding, and it
+     * has to be the encoding that goes on the wire: a signature computed over a different string
+     * than the one the provider receives is a 403 at runtime rather than a mistake the compiler can
+     * catch. {@link #rfc3986Encode} is the encoder to use, and {@code S3Requests} does.
+     *
      * @param request original request
      * @param credentials provider credentials
      * @param region target region (or "auto" for Cloudflare R2)
@@ -91,13 +96,15 @@ public final class AwsSigV4Signer {
         }
 
         // 5. Canonical URI
-        String path = uri.getRawPath();
-        if (path == null || path.isEmpty()) {
-            path = "/";
-        }
-        String canonicalUri = rfc3986Encode(path, true);
+        //
+        // The path is taken exactly as it will go on the wire. It used to be encoded again here,
+        // which turned the %20 of a key with a space into %2520: the request went to one path and
+        // the signature was computed over another, and the provider answered SignatureDoesNotMatch
+        // for every key with a space, a plus or a comma in it. Whoever builds the URI owns the
+        // encoding, and S3Requests does it with rfc3986Encode so the two are the same string.
+        String canonicalUri = canonicalPathOf(uri);
 
-        // 6. Canonical Query String
+        // 6. Canonical Query String, sorted but not encoded again, for the same reason.
         String canonicalQuery = buildCanonicalQueryString(uri.getRawQuery());
 
         // 7. Canonical Headers and SignedHeaders
@@ -177,12 +184,9 @@ public final class AwsSigV4Signer {
             if (!pair.isEmpty()) {
                 int idx = pair.indexOf('=');
                 if (idx > 0) {
-                    String key = rfc3986Encode(pair.substring(0, idx), false);
-                    String val = rfc3986Encode(pair.substring(idx + 1), false);
-                    sortedParams.put(key, val);
+                    sortedParams.put(pair.substring(0, idx), pair.substring(idx + 1));
                 } else {
-                    String key = rfc3986Encode(pair, false);
-                    sortedParams.put(key, "");
+                    sortedParams.put(pair, "");
                 }
             }
             if (nextAmp == -1) {
@@ -199,6 +203,18 @@ public final class AwsSigV4Signer {
             sb.append(entry.getKey()).append('=').append(entry.getValue());
         }
         return sb.toString();
+    }
+
+    /**
+     * The path this request will be signed over.
+     *
+     * <p>It is the path exactly as it will go on the wire. Anything else is a signature covering a
+     * string the provider never sees, which comes back as a 403 rather than as a mistake anybody
+     * can see in the code, so this is worth being able to assert on its own.
+     */
+    static String canonicalPathOf(URI uri) {
+        String path = uri.getRawPath();
+        return path == null || path.isEmpty() ? "/" : path;
     }
 
     public static String rfc3986Encode(String value, boolean path) {
