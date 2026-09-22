@@ -73,6 +73,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final NotificationConfiguration notificationConfig;
 
     private @org.jspecify.annotations.Nullable AutoCloseable notificationSweep;
+    private final @org.jspecify.annotations.Nullable AutoCloseable domainEvents;
     private final java.time.Duration authorityHeartbeatInterval;
     private final com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler;
 
@@ -206,6 +207,15 @@ public final class IntegrationWiring implements AutoCloseable {
                 serverNodeId.value() + "-event-transport",
                 persistence.consumerInboxPort(),
                 event -> this.eventTransport.publish("uxmskyblock:stream:domain_events", event)));
+
+        // And somebody reads it. Every node published onto this stream and no node ever subscribed,
+        // so a node that froze an island, archived one or handed one to a new owner told every
+        // other node and every other node went on answering out of what it remembered.
+        //
+        // The group is this node's own, because every node has to hear every event: a group shared
+        // between them would hand each event to one node and leave the rest stale, which is the
+        // thing being fixed.
+        this.domainEvents = subscribeToDomainEvents(gameplay, persistence);
 
         this.velocityBridge = new BukkitVelocityBridge(plugin, gameplay.scheduler());
         this.clusterRoutingDirectory = this.clusterTransport.clusterRoutingDirectory();
@@ -480,6 +490,36 @@ public final class IntegrationWiring implements AutoCloseable {
         });
     }
 
+    /**
+     * Listens for what other nodes did to islands this node remembers something about.
+     *
+     * <p>A transport that cannot be subscribed to is not a failure to start: a single node server
+     * has nobody to hear from, and the local transport delivers to this node's own consumers
+     * already.
+     */
+    private @org.jspecify.annotations.Nullable AutoCloseable subscribeToDomainEvents(
+            GameplayWiring gameplay, PersistenceBootstrap persistence) {
+        String node = this.serverNodeId.value();
+        com.uxplima.uxmskyblock.core.application.event.OutboxEventConsumer forgetting =
+                new com.uxplima.uxmskyblock.core.application.event.ClusterIslandCacheInvalidation(islandId -> {
+                    gameplay.cacheEviction().forget(islandId);
+                    gameplay.protectionListener().invalidateIsland(islandId);
+                });
+        try {
+            return this.eventTransport.subscribe(
+                    "uxmskyblock:stream:domain_events",
+                    node,
+                    node + "-cache-invalidation",
+                    new com.uxplima.uxmskyblock.core.application.event.InboxDeduplicatingConsumer(
+                            node + "-cache-invalidation", persistence.consumerInboxPort(), forgetting));
+        } catch (RuntimeException notSubscribable) {
+            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                    .warning(() -> "Nothing is listening for island changes from other nodes: "
+                            + notSubscribable.getMessage());
+            return null;
+        }
+    }
+
     private void closeQuietly(@org.jspecify.annotations.Nullable AutoCloseable task, String what) {
         if (task == null) {
             return;
@@ -669,6 +709,7 @@ public final class IntegrationWiring implements AutoCloseable {
         closeAuthorityHeartbeat();
         closeQuietly(this.notificationSweep, "the notification sweep");
         this.notificationSweep = null;
+        closeQuietly(this.domainEvents, "the island change listener");
         menuEngine.close();
         discordService.close();
         outboxDispatcher.close();

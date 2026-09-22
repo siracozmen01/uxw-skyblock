@@ -391,6 +391,11 @@ public final class GameplayWiring {
         return adminWiring.freezeService();
     }
 
+    /** One place that forgets an island, for the callers that learn one changed elsewhere. */
+    public IslandCacheEviction cacheEviction() {
+        return cacheEviction;
+    }
+
     public IslandProtectionListener protectionListener() {
         return protectionListener;
     }
