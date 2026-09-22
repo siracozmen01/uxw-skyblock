@@ -10,6 +10,7 @@ import java.util.function.Supplier;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -239,58 +240,78 @@ public final class IslandProtectionListener implements Listener {
                 type);
     }
 
+    /**
+     * What this listener says about a player doing one thing at one place.
+     *
+     * <p>Four handlers asked the same four questions in the same order and wrote the answer out
+     * four times: is there an island here, is it frozen, does the role allow it, and is there a
+     * temporary grant that does. One place to ask them is one place to fix them, and the rules
+     * that come after this one ask the same four.
+     *
+     * <p>The grant is looked up under the key the permission registry publishes for that
+     * permission. The interact handler used to ask for {@code uxm:interact}, which is not a key an
+     * operator's trust list can hold: the list names {@code uxm:interact.natural}. A player trusted
+     * to interact could not, and nothing said so.
+     */
+    public Verdict mayDoHere(Player player, Location location, IslandPermission permission) {
+        Objects.requireNonNull(player, "player must not be null");
+        Objects.requireNonNull(location, "location must not be null");
+        Objects.requireNonNull(permission, "permission must not be null");
+
+        if (player.hasPermission("uxmskyblock.admin.bypass")) {
+            return Verdict.ALLOWED;
+        }
+        Optional<Island> optIsland = findIslandAt(location);
+        if (optIsland.isEmpty()) {
+            return Verdict.ALLOWED;
+        }
+        Island island = optIsland.get();
+        if (isIslandFrozen(island)) {
+            return isStaffInspector(player) ? Verdict.ALLOWED : Verdict.FROZEN;
+        }
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        ProfileId profileId = activeProfiles.get(playerUuid);
+        if (profileId == null) {
+            return Verdict.REFUSED;
+        }
+        if (accessService.checkPermission(island, profileId, permission)) {
+            return Verdict.ALLOWED;
+        }
+        PermissionKey key = StandardPermissions.fromIslandPermission(permission);
+        if (key != null && hasTemporaryAccess(playerUuid, profileId, island.id(), key)) {
+            return Verdict.ALLOWED;
+        }
+        return Verdict.REFUSED;
+    }
+
+    /** The three answers a rule here can give. */
+    public enum Verdict {
+        /** Nothing here refuses it. */
+        ALLOWED,
+        /** The island is under an administrative freeze. */
+        FROZEN,
+        /** The role, and any grant standing in for it, do not allow it. */
+        REFUSED
+    }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        Player player = event.getPlayer();
-        if (player.hasPermission("uxmskyblock.admin.bypass")) {
-            return;
-        }
-
-        findIslandAt(event.getBlock().getLocation()).ifPresent(island -> {
-            if (isIslandFrozen(island)) {
-                if (!isStaffInspector(player)) {
-                    event.setCancelled(true);
-                    player.sendMessage(messages.render(player, "protection.frozen"));
-                }
-                return;
-            }
-            PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-            ProfileId profileId = activeProfiles.get(playerUuid);
-            if (profileId == null
-                    || (!accessService.canBreak(island, profileId)
-                            && !hasTemporaryAccess(
-                                    playerUuid, profileId, island.id(), PermissionKey.of("uxm:block.break")))) {
-                event.setCancelled(true);
-                player.sendMessage(messages.render(player, "protection.block_break_denied"));
-            }
-        });
+        refuseUnlessAllowed(
+                event,
+                event.getPlayer(),
+                event.getBlock().getLocation(),
+                IslandPermission.BLOCK_BREAK,
+                "protection.block_break_denied");
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        Player player = event.getPlayer();
-        if (player.hasPermission("uxmskyblock.admin.bypass")) {
-            return;
-        }
-
-        findIslandAt(event.getBlock().getLocation()).ifPresent(island -> {
-            if (isIslandFrozen(island)) {
-                if (!isStaffInspector(player)) {
-                    event.setCancelled(true);
-                    player.sendMessage(messages.render(player, "protection.frozen"));
-                }
-                return;
-            }
-            PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-            ProfileId profileId = activeProfiles.get(playerUuid);
-            if (profileId == null
-                    || (!accessService.canPlace(island, profileId)
-                            && !hasTemporaryAccess(
-                                    playerUuid, profileId, island.id(), PermissionKey.of("uxm:block.place")))) {
-                event.setCancelled(true);
-                player.sendMessage(messages.render(player, "protection.block_place_denied"));
-            }
-        });
+        refuseUnlessAllowed(
+                event,
+                event.getPlayer(),
+                event.getBlock().getLocation(),
+                IslandPermission.BLOCK_PLACE,
+                "protection.block_place_denied");
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -298,29 +319,23 @@ public final class IslandProtectionListener implements Listener {
         if (!event.hasBlock() || event.getClickedBlock() == null) {
             return;
         }
-        Player player = event.getPlayer();
-        if (player.hasPermission("uxmskyblock.admin.bypass")) {
+        refuseUnlessAllowed(
+                event,
+                event.getPlayer(),
+                event.getClickedBlock().getLocation(),
+                IslandPermission.NATURAL_INTERACT,
+                "protection.interact_denied");
+    }
+
+    /** Cancels {@code event} and says why, unless this listener allows it here. */
+    private void refuseUnlessAllowed(
+            Cancellable event, Player player, Location location, IslandPermission permission, String refusalKey) {
+        Verdict verdict = mayDoHere(player, location, permission);
+        if (verdict == Verdict.ALLOWED) {
             return;
         }
-
-        findIslandAt(event.getClickedBlock().getLocation()).ifPresent(island -> {
-            if (isIslandFrozen(island)) {
-                if (!isStaffInspector(player)) {
-                    event.setCancelled(true);
-                    player.sendMessage(messages.render(player, "protection.frozen"));
-                }
-                return;
-            }
-            PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-            ProfileId profileId = activeProfiles.get(playerUuid);
-            if (profileId == null
-                    || (!accessService.canInteract(island, profileId)
-                            && !hasTemporaryAccess(
-                                    playerUuid, profileId, island.id(), PermissionKey.of("uxm:interact")))) {
-                event.setCancelled(true);
-                player.sendMessage(messages.render(player, "protection.interact_denied"));
-            }
-        });
+        event.setCancelled(true);
+        player.sendMessage(messages.render(player, verdict == Verdict.FROZEN ? "protection.frozen" : refusalKey));
     }
 
     /**
@@ -351,24 +366,7 @@ public final class IslandProtectionListener implements Listener {
             return;
         }
 
-        findIslandAt(location).ifPresent(island -> {
-            if (isIslandFrozen(island)) {
-                if (!isStaffInspector(player)) {
-                    event.setCancelled(true);
-                    player.sendMessage(messages.render(player, "protection.frozen"));
-                }
-                return;
-            }
-            PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-            ProfileId profileId = activeProfiles.get(playerUuid);
-            PermissionKey key = StandardPermissions.fromIslandPermission(required);
-            if (profileId == null
-                    || (!accessService.checkPermission(island, profileId, required)
-                            && (key == null || !hasTemporaryAccess(playerUuid, profileId, island.id(), key)))) {
-                event.setCancelled(true);
-                player.sendMessage(messages.render(player, "protection.chest_access_denied"));
-            }
-        });
+        refuseUnlessAllowed(event, player, location, required, "protection.chest_access_denied");
     }
 
     /**

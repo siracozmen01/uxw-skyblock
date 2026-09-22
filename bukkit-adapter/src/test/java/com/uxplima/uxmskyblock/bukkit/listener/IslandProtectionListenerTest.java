@@ -450,7 +450,7 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("visitor with temporary access grant can break blocks on the target island")
+    @DisplayName("visitor with a temporary grant does what the grant names, break and interact alike")
     void visitorWithTemporaryAccessCanBreakBlocks() {
         java.util.concurrent.atomic.AtomicReference<com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant>
                 storedGrant = new java.util.concurrent.atomic.AtomicReference<>();
@@ -520,6 +520,15 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
         customListener.onBlockBreak(eventBefore);
         assertThat(eventBefore.isCancelled()).isTrue();
 
+        PlayerInteractEvent interactBefore = new PlayerInteractEvent(
+                visitorPlayer,
+                Action.RIGHT_CLICK_BLOCK,
+                new ItemStack(Material.STICK),
+                block,
+                org.bukkit.block.BlockFace.UP);
+        customListener.onPlayerInteract(interactBefore);
+        assertThat(interactBefore.useInteractedBlock()).isEqualTo(Event.Result.DENY);
+
         // Issue grant with uxm:block.break
         tempAccessService.issueGrant(
                 "skyblock-01",
@@ -534,13 +543,27 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
                 null,
                 null,
                 null,
-                java.util.Set.of(com.uxplima.uxmskyblock.core.domain.permission.PermissionKey.of("uxm:block.break")),
+                java.util.Set.of(
+                        com.uxplima.uxmskyblock.core.domain.permission.PermissionKey.of("uxm:block.break"),
+                        com.uxplima.uxmskyblock.core.domain.permission.PermissionKey.of("uxm:interact.natural")),
                 null);
 
         // After grant: visitor can break block
         BlockBreakEvent eventAfter = new BlockBreakEvent(block, visitorPlayer);
         customListener.onBlockBreak(eventAfter);
         assertThat(eventAfter.isCancelled()).isFalse();
+
+        // And interact, which the listener used to ask for under a key no trust list can hold.
+        PlayerInteractEvent interactAfter = new PlayerInteractEvent(
+                visitorPlayer,
+                Action.RIGHT_CLICK_BLOCK,
+                new ItemStack(Material.STICK),
+                block,
+                org.bukkit.block.BlockFace.UP);
+        customListener.onPlayerInteract(interactAfter);
+        assertThat(interactAfter.useInteractedBlock())
+                .describedAs("the trust list names uxm:interact.natural and the rule asked for uxm:interact")
+                .isNotEqualTo(Event.Result.DENY);
     }
 
     @Test
