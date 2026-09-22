@@ -2,13 +2,17 @@ package com.uxplima.uxmskyblock.bukkit.effect;
 
 import java.util.Objects;
 
+import org.bukkit.Server;
 import org.bukkit.entity.Player;
 
 import com.uxplima.uxmlib.condition.ItemStore;
-import com.uxplima.uxmlib.condition.OperandResolver;
+import com.uxplima.uxmlib.condition.Wallet;
 import com.uxplima.uxmlib.condition.action.ActionContext;
 import com.uxplima.uxmlib.condition.action.ActionCostException;
 import com.uxplima.uxmlib.condition.action.ActionList;
+import com.uxplima.uxmlib.condition.wallet.BridgedWallet;
+import com.uxplima.uxmlib.condition.wallet.Economies;
+import com.uxplima.uxmlib.content.Operands;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import org.jspecify.annotations.Nullable;
 
@@ -24,6 +28,12 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code [bossbar]} needs a delay to take its bar down again. A node with a scheduler wires one.
  * A node without hears about it the first time such a line runs, which is the engine's own way of
  * saying so and better than a bar that never goes away.
+ *
+ * <p>An operand is read through the family's standard operands, so {@code {if=%player_level% >= 10}}
+ * compares a level rather than the text of the token. {@code [take-money]} and {@code [give-money]}
+ * reach the server's economy through Vault when it is there. {@code [console]} and {@code [player]}
+ * run their command: left unwired, the first two read every balance as zero and the last two ran
+ * nothing, and none of it said so.
  */
 public final class InteractionEffectPlayer {
 
@@ -31,6 +41,9 @@ public final class InteractionEffectPlayer {
             java.util.logging.Logger.getLogger(InteractionEffectPlayer.class.getName());
 
     private final @Nullable SchedulerPort schedulerPort;
+
+    /** Vault's economy, looked up the first time a line asks for money rather than at startup. */
+    private final Wallet wallet = BridgedWallet.ofServer(Economies.vault(), System.getLogger("uxmSkyblock"));
 
     public InteractionEffectPlayer() {
         this(null);
@@ -73,14 +86,27 @@ public final class InteractionEffectPlayer {
 
     /** The context an action reads: who it is about, who hears it, and what they are holding. */
     private ActionContext contextFor(Player player) {
-        ActionContext.Builder builder = ActionContext.builder(OperandResolver.identity())
+        Server server = player.getServer();
+        SchedulerPort scheduler = this.schedulerPort;
+        ActionContext.Builder builder = ActionContext.builder(Operands.standard())
                 // The subject, which the engine also makes the target audience.
                 .player(player)
                 // An island's own interaction reaches the player it happened to. Nothing here is
                 // server wide, and an audience left empty renders every line and drops it.
                 .broadcast(player)
-                .itemStore(ItemStore.inventory());
-        SchedulerPort scheduler = this.schedulerPort;
+                .itemStore(ItemStore.inventory())
+                .wallet(wallet)
+                // Folia runs a console command on the global region, not on the player's.
+                .consoleSink(line -> {
+                    Runnable dispatch = () -> server.dispatchCommand(server.getConsoleSender(), line);
+                    if (scheduler != null) {
+                        scheduler.onGlobal(dispatch);
+                    } else {
+                        dispatch.run();
+                    }
+                })
+                // The caller is on the player's own thread, which is where their command belongs.
+                .playerSink(line -> server.dispatchCommand(player, line));
         if (scheduler != null) {
             builder.later(scheduler::asyncAfter);
         }

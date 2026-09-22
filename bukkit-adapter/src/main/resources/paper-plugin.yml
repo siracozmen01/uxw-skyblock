@@ -13,4 +13,7 @@ dependencies:
     PlaceholderAPI:
       load: BEFORE
       required: false
+    mcMMO:
+      load: BEFORE
+      required: false
 
