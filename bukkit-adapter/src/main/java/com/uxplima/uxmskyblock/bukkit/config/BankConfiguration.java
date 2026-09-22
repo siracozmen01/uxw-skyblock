@@ -10,7 +10,7 @@ import org.spongepowered.configurate.ConfigurationNode;
 /**
  * Configuration holder for island bank and upkeep failure policy (Section 2.39).
  */
-public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy) {
+public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operationRetention) {
 
     public static final boolean DEFAULT_ENABLED = false;
     public static final Duration DEFAULT_INTERVAL = Duration.ofHours(24);
@@ -19,8 +19,26 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy) {
     public static final Duration DEFAULT_GRACE_DURATION = Duration.ofDays(3);
     public static final boolean DEFAULT_AUTO_REMEDIATE = true;
 
+    /**
+     * How long a settled idempotency record is kept.
+     *
+     * <p>Every deposit, withdrawal, upgrade purchase, shop trade and upkeep charge writes one so a
+     * retry of it is answered rather than applied twice. It has to outlive every retry anything can
+     * make, and the web store's own window is a day.
+     */
+    public static final Duration DEFAULT_OPERATION_RETENTION = Duration.ofDays(30);
+
     public BankConfiguration {
         Objects.requireNonNull(upkeepPolicy, "upkeepPolicy must not be null");
+        Objects.requireNonNull(operationRetention, "operationRetention must not be null");
+        if (operationRetention.isNegative()) {
+            throw new IllegalArgumentException("operationRetention must not be negative: " + operationRetention);
+        }
+    }
+
+    /** The one-argument shape, for a caller that names no retention. */
+    public BankConfiguration(IslandUpkeepPolicy upkeepPolicy) {
+        this(upkeepPolicy, DEFAULT_OPERATION_RETENTION);
     }
 
     public static BankConfiguration defaultConfiguration() {
@@ -29,9 +47,14 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy) {
 
     public static BankConfiguration load(ConfigurationNode rootNode) {
         Objects.requireNonNull(rootNode, "rootNode must not be null");
+        String retentionRaw = rootNode.node("bank", "operation-retention").getString();
+        Duration operationRetention = retentionRaw != null && !retentionRaw.isBlank()
+                ? Durations.parse(retentionRaw)
+                : DEFAULT_OPERATION_RETENTION;
+
         ConfigurationNode upkeepNode = rootNode.node("bank", "upkeep");
         if (upkeepNode.virtual() || upkeepNode.empty()) {
-            return defaultConfiguration();
+            return new BankConfiguration(IslandUpkeepPolicy.defaultPolicy(), operationRetention);
         }
 
         boolean enabled = upkeepNode.node("enabled").getBoolean(DEFAULT_ENABLED);
@@ -55,6 +78,6 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy) {
         IslandUpkeepPolicy policy = new IslandUpkeepPolicy(
                 enabled, interval, baseFeeMinor, perMemberFeeMinor, graceDuration, autoRemediate);
 
-        return new BankConfiguration(policy);
+        return new BankConfiguration(policy, operationRetention);
     }
 }

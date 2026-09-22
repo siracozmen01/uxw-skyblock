@@ -76,7 +76,11 @@ public final class FeatureModuleWiring implements AutoCloseable {
             this.moduleRegistry.register(new CoreModule(gameplay.createIslandUseCase()));
         }
         if (config.moduleSettings().isModuleEnabled("bank")) {
-            this.moduleRegistry.register(new BankModule(gameplay.bankService()));
+            this.moduleRegistry.register(new BankModule(
+                    gameplay.bankService(),
+                    persistence.islandBankPort(),
+                    gameplay.scheduler(),
+                    config.bankConfig().operationRetention()));
         }
         if (config.moduleSettings().isModuleEnabled("upgrades")) {
             this.moduleRegistry.register(gameplay.upgradesModule());

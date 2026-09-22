@@ -101,6 +101,8 @@ class ZeroFootprintModuleWiringTest {
         when(config.messages()).thenReturn(Messages.bundled());
         when(config.homeConfig()).thenReturn(HomeConfiguration.defaults());
         when(config.nodeConfig()).thenReturn(ServerNodeConfiguration.of(ServerNodeId.of("node-1"), "world", false, ""));
+        when(config.bankConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.BankConfiguration.defaultConfiguration());
 
         PersistenceBootstrap persistence = mock(PersistenceBootstrap.class);
         GameplayWiring gameplay = mock(GameplayWiring.class);

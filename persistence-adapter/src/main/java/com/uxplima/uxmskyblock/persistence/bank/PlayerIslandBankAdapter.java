@@ -378,6 +378,22 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
         }
     }
 
+    @Override
+    public int purgeSettledOperationsBefore(java.time.Instant before) {
+        Objects.requireNonNull(before, "before must not be null");
+        // Settled only. A record that never settled is a reservation a crash left behind, and
+        // deleting one is exactly what would let the operation it was reserving run a second time.
+        String sql = "DELETE FROM processed_operations WHERE status IN ('APPLIED', 'REJECTED') "
+                + "AND completed_at IS NOT NULL AND completed_at < ?";
+        try (Connection connection = database.connection();
+                PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, java.sql.Timestamp.from(before));
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IslandBankPersistenceException("Failed to sweep settled bank operations", e);
+        }
+    }
+
     private void updateProcessedOp(Connection connection, UUID operationId, String status, String resultCode)
             throws SQLException {
         updateProcessedOp(connection, operationId, status, resultCode, null);

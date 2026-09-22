@@ -134,4 +134,22 @@ public interface IslandBankPort {
      * @return immutable list of bank transactions in reverse chronological order
      */
     List<BankTransaction> getTransactionHistory(IslandId islandId, int limit);
+
+    /**
+     * Deletes settled idempotency records older than {@code before}, and answers how many went.
+     *
+     * <p>Every deposit, withdrawal, upgrade purchase, shop trade and upkeep charge writes one of
+     * these so a retry of it is answered rather than applied twice. Nothing ever deleted one, so
+     * the table held every money movement a server had ever made.
+     *
+     * <p>A record that never settled is left alone however old it is. It is a reservation a crash
+     * left behind, and deleting one is exactly what would let the operation it was reserving run a
+     * second time.
+     *
+     * @param before the moment before which a settled record is no longer worth keeping
+     * @return how many rows went
+     */
+    default int purgeSettledOperationsBefore(java.time.Instant before) {
+        return 0;
+    }
 }

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -95,6 +97,94 @@ class PlayerIslandBankIntegrationTest {
     @DisplayName("PostgreSQL: createBank, deposit, withdraw, and transaction history")
     void postgresBankLifecycle() throws Exception {
         testBankLifecycle(postgresDatabase, postgresAdapter);
+    }
+
+    @Test
+    @Order(3)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
+    @DisplayName("MariaDB: a settled operation old enough is swept, and one that never settled is not")
+    void mariaDbSweepsSettled() throws Exception {
+        assertOnlySettledOperationsGo(mariaDatabase, mariaAdapter, "maria");
+    }
+
+    @Test
+    @Order(4)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
+    @DisplayName("PostgreSQL: a settled operation old enough is swept, and one that never settled is not")
+    void postgresSweepsSettled() throws Exception {
+        assertOnlySettledOperationsGo(postgresDatabase, postgresAdapter, "postgres");
+    }
+
+    /**
+     * Every money movement writes an idempotency record so a retry of it is answered rather than
+     * applied twice, and nothing ever deleted one.
+     *
+     * <p>What must survive matters as much as what goes. A record that never settled is a
+     * reservation a crash left behind, and deleting one is exactly what would let the operation it
+     * was reserving run a second time.
+     */
+    private void assertOnlySettledOperationsGo(Database db, PlayerIslandBankAdapter adapter, String scope)
+            throws Exception {
+        Instant now = Instant.now();
+        UUID oldApplied = operation(db, scope, "APPLIED", now.minus(Duration.ofDays(90)));
+        UUID oldRejected = operation(db, scope, "REJECTED", now.minus(Duration.ofDays(90)));
+        UUID recentApplied = operation(db, scope, "APPLIED", now.minus(Duration.ofMinutes(5)));
+        UUID neverSettled = operation(db, scope, "PENDING", null);
+
+        int swept = adapter.purgeSettledOperationsBefore(now.minus(Duration.ofDays(30)));
+
+        assertThat(swept).describedAs("records swept").isEqualTo(2);
+        assertThat(operationExists(db, oldApplied))
+                .describedAs("an applied record three months old")
+                .isFalse();
+        assertThat(operationExists(db, oldRejected))
+                .describedAs("a rejected record three months old")
+                .isFalse();
+        assertThat(operationExists(db, recentApplied))
+                .describedAs("an applied record five minutes old")
+                .isTrue();
+        assertThat(operationExists(db, neverSettled))
+                .describedAs("a reservation a crash left behind, which must never be swept")
+                .isTrue();
+    }
+
+    /** Writes one idempotency record in a given state, settled at a moment the test chooses. */
+    private UUID operation(
+            Database db, String scope, String status, @org.jspecify.annotations.Nullable Instant completedAt)
+            throws Exception {
+        UUID operationId = UUID.randomUUID();
+        try (Connection conn = db.connection();
+                PreparedStatement stmt = conn.prepareStatement("""
+                        INSERT INTO processed_operations (
+                            operation_id, operation_scope, actor_id, idempotency_key, operation_type,
+                            resource_id, status, completed_at
+                        ) VALUES (?, ?, ?, ?, 'BANK_TRANSACTION', ?, ?, ?)
+                        """)) {
+            stmt.setString(1, operationId.toString());
+            stmt.setString(2, scope + "-sweep");
+            stmt.setString(3, UUID.randomUUID().toString());
+            stmt.setString(4, "key-" + operationId);
+            stmt.setString(5, "isl-sweep");
+            stmt.setString(6, status);
+            if (completedAt == null) {
+                stmt.setNull(7, java.sql.Types.TIMESTAMP);
+            } else {
+                stmt.setTimestamp(7, java.sql.Timestamp.from(completedAt));
+            }
+            stmt.executeUpdate();
+        }
+        return operationId;
+    }
+
+    private boolean operationExists(Database db, UUID operationId) throws Exception {
+        try (Connection conn = db.connection();
+                PreparedStatement stmt =
+                        conn.prepareStatement("SELECT 1 FROM processed_operations WHERE operation_id = ?")) {
+            stmt.setString(1, operationId.toString());
+            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 
     private void testBankLifecycle(Database db, PlayerIslandBankAdapter adapter) throws Exception {
