@@ -1,7 +1,7 @@
 name: uxmSkyblock
 version: '${version}'
 main: com.uxplima.uxmskyblock.bukkit.bootstrap.UxMSkyblockPlugin
-api-version: '1.21'
+api-version: '26.2'
 folia-supported: true
 description: Enterprise-grade, distributed, event-driven Skyblock platform
 author: UXPLIMA
