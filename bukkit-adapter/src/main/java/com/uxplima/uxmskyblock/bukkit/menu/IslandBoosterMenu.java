@@ -110,16 +110,22 @@ public final class IslandBoosterMenu {
             }
 
             IslandId islandId = optIslandId.get();
+            // Every number the window shows comes out of one read, taken here, off the thread that
+            // owns the player. It used to ask fourteen separate questions while that thread waited:
+            // the paused flag, every active booster, then the active boosters and the effective
+            // multiplier of each of six categories.
+            Instant now = Instant.now();
+            IslandBoosterService.BoosterOverview overview = boosterService.overview(islandId, now);
             Runnable show = () -> {
                 if (!player.isOnline()) {
                     return;
                 }
                 BedrockFormService forms = this.bedrockFormService;
                 if (forms != null && forms.isBedrock(player)) {
-                    openForm(forms, player, islandId, Instant.now());
+                    openForm(forms, player, overview, now);
                     return;
                 }
-                SimpleGui gui = buildGui(player, islandId, Instant.now());
+                SimpleGui gui = buildGui(player, overview, now);
                 gui.open(player);
             };
             if (schedulerPort != null) {
@@ -141,11 +147,12 @@ public final class IslandBoosterMenu {
      * sides, so every button closes it: what matters is that the numbers are readable at all, which
      * they are not in a chest a Bedrock client renders as a list of icons.
      */
-    private void openForm(BedrockFormService forms, Player player, IslandId islandId, Instant now) {
+    private void openForm(
+            BedrockFormService forms, Player player, IslandBoosterService.BoosterOverview overview, Instant now) {
         List<BedrockFormService.Choice> choices = new ArrayList<>();
         for (BoosterCategory category : BoosterCategory.values()) {
             CategoryBoosterPolicy policy = configuration.policy(category);
-            List<IslandBooster> active = boosterService.getActiveBoosters(islandId, category, now);
+            List<IslandBooster> active = overview.activeIn(category);
             boolean hasActive = !active.isEmpty();
             boolean paused = hasActive && active.stream().anyMatch(IslandBooster::isPaused);
             String statusKey;
@@ -170,17 +177,14 @@ public final class IslandBoosterMenu {
                             Placeholder.component("status", messages.renderPlain(player, statusKey)),
                             Placeholder.unparsed(
                                     "multiplier",
-                                    String.format(
-                                            java.util.Locale.ROOT,
-                                            "%.2f",
-                                            boosterService.getEffectiveMultiplier(islandId, category, now))),
+                                    String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(category))),
                             Placeholder.unparsed("remaining", formatDuration(Duration.ofSeconds(remainingSeconds)))));
             choices.add(new BedrockFormService.Choice(label, () -> {}));
         }
         forms.openChoiceForm(player, "menu.booster.title", "menu.booster.form_body", choices);
     }
 
-    public SimpleGui buildGui(Player player, IslandId islandId, Instant now) {
+    public SimpleGui buildGui(Player player, IslandBoosterService.BoosterOverview overview, Instant now) {
         SimpleGui gui = Guis.gui()
                 .title(messages.renderPlain(player, "menu.booster.title"))
                 .rows(4)
@@ -193,8 +197,8 @@ public final class IslandBoosterMenu {
         gui.filler().fillBorder(GuiItem.display(filler));
 
         // Center Overview Header (Slot 4)
-        boolean isPaused = boosterService.isIslandPaused(islandId);
-        List<IslandBooster> allActive = boosterService.getActiveBoosters(islandId, now);
+        boolean isPaused = overview.paused();
+        List<IslandBooster> allActive = overview.active();
         String idleKey = configuration.pauseWhenEmpty()
                 ? (isPaused ? "menu.booster.idle_paused" : "menu.booster.idle_online")
                 : "menu.booster.idle_disabled";
@@ -214,12 +218,12 @@ public final class IslandBoosterMenu {
         gui.set(4, GuiItem.display(header));
 
         // Category Cards
-        setupCategoryCard(player, gui, 10, BoosterCategory.SPAWNER_RATE, Material.SPAWNER, islandId, now);
-        setupCategoryCard(player, gui, 12, BoosterCategory.CROP_GROWTH, Material.WHEAT, islandId, now);
-        setupCategoryCard(player, gui, 14, BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE, islandId, now);
-        setupCategoryCard(player, gui, 16, BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE, islandId, now);
-        setupCategoryCard(player, gui, 21, BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK, islandId, now);
-        setupCategoryCard(player, gui, 23, BoosterCategory.MISSION_REWARDS, Material.EMERALD, islandId, now);
+        setupCategoryCard(player, gui, 10, BoosterCategory.SPAWNER_RATE, Material.SPAWNER, overview, now);
+        setupCategoryCard(player, gui, 12, BoosterCategory.CROP_GROWTH, Material.WHEAT, overview, now);
+        setupCategoryCard(player, gui, 14, BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE, overview, now);
+        setupCategoryCard(player, gui, 16, BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE, overview, now);
+        setupCategoryCard(player, gui, 21, BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK, overview, now);
+        setupCategoryCard(player, gui, 23, BoosterCategory.MISSION_REWARDS, Material.EMERALD, overview, now);
 
         // Close button (Slot 31)
         ItemStack closeItem = ItemBuilder.of(Material.BARRIER)
@@ -236,11 +240,11 @@ public final class IslandBoosterMenu {
             int slot,
             BoosterCategory category,
             Material icon,
-            IslandId islandId,
+            IslandBoosterService.BoosterOverview overview,
             Instant now) {
         CategoryBoosterPolicy policy = configuration.policy(category);
-        List<IslandBooster> active = boosterService.getActiveBoosters(islandId, category, now);
-        double effectiveMultiplier = boosterService.getEffectiveMultiplier(islandId, category, now);
+        List<IslandBooster> active = overview.activeIn(category);
+        double effectiveMultiplier = overview.multiplierOf(category);
 
         boolean hasActive = !active.isEmpty();
         boolean isPaused = hasActive && active.stream().anyMatch(IslandBooster::isPaused);

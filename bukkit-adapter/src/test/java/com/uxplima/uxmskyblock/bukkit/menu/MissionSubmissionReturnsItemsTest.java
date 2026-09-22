@@ -76,11 +76,11 @@ class MissionSubmissionReturnsItemsTest extends MockBukkitHarness {
     @Test
     @DisplayName("Items come back when the submission is not credited")
     void itemsComeBackWhenNotCredited() {
-        when(missionService.submitManualItem(any(), any(), any(), anyLong(), any()))
+        when(missionService.submitManualItems(any(), any(), any(), anyLong(), any()))
                 .thenReturn(Optional.empty());
         player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
 
-        menu.handleManualItemSubmission(player, islandId, profileId, definition);
+        menu.handleManualItemSubmission(player, islandId, profileId, definition, 0L);
 
         assertThat(countOf(Material.DIAMOND)).isEqualTo(4);
     }
@@ -88,11 +88,38 @@ class MissionSubmissionReturnsItemsTest extends MockBukkitHarness {
     @Test
     @DisplayName("Items come back when the write throws rather than vanishing with the error")
     void itemsComeBackWhenTheWriteThrows() {
-        when(missionService.submitManualItem(any(), any(), any(), anyLong(), any()))
+        when(missionService.submitManualItems(any(), any(), any(), anyLong(), any()))
                 .thenThrow(new IllegalStateException("database is gone"));
         player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
 
-        menu.handleManualItemSubmission(player, islandId, profileId, definition);
+        menu.handleManualItemSubmission(player, islandId, profileId, definition, 0L);
+
+        assertThat(countOf(Material.DIAMOND)).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("Only what the mission took stays taken, and the rest comes back")
+    void onlyWhatWasCreditedStaysTaken() {
+        // The window was drawn when the mission still wanted ten, so ten are taken. Another window
+        // handed in eight in between, so the mission credits two. The other two are the player's.
+        when(missionService.submitManualItems(any(), any(), any(), anyLong(), any()))
+                .thenReturn(Optional.of(
+                        new IslandMissionService.MissionSubmission(MissionProgress.initial(definition.id()), 2L)));
+        player.getInventory().addItem(new ItemStack(Material.DIAMOND, 10));
+
+        menu.handleManualItemSubmission(player, islandId, profileId, definition, 0L);
+
+        assertThat(countOf(Material.DIAMOND))
+                .describedAs("diamonds the mission did not take")
+                .isEqualTo(8);
+    }
+
+    @Test
+    @DisplayName("Handing in to a mission that wants nothing more takes nothing")
+    void aMissionThatWantsNothingTakesNothing() {
+        player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
+
+        menu.handleManualItemSubmission(player, islandId, profileId, definition, definition.requiredAmount());
 
         assertThat(countOf(Material.DIAMOND)).isEqualTo(4);
     }
@@ -100,11 +127,12 @@ class MissionSubmissionReturnsItemsTest extends MockBukkitHarness {
     @Test
     @DisplayName("Items stay taken when the submission is credited")
     void itemsStayTakenWhenCredited() {
-        when(missionService.submitManualItem(any(), any(), any(), anyLong(), any()))
-                .thenReturn(Optional.of(MissionProgress.initial(definition.id())));
+        when(missionService.submitManualItems(any(), any(), any(), anyLong(), any()))
+                .thenReturn(Optional.of(
+                        new IslandMissionService.MissionSubmission(MissionProgress.initial(definition.id()), 4L)));
         player.getInventory().addItem(new ItemStack(Material.DIAMOND, 4));
 
-        menu.handleManualItemSubmission(player, islandId, profileId, definition);
+        menu.handleManualItemSubmission(player, islandId, profileId, definition, 0L);
 
         assertThat(countOf(Material.DIAMOND)).isZero();
     }

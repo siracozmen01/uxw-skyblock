@@ -2,7 +2,6 @@ package com.uxplima.uxmskyblock.bukkit.menu;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -62,16 +61,12 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
     @DisplayName("buildGui populates header, category cards, and close button")
     void buildGuiPopulatesExpectedSlots() {
         Instant now = Instant.now();
-        when(mockBoosterService.getActiveBoosters(eq(islandId), any(Instant.class)))
-                .thenReturn(List.of(
-                        IslandBooster.create(islandId, BoosterCategory.MOB_EXP, 2.0, Duration.ofHours(1), now)));
-        when(mockBoosterService.getActiveBoosters(eq(islandId), eq(BoosterCategory.MOB_EXP), any(Instant.class)))
-                .thenReturn(List.of(
-                        IslandBooster.create(islandId, BoosterCategory.MOB_EXP, 2.0, Duration.ofHours(1), now)));
-        when(mockBoosterService.getEffectiveMultiplier(eq(islandId), eq(BoosterCategory.MOB_EXP), any(Instant.class)))
-                .thenReturn(2.0);
+        IslandBoosterService.BoosterOverview overview = new IslandBoosterService.BoosterOverview(
+                false,
+                List.of(IslandBooster.create(islandId, BoosterCategory.MOB_EXP, 2.0, Duration.ofHours(1), now)),
+                java.util.Map.of(BoosterCategory.MOB_EXP, 2.0));
 
-        SimpleGui gui = menu.buildGui(player, islandId, now);
+        SimpleGui gui = menu.buildGui(player, overview, now);
 
         assertThat(gui.size()).isEqualTo(36);
         assertThat(gui.getItem(4)).isNotNull(); // Header
@@ -102,6 +97,8 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
         ProfileId profileId = new ProfileId(player.getUniqueId());
         when(mockSessionCoordinator.activeProfile(player.getUniqueId())).thenReturn(Optional.of(profileId));
         when(mockStorage.findIslandIdByProfileId(profileId)).thenReturn(Optional.of(islandId));
+        when(mockBoosterService.overview(any(), any(Instant.class)))
+                .thenReturn(new IslandBoosterService.BoosterOverview(false, List.of(), java.util.Map.of()));
 
         menu.open(player);
 

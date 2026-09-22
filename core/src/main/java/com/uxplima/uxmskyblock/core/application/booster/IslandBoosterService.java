@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -225,8 +226,90 @@ public final class IslandBoosterService {
     }
 
     /**
-     * Retrieves all active boosters for the given island across all categories.
+     * Everything a window needs to draw an island's boosters, read once.
+     *
+     * <p>The booster window asked for the paused flag, then every active booster, then the active
+     * boosters of each of six categories, then the effective multiplier of each of those, and every
+     * one of those was its own query: fourteen of them, on the thread that owns the player, every
+     * time somebody opened it. All fourteen answers come out of one read of the island's boosters.
      */
+    public record BoosterOverview(
+            boolean paused, List<IslandBooster> active, Map<BoosterCategory, Double> effectiveMultipliers) {
+
+        public BoosterOverview {
+            active = List.copyOf(active);
+            effectiveMultipliers = Map.copyOf(effectiveMultipliers);
+        }
+
+        /** The active boosters of one category, in the order they were read. */
+        public List<IslandBooster> activeIn(BoosterCategory category) {
+            return active.stream()
+                    .filter(booster -> booster.category() == category)
+                    .toList();
+        }
+
+        /** What one category currently multiplies by, one when it has nothing or is switched off. */
+        public double multiplierOf(BoosterCategory category) {
+            Double multiplier = effectiveMultipliers.get(category);
+            return multiplier == null ? 1.0 : multiplier;
+        }
+    }
+
+    /** Reads the island's boosters once and answers every question a window asks from that. */
+    public BoosterOverview overview(IslandId islandId, Instant now) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+
+        List<IslandBooster> all = storagePort.findByIsland(islandId);
+        List<IslandBooster> active = new ArrayList<>();
+        boolean paused = pausedIslands.contains(islandId);
+        for (IslandBooster booster : all) {
+            if (booster.isPaused()) {
+                paused = true;
+            }
+            if (booster.isActive(now) || booster.isPaused()) {
+                active.add(booster);
+            }
+        }
+
+        Map<BoosterCategory, Double> multipliers = new java.util.EnumMap<>(BoosterCategory.class);
+        for (BoosterCategory category : BoosterCategory.values()) {
+            multipliers.put(category, multiplierFrom(category, active, now));
+        }
+        return new BoosterOverview(paused, active, multipliers);
+    }
+
+    /** The same arithmetic {@link #getEffectiveMultiplier} does, over boosters already in hand. */
+    private double multiplierFrom(BoosterCategory category, List<IslandBooster> boosters, Instant now) {
+        CategoryBoosterPolicy policy = policy(category);
+        if (!policy.enabled()) {
+            return 1.0;
+        }
+        List<IslandBooster> active = boosters.stream()
+                .filter(booster -> booster.category() == category)
+                .filter(booster -> booster.isActive(now))
+                .toList();
+        if (active.isEmpty()) {
+            return 1.0;
+        }
+        if (policy.stackMode() == BoosterStackMode.DURATION || policy.stackMode() == BoosterStackMode.REPLACE) {
+            return Math.min(policy.maxMultiplier(), active.getFirst().multiplier());
+        }
+        if (policy.calculation() == BoosterCalculation.COMPOUND) {
+            double product = 1.0;
+            for (IslandBooster booster : active) {
+                product *= booster.multiplier();
+            }
+            return Math.min(policy.maxMultiplier(), product);
+        }
+        double bonus = 0.0;
+        for (IslandBooster booster : active) {
+            bonus += Math.max(0.0, booster.multiplier() - 1.0);
+        }
+        return Math.min(policy.maxMultiplier(), 1.0 + bonus);
+    }
+
+    /** Retrieves all active boosters for the given island across all categories. */
     public List<IslandBooster> getActiveBoosters(IslandId islandId, Instant now) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(now, "now must not be null");

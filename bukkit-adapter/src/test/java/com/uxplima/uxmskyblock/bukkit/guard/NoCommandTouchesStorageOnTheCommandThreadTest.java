@@ -61,7 +61,8 @@ class NoCommandTouchesStorageOnTheCommandThreadTest {
 
     /** A call that reaches storage: a port, or an application service that holds one. */
     private static final Pattern STORAGE_CALL = Pattern.compile("\\b\\w*(?:StoragePort|Port|Service)\\."
-            + "(?:find|save|count|load|delete|insert|generate|rename|apply|settle|resolveVisit)[A-Za-z]*\\(");
+            + "(?:find|save|count|load|delete|insert|update|has|is|generate|rename|apply|settle|resolveVisit)"
+            + "[A-Za-z]*\\(");
 
     /**
      * Collaborators that carry no storage, so a call onto one is not a query.

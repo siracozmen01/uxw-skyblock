@@ -178,7 +178,17 @@ public final class IslandMissionService {
         return updated;
     }
 
-    public Optional<MissionProgress> submitManualItem(
+    /**
+     * What a hand-in actually cost the player.
+     *
+     * <p>A mission that needs two more takes two, whatever the player handed over, so the caller has
+     * to be told how many were credited to give the rest back. It used to be told only where the
+     * mission now stood, so a player who handed in ten to a mission needing two lost eight.
+     */
+    public record MissionSubmission(MissionProgress progress, long credited) {}
+
+    /** Hands items in, crediting no more than the mission still asks for. */
+    public Optional<MissionSubmission> submitManualItems(
             IslandId islandId, ProfileId profileId, MissionId missionId, long amount, Instant now) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(profileId, "profileId must not be null");
@@ -194,9 +204,24 @@ public final class IslandMissionService {
         }
 
         Map<MissionId, MissionProgress> playerProgress = findAllProgress(islandId, profileId);
-        Advance advance = advance(playerProgress, def, amount, now);
+        long before = Optional.ofNullable(playerProgress.get(def.id()))
+                .map(MissionProgress::progressCount)
+                .orElse(0L);
+        long room = Math.max(0L, def.requiredAmount() - before);
+        long credited = Math.min(amount, room);
+        if (credited <= 0) {
+            return Optional.of(new MissionSubmission(
+                    Optional.ofNullable(playerProgress.get(def.id()))
+                            .orElseGet(() -> MissionProgress.initial(def.id())),
+                    0L));
+        }
+
+        Advance advance = advance(playerProgress, def, credited, now);
         if (advance == null) {
-            return Optional.ofNullable(playerProgress.get(def.id()));
+            return Optional.of(new MissionSubmission(
+                    Optional.ofNullable(playerProgress.get(def.id()))
+                            .orElseGet(() -> MissionProgress.initial(def.id())),
+                    0L));
         }
 
         MissionProgress next = advance.progress();
@@ -206,7 +231,25 @@ public final class IslandMissionService {
         if (advance.finishedItNow() && rewardPort != null) {
             rewardPort.dispatchReward(islandId, profileId, def);
         }
-        return Optional.of(next);
+        return Optional.of(new MissionSubmission(next, credited));
+    }
+
+    public Optional<MissionProgress> submitManualItem(
+            IslandId islandId, ProfileId profileId, MissionId missionId, long amount, Instant now) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        Objects.requireNonNull(missionId, "missionId must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        if (amount <= 0) {
+            return Optional.empty();
+        }
+
+        MissionDefinition def = missionCatalog.get(missionId);
+        if (def == null || def.triggerType() != MissionTriggerType.ITEM_SUBMIT) {
+            return Optional.empty();
+        }
+
+        return submitManualItems(islandId, profileId, missionId, amount, now).map(MissionSubmission::progress);
     }
 
     /** One mission moved: where it now stands, and whether this caller is the one that finished it. */

@@ -152,9 +152,10 @@ public final class IslandMissionsMenu {
                             Placeholder.unparsed("mission", def.displayName()),
                             Placeholder.component("status", status)));
             boolean submittable = !completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT;
+            long drawnWith = count;
             choices.add(new BedrockFormService.Choice(label, () -> {
                 if (submittable) {
-                    handleManualItemSubmission(player, islandId, profileId, def);
+                    handleManualItemSubmission(player, islandId, profileId, def, drawnWith);
                 }
             }));
         }
@@ -251,7 +252,7 @@ public final class IslandMissionsMenu {
             GuiItem guiItem = GuiItem.button(item, event -> {
                 event.setCancelled(true);
                 if (!completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT) {
-                    handleManualItemSubmission(player, islandId, profileId, def);
+                    handleManualItemSubmission(player, islandId, profileId, def, count);
                 }
             });
 
@@ -262,7 +263,8 @@ public final class IslandMissionsMenu {
     }
 
     /** Package private so the guard against losing a player's items can drive it directly. */
-    void handleManualItemSubmission(Player player, IslandId islandId, ProfileId profileId, MissionDefinition def) {
+    void handleManualItemSubmission(
+            Player player, IslandId islandId, ProfileId profileId, MissionDefinition def, long alreadyCounted) {
         String filter = def.targetFilter();
         Material requiredMat = Material.matchMaterial(filter);
         if (requiredMat == null) {
@@ -282,12 +284,11 @@ public final class IslandMissionsMenu {
             return;
         }
 
-        // Consume up to required amount
-        Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap =
-                missionService.findAllProgress(islandId, profileId);
-        MissionProgress current = progressMap.get(def.id());
-        long currentCount = current != null ? current.progressCount() : 0L;
-        long needed = def.requiredAmount() - currentCount;
+        // How many the mission still wanted when this window was drawn. Reading it again here would
+        // be a query on the thread that owns the player, and the answer is already on the tile the
+        // player just clicked. What the service actually credits is what it reports back, and
+        // anything it did not take is handed straight back below.
+        long needed = def.requiredAmount() - alreadyCounted;
         int toTake = (int) Math.min(count, needed);
 
         if (toTake <= 0) {
@@ -312,23 +313,31 @@ public final class IslandMissionsMenu {
 
         final int taken = toTake;
         schedulerPort.async(() -> {
-            boolean credited;
+            long credited;
             try {
                 credited = missionService
-                        .submitManualItem(islandId, profileId, def.id(), taken, Instant.now())
-                        .isPresent();
+                        .submitManualItems(islandId, profileId, def.id(), taken, Instant.now())
+                        .map(IslandMissionService.MissionSubmission::credited)
+                        .orElse(0L);
             } catch (RuntimeException e) {
                 LOGGER.log(
                         Level.SEVERE,
                         "Crediting a manual mission submission failed, returning the items to the player",
                         e);
-                credited = false;
+                credited = 0L;
             }
 
-            boolean creditedFinal = credited;
+            long creditedFinal = credited;
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                if (!creditedFinal) {
-                    returnItems(player, requiredMat, taken);
+                // Whatever the mission did not take goes back. A window drawn a moment ago can say
+                // the mission wants ten when another window has already handed in eight, and a
+                // player who loses the other two to a counter that stopped rising has been robbed
+                // by their own second window.
+                int surplus = (int) (taken - creditedFinal);
+                if (surplus > 0) {
+                    returnItems(player, requiredMat, surplus);
+                }
+                if (creditedFinal <= 0) {
                     messages.send(
                             player, "menu.missions.submit_failed", Placeholder.unparsed("item", requiredMat.name()));
                     return;
@@ -336,7 +345,7 @@ public final class IslandMissionsMenu {
                 messages.send(
                         player,
                         "menu.missions.submitted",
-                        Placeholder.unparsed("amount", Integer.toString(taken)),
+                        Placeholder.unparsed("amount", Long.toString(creditedFinal)),
                         Placeholder.unparsed("item", requiredMat.name()));
                 open(player);
             });
