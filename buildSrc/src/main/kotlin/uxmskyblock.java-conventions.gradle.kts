@@ -83,6 +83,20 @@ tasks.withType<Test>().configureEach {
     }
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
     maxHeapSize = "2g"
+    // The guard tests read source text, this module's and its siblings'. Gradle only sees the
+    // classes those sources compile to, so a change that leaves the classes alone, a comment or a
+    // resource another module reads, left the test task up to date and the guard never ran.
+    rootDir
+        .listFiles()
+        .orEmpty()
+        .filter { it.isDirectory && it.resolve("src/main").isDirectory }
+        .sortedBy { it.name }
+        .forEach { module ->
+            inputs
+                .dir(module.resolve("src/main"))
+                .withPropertyName("guardedSources-${module.name}")
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+        }
 }
 
 val verifyNoSkippedTests =
