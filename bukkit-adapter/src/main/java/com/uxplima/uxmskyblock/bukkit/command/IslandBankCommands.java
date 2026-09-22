@@ -287,7 +287,7 @@ public final class IslandBankCommands {
                     } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
                         send(player, "bank.wallet_insufficient");
                     } else {
-                        send(player, refusalKey(outcome, "bank.deposit_wallet_refused"));
+                        send(player, BankRefusalLines.keyFor(outcome, "bank.deposit_wallet_refused"));
                     }
                 }));
 
@@ -381,42 +381,11 @@ public final class IslandBankCommands {
                     } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
                         send(player, "bank.withdraw_insufficient");
                     } else {
-                        send(player, refusalKey(outcome, "bank.withdraw_wallet_refused"));
+                        send(player, BankRefusalLines.keyFor(outcome, "bank.withdraw_wallet_refused"));
                     }
                 }));
 
         return Cmd.OK;
-    }
-
-    /**
-     * The catalogue line for a move that did not happen.
-     *
-     * <p>This used to put the refusal's own reason in front of the player: an English sentence
-     * written in the code, sometimes with the island's id in it, inside a line the player read in
-     * their own language. A version clash and a repeated operation read as a Java record. The
-     * refusal's kind picks the line now, and its reason stays in the log where it belongs.
-     *
-     * @param walletKey the line for a wallet that would not pay or take, which reads differently
-     *     for a deposit and a withdrawal
-     */
-    private static String refusalKey(BankTransactionOutcome outcome, String walletKey) {
-        return switch (outcome) {
-            case BankTransactionOutcome.AuthorityRejected rejected ->
-                switch (rejected.kind()) {
-                    case NO_ISLAND -> "error.no_island";
-                    case NO_AUTHORITY -> "bank.refused_elsewhere";
-                    case INVALID_AMOUNT -> "bank.refused_amount";
-                    case WALLET_REFUSED -> walletKey;
-                    case REFUND_FAILED -> "bank.refund_failed";
-                    case NO_ECONOMY -> "bank.no_economy";
-                    case OTHER -> "bank.refused";
-                };
-            case BankTransactionOutcome.StaleVersion _ -> "bank.busy";
-            case BankTransactionOutcome.DuplicateOperation _ -> "bank.already_done";
-            case BankTransactionOutcome.BankNotFound _ -> "error.no_island";
-            case BankTransactionOutcome.InsufficientFunds _ -> "bank.refused";
-            case BankTransactionOutcome.Success _ -> "bank.refused";
-        };
     }
 
     private Optional<ProfileId> activeProfile(Player player) {

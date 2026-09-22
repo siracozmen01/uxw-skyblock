@@ -21,12 +21,14 @@ import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
+import com.uxplima.uxmskyblock.bukkit.command.BankRefusalLines;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.shop.IslandShopService;
+import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -271,8 +273,10 @@ public final class IslandShopMenu {
                         Placeholder.unparsed("item", poor.itemKey()),
                         Placeholder.unparsed("total", money(poor.total())),
                         Placeholder.unparsed("balance", money(poor.balance())));
-            case IslandShopService.TradeResult.Refused refused ->
-                messages.send(player, "shop.refused", Placeholder.unparsed("reason", refused.reason()));
+            case IslandShopService.TradeResult.Refused refused -> {
+                BankTransactionOutcome bank = refused.bank();
+                messages.send(player, bank == null ? "shop.refused" : BankRefusalLines.keyFor(bank, "bank.refused"));
+            }
         }
     }
 

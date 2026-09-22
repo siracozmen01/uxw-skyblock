@@ -172,4 +172,21 @@ class APriceOnlyMovesBecauseSomebodyTradedTest {
 
         assertThat(shop.catalogue()).extracting(price -> price.itemKey()).containsExactly(DIAMOND, "STONE");
     }
+
+    @Test
+    @DisplayName("A refused trade carries the bank's own answer, so a player can be told it in words")
+    void aRefusedTradeCarriesTheBanksAnswer() {
+        BankTransactionOutcome held = new BankTransactionOutcome.AuthorityRejected(
+                BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY, "held by node-7");
+        when(bankService.depositToIsland(any(), any(), anyLong(), anyString(), any()))
+                .thenReturn(held);
+
+        IslandShopService.TradeResult result = shop.sell(ISLAND, ACTOR, DIAMOND, 100L, NODE);
+
+        assertThat(result)
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(
+                        IslandShopService.TradeResult.Refused.class))
+                .extracting(IslandShopService.TradeResult.Refused::bank)
+                .isEqualTo(held);
+    }
 }

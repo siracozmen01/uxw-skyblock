@@ -10,6 +10,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.shop.ShopItemPrice;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Buying from and selling to the shop, settled against the island bank.
@@ -38,8 +39,21 @@ public final class IslandShopService {
         /** The island bank could not cover it. */
         record CannotAfford(String itemKey, long total, long balance) implements TradeResult {}
 
-        /** The bank refused for some other reason, which it gave. */
-        record Refused(String itemKey, String reason) implements TradeResult {}
+        /**
+         * The bank refused for some other reason.
+         *
+         * <p>The reason is for the log. The bank's own outcome is what a player is told about, out of
+         * the catalogue: the reason used to be that outcome printed as a Java record, and the player
+         * read it as it stood. No outcome means the trade never reached the bank.
+         */
+        record Refused(
+                String itemKey, String reason, @Nullable BankTransactionOutcome bank) implements TradeResult {
+
+            /** A refusal that never reached the bank. */
+            public Refused(String itemKey, String reason) {
+                this(itemKey, reason, null);
+            }
+        }
     }
 
     private final DynamicPricingEngine pricingEngine;
@@ -124,7 +138,7 @@ public final class IslandShopService {
             return new TradeResult.CannotAfford(key, total, shortfall.currentBalance());
         }
         if (!(outcome instanceof BankTransactionOutcome.Success success)) {
-            return new TradeResult.Refused(key, String.valueOf(outcome));
+            return new TradeResult.Refused(key, String.valueOf(outcome), outcome);
         }
 
         // Only now, with the money moved, does the price move.

@@ -27,6 +27,7 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.shop.IslandShopService;
+import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -322,8 +323,10 @@ public final class IslandShopCommands {
                         Placeholder.unparsed("item", poor.itemKey()),
                         Placeholder.unparsed("total", money(poor.total())),
                         Placeholder.unparsed("balance", money(poor.balance())));
-            case IslandShopService.TradeResult.Refused refused ->
-                send(player, "shop.refused", Placeholder.unparsed("reason", refused.reason()));
+            case IslandShopService.TradeResult.Refused refused -> {
+                BankTransactionOutcome bank = refused.bank();
+                send(player, bank == null ? "shop.refused" : BankRefusalLines.keyFor(bank, "bank.refused"));
+            }
         }
     }
 
