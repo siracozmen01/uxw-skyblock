@@ -63,6 +63,7 @@ class IslandShopCommandsTest {
     private PlayerMock player;
     private IslandShopService shop;
     private CommandDispatcher<CommandSourceStack> dispatcher;
+    private IslandLocationService locations;
 
     private static SchedulerPort inlineScheduler() {
         SchedulerPort scheduler = mock(SchedulerPort.class);
@@ -94,7 +95,7 @@ class IslandShopCommandsTest {
         shop = mock(IslandShopService.class);
         when(shop.catalogue()).thenReturn(List.of(priceOf("DIAMOND", 20_000L), priceOf("STONE", 150L)));
 
-        IslandLocationService locations = mock(IslandLocationService.class);
+        locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
 
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
@@ -118,6 +119,68 @@ class IslandShopCommandsTest {
     @AfterEach
     void tearDown() {
         MockBukkit.unmock();
+    }
+
+    /** Puts the caller on the island as a member holding exactly these permissions. */
+    private void callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission... permissions) {
+        com.uxplima.uxmskyblock.core.domain.island.Island island =
+                com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                        ISLAND,
+                        com.uxplima.uxmskyblock.core.domain.island.IslandBounds.fromCenterAndRadius(0, 0, 64),
+                        new PlayerUuid(java.util.UUID.randomUUID()),
+                        new ProfileId(java.util.UUID.randomUUID()),
+                        java.time.Instant.now());
+        com.uxplima.uxmskyblock.core.domain.island.IslandRole role =
+                new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                        "CUSTOM",
+                        400,
+                        "Custom",
+                        permissions.length == 0
+                                ? java.util.EnumSet.noneOf(
+                                        com.uxplima.uxmskyblock.core.domain.island.IslandPermission.class)
+                                : java.util.EnumSet.of(permissions[0], permissions),
+                        false);
+        when(locations.findIsland(ISLAND))
+                .thenReturn(java.util.Optional.of(
+                        island.addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                                new PlayerUuid(player.getUniqueId()), PROFILE, role, java.time.Instant.now()))));
+    }
+
+    @Test
+    @DisplayName("A member whose role does not allow trading cannot buy from the island bank")
+    void arolewithoutShopAccessCannotBuy() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_BREAK);
+
+        run("shop buy DIAMOND 1", player);
+
+        verify(shop, never()).buy(any(), any(), anyString(), anyLong(), any());
+        assertThat(player.nextMessage()).describedAs("and is told why").isNotNull();
+    }
+
+    @Test
+    @DisplayName("A refused sale hands every item straight back")
+    void arefusedSaleGivesTheItemsBack() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_BREAK);
+        player.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.DIAMOND, 4));
+
+        run("shop sell DIAMOND 4", player);
+
+        verify(shop, never()).sell(any(), any(), anyString(), anyLong(), any());
+        assertThat(countOf(Material.DIAMOND))
+                .describedAs("items taken for a sale that never happened are items nobody has")
+                .isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("A member whose role allows trading buys")
+    void arolewithShopAccessBuys() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.SHOP_ACCESS);
+        when(shop.buy(any(), any(), anyString(), anyLong(), any()))
+                .thenReturn(new IslandShopService.TradeResult.Traded("DIAMOND", 1L, 20_000L, 20_000L, 1_000L));
+
+        run("shop buy DIAMOND 1", player);
+
+        verify(shop).buy(any(), any(), anyString(), anyLong(), any());
     }
 
     private void run(String line, CommandSender sender) throws Exception {

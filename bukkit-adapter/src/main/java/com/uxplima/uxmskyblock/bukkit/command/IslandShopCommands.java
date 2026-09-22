@@ -30,6 +30,7 @@ import com.uxplima.uxmskyblock.core.application.shop.IslandShopService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.shop.ShopItemPrice;
 import org.jspecify.annotations.Nullable;
@@ -220,6 +221,13 @@ public final class IslandShopCommands {
                 });
                 return;
             }
+            if (!mayTrade(optIsland.get(), profileId)) {
+                schedulerPort.onEntity(playerUuid, () -> {
+                    giveBack(player, material, amount);
+                    send(player, "shop.permission_denied");
+                });
+                return;
+            }
             IslandShopService.TradeResult result =
                     service.sell(optIsland.get(), playerUuid, material.name(), amount, serverNodeId);
             schedulerPort.onEntity(playerUuid, () -> {
@@ -260,9 +268,32 @@ public final class IslandShopCommands {
                 schedulerPort.onEntity(playerUuid, () -> send(player, "error.no_island"));
                 return;
             }
+            if (!mayTrade(optIsland.get(), profileId)) {
+                schedulerPort.onEntity(playerUuid, () -> send(player, "shop.permission_denied"));
+                return;
+            }
             work.run(player, service, optIsland.get());
         });
         return Cmd.OK;
+    }
+
+    /**
+     * Whether this profile's role lets them trade with the island bank.
+     *
+     * <p>The role editor has published a shop permission since the permission work and the shop
+     * read it nowhere, so a member whose role said no could buy and sell against the island's money
+     * all the same. The island itself is a row, so this is asked off the command thread, where its
+     * two callers already are.
+     *
+     * <p>An island that cannot be read is not a refusal. The trade answers that itself, and the
+     * answer it gives is the right one.
+     */
+    private boolean mayTrade(IslandId islandId, ProfileId profileId) {
+        return islandLocationService
+                .findIsland(islandId)
+                .map(island ->
+                        island.isOwner(profileId) || island.hasPermission(profileId, IslandPermission.SHOP_ACCESS))
+                .orElse(true);
     }
 
     @FunctionalInterface
