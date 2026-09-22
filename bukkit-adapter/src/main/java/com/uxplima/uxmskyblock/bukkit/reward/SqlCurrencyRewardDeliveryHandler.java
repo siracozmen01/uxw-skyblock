@@ -29,6 +29,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHandler {
 
+    /** The bank's idempotency scope for money a reward pays into an island. */
+    static final String REWARD_SCOPE = "REWARD_INBOX";
+
     private final IslandStoragePort islandStoragePort;
     private final IslandBankService bankService;
     private final ServerNodeId nodeId;
@@ -95,14 +98,20 @@ public final class SqlCurrencyRewardDeliveryHandler implements RewardDeliveryHan
         }
         String currency = parseCurrency(component.payloadData());
 
-        // 4. Execute canonical bank deposit
+        // 4. Execute canonical bank deposit, under the component's own operation id. The deposit used
+        // a fresh id every time, so a delivery retried after the money had landed, because marking
+        // the component delivered failed or the server stopped in between, paid it a second time:
+        // the bank's duplicate check never had anything to match.
         UUID opId = component.componentOperationId().value();
         BankTransactionOutcome outcome = bankService.depositToIsland(
                 islandId,
                 actorUuid,
                 amountMinorUnits,
                 "Reward Inbox Claim (" + currency + "): " + grant.sourceType(),
-                nodeId);
+                nodeId,
+                opId,
+                "reward-component:" + opId,
+                REWARD_SCOPE);
 
         if (outcome instanceof BankTransactionOutcome.Success) {
             return DeliveryResult.success(opId);

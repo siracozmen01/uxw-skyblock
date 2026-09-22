@@ -174,7 +174,7 @@ class ProductionRewardDeliveryHandlersTest {
         when(islandStoragePort.findIslandIdByProfileId(recipientProfile)).thenReturn(Optional.of(islandId));
         IslandBank bankMock = mock(IslandBank.class);
         BankTransaction txMock = mock(BankTransaction.class);
-        when(bankService.depositToIsland(any(), any(), anyLong(), any(), any()))
+        when(bankService.depositToIsland(any(), any(), anyLong(), any(), any(), any(), any(), any()))
                 .thenReturn(new BankTransactionOutcome.Success(bankMock, txMock));
 
         com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort profileSwitchPort =
@@ -202,6 +202,52 @@ class ProductionRewardDeliveryHandlersTest {
         assertThat(result.success()).isTrue();
         assertThat(result.journalOperationId())
                 .isEqualTo(component.componentOperationId().value());
+    }
+
+    @Test
+    @DisplayName("SqlCurrencyRewardDeliveryHandler: A delivery retried after the money landed is not paid twice")
+    void aRetriedCurrencyDeliveryIsPaidOnce() {
+        IslandId islandId = new IslandId(UUID.randomUUID());
+        when(islandStoragePort.findIslandIdByProfileId(recipientProfile)).thenReturn(Optional.of(islandId));
+        UUID operation = UUID.randomUUID();
+        when(bankService.depositToIsland(any(), any(), anyLong(), any(), any(), any(), any(), any()))
+                .thenReturn(new BankTransactionOutcome.Success(mock(IslandBank.class), mock(BankTransaction.class)))
+                .thenReturn(new BankTransactionOutcome.DuplicateOperation(operation, "already applied"));
+        com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort profileSwitchPort =
+                mock(com.uxplima.uxmskyblock.core.application.profile.ProfileSwitchPort.class);
+        when(profileSwitchPort.resolvePlayerUuid(recipientProfile))
+                .thenReturn(Optional.of(new PlayerUuid(UUID.randomUUID())));
+        SqlCurrencyRewardDeliveryHandler handler =
+                new SqlCurrencyRewardDeliveryHandler(islandStoragePort, bankService, nodeId, profileSwitchPort);
+        RewardGrantComponent component = new RewardGrantComponent(
+                UUID.randomUUID(),
+                testGrant.grantId(),
+                0,
+                new RewardComponentOperationId(operation),
+                RewardComponentType.SQL_CURRENCY,
+                "uxm:currency_deposit",
+                1,
+                "{\"amount\":5000,\"currency\":\"PRIMARY\"}",
+                RewardComponentState.PENDING,
+                null,
+                Instant.now());
+
+        assertThat(handler.deliver(testGrant, component, recipientProfile).success())
+                .isTrue();
+        assertThat(handler.deliver(testGrant, component, recipientProfile).success())
+                .describedAs("the bank recognised the second as the first")
+                .isTrue();
+
+        org.mockito.Mockito.verify(bankService, org.mockito.Mockito.times(2))
+                .depositToIsland(
+                        org.mockito.ArgumentMatchers.eq(islandId),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(5000L),
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(operation),
+                        org.mockito.ArgumentMatchers.eq("reward-component:" + operation),
+                        org.mockito.ArgumentMatchers.eq(SqlCurrencyRewardDeliveryHandler.REWARD_SCOPE));
     }
 
     @Test
