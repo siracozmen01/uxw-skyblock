@@ -10,6 +10,7 @@ import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
 import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.freeze.IslandFreezeRecord;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -134,7 +135,7 @@ public final class IslandAdminFreezeService {
                         islandId.value().toString(),
                         String.format(
                                 "{\"islandId\":\"%s\",\"reason\":\"%s\",\"actor\":\"%s\",\"timestamp\":\"%s\"}",
-                                islandId.value(), reason, actor, Instant.now()))
+                                islandId.value(), JsonText.escaped(reason), JsonText.escaped(actor), Instant.now()))
                 : null;
         freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.FROZEN, reason, freezeOutboxEvent);
 
@@ -179,7 +180,7 @@ public final class IslandAdminFreezeService {
                         islandId.value().toString(),
                         String.format(
                                 "{\"islandId\":\"%s\",\"actor\":\"%s\",\"timestamp\":\"%s\"}",
-                                islandId.value(), actor, Instant.now()))
+                                islandId.value(), JsonText.escaped(actor), Instant.now()))
                 : null;
         freezeStoragePort.updateAdministrativeState(islandId, AdministrativeState.NORMAL, null, unfreezeOutboxEvent);
 

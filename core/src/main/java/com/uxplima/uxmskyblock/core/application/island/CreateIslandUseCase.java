@@ -16,6 +16,7 @@ import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridPort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstance;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -263,7 +264,7 @@ public final class CreateIslandUseCase {
 
         String payload = String.format(
                 "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
-                islandId.value(), playerUuid.value(), profileId.value(), preset.id());
+                islandId.value(), playerUuid.value(), profileId.value(), JsonText.escaped(preset.id()));
         StagedOutboxEvent outboxEvent = (outboxPort != null)
                 ? new StagedOutboxEvent(
                         EventId.random(), "ISLAND_CREATED", islandId.value().toString(), payload)
@@ -332,7 +333,7 @@ public final class CreateIslandUseCase {
 
         String payload = String.format(
                 "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
-                islandId.value(), playerUuid.value(), profileId.value(), preset.id());
+                islandId.value(), playerUuid.value(), profileId.value(), JsonText.escaped(preset.id()));
         StagedOutboxEvent outboxEvent = (outboxPort != null)
                 ? new StagedOutboxEvent(
                         EventId.random(), "ISLAND_CREATED", islandId.value().toString(), payload)

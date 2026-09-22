@@ -10,6 +10,7 @@ import java.util.Objects;
 
 import com.uxplima.uxmlib.common.Durations;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.ConfigurationNode;
@@ -149,7 +150,7 @@ public record SeasonConfiguration(
                             RewardComponentType.SQL_CURRENCY,
                             "uxm:currency_deposit",
                             1,
-                            "{\"amount\":" + amount + ",\"currency\":\"" + currency + "\"}");
+                            "{\"amount\":" + amount + ",\"currency\":" + JsonText.quoted(currency) + "}");
                 }
                 case EXTERNAL_VAULT -> {
                     double amount = node.node("amount").getDouble(0.0);
@@ -163,7 +164,7 @@ public record SeasonConfiguration(
                             RewardComponentType.ITEM,
                             "uxm:item_bundle",
                             1,
-                            "{\"item\":\"" + item + "\",\"amount\":" + amount + "}");
+                            "{\"item\":" + JsonText.quoted(item) + ",\"amount\":" + amount + "}");
                 }
                 case PERMISSION -> {
                     String perm = node.node("permission").getString();
@@ -172,7 +173,7 @@ public record SeasonConfiguration(
                                     RewardComponentType.PERMISSION,
                                     "uxm:permission",
                                     1,
-                                    "{\"permission\":\"" + perm + "\"}")
+                                    "{\"permission\":" + JsonText.quoted(perm) + "}")
                             : null;
                 }
                 case COSMETIC -> {
@@ -185,7 +186,7 @@ public record SeasonConfiguration(
                                     RewardComponentType.COSMETIC,
                                     "uxm:cosmetic",
                                     1,
-                                    "{\"cosmeticId\":\"" + cosmeticId + "\"}")
+                                    "{\"cosmeticId\":" + JsonText.quoted(cosmeticId) + "}")
                             : null;
                 }
             };

@@ -10,6 +10,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.IslandBank;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -186,7 +187,7 @@ public final class IslandBankService {
                         islandId.value().toString(),
                         String.format(
                                 "{\"islandId\":\"%s\",\"playerUuid\":\"%s\",\"deltaMinorUnits\":%d,\"reason\":\"%s\"}",
-                                islandId.value(), playerUuid.value(), deltaMinorUnits, reason))
+                                islandId.value(), playerUuid.value(), deltaMinorUnits, JsonText.escaped(reason)))
                 : null;
 
         return islandBankPort.executeTransaction(

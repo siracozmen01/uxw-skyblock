@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.core.domain.discord;
 
 import java.util.List;
 
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -144,32 +145,6 @@ public record DiscordWebhookPayload(
     }
 
     private static String quote(String string) {
-        if (string == null || string.isEmpty()) {
-            return "\"\"";
-        }
-        StringBuilder sb = new StringBuilder(string.length() + 8);
-        sb.append('"');
-        for (int i = 0; i < string.length(); i++) {
-            char c = string.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < ' ') {
-                        String hex = "000" + Integer.toHexString(c);
-                        sb.append("\\u").append(hex.substring(hex.length() - 4));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        sb.append('"');
-        return sb.toString();
+        return string == null ? "\"\"" : JsonText.quoted(string);
     }
 }

@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -428,7 +429,7 @@ public final class IslandRecycleService {
                     islandId.value(),
                     island.ownerProfileId().value(),
                     finalSlotIndex,
-                    finalWorldName,
+                    JsonText.escaped(finalWorldName),
                     finalGridX,
                     finalGridZ);
 

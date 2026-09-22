@@ -13,6 +13,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -132,7 +133,10 @@ public final class IslandNameService {
                         islandId.value().toString(),
                         String.format(
                                 "{\"islandId\":\"%s\",\"callerProfile\":\"%s\",\"newName\":\"%s\",\"timestamp\":\"%s\"}",
-                                islandId.value(), callerProfile.value(), islandName.value(), Instant.now()))
+                                islandId.value(),
+                                callerProfile.value(),
+                                JsonText.escaped(islandName.value()),
+                                Instant.now()))
                 : null;
 
         if (!nameStoragePort.claimCustomName(islandId, islandName, renameEvent)) {

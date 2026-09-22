@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 import com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent;
+import com.uxplima.uxmskyblock.core.domain.event.JsonText;
 import com.uxplima.uxmskyblock.core.domain.reward.RewardComponentType;
 
 /**
@@ -33,7 +34,7 @@ public record SeasonRewardDefinition(int rank, List<RewardDraftComponent> compon
                         RewardComponentType.SQL_CURRENCY,
                         "uxm:currency_deposit",
                         1,
-                        "{\"amount\":" + amount + ",\"currency\":\"" + currency + "\"}")));
+                        "{\"amount\":" + amount + ",\"currency\":" + JsonText.quoted(currency) + "}")));
     }
 
     public static SeasonRewardDefinition externalVault(int rank, double amount) {
@@ -50,7 +51,7 @@ public record SeasonRewardDefinition(int rank, List<RewardDraftComponent> compon
                         RewardComponentType.ITEM,
                         "uxm:item_bundle",
                         1,
-                        "{\"item\":\"" + item + "\",\"amount\":" + amount + "}")));
+                        "{\"item\":" + JsonText.quoted(item) + ",\"amount\":" + amount + "}")));
     }
 
     public static SeasonRewardDefinition permission(int rank, String permission) {
@@ -60,13 +61,16 @@ public record SeasonRewardDefinition(int rank, List<RewardDraftComponent> compon
                         RewardComponentType.PERMISSION,
                         "uxm:permission",
                         1,
-                        "{\"permission\":\"" + permission + "\"}")));
+                        "{\"permission\":" + JsonText.quoted(permission) + "}")));
     }
 
     public static SeasonRewardDefinition cosmetic(int rank, String cosmeticId) {
         return new SeasonRewardDefinition(
                 rank,
                 List.of(new RewardDraftComponent(
-                        RewardComponentType.COSMETIC, "uxm:cosmetic", 1, "{\"cosmeticId\":\"" + cosmeticId + "\"}")));
+                        RewardComponentType.COSMETIC,
+                        "uxm:cosmetic",
+                        1,
+                        "{\"cosmeticId\":" + JsonText.quoted(cosmeticId) + "}")));
     }
 }
