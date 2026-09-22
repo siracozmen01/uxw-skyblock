@@ -89,6 +89,12 @@ final class CommandGroupBuilder {
                             : com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity.create(
                                     tree.serverNodeId.value());
                 },
+                profileId -> {
+                    com.uxplima.uxmskyblock.core.application.profile.ProfileTypes types = tree.profileTypes;
+                    return types != null
+                            ? types.of(profileId)
+                            : com.uxplima.uxmskyblock.core.domain.profile.ProfileType.CLASSIC;
+                },
                 tree.messages,
                 tree.sessionCoordinator);
 

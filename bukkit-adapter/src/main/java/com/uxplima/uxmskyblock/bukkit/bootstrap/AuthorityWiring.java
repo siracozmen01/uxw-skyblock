@@ -30,19 +30,27 @@ public final class AuthorityWiring implements AutoCloseable {
     private final SwitchProfileUseCase switchProfileUseCase;
     private final PlayerSessionCoordinator sessionCoordinator;
     private final PlayerSessionListener sessionListener;
+    private final com.uxplima.uxmskyblock.core.application.profile.ProfileTypes profileTypes;
 
     private AuthorityWiring(
             ServerNodeId serverNodeId,
             CurrentNodeProcessIdentity nodeProcessIdentity,
             SwitchProfileUseCase switchProfileUseCase,
             PlayerSessionCoordinator sessionCoordinator,
-            PlayerSessionListener sessionListener) {
+            PlayerSessionListener sessionListener,
+            com.uxplima.uxmskyblock.core.application.profile.ProfileTypes profileTypes) {
         this.serverNodeId = Objects.requireNonNull(serverNodeId, "serverNodeId must not be null");
         this.nodeProcessIdentity = Objects.requireNonNull(nodeProcessIdentity, "nodeProcessIdentity must not be null");
         this.switchProfileUseCase =
                 Objects.requireNonNull(switchProfileUseCase, "switchProfileUseCase must not be null");
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.sessionListener = Objects.requireNonNull(sessionListener, "sessionListener must not be null");
+        this.profileTypes = Objects.requireNonNull(profileTypes, "profileTypes must not be null");
+    }
+
+    /** Which ruleset a profile plays under, read once per profile and remembered. */
+    public com.uxplima.uxmskyblock.core.application.profile.ProfileTypes profileTypes() {
+        return profileTypes;
     }
 
     /**
@@ -80,10 +88,16 @@ public final class AuthorityWiring implements AutoCloseable {
                 messages);
 
         PlayerSessionListener listener = new PlayerSessionListener(coordinator);
+        com.uxplima.uxmskyblock.core.application.profile.ProfileTypes profileTypes =
+                new com.uxplima.uxmskyblock.core.application.profile.ProfileTypes(
+                        persistenceBootstrap.profileTypePort());
         CurrentNodeProcessIdentity identity = CurrentNodeProcessIdentity.create(serverNodeId.value());
 
-        // Wire node identity and session record providers into protection listener
+        // Wire node identity, session record and ruleset providers into protection listener.
+        // The ruleset was never wired, so every profile read as CLASSIC and the Ironman barrier
+        // could not refuse anything: it never saw a profile that was not classic.
         protectionListener.setNodeIdentitySupplier(() -> identity);
+        protectionListener.setProfileTypeProvider(profileTypes::of);
         protectionListener.setSessionRecordProvider(uuid -> {
             ActiveSession session = coordinator.getActiveSession(uuid.value());
             if (session == null || session.isFenced()) {
@@ -92,7 +106,7 @@ public final class AuthorityWiring implements AutoCloseable {
             return persistenceBootstrap.sessionAuthorityPort().findSession(uuid);
         });
 
-        return new AuthorityWiring(serverNodeId, identity, switchProfile, coordinator, listener);
+        return new AuthorityWiring(serverNodeId, identity, switchProfile, coordinator, listener, profileTypes);
     }
 
     public ServerNodeId serverNodeId() {

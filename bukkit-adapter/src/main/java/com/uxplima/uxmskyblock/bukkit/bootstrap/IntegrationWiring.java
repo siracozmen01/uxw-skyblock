@@ -271,7 +271,8 @@ public final class IntegrationWiring implements AutoCloseable {
                                         ? gameplay.temporaryAccessService()
                                         : null)
                         .build());
-        this.commandTree.useTemporaryAccess(config.temporaryAccessConfig(), authority.nodeProcessIdentity());
+        this.commandTree.useTemporaryAccess(
+                config.temporaryAccessConfig(), authority.nodeProcessIdentity(), authority.profileTypes());
         // The inbox, its table, its ten categories and the delivery on join were all here and
         // nothing ever wrote a row, so "while you were away" was always empty.
         this.commandTree.useNotifications(gameplay.notificationService());

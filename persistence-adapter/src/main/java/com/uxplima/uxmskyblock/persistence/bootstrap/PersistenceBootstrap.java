@@ -104,6 +104,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerInventoryMutationJournalAdapter mutationJournalAdapter;
     private final PlayerProfileHandoffFinalizationAdapter handoffFinalizationAdapter;
     private final PlayerProfileSwitchAdapter profileSwitchAdapter;
+    private final com.uxplima.uxmskyblock.persistence.profile.SqlProfileTypeAdapter profileTypeAdapter;
     private final SqlSpiralSlotPoolAdapter spiralSlotPoolAdapter;
     private final PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
     private final PlayerEconomySagaAdapter economySagaAdapter;
@@ -156,6 +157,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.mutationJournalAdapter = new PlayerInventoryMutationJournalAdapter(database);
         this.handoffFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(database);
         this.profileSwitchAdapter = new PlayerProfileSwitchAdapter(database);
+        this.profileTypeAdapter = new com.uxplima.uxmskyblock.persistence.profile.SqlProfileTypeAdapter(database);
         this.spiralSlotPoolAdapter = new SqlSpiralSlotPoolAdapter(database);
         this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(database, spiralSlotPoolAdapter);
         this.economySagaAdapter = new PlayerEconomySagaAdapter(database);
@@ -278,6 +280,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ProfileSwitchPort profileSwitchPort() {
         return profileSwitchAdapter;
+    }
+
+    /** Which ruleset a profile plays under, which nothing read back before. */
+    public com.uxplima.uxmskyblock.core.application.profile.ProfileTypePort profileTypePort() {
+        return profileTypeAdapter;
     }
 
     public SpiralSlotPoolPort spiralSlotPoolPort() {

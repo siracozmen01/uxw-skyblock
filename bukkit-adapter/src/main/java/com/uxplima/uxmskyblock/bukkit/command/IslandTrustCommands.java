@@ -78,6 +78,7 @@ public final class IslandTrustCommands {
     private final SchedulerPort schedulerPort;
     private final Supplier<TemporaryAccessConfiguration> configurationProvider;
     private final Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier;
+    private final java.util.function.Function<ProfileId, ProfileType> profileTypes;
     private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
@@ -93,6 +94,7 @@ public final class IslandTrustCommands {
             SchedulerPort schedulerPort,
             Supplier<TemporaryAccessConfiguration> configurationProvider,
             Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier,
+            java.util.function.Function<ProfileId, ProfileType> profileTypes,
             Messages messages,
             @Nullable PlayerSessionCoordinator sessionCoordinator) {
         this.accessServiceProvider =
@@ -104,6 +106,7 @@ public final class IslandTrustCommands {
                 Objects.requireNonNull(configurationProvider, "configurationProvider must not be null");
         this.nodeIdentitySupplier =
                 Objects.requireNonNull(nodeIdentitySupplier, "nodeIdentitySupplier must not be null");
+        this.profileTypes = Objects.requireNonNull(profileTypes, "profileTypes must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
     }
@@ -229,7 +232,7 @@ public final class IslandTrustCommands {
                         island.id().value().toString(),
                         granteeProfile,
                         granteeUuid,
-                        ProfileType.CLASSIC,
+                        profileTypes.apply(granteeProfile),
                         granterProfile,
                         until.policy(),
                         until.anchorPlayerUuid(),

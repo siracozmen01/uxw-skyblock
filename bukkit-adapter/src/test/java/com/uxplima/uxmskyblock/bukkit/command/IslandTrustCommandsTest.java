@@ -70,6 +70,10 @@ class IslandTrustCommandsTest {
     private IslandLocationService locationService;
     private PlayerSessionCoordinator sessions;
     private com.uxplima.uxmskyblock.core.application.notification.NotificationService notifications;
+
+    /** What ruleset each profile plays under, so the Ironman barrier has something to refuse. */
+    private final java.util.Map<ProfileId, ProfileType> profileTypes = new java.util.HashMap<>();
+
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private final List<Runnable> deferred = new ArrayList<>();
@@ -106,6 +110,9 @@ class IslandTrustCommandsTest {
         when(sessions.activeProfile(guest.getUniqueId())).thenReturn(Optional.of(guestProfile));
         when(sessions.getActiveSession(guest.getUniqueId()))
                 .thenReturn(new ActiveSession(new PlayerUuid(guest.getUniqueId()), guestProfile, 7L, 1L));
+        profileTypes.clear();
+        profileTypes.put(ownerProfile, ProfileType.CLASSIC);
+        profileTypes.put(guestProfile, ProfileType.CLASSIC);
         islandOwnedBy(ownerProfile);
 
         notifications = mock(com.uxplima.uxmskyblock.core.application.notification.NotificationService.class);
@@ -115,6 +122,7 @@ class IslandTrustCommandsTest {
                 scheduler,
                 TemporaryAccessConfiguration::defaultConfiguration,
                 () -> new CurrentNodeProcessIdentity("node-alpha", "boot-1"),
+                profileTypes::get,
                 Messages.bundled(),
                 sessions);
 
@@ -470,6 +478,49 @@ class IslandTrustCommandsTest {
         assertThat(guest.nextMessage())
                 .describedAs("and not once per grant they happened to hold")
                 .isNull();
+    }
+
+    @Test
+    @DisplayName("An Ironman guest is refused the grant the ruleset forbids, and told so")
+    void anIronmanGuestIsRefused() throws Exception {
+        profileTypes.put(guestProfile, ProfileType.IRONMAN);
+        org.mockito.Mockito.doThrow(new com.uxplima.uxmskyblock.core.domain.access.RulesetAccessViolationException(
+                        "Ironman ruleset boundary forbids economic temporary access permissions"))
+                .when(accessService)
+                .issueGrant(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any());
+
+        run(owner, "trust Guest");
+        runDeferred();
+
+        assertThat(owner.nextMessage()).describedAs("the refusal").isNotNull();
+    }
+
+    @Test
+    @DisplayName("The guest's own ruleset is what reaches the barrier, not a guess")
+    void theguestsRulesetReachesTheBarrier() throws Exception {
+        profileTypes.put(guestProfile, ProfileType.HARDCORE);
+
+        run(owner, "trust Guest");
+        runDeferred();
+
+        verify(accessService)
+                .issueGrant(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(ProfileType.HARDCORE),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
     }
 
     @Test

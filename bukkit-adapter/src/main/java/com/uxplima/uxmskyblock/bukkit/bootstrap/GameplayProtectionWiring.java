@@ -65,6 +65,10 @@ public final class GameplayProtectionWiring {
                 temporaryAccessService,
                 config.messages());
         this.categoricalInteractablesListener.setNodeIdentitySupplier(authority::nodeProcessIdentity);
+        // Asked through the wiring rather than resolved here, the same way the node identity above
+        // is, so building this does not depend on the order the two were made in.
+        this.categoricalInteractablesListener.setProfileTypeProvider(
+                profileId -> authority.profileTypes().of(profileId));
         this.categoricalInteractablesListener.setSessionRecordProvider(uuid -> {
             ActiveSession session = authority.sessionCoordinator().getActiveSession(uuid.value());
             if (session == null || session.isFenced()) {

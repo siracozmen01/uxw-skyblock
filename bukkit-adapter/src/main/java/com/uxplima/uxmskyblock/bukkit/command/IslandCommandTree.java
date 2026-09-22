@@ -124,6 +124,9 @@ public final class IslandCommandTree {
     /** Which node and which boot this is, for a grant that lasts until the node restarts. */
     volatile @Nullable CurrentNodeProcessIdentity nodeProcessIdentity;
 
+    /** Which ruleset a profile plays under, so a grant cannot cross a ruleset boundary. */
+    volatile com.uxplima.uxmskyblock.core.application.profile.@Nullable ProfileTypes profileTypes;
+
     /** Where a notice goes for a player who is not here to be told. */
     volatile com.uxplima.uxmskyblock.core.application.notification.@Nullable NotificationService notificationService;
 
@@ -241,9 +244,12 @@ public final class IslandCommandTree {
 
     /** Tells the tree what a trust grant carries, so the trust branch can make one. */
     public void useTemporaryAccess(
-            TemporaryAccessConfiguration configuration, CurrentNodeProcessIdentity nodeProcessIdentity) {
+            TemporaryAccessConfiguration configuration,
+            CurrentNodeProcessIdentity nodeProcessIdentity,
+            com.uxplima.uxmskyblock.core.application.profile.ProfileTypes profileTypes) {
         this.temporaryAccessConfiguration = configuration;
         this.nodeProcessIdentity = nodeProcessIdentity;
+        this.profileTypes = profileTypes;
     }
 
     /** Hands the island's feed to the command groups that change something worth writing down. */
