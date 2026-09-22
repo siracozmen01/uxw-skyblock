@@ -430,6 +430,21 @@ public final class IslandCommandTree {
                                 ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page"))));
     }
 
+    /**
+     * Puts a verb behind the permission the catalogue publishes for it.
+     *
+     * <p>The catalogue registered eighteen nodes with the server and twelve of them were read
+     * nowhere. An operator could take {@code uxmskyblock.island.create} off a group, see it taken
+     * off in their permission plugin, and watch that group go on making islands.
+     *
+     * <p>Every one of these ships as true, so a server that grants nothing by hand sees no change
+     * at all. What changes is that taking one away now does something.
+     */
+    private static LiteralArgumentBuilder<CommandSourceStack> gated(
+            LiteralArgumentBuilder<CommandSourceStack> verb, CatalogPermissions permission) {
+        return verb.requires(src -> src.getSender().hasPermission(permission.node()));
+    }
+
     private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroupBuilder.CommandGroups groups) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
@@ -444,9 +459,9 @@ public final class IslandCommandTree {
                 .then(groups.progressionCommands().buildWorth())
                 .then(groups.progressionCommands().buildValue())
                 .then(groups.lifecycleCommands().buildReset())
-                .then(groups.lifecycleCommands().buildDelete())
-                .then(groups.lifecycleCommands().buildCreate())
-                .then(groups.navigationCommands().buildHome())
+                .then(gated(groups.lifecycleCommands().buildDelete(), CatalogPermissions.ISLAND_DELETE))
+                .then(gated(groups.lifecycleCommands().buildCreate(), CatalogPermissions.ISLAND_CREATE))
+                .then(gated(groups.navigationCommands().buildHome(), CatalogPermissions.ISLAND_HOME))
                 .then(groups.navigationCommands().buildGo())
                 .then(groups.navigationCommands().buildVisit())
                 .then(groups.navigationCommands().buildNether())
@@ -455,8 +470,8 @@ public final class IslandCommandTree {
                 .then(groups.mechanicsCommands().buildQuarantine())
                 .then(groups.mechanicsCommands().buildBooster())
                 .then(groups.navigationCommands().buildSetSpawn())
-                .then(groups.homeCommands().buildSetHome())
-                .then(groups.homeCommands().buildTravelHome())
+                .then(gated(groups.homeCommands().buildSetHome(), CatalogPermissions.ISLAND_SET_HOME))
+                .then(gated(groups.homeCommands().buildTravelHome(), CatalogPermissions.ISLAND_HOME))
                 .then(groups.homeCommands().buildNamedHome())
                 .then(groups.homeCommands().buildDeleteHome())
                 .then(groups.activityCommands().build())
@@ -470,19 +485,19 @@ public final class IslandCommandTree {
                 // The names the documents publish for branches that already exist under another
                 // word: /is ally, /is disband, /is settings, and /is explore beside /is warps.
                 .then(groups.allianceCommands().buildAlias("ally"))
-                .then(groups.lifecycleCommands().buildDisband())
+                .then(gated(groups.lifecycleCommands().buildDisband(), CatalogPermissions.ISLAND_DELETE))
                 .then(Cmd.literal("settings").executes(this::executeMenu))
                 .then(groups.rewardCommands().build())
                 .then(groups.flagCommands().build())
-                .then(groups.visitorCommands().buildBan())
-                .then(groups.visitorCommands().buildUnban())
+                .then(gated(groups.visitorCommands().buildBan(), CatalogPermissions.ISLAND_BAN))
+                .then(gated(groups.visitorCommands().buildUnban(), CatalogPermissions.ISLAND_UNBAN))
                 .then(groups.visitorCommands().buildBans())
                 .then(groups.visitorCommands().buildLock())
                 .then(groups.visitorCommands().buildUnlock())
-                .then(groups.membershipCommands().buildInvite())
+                .then(gated(groups.membershipCommands().buildInvite(), CatalogPermissions.ISLAND_INVITE))
                 .then(groups.membershipCommands().buildAccept())
                 .then(groups.membershipCommands().buildDeny())
-                .then(groups.membershipCommands().buildKick())
+                .then(gated(groups.membershipCommands().buildKick(), CatalogPermissions.ISLAND_KICK))
                 .then(groups.membershipCommands().buildLeave())
                 .then(groups.membershipCommands().buildMembers())
                 .then(groups.membershipCommands().buildRole())
@@ -492,11 +507,11 @@ public final class IslandCommandTree {
                 .then(groups.chatCommands().buildAllianceChatAlias())
                 .then(groups.seasonCommands().buildSeason())
                 .then(groups.reloadCommands().buildReload())
-                .then(groups.upgradeCommands().build())
+                .then(gated(groups.upgradeCommands().build(), CatalogPermissions.ISLAND_UPGRADE))
                 .then(groups.shopCommands().build())
                 // The menu file and the documents both say upgrades; a player typing the singular
                 // should not be told there is no such command.
-                .then(groups.upgradeCommands().buildUnder("upgrade"))
+                .then(gated(groups.upgradeCommands().buildUnder("upgrade"), CatalogPermissions.ISLAND_UPGRADE))
                 .then(groups.trustCommands().buildTrust())
                 .then(groups.trustCommands().buildUntrust())
                 .then(groups.trustCommands().buildTrusted())
@@ -509,9 +524,9 @@ public final class IslandCommandTree {
                 .then(groups.warpCommands().buildWarpUnlock())
                 .then(groups.lifecycleCommands().buildRename())
                 .then(groups.adminCommands().buildRestore())
-                .then(groups.bankCommands().build())
-                .then(groups.progressionCommands().buildBiome())
-                .then(groups.progressionCommands().buildTop())
+                .then(gated(groups.bankCommands().build(), CatalogPermissions.ISLAND_BANK))
+                .then(gated(groups.progressionCommands().buildBiome(), CatalogPermissions.ISLAND_BIOME))
+                .then(gated(groups.progressionCommands().buildTop(), CatalogPermissions.ISLAND_TOP))
                 .then(Cmd.literal("profile")
                         .then(Cmd.literal("switch")
                                 .then(Cmd.argument("profileId", StringArgumentType.word())

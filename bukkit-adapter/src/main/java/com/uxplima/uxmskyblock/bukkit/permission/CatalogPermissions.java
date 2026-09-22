@@ -17,6 +17,10 @@ public enum CatalogPermissions {
     ADMIN_MANAGE("uxmskyblock.admin.manage", "Administrative island management", PermissionDefault.OP),
     ADMIN_FREEZE("uxmskyblock.admin.freeze", "Freeze and unfreeze islands administratively", PermissionDefault.OP),
     ADMIN_INSPECT("uxmskyblock.admin.inspect", "Inspect and bypass frozen island quarantines", PermissionDefault.OP),
+    // Two nodes the commands have always asked for and the catalogue never published, so they
+    // reached no permission plugin's list and had no declared default.
+    ADMIN_RESTORE("uxmskyblock.admin.restore", "Back up and restore islands and the database", PermissionDefault.OP),
+    ADMIN_BOOSTER("uxmskyblock.admin.booster", "Grant island boosters administratively", PermissionDefault.OP),
 
     ISLAND_CREATE("uxmskyblock.island.create", "Create a new skyblock island", PermissionDefault.TRUE),
     ISLAND_DELETE("uxmskyblock.island.delete", "Delete an island", PermissionDefault.TRUE),

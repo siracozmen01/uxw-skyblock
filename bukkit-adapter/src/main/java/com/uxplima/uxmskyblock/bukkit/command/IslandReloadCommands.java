@@ -45,9 +45,17 @@ public final class IslandReloadCommands {
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
+    /**
+     * {@code /is reload}.
+     *
+     * <p>The catalogue publishes a node for exactly this and the gate asked for the general
+     * management one instead, so an operator who granted somebody the reload permission and nothing
+     * else had granted them nothing.
+     */
     public LiteralArgumentBuilder<CommandSourceStack> buildReload() {
         return Cmd.literal("reload")
-                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
+                .requires(src -> src.getSender().hasPermission(CatalogPermissions.ADMIN_RELOAD.node())
+                        || src.getSender().hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
                         || src.getSender().isOp())
                 .executes(this::executeReload);
     }
