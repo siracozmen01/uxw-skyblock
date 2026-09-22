@@ -54,6 +54,13 @@ public final class EffectsConfiguration {
         defaults.put(
                 "mission-completed",
                 parseAll("mission-completed", List.of("[sound] ui.toast.challenge_complete 1.0 1.0")));
+
+        // The milestones a server decorates. The command still gives its own reply out of the
+        // catalogue; this is what happens beside it.
+        defaults.put(
+                "island-created", parseAll("island-created", List.of("[sound] ui.toast.challenge_complete 1.0 1.2")));
+        defaults.put("member-joined", parseAll("member-joined", List.of("[sound] entity.player.levelup 1.0 1.4")));
+        defaults.put("upgrade-bought", parseAll("upgrade-bought", List.of("[sound] entity.player.levelup 1.0 1.0")));
         return new InteractionEffects(defaults);
     }
 

@@ -49,6 +49,34 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandUpgradeCommands {
 
+    /**
+     * What the operator wrote for the milestones this command group reaches.
+     *
+     * <p>The reply a command gives is the catalogue's. What a server wants beside it, a sound, a
+     * title, a bar, is the operator's list and nothing here decides it. A node with no list fires
+     * nothing, which is a server that wrote none.
+     */
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffects effects;
+
+    private volatile com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffectPlayer effectPlayer;
+
+    /** Tells this command group what the operator wrote for its milestones. */
+    public void useEffects(
+            com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffects effects,
+            com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffectPlayer player) {
+        this.effects = effects;
+        this.effectPlayer = player;
+    }
+
+    /** Fires one milestone for one player, when the operator wrote anything for it. */
+    private void fireMilestone(String interaction, org.bukkit.entity.Player player) {
+        com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;
+        com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer plays = this.effectPlayer;
+        if (written != null && plays != null) {
+            plays.fire(written, interaction, player);
+        }
+    }
+
     private final Supplier<@Nullable IslandUpgradeService> upgradeServiceProvider;
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
@@ -282,13 +310,15 @@ public final class IslandUpgradeCommands {
 
     private void report(Player player, UpgradeId upgradeId, UpgradePurchaseOutcome outcome) {
         switch (outcome) {
-            case UpgradePurchaseOutcome.Success success ->
+            case UpgradePurchaseOutcome.Success success -> {
                 send(
                         player,
                         "upgrades.bought",
                         Placeholder.unparsed("key", upgradeId.key()),
                         Placeholder.unparsed("tier", Integer.toString(success.newTier())),
                         Placeholder.unparsed("cost", Long.toString(success.costPaid())));
+                fireMilestone("upgrade-bought", player);
+            }
             case UpgradePurchaseOutcome.MaxTierReached maxed ->
                 send(
                         player,

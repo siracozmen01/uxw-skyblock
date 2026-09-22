@@ -118,6 +118,9 @@ public final class IslandCommandTree {
     volatile @Nullable SkyblockReloader reloader;
     volatile @Nullable IslandWarpService warpService;
 
+    /** What the operator wrote for the milestones the commands reach. */
+    volatile com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffects interactionEffects;
+
     /** The bypass permissions and the cooldowns the operator named for the anti abuse rules. */
     volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration antiAbuseConfiguration;
 
@@ -312,6 +315,11 @@ public final class IslandCommandTree {
     /** Hands the warp subsystem to the command that reaches it. */
     public void setWarpService(@Nullable IslandWarpService warpService) {
         this.warpService = warpService;
+    }
+
+    /** Hands the operator's effect lists to the commands whose milestones fire them. */
+    public void setInteractionEffects(com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffects effects) {
+        this.interactionEffects = effects;
     }
 
     /** Hands the operator's anti abuse rules to the commands that enforce them. */

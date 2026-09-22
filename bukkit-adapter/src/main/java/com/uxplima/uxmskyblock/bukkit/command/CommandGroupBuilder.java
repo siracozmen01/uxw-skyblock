@@ -51,6 +51,9 @@ final class CommandGroupBuilder {
             IslandTrustCommands trustCommands) {}
 
     CommandGroups build() {
+        // One applier for every milestone in the tree. What each fires is the operator's list.
+        com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer effectPlayer =
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(tree.schedulerPort);
 
         IslandBankCommands bankCommands = new IslandBankCommands(
                 tree.islandBankService,
@@ -69,6 +72,7 @@ final class CommandGroupBuilder {
                 tree.serverNodeId,
                 tree.messages,
                 tree.sessionCoordinator);
+        upgradeCommands.useEffects(tree.interactionEffects, effectPlayer);
 
         IslandTrustCommands trustCommands = new IslandTrustCommands(
                 () -> tree.features.temporaryAccessService(),
@@ -149,6 +153,7 @@ final class CommandGroupBuilder {
                 tree.messages);
         lifecycleCommands.useActivityFeed(tree.activityFeedService);
         lifecycleCommands.useAntiAbuseRules(tree.antiAbuseConfiguration);
+        lifecycleCommands.useEffects(tree.interactionEffects, effectPlayer);
 
         IslandNavigationCommands navigationCommands = new IslandNavigationCommands(
                 tree.islandLocationService,
@@ -264,6 +269,7 @@ final class CommandGroupBuilder {
         membershipCommands.useNotifications(tree.notificationService);
         membershipCommands.useActivityFeed(tree.activityFeedService);
         membershipCommands.useCoopHoppingLock(tree.antiAbuseService(), tree.antiAbuseConfiguration);
+        membershipCommands.useEffects(tree.interactionEffects, effectPlayer);
 
         IslandInfoCommands infoCommands = new IslandInfoCommands(
                 tree.islandLocationService,
