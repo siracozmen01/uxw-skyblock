@@ -293,9 +293,57 @@ class IslandLifecycleCommandsTest {
                 .isZero();
     }
 
+    @org.junit.jupiter.api.Test
+    @DisplayName("The permission that skips the reset rules is the one the operator wrote down")
+    void thebypassNodeIsTheOperatorsOwn() throws Exception {
+        IslandAntiAbuseService antiAbuse = mock(IslandAntiAbuseService.class);
+        when(antiAbuse.checkResetAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult.Allowed(3));
+        IslandRecycleService recycle = mock(IslandRecycleService.class);
+        when(recycle.generateResetChallenge(any(), any()))
+                .thenReturn(new ResetChallenge("AB12CD", Instant.now().plusSeconds(60)));
+
+        com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration rules =
+                com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration.defaultConfiguration();
+        player.addAttachment(
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), rules.resetBypassPermission(), true);
+
+        runOn(dispatcherOver(antiAbuse, recycle, rules), "reset", player);
+
+        verify(antiAbuse).checkResetAllowed(any(), org.mockito.ArgumentMatchers.eq(true));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The node that used to be written into the code is not a bypass any more")
+    void thehardcodedNodeIsNotABypass() throws Exception {
+        IslandAntiAbuseService antiAbuse = mock(IslandAntiAbuseService.class);
+        when(antiAbuse.checkResetAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult.Allowed(3));
+        IslandRecycleService recycle = mock(IslandRecycleService.class);
+        when(recycle.generateResetChallenge(any(), any()))
+                .thenReturn(new ResetChallenge("AB12CD", Instant.now().plusSeconds(60)));
+
+        com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration rules =
+                com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration.defaultConfiguration();
+        player.addAttachment(
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), "skyblock.antiabuse.bypass", true);
+
+        runOn(dispatcherOver(antiAbuse, recycle, rules), "reset", player);
+
+        verify(antiAbuse).checkResetAllowed(any(), org.mockito.ArgumentMatchers.eq(false));
+    }
+
     /** The same command tree, over an anti-abuse service and a recycle service this test chose. */
     private CommandDispatcher<CommandSourceStack> dispatcherOver(
             IslandAntiAbuseService antiAbuse, IslandRecycleService recycleService) {
+        return dispatcherOver(antiAbuse, recycleService, null);
+    }
+
+    /** And with the bypass permissions the operator named, when a test is about those. */
+    private CommandDispatcher<CommandSourceStack> dispatcherOver(
+            IslandAntiAbuseService antiAbuse,
+            IslandRecycleService recycleService,
+            com.uxplima.uxmskyblock.bukkit.config.@org.jspecify.annotations.Nullable AntiAbuseConfiguration rules) {
         IslandLocationService locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
@@ -316,6 +364,8 @@ class IslandLifecycleCommandsTest {
                 () -> null,
                 () -> names,
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()));
+
+        commands.useAntiAbuseRules(rules);
 
         CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
         tree.register(commands.buildReset());

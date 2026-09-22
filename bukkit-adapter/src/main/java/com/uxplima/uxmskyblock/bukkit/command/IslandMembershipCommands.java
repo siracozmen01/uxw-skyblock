@@ -24,6 +24,7 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
+import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
 import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
@@ -58,6 +59,17 @@ public final class IslandMembershipCommands {
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     /**
+     * The lock that stops a player leaving one island and being recruited into the next.
+     *
+     * <p>The service has had the check and the record since the anti abuse work and nothing called
+     * either, so {@code coop-join-cooldown} and the permission that bypasses it were two settings
+     * an operator could write and watch do nothing.
+     */
+    private volatile @Nullable IslandAntiAbuseService coopHoppingLock;
+
+    private volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration antiAbuseRules;
+
+    /**
      * The inbox a player reads on their next join.
      *
      * <p>Losing your place on an island is the kind of thing you find out about by walking into a
@@ -87,6 +99,14 @@ public final class IslandMembershipCommands {
     /** Tells this command group where to leave a notice for a player who is not here. */
     public void useNotifications(@Nullable NotificationService notificationService) {
         this.notificationService = notificationService;
+    }
+
+    /** Tells this command group which lock holds a player who has just left an island. */
+    public void useCoopHoppingLock(
+            @Nullable IslandAntiAbuseService lock,
+            com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration rules) {
+        this.coopHoppingLock = lock;
+        this.antiAbuseRules = rules;
     }
 
     /** Tells this command group where to write the island's activity feed. */
@@ -277,7 +297,11 @@ public final class IslandMembershipCommands {
         return withService(
                 ctx,
                 (player, service, actor) -> schedulerPort.async(() -> {
-                    switch (service.accept(actor, new PlayerUuid(player.getUniqueId()))) {
+                    PlayerUuid joining = new PlayerUuid(player.getUniqueId());
+                    if (heldByTheCoopLock(player, joining)) {
+                        return;
+                    }
+                    switch (service.accept(actor, joining)) {
                         case IslandMembershipService.JoinOutcome.Joined joined -> {
                             activityLog.recordForMembers(
                                     joined.islandId(),
@@ -319,8 +343,10 @@ public final class IslandMembershipCommands {
                         send(player, "member.unknown_player", Placeholder.unparsed("player", target));
                         return;
                     }
+                    Optional<PlayerUuid> optTargetUuid = resolveUuid(target);
                     IslandMembershipService.RemovalOutcome outcome = service.kick(actor, optTarget.get());
                     if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed removed) {
+                        optTargetUuid.ifPresent(this::lockOutOfTheNextIsland);
                         activityLog.recordForMembers(
                                 removed.islandId(),
                                 actor,
@@ -343,6 +369,7 @@ public final class IslandMembershipCommands {
                 (player, service, actor) -> schedulerPort.async(() -> {
                     IslandMembershipService.RemovalOutcome outcome = service.leave(actor);
                     if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed removed) {
+                        lockOutOfTheNextIsland(new PlayerUuid(player.getUniqueId()));
                         activityLog.recordForMembers(
                                 removed.islandId(),
                                 actor,
@@ -459,6 +486,74 @@ public final class IslandMembershipCommands {
         }
         action.run(player, service, optProfile.get());
         return Cmd.OK;
+    }
+
+    /**
+     * Whether this player left an island too recently to be recruited into another.
+     *
+     * <p>Leaving one island and being taken straight into the next is how a bank and a vault get
+     * emptied by somebody who was never going to stay. The file names how long that waits and the
+     * permission that lets staff past it, and both were read nowhere.
+     *
+     * <p>The refusal is sent here, so a caller that gets true has nothing left to say.
+     */
+    private boolean heldByTheCoopLock(Player player, PlayerUuid playerUuid) {
+        IslandAntiAbuseService lock = this.coopHoppingLock;
+        if (lock == null) {
+            return false;
+        }
+        com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration rules = this.antiAbuseRules;
+        String node = rules == null
+                ? com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration.DEFAULT_COOP_BYPASS_PERMISSION
+                : rules.coopBypassPermission();
+        boolean bypass = player.hasPermission(node) || player.isOp();
+
+        if (lock.checkCoopJoinAllowed(playerUuid, bypass)
+                instanceof com.uxplima.uxmskyblock.core.domain.antiabuse.CoopJoinCheckResult.CooldownActive held) {
+            send(player, "member.coop_cooldown", Placeholder.unparsed("remaining", formatDuration(held.remaining())));
+            return true;
+        }
+        return false;
+    }
+
+    /** Starts the wait that stops this player being recruited into another island straight away. */
+    private void lockOutOfTheNextIsland(PlayerUuid playerUuid) {
+        IslandAntiAbuseService lock = this.coopHoppingLock;
+        if (lock != null) {
+            var unused = lock.recordCoopDeparture(playerUuid, java.time.Instant.now());
+        }
+    }
+
+    /** How long is left, the way every other wait in this plugin reads. */
+    private static String formatDuration(java.time.Duration duration) {
+        if (duration.isNegative() || duration.isZero()) {
+            return "0s";
+        }
+        long seconds = duration.toSeconds();
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs = seconds % 60;
+        if (hours > 0) {
+            return String.format(java.util.Locale.ROOT, "%dh %dm %ds", hours, minutes, secs);
+        }
+        if (minutes > 0) {
+            return String.format(java.util.Locale.ROOT, "%dm %ds", minutes, secs);
+        }
+        return String.format(java.util.Locale.ROOT, "%ds", secs);
+    }
+
+    /** The player behind a name, for the rules that are about a player rather than a profile. */
+    private Optional<PlayerUuid> resolveUuid(String name) {
+        Player online = Bukkit.getPlayerExact(name);
+        if (online != null) {
+            return Optional.of(new PlayerUuid(online.getUniqueId()));
+        }
+        @SuppressWarnings("deprecation")
+        OfflinePlayer offline = Bukkit.getOfflinePlayer(name);
+        if (offline.hasPlayedBefore() || offline.isOnline()) {
+            return Optional.of(new PlayerUuid(offline.getUniqueId()));
+        }
+        return Optional.empty();
     }
 
     /**

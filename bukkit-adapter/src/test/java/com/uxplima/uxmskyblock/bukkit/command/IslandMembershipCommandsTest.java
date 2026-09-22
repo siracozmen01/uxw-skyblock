@@ -63,6 +63,7 @@ class IslandMembershipCommandsTest {
     private PlayerMock mate;
     private IslandMembershipService membership;
     private NotificationService notifications;
+    private IslandMembershipCommands commands;
     private com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService activity;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
@@ -111,7 +112,7 @@ class IslandMembershipCommandsTest {
         when(sessions.activeProfile(owner.getUniqueId())).thenReturn(Optional.of(OWNER));
         when(sessions.activeProfile(mate.getUniqueId())).thenReturn(Optional.of(MATE));
 
-        IslandMembershipCommands commands = new IslandMembershipCommands(
+        commands = new IslandMembershipCommands(
                 () -> membership,
                 locations,
                 inlineScheduler(),
@@ -235,6 +236,73 @@ class IslandMembershipCommandsTest {
         CommandSourceStack source = mock(CommandSourceStack.class);
         when(source.getSender()).thenReturn(sender);
         dispatcher.execute(line, source);
+    }
+
+    /** An anti abuse service that says this player left an island this recently. */
+    private com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService lockHolding(
+            java.time.Duration remaining) {
+        var lock = mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        when(lock.checkCoopJoinAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.CoopJoinCheckResult.CooldownActive(
+                        Instant.now().plus(remaining), remaining));
+        return lock;
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A player who just left an island cannot be recruited into the next one")
+    void acooldownHoldsThePlayerBack() throws Exception {
+        var lock = lockHolding(java.time.Duration.ofHours(3));
+        commands.useCoopHoppingLock(lock, null);
+
+        run("accept", mate);
+
+        verify(membership, never()).accept(any(), any());
+        assertThat(mate.nextMessage())
+                .describedAs("the file names how long this waits and nothing read it")
+                .isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A player the lock has nothing against joins")
+    void anunheldPlayerJoins() throws Exception {
+        var lock = mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        when(lock.checkCoopJoinAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.CoopJoinCheckResult.Allowed());
+        commands.useCoopHoppingLock(lock, null);
+
+        run("accept", mate);
+
+        verify(membership).accept(any(), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Leaving an island starts the wait before the next one")
+    void leavingStartsTheWait() throws Exception {
+        var lock = mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        commands.useCoopHoppingLock(lock, null);
+
+        run("leave", mate);
+
+        verify(lock).recordCoopDeparture(any(), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Being kicked starts it too, because that is the half somebody else decides")
+    void beingKickedStartsItToo() throws Exception {
+        var lock = mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        commands.useCoopHoppingLock(lock, null);
+
+        run("kick " + mate.getName(), owner);
+
+        verify(lock).recordCoopDeparture(any(), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A node with no lock lets everybody through, the way it always did")
+    void nolockMeansNoWait() throws Exception {
+        run("accept", mate);
+
+        verify(membership).accept(any(), any());
     }
 
     @Test

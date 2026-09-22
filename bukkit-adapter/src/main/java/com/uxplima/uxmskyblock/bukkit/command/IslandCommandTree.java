@@ -113,6 +113,9 @@ public final class IslandCommandTree {
     volatile @Nullable SkyblockReloader reloader;
     volatile @Nullable IslandWarpService warpService;
 
+    /** The bypass permissions and the cooldowns the operator named for the anti abuse rules. */
+    volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration antiAbuseConfiguration;
+
     /** Which biomes the operator offers and what an island has to reach first. */
     volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable BiomeConfiguration biomeConfiguration;
 
@@ -304,6 +307,12 @@ public final class IslandCommandTree {
     /** Hands the warp subsystem to the command that reaches it. */
     public void setWarpService(@Nullable IslandWarpService warpService) {
         this.warpService = warpService;
+    }
+
+    /** Hands the operator's anti abuse rules to the commands that enforce them. */
+    public void setAntiAbuseConfiguration(
+            com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration configuration) {
+        this.antiAbuseConfiguration = configuration;
     }
 
     /** Hands the operator's biome rules to the command that applies them. */

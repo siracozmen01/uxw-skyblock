@@ -147,6 +147,7 @@ final class CommandGroupBuilder {
                 () -> tree.nameService,
                 tree.messages);
         lifecycleCommands.useActivityFeed(tree.activityFeedService);
+        lifecycleCommands.useAntiAbuseRules(tree.antiAbuseConfiguration);
 
         IslandNavigationCommands navigationCommands = new IslandNavigationCommands(
                 tree.islandLocationService,
@@ -261,6 +262,7 @@ final class CommandGroupBuilder {
                 tree.sessionCoordinator);
         membershipCommands.useNotifications(tree.notificationService);
         membershipCommands.useActivityFeed(tree.activityFeedService);
+        membershipCommands.useCoopHoppingLock(tree.antiAbuseService(), tree.antiAbuseConfiguration);
 
         IslandInfoCommands infoCommands = new IslandInfoCommands(
                 tree.islandLocationService,

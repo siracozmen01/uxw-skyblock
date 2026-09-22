@@ -64,6 +64,16 @@ public final class IslandLifecycleCommands {
     private final ServerNodeId serverNodeId;
     private final String worldName;
     private final Supplier<@Nullable IslandAntiAbuseService> antiAbuseServiceProvider;
+
+    /**
+     * The bypass permissions the operator named.
+     *
+     * <p>The node was written into the code as {@code skyblock.antiabuse.bypass} while the file
+     * named {@code uxmskyblock.bypass.resetlimits}, so whatever the operator granted their staff
+     * did nothing and whatever they wrote in the file was never asked for.
+     */
+    private volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration antiAbuseRules;
+
     private final Supplier<@Nullable IslandRecycleService> recycleServiceProvider;
     private final Supplier<@Nullable IslandResetConfirmationMenu> resetMenuProvider;
     private final Supplier<@Nullable IslandNameService> nameServiceProvider;
@@ -71,6 +81,11 @@ public final class IslandLifecycleCommands {
 
     /** Where the preset a new island started from is written down as its feed's first line. */
     private final IslandActivityLog activityLog = new IslandActivityLog();
+
+    /** Tells this command group which permissions the operator lets staff bypass the rules with. */
+    public void useAntiAbuseRules(com.uxplima.uxmskyblock.bukkit.config.@Nullable AntiAbuseConfiguration rules) {
+        this.antiAbuseRules = rules;
+    }
 
     /** Tells this command group where to write the island's activity feed. */
     public void useActivityFeed(@Nullable ActivityFeedService service) {
@@ -325,7 +340,7 @@ public final class IslandLifecycleCommands {
         IslandAntiAbuseService antiAbuse = antiAbuseServiceProvider.get();
         // The permission is read here, on the thread that owns the player, and carried into the
         // scheduler. Everything after it is storage.
-        boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
+        boolean bypass = mayBypassTheResetRules(player);
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
@@ -397,7 +412,7 @@ public final class IslandLifecycleCommands {
 
         ProfileId profileId = optProfile.get();
         IslandAntiAbuseService antiAbuse = antiAbuseServiceProvider.get();
-        boolean bypass = player.hasPermission("skyblock.antiabuse.bypass") || player.isOp();
+        boolean bypass = mayBypassTheResetRules(player);
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
@@ -549,6 +564,20 @@ public final class IslandLifecycleCommands {
         return presetCatalog.allPresets().stream()
                 .map(preset -> preset.id())
                 .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /**
+     * Whether this player is let past the reset cooldown and the daily limit.
+     *
+     * <p>The node comes off the operator's file. A node with no file behind it falls back to the
+     * one this plugin ships with, which is the same name the file is written with.
+     */
+    private boolean mayBypassTheResetRules(Player player) {
+        com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration rules = this.antiAbuseRules;
+        String node = rules == null
+                ? com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration.DEFAULT_RESET_BYPASS_PERMISSION
+                : rules.resetBypassPermission();
+        return player.hasPermission(node) || player.isOp();
     }
 
     private static String formatDuration(Duration duration) {
