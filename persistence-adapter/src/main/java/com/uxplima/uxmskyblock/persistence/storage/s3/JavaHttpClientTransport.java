@@ -12,6 +12,12 @@ import java.util.Objects;
 
 /**
  * Production implementation of {@link S3HttpTransport} using standard {@link java.net.http.HttpClient}.
+ *
+ * <p>A redirect is never followed. The request carries a SigV4 signature bound to the host and path
+ * it was signed for, so following one sends a signature that cannot match to somewhere else: at
+ * best a 403 that hides the real answer, at worst the Authorization header handed to whatever host
+ * the redirect named. S3 uses a redirect to say the endpoint or the region is wrong, and that is
+ * worth seeing as itself rather than as a permission error.
  */
 public final class JavaHttpClientTransport implements S3HttpTransport {
 
@@ -20,7 +26,7 @@ public final class JavaHttpClientTransport implements S3HttpTransport {
     public JavaHttpClientTransport() {
         this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build());
     }
 
