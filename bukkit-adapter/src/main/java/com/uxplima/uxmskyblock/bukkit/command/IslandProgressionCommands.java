@@ -28,6 +28,7 @@ import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardSer
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.worth.IslandWorthService;
+import com.uxplima.uxmskyblock.core.application.worth.RecalculationGate;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -64,6 +65,9 @@ public final class IslandProgressionCommands {
      */
     private volatile BiomeConfiguration biomeRules = BiomeConfiguration.defaultConfiguration();
 
+    private volatile RecalculationGate recalculationGate =
+            new RecalculationGate(RecalculationGate.DEFAULT_COOLDOWN, java.time.Clock.systemUTC());
+
     public IslandProgressionCommands(
             IslandLocationService islandLocationService,
             IslandBankService islandBankService,
@@ -88,6 +92,16 @@ public final class IslandProgressionCommands {
         this.missionServiceProvider =
                 Objects.requireNonNull(missionServiceProvider, "missionServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+    }
+
+    /** Tells the rescan command how long an island waits between two rescans. */
+    public void useRecalculationCooldown(java.time.Duration cooldown) {
+        useRecalculationGate(new RecalculationGate(cooldown, java.time.Clock.systemUTC()));
+    }
+
+    /** Package private so a test can hold the clock. */
+    void useRecalculationGate(RecalculationGate gate) {
+        this.recalculationGate = java.util.Objects.requireNonNull(gate, "gate must not be null");
     }
 
     /** Tells this command group which biomes the operator offers, and at what level. */
@@ -237,7 +251,7 @@ public final class IslandProgressionCommands {
         }
 
         ProfileId profileId = optProfile.get();
-        send(player, "level.recalculating");
+        RecalculationGate gate = this.recalculationGate;
 
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
@@ -261,21 +275,45 @@ public final class IslandProgressionCommands {
             // so levels.quest-weight was dropped from the number a player is finally given.
             int completed = completedMissions(islandId, profileId);
 
-            worthService.triggerAsyncRecalculation(
-                    islandId, loc.worldName(), loc.bounds(), completed, bankBalance, score -> {
-                        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                            send(player, "level.recalculated");
-                            send(
-                                    player,
-                                    "level.new_level",
-                                    number("level", score.calculatedLevel()),
-                                    number("score", score.totalScore()));
-                            send(
-                                    player,
-                                    "level.worth",
-                                    Placeholder.unparsed("worth", money(score.dampedEconomicWorthMinorUnits())));
+            switch (gate.tryEnter(islandId)) {
+                case RecalculationGate.Admission.AlreadyRunning running -> {
+                    send(player, "level.recalculation_running");
+                    return;
+                }
+                case RecalculationGate.Admission.CoolingDown wait -> {
+                    send(
+                            player,
+                            "level.recalculation_cooldown",
+                            Placeholder.unparsed(
+                                    "remaining",
+                                    Long.toString(Math.max(1L, wait.remaining().toSeconds()))));
+                    return;
+                }
+                case RecalculationGate.Admission.Admitted admitted -> send(player, "level.recalculating");
+            }
+
+            try {
+                worthService.triggerAsyncRecalculation(
+                        islandId, loc.worldName(), loc.bounds(), completed, bankBalance, score -> {
+                            gate.leave(islandId);
+                            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                                send(player, "level.recalculated");
+                                send(
+                                        player,
+                                        "level.new_level",
+                                        number("level", score.calculatedLevel()),
+                                        number("score", score.totalScore()));
+                                send(
+                                        player,
+                                        "level.worth",
+                                        Placeholder.unparsed("worth", money(score.dampedEconomicWorthMinorUnits())));
+                            });
                         });
-                    });
+            } catch (RuntimeException failed) {
+                // A rescan that never started must not hold the island's place for ever.
+                gate.leave(islandId);
+                throw failed;
+            }
         });
         return Cmd.OK;
     }

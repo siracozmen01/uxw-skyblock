@@ -22,7 +22,8 @@ public record LevelConfiguration(
         Map<String, Long> blockPrices,
         Map<String, Long> spawnerWeights,
         java.time.Duration leaderboardFreshness,
-        java.time.Duration leaderboardRebuildInterval) {
+        java.time.Duration leaderboardRebuildInterval,
+        java.time.Duration recalculationCooldown) {
 
     public static final long DEFAULT_POINTS_PER_LEVEL = 100L;
     public static final long DEFAULT_BANK_MINOR_UNITS_PER_POINT = 10_000L;
@@ -32,6 +33,8 @@ public record LevelConfiguration(
     public static final java.time.Duration DEFAULT_LEADERBOARD_FRESHNESS =
             com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService.DEFAULT_FRESHNESS;
     public static final java.time.Duration DEFAULT_LEADERBOARD_REBUILD_INTERVAL = java.time.Duration.ofMinutes(5);
+    public static final java.time.Duration DEFAULT_RECALCULATION_COOLDOWN =
+            com.uxplima.uxmskyblock.core.application.worth.RecalculationGate.DEFAULT_COOLDOWN;
 
     public LevelConfiguration {
         blockWeights = Collections.unmodifiableMap(new HashMap<>(blockWeights));
@@ -74,7 +77,8 @@ public record LevelConfiguration(
                 blockPrices,
                 spawnerWeights,
                 DEFAULT_LEADERBOARD_FRESHNESS,
-                DEFAULT_LEADERBOARD_REBUILD_INTERVAL);
+                DEFAULT_LEADERBOARD_REBUILD_INTERVAL,
+                DEFAULT_RECALCULATION_COOLDOWN);
     }
 
     public Map<String, Long> basePricesMinorUnits() {
@@ -188,7 +192,16 @@ public record LevelConfiguration(
                 prices.isEmpty() ? defaultConfiguration().blockPrices() : prices,
                 spawners.isEmpty() ? defaultConfiguration().spawnerWeights() : spawners,
                 leaderboardFreshness(rootNode),
-                leaderboardRebuildInterval(rootNode));
+                leaderboardRebuildInterval(rootNode),
+                recalculationCooldown(rootNode));
+    }
+
+    /** How long an island waits between two rescans of its blocks. */
+    private static java.time.Duration recalculationCooldown(ConfigurationNode rootNode) {
+        String raw = rootNode.node("recalculation-cooldown").getString();
+        return raw != null && !raw.isBlank()
+                ? com.uxplima.uxmlib.common.Durations.parse(raw)
+                : DEFAULT_RECALCULATION_COOLDOWN;
     }
 
     /** How often every board is built again in the background, so no player ever waits for one. */

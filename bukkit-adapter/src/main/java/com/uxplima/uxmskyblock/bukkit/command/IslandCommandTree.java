@@ -127,6 +127,9 @@ public final class IslandCommandTree {
     /** Which biomes the operator offers and what an island has to reach first. */
     volatile com.uxplima.uxmskyblock.bukkit.config.@Nullable BiomeConfiguration biomeConfiguration;
 
+    volatile java.time.Duration recalculationCooldown =
+            com.uxplima.uxmskyblock.core.application.worth.RecalculationGate.DEFAULT_COOLDOWN;
+
     /** The window the public warp directory opens in, so its icons are drawn. */
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandWarpBrowseMenu warpBrowseMenu;
 
@@ -332,6 +335,11 @@ public final class IslandCommandTree {
     public void setBiomeConfiguration(
             com.uxplima.uxmskyblock.bukkit.config.@Nullable BiomeConfiguration configuration) {
         this.biomeConfiguration = configuration;
+    }
+
+    /** Hands the operator's wait between two rescans of one island to the command that runs them. */
+    public void setRecalculationCooldown(java.time.Duration cooldown) {
+        this.recalculationCooldown = java.util.Objects.requireNonNull(cooldown, "cooldown must not be null");
     }
 
     /** Hands the directory window to the browse command, so a warp's icon is seen. */

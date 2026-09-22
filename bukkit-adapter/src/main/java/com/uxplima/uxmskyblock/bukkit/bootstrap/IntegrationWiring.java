@@ -317,6 +317,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setWarpService(gameplay.warpService());
         this.commandTree.setWarpBrowseMenu(gameplay.warpBrowseMenu());
         this.commandTree.setBiomeConfiguration(config.biomeConfig());
+        this.commandTree.setRecalculationCooldown(config.levelConfig().recalculationCooldown());
         this.commandTree.setAntiAbuseConfiguration(config.antiAbuseConfig());
         this.commandTree.setInteractionEffects(config.effectsConfig());
         this.commandTree.setSocialService(gameplay.socialService());
