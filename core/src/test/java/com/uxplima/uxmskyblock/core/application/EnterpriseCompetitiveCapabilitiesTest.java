@@ -241,6 +241,14 @@ class EnterpriseCompetitiveCapabilitiesTest {
             public int countUnread(ProfileId recipientProfileId) {
                 return (int) store.stream().filter(n -> !n.isRead()).count();
             }
+
+            @Override
+            public int purgeReadBefore(Instant before) {
+                int before_ = store.size();
+                store.removeIf(
+                        n -> n.isRead() && n.readAt() != null && n.readAt().isBefore(before));
+                return before_ - store.size();
+            }
         };
 
         NotificationService service = new NotificationService(port);

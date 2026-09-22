@@ -69,6 +69,7 @@ class IslandTrustCommandsTest {
     private TemporaryAccessService accessService;
     private IslandLocationService locationService;
     private PlayerSessionCoordinator sessions;
+    private com.uxplima.uxmskyblock.core.application.notification.NotificationService notifications;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private final List<Runnable> deferred = new ArrayList<>();
@@ -107,6 +108,7 @@ class IslandTrustCommandsTest {
                 .thenReturn(new ActiveSession(new PlayerUuid(guest.getUniqueId()), guestProfile, 7L, 1L));
         islandOwnedBy(ownerProfile);
 
+        notifications = mock(com.uxplima.uxmskyblock.core.application.notification.NotificationService.class);
         IslandTrustCommands commands = new IslandTrustCommands(
                 () -> accessService,
                 locationService,
@@ -115,6 +117,8 @@ class IslandTrustCommandsTest {
                 () -> new CurrentNodeProcessIdentity("node-alpha", "boot-1"),
                 Messages.bundled(),
                 sessions);
+
+        commands.useNotifications(notifications);
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.buildTrust());
@@ -413,6 +417,59 @@ class IslandTrustCommandsTest {
 
         verify(accessService, never()).revokeGrant(any(), any());
         assertThat(owner.nextMessage()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("A player who is away when their trust is taken back is told on their next join")
+    void anAbsentPlayerIsToldLater() throws Exception {
+        ProfileId absent = new ProfileId(UUID.randomUUID());
+        TemporaryAccessGrant held = grantFor(absent, TerminationPolicy.UNTIL_REVOKED, null);
+        when(accessService.getActiveGrantsForRoot(anyString(), anyString())).thenReturn(List.of(held));
+
+        run(owner, "untrust " + held.grantId().value());
+        runDeferred();
+
+        verify(notifications)
+                .notify(
+                        org.mockito.ArgumentMatchers.eq(absent),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory.TRUST_REVOKED),
+                        org.mockito.ArgumentMatchers.eq("notification.trust_revoked"),
+                        org.mockito.ArgumentMatchers.eq(java.util.Map.of("player", "Owner")),
+                        org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    @DisplayName("A player who is here is told to their face and left no notice")
+    void apresentPlayerIsToldNow() throws Exception {
+        TemporaryAccessGrant held = grantFor(guestProfile, TerminationPolicy.UNTIL_REVOKED, null);
+        when(accessService.getActiveGrantsForRoot(anyString(), anyString())).thenReturn(List.of(held));
+
+        run(owner, "untrust Guest");
+        runDeferred();
+
+        verify(notifications, never()).notify(any(), any(), anyString(), any(), any());
+        assertThat(guest.nextMessage()).describedAs("told where they stand").isNotNull();
+    }
+
+    @Test
+    @DisplayName("Two grants held by one player are one line, not two")
+    void twoGrantsAreOneLine() throws Exception {
+        when(accessService.getActiveGrantsForRoot(anyString(), anyString()))
+                .thenReturn(List.of(
+                        grantFor(guestProfile, TerminationPolicy.UNTIL_REVOKED, null),
+                        grantFor(
+                                guestProfile,
+                                TerminationPolicy.UNTIL_TIMESTAMP,
+                                Instant.now().plusSeconds(600))));
+
+        run(owner, "untrust Guest");
+        runDeferred();
+
+        assertThat(guest.nextMessage()).describedAs("told once").isNotNull();
+        assertThat(guest.nextMessage())
+                .describedAs("and not once per grant they happened to hold")
+                .isNull();
     }
 
     @Test

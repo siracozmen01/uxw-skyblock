@@ -68,7 +68,7 @@ public final class SqlNotificationAdapter implements NotificationStoragePort {
                        payload_type_id, payload_schema_version, payload_data,
                        is_read, read_at, expires_at, created_at
                 FROM notifications
-                WHERE recipient_profile_id = ? AND is_read = 0 AND (expires_at IS NULL OR expires_at > ?)
+                WHERE recipient_profile_id = ? AND is_read = ? AND (expires_at IS NULL OR expires_at > ?)
                 ORDER BY created_at ASC
                 """;
 
@@ -76,7 +76,8 @@ public final class SqlNotificationAdapter implements NotificationStoragePort {
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, recipientProfileId.value().toString());
-            stmt.setTimestamp(2, Timestamp.from(Instant.now()));
+            stmt.setBoolean(2, false);
+            stmt.setTimestamp(3, Timestamp.from(Instant.now()));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
@@ -94,11 +95,12 @@ public final class SqlNotificationAdapter implements NotificationStoragePort {
         Objects.requireNonNull(notificationId, "notificationId must not be null");
         Objects.requireNonNull(readAt, "readAt must not be null");
 
-        String sql = "UPDATE notifications SET is_read = 1, read_at = ? WHERE notification_id = ?";
+        String sql = "UPDATE notifications SET is_read = ?, read_at = ? WHERE notification_id = ?";
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setTimestamp(1, Timestamp.from(readAt));
-            stmt.setString(2, notificationId.toString());
+            stmt.setBoolean(1, true);
+            stmt.setTimestamp(2, Timestamp.from(readAt));
+            stmt.setString(3, notificationId.toString());
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to mark notification as read: " + notificationId, e);
@@ -110,11 +112,13 @@ public final class SqlNotificationAdapter implements NotificationStoragePort {
         Objects.requireNonNull(recipientProfileId, "recipientProfileId must not be null");
         Objects.requireNonNull(readAt, "readAt must not be null");
 
-        String sql = "UPDATE notifications SET is_read = 1, read_at = ? WHERE recipient_profile_id = ? AND is_read = 0";
+        String sql = "UPDATE notifications SET is_read = ?, read_at = ? WHERE recipient_profile_id = ? AND is_read = ?";
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setTimestamp(1, Timestamp.from(readAt));
-            stmt.setString(2, recipientProfileId.value().toString());
+            stmt.setBoolean(1, true);
+            stmt.setTimestamp(2, Timestamp.from(readAt));
+            stmt.setString(3, recipientProfileId.value().toString());
+            stmt.setBoolean(4, false);
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to mark all notifications as read for profile " + recipientProfileId, e);
@@ -125,16 +129,32 @@ public final class SqlNotificationAdapter implements NotificationStoragePort {
     public int countUnread(ProfileId recipientProfileId) {
         Objects.requireNonNull(recipientProfileId, "recipientProfileId must not be null");
 
-        String sql = "SELECT COUNT(*) FROM notifications WHERE recipient_profile_id = ? AND is_read = 0";
+        String sql = "SELECT COUNT(*) FROM notifications WHERE recipient_profile_id = ? AND is_read = ?";
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, recipientProfileId.value().toString());
+            stmt.setBoolean(2, false);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 return rs.next() ? rs.getInt(1) : 0;
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to count unread notifications for profile " + recipientProfileId, e);
+        }
+    }
+
+    @Override
+    public int purgeReadBefore(Instant before) {
+        Objects.requireNonNull(before, "before must not be null");
+
+        String sql = "DELETE FROM notifications WHERE is_read = ? AND read_at IS NOT NULL AND read_at < ?";
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setBoolean(1, true);
+            stmt.setTimestamp(2, Timestamp.from(before));
+            return stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to purge read notifications before " + before, e);
         }
     }
 

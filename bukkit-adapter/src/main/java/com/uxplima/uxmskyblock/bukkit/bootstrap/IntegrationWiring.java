@@ -12,6 +12,7 @@ import com.uxplima.uxmskyblock.bukkit.api.BukkitSkyblockApiBridge;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.command.IslandFeatures;
+import com.uxplima.uxmskyblock.bukkit.config.NotificationConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
@@ -37,6 +38,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityService;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
+import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.webmap.IslandWebMapService;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
@@ -64,6 +66,10 @@ public final class IntegrationWiring implements AutoCloseable {
     private final TransactionalOutboxDispatcher outboxDispatcher;
     private final IslandAuthorityService authorityService;
     private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
+    private final NotificationService notificationService;
+    private final NotificationConfiguration notificationConfig;
+
+    private @org.jspecify.annotations.Nullable AutoCloseable notificationSweep;
     private final java.time.Duration authorityHeartbeatInterval;
     private final com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler;
 
@@ -173,6 +179,8 @@ public final class IntegrationWiring implements AutoCloseable {
         // able to use its own bank one lease after it was created. This is the missing heartbeat.
         this.scheduler = gameplay.scheduler();
         this.recycleService = gameplay.recycleService();
+        this.notificationService = gameplay.notificationService();
+        this.notificationConfig = config.notificationConfig();
         this.authorityService = new IslandAuthorityService(
                 persistence.islandAuthorityPort(),
                 serverNodeId,
@@ -258,6 +266,9 @@ public final class IntegrationWiring implements AutoCloseable {
                                         : null)
                         .build());
         this.commandTree.useTemporaryAccess(config.temporaryAccessConfig(), authority.nodeProcessIdentity());
+        // The inbox, its table, its ten categories and the delivery on join were all here and
+        // nothing ever wrote a row, so "while you were away" was always empty.
+        this.commandTree.useNotifications(gameplay.notificationService());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setVaultWindow(gameplay.vaultWindow());
@@ -310,6 +321,31 @@ public final class IntegrationWiring implements AutoCloseable {
         apiBridge.register();
         economyBridge.recoverPendingSagas(serverNodeId);
         recoverIncompleteRecycles();
+        this.notificationSweep = scheduler.repeatAsync(
+                this::sweepReadNotifications, notificationConfig.sweepInterval(), notificationConfig.sweepInterval());
+    }
+
+    /**
+     * Deletes the notices a player has already read and long since acted on.
+     *
+     * <p>Nothing wrote a notification until now and nothing ever deleted one, so the table would
+     * have grown for as long as the server ran the moment anything started writing to it.
+     */
+    private void sweepReadNotifications() {
+        try {
+            int swept =
+                    notificationService.purgeRead(java.time.Instant.now().minus(notificationConfig.readRetention()));
+            if (swept > 0) {
+                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                        .fine(() -> "Swept " + swept + " notifications that had been read.");
+            }
+        } catch (RuntimeException e) {
+            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                    .log(
+                            java.util.logging.Level.WARNING,
+                            "Sweeping the notifications already read failed. The next sweep retries.",
+                            e);
+        }
     }
 
     /**
@@ -339,6 +375,18 @@ public final class IntegrationWiring implements AutoCloseable {
                                 e);
             }
         });
+    }
+
+    private void closeQuietly(@org.jspecify.annotations.Nullable AutoCloseable task, String what) {
+        if (task == null) {
+            return;
+        }
+        try {
+            task.close();
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                    .log(java.util.logging.Level.WARNING, "Stopping " + what + " failed.", e);
+        }
     }
 
     private void closeAuthorityHeartbeat() {
@@ -516,6 +564,8 @@ public final class IntegrationWiring implements AutoCloseable {
     @Override
     public void close() {
         closeAuthorityHeartbeat();
+        closeQuietly(this.notificationSweep, "the notification sweep");
+        this.notificationSweep = null;
         menuEngine.close();
         discordService.close();
         outboxDispatcher.close();

@@ -336,6 +336,11 @@ public final class GameplayWiring {
         return socialWiring.activityFeedService();
     }
 
+    /** The inbox a player reads on their next join. */
+    public com.uxplima.uxmskyblock.core.application.notification.NotificationService notificationService() {
+        return socialWiring.notificationService();
+    }
+
     public IslandNotificationListener notificationListener() {
         return socialWiring.notificationListener();
     }

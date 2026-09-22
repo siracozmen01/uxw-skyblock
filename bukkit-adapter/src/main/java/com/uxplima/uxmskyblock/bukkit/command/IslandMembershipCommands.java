@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -24,11 +25,13 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
+import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
+import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,11 +46,23 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandMembershipCommands {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandMembershipCommands.class.getName());
+
     private final Supplier<@Nullable IslandMembershipService> membershipServiceProvider;
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+
+    /**
+     * The inbox a player reads on their next join.
+     *
+     * <p>Losing your place on an island is the kind of thing you find out about by walking into a
+     * wall a week later. It is told to you now, in your own language, whether or not you were here
+     * when it happened.
+     */
+    private volatile @Nullable NotificationService notificationService;
 
     public IslandMembershipCommands(
             Supplier<@Nullable IslandMembershipService> membershipServiceProvider,
@@ -62,6 +77,34 @@ public final class IslandMembershipCommands {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
+    }
+
+    /** Tells this command group where to leave a notice for a player who is not here. */
+    public void useNotifications(@Nullable NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
+
+    /**
+     * Leaves a notice for a member who may not be here to read it.
+     *
+     * <p>What is stored is the name of a message and the values it has holes for, never a sentence.
+     */
+    private void leaveNotice(
+            ProfileId recipient, NotificationCategory category, String messageKey, Map<String, String> values) {
+        NotificationService service = this.notificationService;
+        if (service == null) {
+            return;
+        }
+        try {
+            service.notify(recipient, category, messageKey, values, null);
+        } catch (RuntimeException e) {
+            // The island change itself already happened and stands. A notice that could not be
+            // written is worth a line in the log and nothing more.
+            LOGGER.log(
+                    java.util.logging.Level.WARNING,
+                    e,
+                    () -> "Leaving a " + category + " notice for " + recipient + " failed.");
+        }
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildInvite() {
@@ -258,7 +301,15 @@ public final class IslandMembershipCommands {
                         send(player, "member.unknown_player", Placeholder.unparsed("player", target));
                         return;
                     }
-                    reportRemoval(player, service.kick(actor, optTarget.get()), target);
+                    IslandMembershipService.RemovalOutcome outcome = service.kick(actor, optTarget.get());
+                    if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed) {
+                        leaveNotice(
+                                optTarget.get(),
+                                NotificationCategory.KICK,
+                                "notification.kicked",
+                                Map.of("player", player.getName()));
+                    }
+                    reportRemoval(player, outcome, target);
                 }));
     }
 
@@ -314,12 +365,18 @@ public final class IslandMembershipCommands {
                         return;
                     }
                     switch (service.setRole(actor, optTarget.get(), role)) {
-                        case IslandMembershipService.RoleOutcome.Changed changed ->
+                        case IslandMembershipService.RoleOutcome.Changed changed -> {
+                            leaveNotice(
+                                    optTarget.get(),
+                                    NotificationCategory.ROLE_CHANGED,
+                                    "notification.role_changed",
+                                    Map.of("player", player.getName(), "role", changed.roleId()));
                             send(
                                     player,
                                     "member.role_changed",
                                     Placeholder.unparsed("player", target),
                                     Placeholder.unparsed("role", changed.roleId()));
+                        }
                         case IslandMembershipService.RoleOutcome.NotAllowed ignored ->
                             send(player, "member.role_no_permission");
                         case IslandMembershipService.RoleOutcome.NoIsland ignored -> send(player, "error.no_island");

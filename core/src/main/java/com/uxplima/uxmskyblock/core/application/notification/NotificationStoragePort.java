@@ -21,4 +21,14 @@ public interface NotificationStoragePort {
     void markAllAsRead(ProfileId recipientProfileId, Instant readAt);
 
     int countUnread(ProfileId recipientProfileId);
+
+    /**
+     * Deletes the notifications already read whose read moment is older than {@code before}.
+     *
+     * <p>Nothing ever deleted one, so the table would have held every notice a server had ever
+     * sent, for as long as the server ran.
+     *
+     * @return how many were deleted
+     */
+    int purgeReadBefore(Instant before);
 }

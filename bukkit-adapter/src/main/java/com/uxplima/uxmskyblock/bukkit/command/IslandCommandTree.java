@@ -124,6 +124,9 @@ public final class IslandCommandTree {
     /** Which node and which boot this is, for a grant that lasts until the node restarts. */
     volatile @Nullable CurrentNodeProcessIdentity nodeProcessIdentity;
 
+    /** Where a notice goes for a player who is not here to be told. */
+    volatile com.uxplima.uxmskyblock.core.application.notification.@Nullable NotificationService notificationService;
+
     public IslandCommandTree(
             CreateIslandUseCase createIslandUseCase,
             IslandLocationService islandLocationService,
@@ -241,6 +244,11 @@ public final class IslandCommandTree {
             TemporaryAccessConfiguration configuration, CurrentNodeProcessIdentity nodeProcessIdentity) {
         this.temporaryAccessConfiguration = configuration;
         this.nodeProcessIdentity = nodeProcessIdentity;
+    }
+
+    /** Hands the inbox to the command groups that change a player's standing on an island. */
+    public void useNotifications(com.uxplima.uxmskyblock.core.application.notification.NotificationService service) {
+        this.notificationService = service;
     }
 
     public void setVaultWindow(@Nullable IslandVaultWindow vaultWindow) {

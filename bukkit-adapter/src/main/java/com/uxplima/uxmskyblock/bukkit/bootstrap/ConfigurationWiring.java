@@ -22,6 +22,7 @@ import com.uxplima.uxmskyblock.bukkit.config.LevelConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.LimitConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.MissionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ModuleSettingsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.config.NotificationConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PerformanceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PresetConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
@@ -97,6 +98,7 @@ public final class ConfigurationWiring {
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
+    private final NotificationConfiguration notificationConfig;
 
     /**
      * The catalog is configuration, so it is built here rather than in a later wiring step. The
@@ -195,6 +197,9 @@ public final class ConfigurationWiring {
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
+        this.notificationConfig = rootNode != null
+                ? NotificationConfiguration.load(rootNode)
+                : NotificationConfiguration.defaultConfiguration();
     }
 
     /**
@@ -309,6 +314,11 @@ public final class ConfigurationWiring {
 
     public Path dataDir() {
         return dataDir;
+    }
+
+    /** How long a notification a player has read is kept, and how often they are swept. */
+    public NotificationConfiguration notificationConfig() {
+        return notificationConfig;
     }
 
     /** How many named homes a player may keep, and which permission buys more. */

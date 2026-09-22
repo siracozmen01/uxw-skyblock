@@ -28,12 +28,14 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
+import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
+import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,6 +62,7 @@ class IslandMembershipCommandsTest {
     private PlayerMock owner;
     private PlayerMock mate;
     private IslandMembershipService membership;
+    private NotificationService notifications;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private static SchedulerPort inlineScheduler() {
@@ -113,6 +116,8 @@ class IslandMembershipCommandsTest {
                 inlineScheduler(),
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
                 sessions);
+        notifications = mock(NotificationService.class);
+        commands.useNotifications(notifications);
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.buildInvite());
@@ -123,6 +128,45 @@ class IslandMembershipCommandsTest {
         dispatcher.register(commands.buildMembers());
         dispatcher.register(commands.buildRole());
         dispatcher.register(commands.buildPermissions());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A member who is kicked is told on their next join, not left to find out")
+    void akickedMemberIsToldLater() throws Exception {
+        run("kick Mate", owner);
+
+        org.mockito.Mockito.verify(notifications)
+                .notify(
+                        org.mockito.ArgumentMatchers.eq(MATE),
+                        org.mockito.ArgumentMatchers.eq(NotificationCategory.KICK),
+                        org.mockito.ArgumentMatchers.eq("notification.kicked"),
+                        org.mockito.ArgumentMatchers.eq(java.util.Map.of("player", "Owner")),
+                        org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A kick that was refused leaves no notice behind")
+    void arefusedKickLeavesNothing() throws Exception {
+        when(membership.kick(any(), any())).thenReturn(new IslandMembershipService.RemovalOutcome.NotAllowed());
+
+        run("kick Mate", owner);
+
+        org.mockito.Mockito.verify(notifications, org.mockito.Mockito.never())
+                .notify(any(), any(), org.mockito.ArgumentMatchers.anyString(), any(), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A member whose role changed is told which role they now hold")
+    void arolechangeIsToldToo() throws Exception {
+        run("role Mate moderator", owner);
+
+        org.mockito.Mockito.verify(notifications)
+                .notify(
+                        org.mockito.ArgumentMatchers.eq(MATE),
+                        org.mockito.ArgumentMatchers.eq(NotificationCategory.ROLE_CHANGED),
+                        org.mockito.ArgumentMatchers.eq("notification.role_changed"),
+                        org.mockito.ArgumentMatchers.eq(java.util.Map.of("player", "Owner", "role", "moderator")),
+                        org.mockito.ArgumentMatchers.isNull());
     }
 
     @AfterEach

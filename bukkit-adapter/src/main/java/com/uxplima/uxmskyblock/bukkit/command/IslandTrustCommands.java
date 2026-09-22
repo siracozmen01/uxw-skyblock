@@ -31,6 +31,7 @@ import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
+import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant;
@@ -41,6 +42,7 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
+import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
 import com.uxplima.uxmskyblock.core.domain.profile.ProfileType;
 import org.jspecify.annotations.Nullable;
 
@@ -58,6 +60,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandTrustCommands {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandTrustCommands.class.getName());
+
     /** The root type the protection listener asks about, so a grant has to be filed under it. */
     public static final String ISLAND_ROOT_TYPE = "ISLAND";
 
@@ -72,6 +77,9 @@ public final class IslandTrustCommands {
     private final Supplier<CurrentNodeProcessIdentity> nodeIdentitySupplier;
     private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+
+    /** The inbox a player reads on their next join, for a revocation they were not here to see. */
+    private volatile @Nullable NotificationService notificationService;
 
     public IslandTrustCommands(
             Supplier<@Nullable TemporaryAccessService> accessServiceProvider,
@@ -92,6 +100,11 @@ public final class IslandTrustCommands {
                 Objects.requireNonNull(nodeIdentitySupplier, "nodeIdentitySupplier must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
+    }
+
+    /** Tells this command group where to leave a notice for a player who is not here. */
+    public void useNotifications(@Nullable NotificationService notificationService) {
+        this.notificationService = notificationService;
     }
 
     /** {@code /is trust <player> [until]}. */
@@ -287,14 +300,22 @@ public final class IslandTrustCommands {
                             "trust.revoked",
                             Placeholder.unparsed("who", who),
                             Placeholder.unparsed("count", Integer.toString(revoked))));
+            java.util.Set<ProfileId> told = new java.util.LinkedHashSet<>();
             for (TemporaryAccessGrant grant : matching) {
+                if (!told.add(grant.granteeProfileId())) {
+                    continue;
+                }
                 Player grantee = onlinePlayerFor(grant.granteeProfileId());
                 if (grantee != null) {
                     schedulerPort.onEntity(
                             new PlayerUuid(grantee.getUniqueId()),
                             () -> send(
                                     grantee, "trust.revoked_notice", Placeholder.unparsed("player", player.getName())));
+                    continue;
                 }
+                // Losing your standing on an island while you are away is exactly what the inbox is
+                // for. One notice per player, not one per grant they happened to hold.
+                leaveNotice(grant.granteeProfileId(), player.getName());
             }
         });
         return Cmd.OK;
@@ -344,6 +365,26 @@ public final class IslandTrustCommands {
             });
         });
         return Cmd.OK;
+    }
+
+    /** Writes a revocation down for a player who is not here to be told. */
+    private void leaveNotice(ProfileId recipient, String revokerName) {
+        NotificationService service = this.notificationService;
+        if (service == null) {
+            return;
+        }
+        try {
+            service.notify(
+                    recipient,
+                    NotificationCategory.TRUST_REVOKED,
+                    "notification.trust_revoked",
+                    java.util.Map.of("player", revokerName),
+                    null);
+        } catch (RuntimeException e) {
+            // The revocation itself happened and stands.
+            LOGGER.log(
+                    java.util.logging.Level.WARNING, e, () -> "Leaving a trust notice for " + recipient + " failed.");
+        }
     }
 
     /** Grants held by the named player, or the one grant whose id was typed. */
