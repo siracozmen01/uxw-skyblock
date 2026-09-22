@@ -41,6 +41,26 @@ public abstract class MockBukkitHarness {
         return server.addPlayer(name);
     }
 
+    /**
+     * A world that can say which generator made it.
+     *
+     * <p>MockBukkit's own world answers that question as unimplemented, and the plugin asks it at
+     * startup to tell the operator when the islands would land in generated terrain. A null generator
+     * is the server's own terrain.
+     */
+    protected org.mockbukkit.mockbukkit.world.WorldMock addWorldMadeBy(
+            String name, org.bukkit.generator.@org.jspecify.annotations.Nullable ChunkGenerator generator) {
+        org.mockbukkit.mockbukkit.world.WorldMock world = new org.mockbukkit.mockbukkit.world.WorldMock() {
+            @Override
+            public org.bukkit.generator.@org.jspecify.annotations.Nullable ChunkGenerator getGenerator() {
+                return generator;
+            }
+        };
+        world.setName(name);
+        server.addWorld(world);
+        return world;
+    }
+
     /** A player that refuses a synchronous teleport, the way Folia does. */
     protected PlayerMock createRegionThreadedPlayer(String name) {
         RegionThreadedPlayerMock player = new RegionThreadedPlayerMock(server, name);

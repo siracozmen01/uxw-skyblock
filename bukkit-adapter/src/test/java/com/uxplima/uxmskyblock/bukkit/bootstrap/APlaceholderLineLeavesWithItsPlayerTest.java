@@ -21,7 +21,7 @@ class APlaceholderLineLeavesWithItsPlayerTest extends MockBukkitHarness {
 
     @BeforeEach
     void setUp() {
-        server.addSimpleWorld("world");
+        addWorldMadeBy("world", null);
         UxMSkyblockPlugin plugin = MockBukkit.load(UxMSkyblockPlugin.class);
         expansion = plugin.bootstrap().placeholderExpansion();
     }

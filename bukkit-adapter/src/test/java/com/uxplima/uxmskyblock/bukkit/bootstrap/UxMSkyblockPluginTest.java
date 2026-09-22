@@ -24,7 +24,7 @@ class UxMSkyblockPluginTest extends MockBukkitHarness {
 
     @BeforeEach
     void setUp() {
-        server.addSimpleWorld("world");
+        addWorldMadeBy("world", null);
         // A server that moves money has an economy plugin. Without one the island bank refuses every
         // move, because there is no wallet to take from or pay into.
         economy = InMemoryVaultEconomy.install(server, 1_000.0);
