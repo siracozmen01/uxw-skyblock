@@ -20,9 +20,9 @@ import com.uxplima.uxmskyblock.core.application.notification.NotificationStorage
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.message.MessagePayload;
 import com.uxplima.uxmskyblock.core.domain.notification.Notification;
 import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
-import com.uxplima.uxmskyblock.core.domain.notification.NotificationPayload;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -92,7 +92,7 @@ class TheInboxIsWrittenToTest {
                 .describedAs("the values, and not one word a player reads")
                 .doesNotContain("removed")
                 .doesNotContain("island");
-        assertThat(NotificationPayload.unpack(written.payloadData())).containsEntry("player", "Owner");
+        assertThat(MessagePayload.unpack(written.payloadData())).containsEntry("player", "Owner");
     }
 
     @Test

@@ -28,6 +28,7 @@ import com.uxplima.uxmskyblock.core.domain.activity.ActivityEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.message.MessagePayload;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -99,16 +100,41 @@ public final class IslandActivityCommands {
                     return;
                 }
                 for (ActivityEvent event : events) {
-                    send(
-                            player,
-                            "activity.entry",
-                            Placeholder.unparsed("type", event.eventType().name()),
-                            Placeholder.unparsed("body", event.payloadData()),
-                            Placeholder.unparsed("ago", ago(event.createdAt(), now)));
+                    sendOne(player, event, ago(event.createdAt(), now));
                 }
             });
         });
         return Cmd.OK;
+    }
+
+    /**
+     * Writes one line of the feed out in the reader's own language.
+     *
+     * <p>What was stored is the name of a message and the values it has holes for, never the
+     * sentence, so a player who reads Turkish reads Turkish and an operator who rewrites a line
+     * rewrites the old entries with it.
+     *
+     * <p>An entry naming a message the catalogue does not have falls back to the plain line, so a
+     * row written before a language file was edited still reads.
+     */
+    private void sendOne(Player player, ActivityEvent event, String ago) {
+        java.util.Map<String, String> values = MessagePayload.unpack(event.payloadData());
+        String key = event.payloadTypeId();
+        if (messages.has(key)) {
+            java.util.List<TagResolver> resolvers = new java.util.ArrayList<>(values.size() + 1);
+            for (java.util.Map.Entry<String, String> value : values.entrySet()) {
+                resolvers.add(Placeholder.unparsed(value.getKey(), value.getValue()));
+            }
+            resolvers.add(Placeholder.unparsed("ago", ago));
+            send(player, key, resolvers.toArray(new TagResolver[0]));
+            return;
+        }
+        send(
+                player,
+                "activity.entry",
+                Placeholder.unparsed("type", event.eventType().name()),
+                Placeholder.unparsed("body", values.getOrDefault("body", event.payloadData())),
+                Placeholder.unparsed("ago", ago));
     }
 
     /** How long ago, in the coarsest unit that is still true. */

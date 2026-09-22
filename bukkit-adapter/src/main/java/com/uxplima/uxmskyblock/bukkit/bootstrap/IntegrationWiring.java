@@ -67,6 +67,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final IslandAuthorityService authorityService;
     private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
     private final NotificationService notificationService;
+    private final com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService activityFeedService;
     private final NotificationConfiguration notificationConfig;
 
     private @org.jspecify.annotations.Nullable AutoCloseable notificationSweep;
@@ -180,6 +181,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.scheduler = gameplay.scheduler();
         this.recycleService = gameplay.recycleService();
         this.notificationService = gameplay.notificationService();
+        this.activityFeedService = gameplay.activityFeedService();
         this.notificationConfig = config.notificationConfig();
         this.authorityService = new IslandAuthorityService(
                 persistence.islandAuthorityPort(),
@@ -269,6 +271,9 @@ public final class IntegrationWiring implements AutoCloseable {
         // The inbox, its table, its ten categories and the delivery on join were all here and
         // nothing ever wrote a row, so "while you were away" was always empty.
         this.commandTree.useNotifications(gameplay.notificationService());
+        // Nothing ever wrote an activity event, so every island's feed was empty for as long as the
+        // server ran.
+        this.commandTree.useActivityFeed(gameplay.activityFeedService());
         this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
         this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setVaultWindow(gameplay.vaultWindow());
@@ -322,7 +327,35 @@ public final class IntegrationWiring implements AutoCloseable {
         economyBridge.recoverPendingSagas(serverNodeId);
         recoverIncompleteRecycles();
         this.notificationSweep = scheduler.repeatAsync(
-                this::sweepReadNotifications, notificationConfig.sweepInterval(), notificationConfig.sweepInterval());
+                () -> {
+                    sweepReadNotifications();
+                    sweepOldActivity();
+                },
+                notificationConfig.sweepInterval(),
+                notificationConfig.sweepInterval());
+    }
+
+    /**
+     * Drops the activity lines an island's feed has outgrown.
+     *
+     * <p>A feed is a digest of what happened lately, not a ledger. Nothing wrote a line until now
+     * and nothing ever deleted one.
+     */
+    private void sweepOldActivity() {
+        try {
+            int swept = activityFeedService.purgeOlderThan(
+                    java.time.Instant.now().minus(notificationConfig.activityRetention()));
+            if (swept > 0) {
+                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                        .fine(() -> "Swept " + swept + " activity events an island's feed had outgrown.");
+            }
+        } catch (RuntimeException e) {
+            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                    .log(
+                            java.util.logging.Level.WARNING,
+                            "Sweeping the activity feed failed. The next sweep retries.",
+                            e);
+        }
     }
 
     /**

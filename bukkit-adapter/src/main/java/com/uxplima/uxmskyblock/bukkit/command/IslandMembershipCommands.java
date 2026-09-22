@@ -23,10 +23,12 @@ import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
 import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -64,6 +66,9 @@ public final class IslandMembershipCommands {
      */
     private volatile @Nullable NotificationService notificationService;
 
+    /** Where what happens to this island's membership is written down for its members to read. */
+    private final IslandActivityLog activityLog = new IslandActivityLog();
+
     public IslandMembershipCommands(
             Supplier<@Nullable IslandMembershipService> membershipServiceProvider,
             IslandLocationService islandLocationService,
@@ -82,6 +87,11 @@ public final class IslandMembershipCommands {
     /** Tells this command group where to leave a notice for a player who is not here. */
     public void useNotifications(@Nullable NotificationService notificationService) {
         this.notificationService = notificationService;
+    }
+
+    /** Tells this command group where to write the island's activity feed. */
+    public void useActivityFeed(@Nullable ActivityFeedService service) {
+        this.activityLog.useService(service);
     }
 
     /**
@@ -268,7 +278,15 @@ public final class IslandMembershipCommands {
                 ctx,
                 (player, service, actor) -> schedulerPort.async(() -> {
                     switch (service.accept(actor, new PlayerUuid(player.getUniqueId()))) {
-                        case IslandMembershipService.JoinOutcome.Joined joined -> send(player, "member.joined");
+                        case IslandMembershipService.JoinOutcome.Joined joined -> {
+                            activityLog.recordForMembers(
+                                    joined.islandId(),
+                                    actor,
+                                    ActivityEventType.MEMBER_JOINED,
+                                    "activity.member_joined",
+                                    Map.of("player", player.getName()));
+                            send(player, "member.joined");
+                        }
                         case IslandMembershipService.JoinOutcome.NoInvite ignored -> send(player, "member.no_invite");
                         case IslandMembershipService.JoinOutcome.AlreadyOnAnIsland ignored ->
                             send(player, "member.you_have_an_island");
@@ -302,7 +320,13 @@ public final class IslandMembershipCommands {
                         return;
                     }
                     IslandMembershipService.RemovalOutcome outcome = service.kick(actor, optTarget.get());
-                    if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed) {
+                    if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed removed) {
+                        activityLog.recordForMembers(
+                                removed.islandId(),
+                                actor,
+                                ActivityEventType.MEMBER_LEFT,
+                                "activity.member_kicked",
+                                Map.of("player", target, "actor", player.getName()));
                         leaveNotice(
                                 optTarget.get(),
                                 NotificationCategory.KICK,
@@ -316,8 +340,18 @@ public final class IslandMembershipCommands {
     private int executeLeave(CommandContext<CommandSourceStack> ctx) {
         return withService(
                 ctx,
-                (player, service, actor) ->
-                        schedulerPort.async(() -> reportRemoval(player, service.leave(actor), player.getName())));
+                (player, service, actor) -> schedulerPort.async(() -> {
+                    IslandMembershipService.RemovalOutcome outcome = service.leave(actor);
+                    if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed removed) {
+                        activityLog.recordForMembers(
+                                removed.islandId(),
+                                actor,
+                                ActivityEventType.MEMBER_LEFT,
+                                "activity.member_left",
+                                Map.of("player", player.getName()));
+                    }
+                    reportRemoval(player, outcome, player.getName());
+                }));
     }
 
     private void reportRemoval(Player player, IslandMembershipService.RemovalOutcome outcome, String target) {
@@ -366,6 +400,14 @@ public final class IslandMembershipCommands {
                     }
                     switch (service.setRole(actor, optTarget.get(), role)) {
                         case IslandMembershipService.RoleOutcome.Changed changed -> {
+                            islandLocationService
+                                    .findIslandId(actor)
+                                    .ifPresent(islandId -> activityLog.recordForMembers(
+                                            islandId,
+                                            actor,
+                                            ActivityEventType.ROLE_CHANGED,
+                                            "activity.role_changed",
+                                            Map.of("player", target, "role", changed.roleId())));
                             leaveNotice(
                                     optTarget.get(),
                                     NotificationCategory.ROLE_CHANGED,

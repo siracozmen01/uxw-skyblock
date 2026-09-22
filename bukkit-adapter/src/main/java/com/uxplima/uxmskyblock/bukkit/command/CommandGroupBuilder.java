@@ -93,6 +93,10 @@ final class CommandGroupBuilder {
                 tree.sessionCoordinator);
 
         trustCommands.useNotifications(tree.notificationService);
+        trustCommands.useActivityFeed(tree.activityFeedService);
+
+        upgradeCommands.useActivityFeed(tree.activityFeedService);
+        bankCommands.useActivityFeed(tree.activityFeedService);
 
         IslandShopCommands shopCommands = new IslandShopCommands(
                 () -> tree.features.shopService(),
@@ -197,6 +201,7 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);
+        warpCommands.useActivityFeed(tree.activityFeedService);
 
         IslandSocialCommands socialCommands = new IslandSocialCommands(
                 () -> tree.socialService,
@@ -245,6 +250,7 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         membershipCommands.useNotifications(tree.notificationService);
+        membershipCommands.useActivityFeed(tree.activityFeedService);
 
         IslandInfoCommands infoCommands = new IslandInfoCommands(
                 tree.islandLocationService,

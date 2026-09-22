@@ -63,6 +63,7 @@ class IslandMembershipCommandsTest {
     private PlayerMock mate;
     private IslandMembershipService membership;
     private NotificationService notifications;
+    private com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService activity;
     private CommandDispatcher<CommandSourceStack> dispatcher;
 
     private static SchedulerPort inlineScheduler() {
@@ -118,6 +119,8 @@ class IslandMembershipCommandsTest {
                 sessions);
         notifications = mock(NotificationService.class);
         commands.useNotifications(notifications);
+        activity = mock(com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService.class);
+        commands.useActivityFeed(activity);
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.buildInvite());
@@ -167,6 +170,60 @@ class IslandMembershipCommandsTest {
                         org.mockito.ArgumentMatchers.eq("notification.role_changed"),
                         org.mockito.ArgumentMatchers.eq(java.util.Map.of("player", "Owner", "role", "moderator")),
                         org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A kick is written into the island's feed, for the members who were not there")
+    void akickIsWrittenDown() throws Exception {
+        run("kick Mate", owner);
+
+        org.mockito.Mockito.verify(activity)
+                .record(
+                        org.mockito.ArgumentMatchers.eq(ISLAND.value().toString()),
+                        org.mockito.ArgumentMatchers.eq(OWNER),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType.MEMBER_LEFT),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.uxplima.uxmskyblock.core.domain.activity.ActivityVisibility.MEMBERS_ONLY),
+                        org.mockito.ArgumentMatchers.eq("activity.member_kicked"),
+                        org.mockito.ArgumentMatchers.eq(java.util.Map.of("player", "Mate", "actor", "Owner")));
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A kick that was refused writes nothing into the feed")
+    void arefusedKickWritesNothing() throws Exception {
+        when(membership.kick(any(), any())).thenReturn(new IslandMembershipService.RemovalOutcome.NotAllowed());
+
+        run("kick Mate", owner);
+
+        org.mockito.Mockito.verify(activity, org.mockito.Mockito.never())
+                .record(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyString(), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("Joining and leaving are written down too")
+    void joiningAndLeavingAreWrittenDown() throws Exception {
+        run("accept", mate);
+        run("leave", mate);
+
+        org.mockito.Mockito.verify(activity)
+                .record(
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType.MEMBER_JOINED),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq("activity.member_joined"),
+                        any());
+        org.mockito.Mockito.verify(activity)
+                .record(
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType.MEMBER_LEFT),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq("activity.member_left"),
+                        any());
     }
 
     @AfterEach

@@ -21,10 +21,12 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyRemediationResult;
 import com.uxplima.uxmskyblock.core.domain.bank.BankruptcyStatus;
@@ -48,6 +50,15 @@ public final class IslandBankCommands {
     private final ServerNodeId serverNodeId;
     private final Supplier<@Nullable IslandBankruptcyService> bankruptcyServiceProvider;
     private final Messages messages;
+
+    /** Where money moving in and out of the island is written down for its members to read. */
+    private final IslandActivityLog activityLog = new IslandActivityLog();
+
+    /** Tells this command group where to write the island's activity feed. */
+    public void useActivityFeed(@Nullable ActivityFeedService service) {
+        this.activityLog.useService(service);
+    }
+
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandBankCommands(
@@ -238,7 +249,9 @@ public final class IslandBankCommands {
         ProfileId profileId = optProfile.get();
 
         economyBridge.depositToIslandBank(player, profileId, amount, serverNodeId, outcome -> {
-            if (outcome instanceof BankTransactionOutcome.Success) {
+            if (outcome instanceof BankTransactionOutcome.Success deposited) {
+                writeToTheFeed(
+                        deposited, profileId, ActivityEventType.BANK_DEPOSIT, "activity.bank_deposit", player, amount);
                 send(player, "bank.deposit_success", Placeholder.unparsed("amount", Long.toString(amount)));
                 IslandBankruptcyService bService = bankruptcyServiceProvider.get();
                 if (bService != null && bService.policy().autoRemediateOnDeposit()) {
@@ -272,6 +285,34 @@ public final class IslandBankCommands {
         return Cmd.OK;
     }
 
+    /**
+     * Writes a settled movement into the island's feed.
+     *
+     * <p>The island comes off the bank the movement just changed, so this costs no lookup. The
+     * write itself is a row, and the bridge answers a settled movement on whichever thread it
+     * happened to finish on, so it asks for the scheduler rather than trusting the one it was
+     * handed.
+     */
+    private void writeToTheFeed(
+            BankTransactionOutcome.Success movement,
+            ProfileId profileId,
+            ActivityEventType eventType,
+            String messageKey,
+            Player player,
+            long amount) {
+        if (!activityLog.isWriting()) {
+            return;
+        }
+        IslandId islandId = movement.updatedBank().islandId();
+        String playerName = player.getName();
+        schedulerPort.async(() -> activityLog.recordForMembers(
+                islandId,
+                profileId,
+                eventType,
+                messageKey,
+                java.util.Map.of("player", playerName, "amount", Long.toString(amount))));
+    }
+
     private int executeBankWithdraw(CommandContext<CommandSourceStack> ctx) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             return Cmd.OK;
@@ -285,7 +326,14 @@ public final class IslandBankCommands {
         ProfileId profileId = optProfile.get();
 
         economyBridge.withdrawFromIslandBank(player, profileId, amount, serverNodeId, outcome -> {
-            if (outcome instanceof BankTransactionOutcome.Success) {
+            if (outcome instanceof BankTransactionOutcome.Success withdrawn) {
+                writeToTheFeed(
+                        withdrawn,
+                        profileId,
+                        ActivityEventType.BANK_WITHDRAW,
+                        "activity.bank_withdraw",
+                        player,
+                        amount);
                 send(player, "bank.withdraw_success", Placeholder.unparsed("amount", Long.toString(amount)));
             } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds) {
                 send(player, "bank.withdraw_insufficient");

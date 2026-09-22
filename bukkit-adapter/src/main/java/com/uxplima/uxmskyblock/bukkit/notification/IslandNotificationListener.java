@@ -21,8 +21,8 @@ import com.uxplima.uxmskyblock.core.application.notification.NotificationService
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.message.MessagePayload;
 import com.uxplima.uxmskyblock.core.domain.notification.Notification;
-import com.uxplima.uxmskyblock.core.domain.notification.NotificationPayload;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -100,7 +100,7 @@ public final class IslandNotificationListener implements Listener {
      */
     private void sendOne(Player player, Notification notification) {
         String key = notification.payloadTypeId();
-        Map<String, String> values = NotificationPayload.unpack(notification.payloadData());
+        Map<String, String> values = MessagePayload.unpack(notification.payloadData());
         if (messages.has(key)) {
             List<TagResolver> resolvers = new ArrayList<>(values.size());
             for (Map.Entry<String, String> value : values.entrySet()) {

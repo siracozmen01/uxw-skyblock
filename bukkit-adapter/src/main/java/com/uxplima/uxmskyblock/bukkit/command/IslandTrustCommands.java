@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -30,12 +31,14 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.access.CurrentNodeProcessIdentity;
 import com.uxplima.uxmskyblock.core.domain.access.TemporaryAccessGrant;
 import com.uxplima.uxmskyblock.core.domain.access.TerminationPolicy;
+import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
@@ -81,6 +84,9 @@ public final class IslandTrustCommands {
     /** The inbox a player reads on their next join, for a revocation they were not here to see. */
     private volatile @Nullable NotificationService notificationService;
 
+    /** Where trust given and taken back is written down for the island's members to read. */
+    private final IslandActivityLog activityLog = new IslandActivityLog();
+
     public IslandTrustCommands(
             Supplier<@Nullable TemporaryAccessService> accessServiceProvider,
             IslandLocationService islandLocationService,
@@ -105,6 +111,11 @@ public final class IslandTrustCommands {
     /** Tells this command group where to leave a notice for a player who is not here. */
     public void useNotifications(@Nullable NotificationService notificationService) {
         this.notificationService = notificationService;
+    }
+
+    /** Tells this command group where to write the island's activity feed. */
+    public void useActivityFeed(@Nullable ActivityFeedService service) {
+        this.activityLog.useService(service);
     }
 
     /** {@code /is trust <player> [until]}. */
@@ -191,6 +202,10 @@ public final class IslandTrustCommands {
 
         ProfileId granterProfile = optProfile.get();
         ProfileId granteeProfile = optTargetProfile.get();
+        // Both names are read here, on the thread that owns these players. Folia owns a player per
+        // region thread, so reading one from the async pool throws there and races on Paper.
+        String granterName = player.getName();
+        String granteeName = target.getName();
         PlayerUuid granterUuid = new PlayerUuid(player.getUniqueId());
         PlayerUuid granteeUuid = new PlayerUuid(target.getUniqueId());
 
@@ -228,6 +243,13 @@ public final class IslandTrustCommands {
                 return;
             }
 
+            activityLog.recordForMembers(
+                    island.id(),
+                    granterProfile,
+                    ActivityEventType.TRUST_GRANTED,
+                    "activity.trust_granted",
+                    java.util.Map.of("player", granteeName, "actor", granterName));
+
             String describedUntil = describe(until);
             schedulerPort.onEntity(
                     granterUuid,
@@ -241,7 +263,7 @@ public final class IslandTrustCommands {
                     send(
                             target,
                             "trust.received",
-                            Placeholder.unparsed("player", player.getName()),
+                            Placeholder.unparsed("player", granterName),
                             Placeholder.unparsed("until", describedUntil));
                 }
             });
@@ -267,6 +289,10 @@ public final class IslandTrustCommands {
         ProfileId revokerProfile = optProfile.get();
         PlayerUuid revokerUuid = new PlayerUuid(player.getUniqueId());
         String who = StringArgumentType.getString(ctx, "who");
+        // Who is here, and what they are called, is read on the thread that owns them. Folia owns a
+        // player per region thread, so asking one from the async pool throws there.
+        String revokerName = player.getName();
+        Map<ProfileId, Player> onlineByProfile = onlineByProfile();
 
         schedulerPort.async(() -> {
             Optional<Island> optIsland =
@@ -283,7 +309,7 @@ public final class IslandTrustCommands {
 
             List<TemporaryAccessGrant> held = service.getActiveGrantsForRoot(
                     ISLAND_ROOT_TYPE, island.id().value().toString());
-            List<TemporaryAccessGrant> matching = matching(held, who);
+            List<TemporaryAccessGrant> matching = matching(held, who, onlineByProfile);
             if (matching.isEmpty()) {
                 schedulerPort.onEntity(
                         revokerUuid, () -> send(player, "trust.nothing_to_revoke", Placeholder.unparsed("who", who)));
@@ -292,6 +318,13 @@ public final class IslandTrustCommands {
             for (TemporaryAccessGrant grant : matching) {
                 service.revokeGrant(grant.grantId(), revokerProfile);
             }
+            activityLog.recordForMembers(
+                    island.id(),
+                    revokerProfile,
+                    ActivityEventType.TRUST_REVOKED,
+                    "activity.trust_revoked",
+                    java.util.Map.of("player", who, "actor", revokerName));
+
             int revoked = matching.size();
             schedulerPort.onEntity(
                     revokerUuid,
@@ -305,17 +338,16 @@ public final class IslandTrustCommands {
                 if (!told.add(grant.granteeProfileId())) {
                     continue;
                 }
-                Player grantee = onlinePlayerFor(grant.granteeProfileId());
+                Player grantee = onlineByProfile.get(grant.granteeProfileId());
                 if (grantee != null) {
                     schedulerPort.onEntity(
                             new PlayerUuid(grantee.getUniqueId()),
-                            () -> send(
-                                    grantee, "trust.revoked_notice", Placeholder.unparsed("player", player.getName())));
+                            () -> send(grantee, "trust.revoked_notice", Placeholder.unparsed("player", revokerName)));
                     continue;
                 }
                 // Losing your standing on an island while you are away is exactly what the inbox is
                 // for. One notice per player, not one per grant they happened to hold.
-                leaveNotice(grant.granteeProfileId(), player.getName());
+                leaveNotice(grant.granteeProfileId(), revokerName);
             }
         });
         return Cmd.OK;
@@ -388,18 +420,36 @@ public final class IslandTrustCommands {
     }
 
     /** Grants held by the named player, or the one grant whose id was typed. */
-    private List<TemporaryAccessGrant> matching(List<TemporaryAccessGrant> held, String who) {
+    private List<TemporaryAccessGrant> matching(
+            List<TemporaryAccessGrant> held, String who, Map<ProfileId, Player> onlineByProfile) {
         List<TemporaryAccessGrant> matches = new ArrayList<>();
         for (TemporaryAccessGrant grant : held) {
             if (grant.grantId().value().toString().equalsIgnoreCase(who)) {
                 return List.of(grant);
             }
-            Player online = onlinePlayerFor(grant.granteeProfileId());
+            Player online = onlineByProfile.get(grant.granteeProfileId());
             if (online != null && who.equalsIgnoreCase(online.getName())) {
                 matches.add(grant);
             }
         }
         return matches;
+    }
+
+    /**
+     * Who is here now, by the profile they are playing.
+     *
+     * <p>Read once, on the thread the command arrives on, because everything that needs it happens
+     * after a hop off that thread and a player belongs to whichever thread owns them.
+     */
+    private Map<ProfileId, Player> onlineByProfile() {
+        if (sessionCoordinator == null) {
+            return Map.of();
+        }
+        Map<ProfileId, Player> byProfile = new java.util.LinkedHashMap<>();
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            sessionCoordinator.activeProfile(online.getUniqueId()).ifPresent(profile -> byProfile.put(profile, online));
+        }
+        return byProfile;
     }
 
     /**

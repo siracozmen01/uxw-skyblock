@@ -12,4 +12,15 @@ public interface ActivityFeedStoragePort {
     void appendEvent(ActivityEvent event);
 
     List<ActivityEvent> findEventsByInstanceId(String instanceId, int limit);
+
+    /**
+     * Deletes the events older than {@code before}.
+     *
+     * <p>An island's feed is a digest of what happened lately, not a ledger. Nothing ever deleted an
+     * event, so the table would have grown for as long as the server ran the moment anything started
+     * writing to it.
+     *
+     * @return how many were deleted
+     */
+    int purgeEventsBefore(java.time.Instant before);
 }

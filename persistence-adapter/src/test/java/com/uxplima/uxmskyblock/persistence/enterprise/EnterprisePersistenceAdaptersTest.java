@@ -211,6 +211,16 @@ class EnterprisePersistenceAdaptersTest {
         // Latest first
         assertThat(events.get(0).eventType()).isEqualTo(ActivityEventType.BANK_DEPOSIT);
         assertThat(events.get(1).eventType()).isEqualTo(ActivityEventType.MEMBER_JOINED);
+
+        // A feed is a digest of what happened lately, not a ledger, and nothing ever deleted a line.
+        assertThat(activityAdapter.purgeEventsBefore(now.minusSeconds(60)))
+                .describedAs("nothing old enough yet")
+                .isZero();
+        assertThat(activityAdapter.purgeEventsBefore(now.plusSeconds(5)))
+                .describedAs("the older of the two")
+                .isEqualTo(1);
+        assertThat(activityAdapter.findEventsByInstanceId(islandId.value().toString(), 10))
+                .hasSize(1);
     }
 
     @Test

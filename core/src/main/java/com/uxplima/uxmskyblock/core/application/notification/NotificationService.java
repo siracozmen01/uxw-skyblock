@@ -7,9 +7,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.message.MessagePayload;
 import com.uxplima.uxmskyblock.core.domain.notification.Notification;
 import com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory;
-import com.uxplima.uxmskyblock.core.domain.notification.NotificationPayload;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -71,7 +71,7 @@ public final class NotificationService {
         Objects.requireNonNull(messageKey, "messageKey must not be null");
         Objects.requireNonNull(values, "values must not be null");
         return dispatchNotification(
-                recipientProfileId, category, messageKey, 1, NotificationPayload.pack(values), expiresAt);
+                recipientProfileId, category, messageKey, 1, MessagePayload.pack(values), expiresAt);
     }
 
     /**

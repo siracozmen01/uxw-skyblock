@@ -195,6 +195,13 @@ class EnterpriseCompetitiveCapabilitiesTest {
                         .limit(limit)
                         .toList();
             }
+
+            @Override
+            public int purgeEventsBefore(Instant before) {
+                int held = events.size();
+                events.removeIf(e -> e.createdAt().isBefore(before));
+                return held - events.size();
+            }
         };
 
         ActivityFeedService service = new ActivityFeedService(port);

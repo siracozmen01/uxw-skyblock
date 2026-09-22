@@ -95,6 +95,20 @@ public final class SqlActivityFeedAdapter implements ActivityFeedStoragePort {
         return events;
     }
 
+    @Override
+    public int purgeEventsBefore(Instant before) {
+        Objects.requireNonNull(before, "before must not be null");
+
+        String sql = "DELETE FROM activity_events WHERE created_at < ?";
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setTimestamp(1, Timestamp.from(before));
+            return stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to purge activity events before " + before, e);
+        }
+    }
+
     private static ActivityEvent mapRow(ResultSet rs) throws SQLException {
         UUID eventId = UUID.fromString(rs.getString("event_id"));
         String instanceId = rs.getString("instance_id");

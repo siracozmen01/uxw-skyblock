@@ -13,13 +13,21 @@ import org.spongepowered.configurate.ConfigurationNode;
  * to be set. Both exist now, because a table that only grows is the other half of a table that has
  * finally started being written to.
  */
-public record NotificationConfiguration(Duration readRetention, Duration sweepInterval) {
+public record NotificationConfiguration(Duration readRetention, Duration sweepInterval, Duration activityRetention) {
 
     /** How long a notification a player has already read is kept. */
     public static final Duration DEFAULT_READ_RETENTION = Duration.ofDays(7);
 
     /** How often the read notifications are swept. */
     public static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofHours(6);
+
+    /**
+     * How long an island's activity feed keeps a line.
+     *
+     * <p>A feed is a digest of what happened lately, not a ledger, so it is kept for longer than a
+     * notice somebody has read and shorter than forever.
+     */
+    public static final Duration DEFAULT_ACTIVITY_RETENTION = Duration.ofDays(30);
 
     public NotificationConfiguration {
         Objects.requireNonNull(readRetention, "readRetention must not be null");
@@ -30,10 +38,15 @@ public record NotificationConfiguration(Duration readRetention, Duration sweepIn
         if (sweepInterval.isNegative() || sweepInterval.isZero()) {
             throw new IllegalArgumentException("sweep-interval must be positive: " + sweepInterval);
         }
+        Objects.requireNonNull(activityRetention, "activityRetention must not be null");
+        if (activityRetention.isNegative() || activityRetention.isZero()) {
+            throw new IllegalArgumentException("activity-retention must be positive: " + activityRetention);
+        }
     }
 
     public static NotificationConfiguration defaultConfiguration() {
-        return new NotificationConfiguration(DEFAULT_READ_RETENTION, DEFAULT_SWEEP_INTERVAL);
+        return new NotificationConfiguration(
+                DEFAULT_READ_RETENTION, DEFAULT_SWEEP_INTERVAL, DEFAULT_ACTIVITY_RETENTION);
     }
 
     public static NotificationConfiguration load(ConfigurationNode rootNode) {
@@ -44,7 +57,8 @@ public record NotificationConfiguration(Duration readRetention, Duration sweepIn
         }
         return new NotificationConfiguration(
                 readDuration(node.node("read-retention"), DEFAULT_READ_RETENTION),
-                readDuration(node.node("sweep-interval"), DEFAULT_SWEEP_INTERVAL));
+                readDuration(node.node("sweep-interval"), DEFAULT_SWEEP_INTERVAL),
+                readDuration(node.node("activity-retention"), DEFAULT_ACTIVITY_RETENTION));
     }
 
     /**

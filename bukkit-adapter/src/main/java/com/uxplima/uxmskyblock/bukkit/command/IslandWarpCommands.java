@@ -25,9 +25,11 @@ import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.warp.BukkitSafeBlockInspector;
+import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.warp.IslandWarpService;
+import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -59,6 +61,15 @@ public final class IslandWarpCommands {
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
+
+    /** Where a new warp is written down for the island's members to read. */
+    private final IslandActivityLog activityLog = new IslandActivityLog();
+
+    /** Tells this command group where to write the island's activity feed. */
+    public void useActivityFeed(@Nullable ActivityFeedService service) {
+        this.activityLog.useService(service);
+    }
+
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandWarpCommands(
@@ -211,6 +222,18 @@ public final class IslandWarpCommands {
             try {
                 IslandWarp warp = service.createWarp(
                         island, profileId, WarpName.of(rawName), where, category, category.defaultIconMaterial());
+                activityLog.recordForMembers(
+                        island.id(),
+                        profileId,
+                        ActivityEventType.WARP_CREATED,
+                        "activity.warp_created",
+                        java.util.Map.of(
+                                "player",
+                                player.getName(),
+                                "name",
+                                warp.name().value(),
+                                "category",
+                                warp.category().name()));
                 onEntity(
                         player,
                         () -> send(

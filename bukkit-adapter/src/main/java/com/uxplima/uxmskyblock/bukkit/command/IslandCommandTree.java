@@ -246,6 +246,11 @@ public final class IslandCommandTree {
         this.nodeProcessIdentity = nodeProcessIdentity;
     }
 
+    /** Hands the island's feed to the command groups that change something worth writing down. */
+    public void useActivityFeed(com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService service) {
+        this.activityFeedService = service;
+    }
+
     /** Hands the inbox to the command groups that change a player's standing on an island. */
     public void useNotifications(com.uxplima.uxmskyblock.core.application.notification.NotificationService service) {
         this.notificationService = service;

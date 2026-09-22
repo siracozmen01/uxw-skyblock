@@ -1,26 +1,26 @@
-package com.uxplima.uxmskyblock.core.domain.notification;
+package com.uxplima.uxmskyblock.core.domain.message;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * What a notification carries, beside the message it names.
+ * What a stored notice carries, beside the message it names.
  *
- * <p>A notification names a message in the operator's catalogue and carries the values that message
- * has holes for. It never carries the sentence itself: a sentence a player reads is written in a
+ * <p>A notice, whether it goes to one player's inbox or to an island's activity feed, names a
+ * message in the operator's catalogue and carries the values that message has holes for. It never carries the sentence itself: a sentence a player reads is written in a
  * language file, and a player who reads Turkish must not be told in English what happened to their
  * island while they were away, months after the operator changed the wording.
  *
  * <p>The packing is deliberately dull. Unit separators, which cannot occur in a player name or an
  * island name, so nothing here has to escape anything.
  */
-public final class NotificationPayload {
+public final class MessagePayload {
 
     private static final char PAIR = '\u001f';
     private static final char BETWEEN = '\u001e';
 
-    private NotificationPayload() {}
+    private MessagePayload() {}
 
     /** Packs the values a message has holes for into one stored string. */
     public static String pack(Map<String, String> values) {

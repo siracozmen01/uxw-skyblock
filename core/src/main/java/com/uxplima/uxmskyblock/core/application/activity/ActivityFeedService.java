@@ -52,6 +52,48 @@ public final class ActivityFeedService {
         return event;
     }
 
+    /**
+     * Writes down something that happened on an island, for whoever looks at its feed later.
+     *
+     * <p>The feed, its table, its twelve event types and the command that reads it have been here
+     * since the activity work, and nothing ever wrote a row: recordActivity had no caller anywhere,
+     * so every island's feed was empty for as long as the server ran.
+     *
+     * @param messageKey the message in the operator's catalogue, never a sentence
+     * @param values what that message has holes for
+     */
+    public ActivityEvent record(
+            String instanceId,
+            @Nullable ProfileId actorProfileId,
+            ActivityEventType eventType,
+            ActivityVisibility visibility,
+            String messageKey,
+            java.util.Map<String, String> values) {
+        Objects.requireNonNull(messageKey, "messageKey must not be null");
+        Objects.requireNonNull(values, "values must not be null");
+        return recordActivity(
+                instanceId,
+                actorProfileId,
+                eventType,
+                visibility,
+                messageKey,
+                1,
+                com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(values));
+    }
+
+    /**
+     * Drops the events an island's feed has outgrown.
+     *
+     * <p>Nothing ever deleted one, which is the other half of a table that has finally started
+     * being written to.
+     *
+     * @return how many were deleted
+     */
+    public int purgeOlderThan(Instant before) {
+        Objects.requireNonNull(before, "before must not be null");
+        return storagePort.purgeEventsBefore(before);
+    }
+
     public List<ActivityEvent> getRecentActivities(String instanceId, int limit) {
         Objects.requireNonNull(instanceId, "instanceId must not be null");
         return storagePort.findEventsByInstanceId(instanceId, Math.max(1, limit));
