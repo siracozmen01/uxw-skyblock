@@ -316,6 +316,26 @@ public final class IslandAllianceService {
         return maxAllies;
     }
 
+    /**
+     * Deletes the invitations nobody answered.
+     *
+     * <p>An expired invite cannot be accepted, so nothing was ever wrong with leaving one in place.
+     * What was wrong is that nothing ever deleted one: the storage port has had a purge since the
+     * alliance work, tested against the real store, and no caller anywhere in the plugin. The table
+     * held every invitation the server had ever seen.
+     *
+     * @return true when the store was asked, false when a pass failed and the next one will retry
+     */
+    public boolean purgeExpiredInvites() {
+        try {
+            storagePort.purgeExpiredInvites(Instant.now());
+            return true;
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, e, () -> "Deleting the expired alliance invites failed. The next pass retries.");
+            return false;
+        }
+    }
+
     public Duration inviteTimeout() {
         return inviteTimeout;
     }

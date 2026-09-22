@@ -102,7 +102,10 @@ public final class FeatureModuleWiring implements AutoCloseable {
             this.moduleRegistry.register(new DiscordFeatureModule(integration.discordService()));
         }
         if (config.moduleSettings().isModuleEnabled("alliances")) {
-            this.moduleRegistry.register(new AllianceFeatureModule(gameplay.allianceService()));
+            this.moduleRegistry.register(new AllianceFeatureModule(
+                    gameplay.allianceService(),
+                    gameplay.scheduler(),
+                    config.allianceConfig().expiredInviteSweepInterval()));
         }
         if (config.moduleSettings().isModuleEnabled("leaderboards")) {
             // Nothing built a board except the player who asked for one, so the first ask after a

@@ -43,6 +43,39 @@ class IslandAllianceServiceTest {
     }
 
     @Test
+    @DisplayName("An invitation nobody answered is deleted, and a live one is left where it is")
+    void theUnansweredInviteIsDeleted() {
+        IslandAllianceService quickToExpire =
+                new IslandAllianceService(storage, 2, Duration.ofMillis(1), true, true, true);
+        quickToExpire.sendInvite(islandA, islandB, profile1);
+        service.sendInvite(islandC, islandD, profile1);
+        assertThat(storage.invites).hasSize(2);
+
+        try {
+            Thread.sleep(20);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+        assertThat(service.purgeExpiredInvites()).isTrue();
+
+        assertThat(storage.invites)
+                .describedAs("the five minute invite stays, the one millisecond invite goes")
+                .hasSize(1);
+        assertThat(service.getPendingInvites(islandD)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("A purge that throws is survived, because the next pass is what puts it right")
+    void afailingPurgeIsSurvived() {
+        storage.purgeThrows = true;
+
+        assertThat(service.purgeExpiredInvites())
+                .describedAs("it says it failed, and no exception comes out")
+                .isFalse();
+        assertThat(storage.purges).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("Self alliance invite throws SelfAllianceNotAllowedException")
     void cannotInviteSelf() {
         assertThatThrownBy(() -> service.sendInvite(islandA, islandA, profile1))
@@ -224,8 +257,15 @@ class IslandAllianceServiceTest {
             invites.remove(inviteKey(senderIslandId, targetIslandId));
         }
 
+        boolean purgeThrows;
+        int purges;
+
         @Override
         public void purgeExpiredInvites(Instant now) {
+            purges++;
+            if (purgeThrows) {
+                throw new IllegalStateException("the database is gone");
+            }
             invites.entrySet().removeIf(e -> e.getValue().isExpired(now));
         }
     }

@@ -15,7 +15,8 @@ public record AllianceConfiguration(
         Duration inviteTimeout,
         boolean friendlyFireShielding,
         boolean privilegedVisitAccess,
-        boolean allianceChatEnabled) {
+        boolean allianceChatEnabled,
+        Duration expiredInviteSweepInterval) {
 
     public static final boolean DEFAULT_ENABLED = true;
     public static final int DEFAULT_MAX_ALLIES = 2;
@@ -24,8 +25,16 @@ public record AllianceConfiguration(
     public static final boolean DEFAULT_PRIVILEGED_VISIT_ACCESS = true;
     public static final boolean DEFAULT_ALLIANCE_CHAT_ENABLED = true;
 
+    /** How often the invites nobody answered are deleted, when the operator names no number. */
+    public static final Duration DEFAULT_EXPIRED_INVITE_SWEEP_INTERVAL = Duration.ofMinutes(5);
+
     public AllianceConfiguration {
         Objects.requireNonNull(inviteTimeout, "inviteTimeout must not be null");
+        Objects.requireNonNull(expiredInviteSweepInterval, "expiredInviteSweepInterval must not be null");
+        if (expiredInviteSweepInterval.isNegative() || expiredInviteSweepInterval.isZero()) {
+            throw new IllegalArgumentException(
+                    "expiredInviteSweepInterval must be positive: " + expiredInviteSweepInterval);
+        }
         if (maxAllies <= 0) {
             throw new IllegalArgumentException("maxAllies must be positive: " + maxAllies);
         }
@@ -41,7 +50,8 @@ public record AllianceConfiguration(
                 DEFAULT_INVITE_TIMEOUT,
                 DEFAULT_FRIENDLY_FIRE_SHIELDING,
                 DEFAULT_PRIVILEGED_VISIT_ACCESS,
-                DEFAULT_ALLIANCE_CHAT_ENABLED);
+                DEFAULT_ALLIANCE_CHAT_ENABLED,
+                DEFAULT_EXPIRED_INVITE_SWEEP_INTERVAL);
     }
 
     public static AllianceConfiguration load(ConfigurationNode rootNode) {
@@ -63,7 +73,12 @@ public record AllianceConfiguration(
         boolean privilegedVisit = node.node("privileged-visit-access").getBoolean(DEFAULT_PRIVILEGED_VISIT_ACCESS);
         boolean allianceChat = node.node("alliance-chat-enabled").getBoolean(DEFAULT_ALLIANCE_CHAT_ENABLED);
 
+        String sweepRaw = node.node("expired-invite-sweep-interval").getString();
+        Duration sweepInterval = sweepRaw != null && !sweepRaw.isBlank()
+                ? Durations.parse(sweepRaw)
+                : DEFAULT_EXPIRED_INVITE_SWEEP_INTERVAL;
+
         return new AllianceConfiguration(
-                enabled, maxAllies, inviteTimeout, friendlyFire, privilegedVisit, allianceChat);
+                enabled, maxAllies, inviteTimeout, friendlyFire, privilegedVisit, allianceChat, sweepInterval);
     }
 }
