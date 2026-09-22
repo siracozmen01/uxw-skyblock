@@ -22,6 +22,10 @@ import org.junit.jupiter.api.Test;
  * whatever somebody else changed in between. Nine of them did, across membership, flags, freezing,
  * inactivity and the spawn point, and no message and no row in the database said so.
  *
+ * <p>The inactivity sweep was excused from this guard, on the claim that a sweep only erases
+ * islands and erasing is not read, change and write. It archives them and it transfers ownership,
+ * so the claim was wrong and the excuse is gone.
+ *
  * <p>The scan is lexical, so it can only see a save sitting inside a lock block in the same method.
  * That is the shape every one of them now has, and it is the shape the next one has to have.
  */
@@ -33,10 +37,7 @@ class EveryIslandWriteIsUnderTheLockTest {
     private static final List<String> WRITES_A_NEW_ISLAND = List.of(
             // Creating one: there is nothing to lose an update against, because until this write
             // lands there is no island for anybody else to read.
-            "island/CreateIslandUseCase.java",
-            // The inactivity sweep walks islands it has already claimed for the sweep and erases
-            // them. Erasing is not read, change and write.
-            "inactivity/IslandInactivityService.java");
+            "island/CreateIslandUseCase.java");
 
     /**
      * Private helpers that only ever run inside the lock, so their own writes are already held.
@@ -51,7 +52,11 @@ class EveryIslandWriteIsUnderTheLockTest {
             "transitionEconomicStateInside(",
             "transitionLifecycleInside(",
             "moveInside(",
-            "write(");
+            "write(",
+            // The inactivity sweep decides and writes inside the lock, and this is where it does
+            // both. It was excused from this guard on the claim that a sweep only erases islands.
+            // It archives them and it transfers ownership, which is read, change and write.
+            "evaluateIslandInternal(");
 
     @Test
     @DisplayName("No application service writes an island outside the mutation lock")

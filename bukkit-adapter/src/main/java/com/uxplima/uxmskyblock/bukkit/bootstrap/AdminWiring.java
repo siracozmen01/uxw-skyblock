@@ -81,7 +81,9 @@ public final class AdminWiring {
                 config.inactivityConfig().toPolicy(),
                 archivalAdapter,
                 recycleAdapter,
-                persistence.outboxPort());
+                persistence.outboxPort(),
+                // The same lock the other island writers hold, or it locks nothing.
+                persistence.islandMutationLock());
 
         this.worldDimensionSnapshotPort = new WorldDimensionSnapshotAdapter(
                 plugin, persistence.islandStoragePort(), scheduler, config.dimensionConfig());

@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import com.uxplima.uxmskyblock.core.application.event.OutboxPort;
+import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
@@ -40,6 +41,7 @@ public final class IslandInactivityService {
     private final @Nullable IslandArchivalPort archivalPort;
     private final @Nullable IslandRecyclePort recyclePort;
     private final @Nullable OutboxPort outboxPort;
+    private final IslandMutationLock mutationLock;
 
     public IslandInactivityService(
             IslandStoragePort islandStoragePort,
@@ -48,6 +50,25 @@ public final class IslandInactivityService {
             @Nullable IslandArchivalPort archivalPort,
             @Nullable IslandRecyclePort recyclePort,
             @Nullable OutboxPort outboxPort) {
+        this(
+                islandStoragePort,
+                playerActivityProvider,
+                policy,
+                archivalPort,
+                recyclePort,
+                outboxPort,
+                new IslandMutationLock());
+    }
+
+    public IslandInactivityService(
+            IslandStoragePort islandStoragePort,
+            PlayerActivityProvider playerActivityProvider,
+            InactivityPolicy policy,
+            @Nullable IslandArchivalPort archivalPort,
+            @Nullable IslandRecyclePort recyclePort,
+            @Nullable OutboxPort outboxPort,
+            IslandMutationLock mutationLock) {
+        this.mutationLock = Objects.requireNonNull(mutationLock, "mutationLock must not be null");
         this.islandStoragePort = Objects.requireNonNull(islandStoragePort, "islandStoragePort must not be null");
         this.playerActivityProvider =
                 Objects.requireNonNull(playerActivityProvider, "playerActivityProvider must not be null");
@@ -82,8 +103,7 @@ public final class IslandInactivityService {
                 .findLocationByIslandId(islandId)
                 .orElseGet(() -> new IslandLocation(islandId, "world", island.bounds(), 0, 100, 0, 0, 0));
 
-        IslandSuccessionRecord record = evaluateIslandInternal(island, location, now);
-        return record.outcome();
+        return decideAndWrite(islandId, island, location, now).outcome();
     }
 
     public IslandInactivityScanReport evaluateAll(Collection<Island> islands, Instant now) {
@@ -106,7 +126,7 @@ public final class IslandInactivityService {
                     .findLocationByIslandId(island.id())
                     .orElseGet(() -> new IslandLocation(island.id(), "world", island.bounds(), 0, 100, 0, 0, 0));
 
-            IslandSuccessionRecord record = evaluateIslandInternal(island, location, now);
+            IslandSuccessionRecord record = decideAndWrite(island.id(), island, location, now);
             records.add(record);
 
             switch (record.outcome()) {
@@ -126,6 +146,27 @@ public final class IslandInactivityService {
 
         List<Island> islands = islandStoragePort.findAllByWorld(worldName);
         return evaluateAll(islands, now);
+    }
+
+    /**
+     * Decides what becomes of one island and writes it, with nobody else changing it meanwhile.
+     *
+     * <p>This service reads the whole island, changes one part of it and writes the whole thing
+     * back, and it did all three with nothing held. A sweep that archives an island in the same
+     * moment a member is invited writes back the members it read and the invitation is gone. The
+     * lock's own description said this service held it. It did not.
+     *
+     * <p>The island is read again inside the lock and the copy handed in is dropped. A sweep is
+     * given every island in the world at once and then works through them one at a time, so by the
+     * time it reaches the last one the copy it holds can be minutes old, and deciding who inherits
+     * an island off a list of members who left is worse than one extra read by primary key.
+     */
+    private IslandSuccessionRecord decideAndWrite(
+            IslandId islandId, Island scanned, IslandLocation location, Instant now) {
+        return mutationLock.inside(islandId, () -> {
+            Island fresh = islandStoragePort.findIslandById(islandId).orElse(scanned);
+            return evaluateIslandInternal(fresh, location, now);
+        });
     }
 
     private IslandSuccessionRecord evaluateIslandInternal(Island island, IslandLocation location, Instant now) {
