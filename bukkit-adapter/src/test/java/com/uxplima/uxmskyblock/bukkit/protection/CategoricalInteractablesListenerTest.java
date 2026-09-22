@@ -82,6 +82,77 @@ class CategoricalInteractablesListenerTest extends MockBukkitHarness {
         assertThat(event.isCancelled()).isTrue();
     }
 
+    /** Puts a member on the island under a role holding exactly these permissions. */
+    private Island islandWhereTheVisitorHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission... held) {
+        com.uxplima.uxmskyblock.core.domain.island.IslandRole role =
+                new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                        "CUSTOM",
+                        400,
+                        "Custom",
+                        held.length == 0
+                                ? java.util.EnumSet.noneOf(
+                                        com.uxplima.uxmskyblock.core.domain.island.IslandPermission.class)
+                                : java.util.EnumSet.of(held[0], held),
+                        false);
+        return island.addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                new PlayerUuid(visitorPlayer.getUniqueId()),
+                new ProfileId(visitorPlayer.getUniqueId()),
+                role,
+                Instant.now()));
+    }
+
+    private boolean refused(Island on, Material material) {
+        CategoricalInteractablesListener listener = new CategoricalInteractablesListener(
+                config, loc -> Optional.of(on), uuid -> new ProfileId(uuid.value()), null, Messages.bundled());
+        Block block = world.getBlockAt(0, 64, 0);
+        block.setType(material);
+        PlayerInteractEvent event =
+                new PlayerInteractEvent(visitorPlayer, Action.RIGHT_CLICK_BLOCK, null, block, null, EquipmentSlot.HAND);
+        listener.onPlayerInteract(event);
+        return event.isCancelled();
+    }
+
+    @Test
+    @DisplayName("A member whose role has redstone taken off cannot pull the lever")
+    void aroleWithoutRedstoneCannotPullTheLever() {
+        Island island = islandWhereTheVisitorHolds(
+                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BLOCK_BREAK,
+                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.NATURAL_INTERACT);
+
+        assertThat(refused(island, Material.LEVER))
+                .describedAs("the category resolved a permission and nothing read it")
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("A member whose role holds redstone pulls the lever")
+    void aroleWithRedstonePullsTheLever() {
+        Island island = islandWhereTheVisitorHolds(
+                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.REDSTONE_INTERACT);
+
+        assertThat(refused(island, Material.LEVER)).isFalse();
+    }
+
+    @Test
+    @DisplayName("A member whose role has container access taken off cannot open the chest")
+    void aroleWithoutContainerAccessCannotOpenTheChest() {
+        Island island = islandWhereTheVisitorHolds(
+                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.REDSTONE_INTERACT);
+
+        assertThat(refused(island, Material.CHEST)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Doors and workstations are grant keys the role editor cannot express, so a member uses them")
+    void acategoryTheRoleEditorCannotExpressIsLeftToMembers() {
+        Island island = islandWhereTheVisitorHolds();
+
+        assertThat(refused(island, Material.OAK_DOOR)).describedAs("a door").isFalse();
+        assertThat(refused(island, Material.CRAFTING_TABLE))
+                .describedAs("a workstation")
+                .isFalse();
+    }
+
     @Test
     @DisplayName("Allows staff with admin bypass to interact with any category")
     void allowsAdminBypass() {

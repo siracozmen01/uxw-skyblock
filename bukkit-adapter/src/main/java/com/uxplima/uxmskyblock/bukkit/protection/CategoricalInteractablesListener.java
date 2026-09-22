@@ -114,12 +114,21 @@ public final class CategoricalInteractablesListener implements Listener {
                 return;
             }
 
-            // Member check
-            if (island.members().containsKey(profileId)) {
+            // A member, under a role that allows this category.
+            //
+            // The category was resolved to a permission and the permission was read nowhere: being
+            // a member was the whole test. A role with the redstone permission taken off pulled
+            // every lever on the island all the same, and so did one with container access taken
+            // off. Two of the four categories are permissions a role can hold; doors and
+            // workstations are grant keys the role editor cannot express, so a member uses those.
+            if (island.members().containsKey(profileId)
+                    && config.resolveIslandPermission(clicked.getType())
+                            .map(permission -> island.hasPermission(profileId, permission))
+                            .orElse(true)) {
                 return;
             }
 
-            // Disallowed visitor interaction
+            // A visitor, or a member whose role says no.
             event.setCancelled(true);
             player.sendMessage(messages.render(
                     player,

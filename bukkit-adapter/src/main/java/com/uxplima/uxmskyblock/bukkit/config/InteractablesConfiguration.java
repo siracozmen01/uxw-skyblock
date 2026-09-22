@@ -9,6 +9,7 @@ import java.util.Set;
 
 import org.bukkit.Material;
 
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.permission.PermissionKey;
 import com.uxplima.uxmskyblock.core.domain.permission.StandardPermissions;
 import org.spongepowered.configurate.ConfigurationNode;
@@ -195,6 +196,24 @@ public final class InteractablesConfiguration {
         }
         if (workstations.contains(material)) {
             return Optional.of(PERM_WORKSTATIONS);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The role permission a material's category asks for, when the role system names one.
+     *
+     * <p>Two of the four categories are permissions a role can hold: the redstone one and the
+     * container one. Doors and workstations are grant keys and nothing more, so a role holds
+     * neither and a member uses both. Saying so here keeps the listener from inventing a rule the
+     * role editor cannot express.
+     */
+    public Optional<IslandPermission> resolveIslandPermission(Material material) {
+        if (redstoneTriggers.contains(material)) {
+            return Optional.of(IslandPermission.REDSTONE_INTERACT);
+        }
+        if (containers.contains(material)) {
+            return Optional.of(IslandPermission.CHEST_OPEN);
         }
         return Optional.empty();
     }
