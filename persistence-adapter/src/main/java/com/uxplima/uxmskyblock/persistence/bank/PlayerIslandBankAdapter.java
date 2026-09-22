@@ -202,7 +202,9 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                         if (!rs.next()) {
                             updateProcessedOp(connection, operationId, "REJECTED", "AUTHORITY_NOT_FOUND");
                             tx.commit(connection);
-                            return new BankTransactionOutcome.AuthorityRejected("Island authority record not found");
+                            return new BankTransactionOutcome.AuthorityRejected(
+                                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
+                                    "Island authority record not found");
                         }
 
                         String authoritativeNode = rs.getString("authoritative_node");
@@ -214,6 +216,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                             updateProcessedOp(connection, operationId, "REJECTED", "AUTHORITY_NODE_MISMATCH");
                             tx.commit(connection);
                             return new BankTransactionOutcome.AuthorityRejected(
+                                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
                                     "Authority lease held by node: " + authoritativeNode);
                         }
 
@@ -221,13 +224,16 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                             updateProcessedOp(connection, operationId, "REJECTED", "STALE_AUTHORITY_EPOCH");
                             tx.commit(connection);
                             return new BankTransactionOutcome.AuthorityRejected(
+                                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
                                     "Stale authority epoch: expected " + expectedEpoch + " but was " + authorityEpoch);
                         }
 
                         if (leaseExpiresAt == null || leaseExpiresAt.before(dbNow)) {
                             updateProcessedOp(connection, operationId, "REJECTED", "AUTHORITY_LEASE_EXPIRED");
                             tx.commit(connection);
-                            return new BankTransactionOutcome.AuthorityRejected("Authority lease has expired");
+                            return new BankTransactionOutcome.AuthorityRejected(
+                                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
+                                    "Authority lease has expired");
                         }
                     }
                 }

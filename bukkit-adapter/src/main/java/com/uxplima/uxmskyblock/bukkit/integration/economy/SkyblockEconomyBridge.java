@@ -111,7 +111,9 @@ public final class SkyblockEconomyBridge {
         Objects.requireNonNull(callback, "callback must not be null");
 
         if (dollars <= 0) {
-            callback.accept(new BankTransactionOutcome.AuthorityRejected("Deposit amount must be greater than zero."));
+            callback.accept(new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT,
+                    "Deposit amount must be greater than zero."));
             return;
         }
 
@@ -127,8 +129,9 @@ public final class SkyblockEconomyBridge {
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = bankService.findIslandIdByProfileId(profileId);
             if (optIsland.isEmpty()) {
-                BankTransactionOutcome outcome =
-                        new BankTransactionOutcome.AuthorityRejected("No island associated with profile " + profileId);
+                BankTransactionOutcome outcome = new BankTransactionOutcome.AuthorityRejected(
+                        BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                        "No island associated with profile " + profileId);
                 schedulerPort.onEntity(playerUuid, () -> callback.accept(outcome));
                 return;
             }
@@ -143,6 +146,7 @@ public final class SkyblockEconomyBridge {
                     boolean withdrawn = economyBridge.withdraw(player, (double) dollars);
                     if (!withdrawn) {
                         outcome = new BankTransactionOutcome.AuthorityRejected(
+                                BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
                                 "Failed to withdraw funds from your wallet.");
                     } else {
                         outcome = bankService.deposit(profileId, playerUuid, minorUnits, nodeId);
@@ -158,6 +162,7 @@ public final class SkyblockEconomyBridge {
                                                 + " player={0} amountMinorUnits={1} bankOutcome={2}",
                                         new Object[] {playerUuid, minorUnits, outcome});
                                 outcome = new BankTransactionOutcome.AuthorityRejected(
+                                        BankTransactionOutcome.AuthorityRejected.Kind.REFUND_FAILED,
                                         "The island bank refused the deposit and your wallet could not be"
                                                 + " refunded. Contact an administrator with the time of this"
                                                 + " message.");
@@ -190,7 +195,9 @@ public final class SkyblockEconomyBridge {
         Objects.requireNonNull(callback, "callback must not be null");
 
         if (dollars <= 0) {
-            callback.accept(new BankTransactionOutcome.AuthorityRejected("Withdraw amount must be greater than zero."));
+            callback.accept(new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT,
+                    "Withdraw amount must be greater than zero."));
             return;
         }
 
@@ -200,8 +207,9 @@ public final class SkyblockEconomyBridge {
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = bankService.findIslandIdByProfileId(profileId);
             if (optIsland.isEmpty()) {
-                BankTransactionOutcome outcome =
-                        new BankTransactionOutcome.AuthorityRejected("No island associated with profile " + profileId);
+                BankTransactionOutcome outcome = new BankTransactionOutcome.AuthorityRejected(
+                        BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                        "No island associated with profile " + profileId);
                 schedulerPort.onEntity(playerUuid, () -> callback.accept(outcome));
                 return;
             }
@@ -223,6 +231,7 @@ public final class SkyblockEconomyBridge {
                         BankTransactionOutcome refund = bankService.deposit(profileId, playerUuid, minorUnits, nodeId);
                         if (refund instanceof BankTransactionOutcome.Success) {
                             outcome = new BankTransactionOutcome.AuthorityRejected(
+                                    BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
                                     "Failed to deposit funds into your wallet. Island bank funds refunded.");
                         } else {
                             LOGGER.log(
@@ -231,6 +240,7 @@ public final class SkyblockEconomyBridge {
                                             + " player={0} amountMinorUnits={1} refundOutcome={2}",
                                     new Object[] {playerUuid, minorUnits, refund});
                             outcome = new BankTransactionOutcome.AuthorityRejected(
+                                    BankTransactionOutcome.AuthorityRejected.Kind.REFUND_FAILED,
                                     "Your wallet would not take the funds and the island bank could not be"
                                             + " refunded. Contact an administrator with the time of this"
                                             + " message.");

@@ -24,10 +24,38 @@ public sealed interface BankTransactionOutcome {
     /** Transaction rejected due to optimistic concurrency version mismatch. */
     record StaleVersion(long expectedVersion, long actualVersion) implements BankTransactionOutcome {}
 
-    /** Transaction rejected because island authority lease is invalid, expired, or held by another node. */
-    record AuthorityRejected(String reason) implements BankTransactionOutcome {
+    /**
+     * Transaction refused before or after it touched the bank.
+     *
+     * <p>The reason is a sentence for the log and for a developer reading the API. It is English and
+     * it can hold an island's id, so it is never what a player reads: the {@link Kind} is, and the
+     * player's line comes out of the catalogue by it.
+     */
+    record AuthorityRejected(Kind kind, String reason) implements BankTransactionOutcome {
         public AuthorityRejected {
+            Objects.requireNonNull(kind, "kind");
             Objects.requireNonNull(reason, "reason");
+        }
+
+        /** A refusal nobody has classified yet. */
+        public AuthorityRejected(String reason) {
+            this(Kind.OTHER, reason);
+        }
+
+        /** What a refusal was about, which is what the player is told. */
+        public enum Kind {
+            /** The player belongs to no island. */
+            NO_ISLAND,
+            /** Another server holds the island, or the lease on it has run out. */
+            NO_AUTHORITY,
+            /** The amount was zero or less. */
+            INVALID_AMOUNT,
+            /** The player's own wallet would not pay or would not take the money, and nothing moved. */
+            WALLET_REFUSED,
+            /** Money left one side, could not reach the other, and could not be put back. */
+            REFUND_FAILED,
+            /** Anything else. */
+            OTHER
         }
     }
 

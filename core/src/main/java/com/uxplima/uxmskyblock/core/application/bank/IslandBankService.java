@@ -90,7 +90,9 @@ public final class IslandBankService {
         Objects.requireNonNull(profileId, "profileId must not be null");
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
         if (optIslandId.isEmpty()) {
-            return new BankTransactionOutcome.AuthorityRejected("No island associated with profile " + profileId);
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                    "No island associated with profile " + profileId);
         }
         return execute(optIslandId.get(), playerUuid, amountMinorUnits, "Player deposit", serverNodeId);
     }
@@ -100,7 +102,9 @@ public final class IslandBankService {
         Objects.requireNonNull(profileId, "profileId must not be null");
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
         if (optIslandId.isEmpty()) {
-            return new BankTransactionOutcome.AuthorityRejected("No island associated with profile " + profileId);
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                    "No island associated with profile " + profileId);
         }
         return execute(optIslandId.get(), playerUuid, -amountMinorUnits, "Player withdrawal", serverNodeId);
     }
@@ -150,18 +154,22 @@ public final class IslandBankService {
 
         Optional<IslandAuthorityRecord> optAuth = islandAuthorityPort.findAuthority(islandId);
         if (optAuth.isEmpty()) {
-            return new BankTransactionOutcome.AuthorityRejected("No authority record found for island " + islandId);
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
+                    "No authority record found for island " + islandId);
         }
 
         IslandAuthorityRecord auth = optAuth.get();
         if (!auth.authoritativeNode().equals(serverNodeId)) {
             return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
                     "Local node " + serverNodeId + " does not hold authority for island " + islandId + " (held by "
                             + auth.authoritativeNode() + ")");
         }
 
         if (auth.leaseExpiresAt().isBefore(java.time.Instant.now())) {
             return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY,
                     "Authority lease expired at " + auth.leaseExpiresAt() + " for island " + islandId);
         }
 

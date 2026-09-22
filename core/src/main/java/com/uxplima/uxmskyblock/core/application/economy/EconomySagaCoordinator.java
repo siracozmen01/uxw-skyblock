@@ -48,7 +48,8 @@ public final class EconomySagaCoordinator {
             ServerNodeId nodeId,
             Instant now) {
         if (amountMinorUnits <= 0) {
-            return new BankTransactionOutcome.AuthorityRejected("Deposit amount must be positive.");
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT, "Deposit amount must be positive.");
         }
 
         Instant expiresAt = now.plus(sagaTimeout);
@@ -59,7 +60,9 @@ public final class EconomySagaCoordinator {
 
         if (!walletPort.withdraw(playerUuid, amountMinorUnits)) {
             sagaPort.updateState(sagaId, SagaState.FAILED, now);
-            return new BankTransactionOutcome.AuthorityRejected("Failed to withdraw funds from your wallet.");
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
+                    "Failed to withdraw funds from your wallet.");
         }
 
         BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, amountMinorUnits, nodeId);
@@ -89,7 +92,8 @@ public final class EconomySagaCoordinator {
             ServerNodeId nodeId,
             Instant now) {
         if (amountMinorUnits <= 0) {
-            return new BankTransactionOutcome.AuthorityRejected("Withdraw amount must be positive.");
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT, "Withdraw amount must be positive.");
         }
 
         Instant expiresAt = now.plus(sagaTimeout);
@@ -119,6 +123,7 @@ public final class EconomySagaCoordinator {
             sagaPort.updateState(sagaId, SagaState.FAILED, now);
         }
         return new BankTransactionOutcome.AuthorityRejected(
+                BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
                 "Failed to deposit funds into your personal wallet. Bank funds refunded.");
     }
 

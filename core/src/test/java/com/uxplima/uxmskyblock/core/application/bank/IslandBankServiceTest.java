@@ -263,4 +263,48 @@ class IslandBankServiceTest {
             return com.uxplima.uxmskyblock.core.domain.island.IslandAuthoritySweep.NOTHING;
         }
     }
+
+    @Test
+    @DisplayName("A profile with no island is refused as having no island, whatever the sentence says")
+    void noIslandIsItsOwnKind() {
+        ProfileId stranger = new ProfileId(UUID.randomUUID());
+
+        assertThat(bankService.deposit(stranger, playerUuid, 100L, nodeId))
+                .isEqualTo(new BankTransactionOutcome.AuthorityRejected(
+                        BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                        "No island associated with profile " + stranger));
+    }
+
+    @Test
+    @DisplayName("An island another node holds is refused as held elsewhere")
+    void anotherNodeIsItsOwnKind() {
+        authorityPort.authorities.put(
+                islandId,
+                new IslandAuthorityRecord(
+                        islandId, ServerNodeId.of("node-7"), 1L, Instant.now().plusSeconds(3600), Instant.now()));
+
+        BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, 100L, nodeId);
+
+        assertThat(outcome)
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(
+                        BankTransactionOutcome.AuthorityRejected.class))
+                .extracting(BankTransactionOutcome.AuthorityRejected::kind)
+                .isEqualTo(BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY);
+    }
+
+    @Test
+    @DisplayName("An island whose lease ran out is refused as held elsewhere")
+    void anExpiredLeaseIsItsOwnKind() {
+        authorityPort.authorities.put(
+                islandId,
+                new IslandAuthorityRecord(islandId, nodeId, 1L, Instant.now().minusSeconds(5), Instant.now()));
+
+        BankTransactionOutcome outcome = bankService.withdraw(profileId, playerUuid, 100L, nodeId);
+
+        assertThat(outcome)
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(
+                        BankTransactionOutcome.AuthorityRejected.class))
+                .extracting(BankTransactionOutcome.AuthorityRejected::kind)
+                .isEqualTo(BankTransactionOutcome.AuthorityRejected.Kind.NO_AUTHORITY);
+    }
 }
