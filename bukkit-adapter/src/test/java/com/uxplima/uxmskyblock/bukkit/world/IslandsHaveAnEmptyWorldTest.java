@@ -70,7 +70,9 @@ class IslandsHaveAnEmptyWorldTest extends MockBukkitHarness {
         when(terrain.getGenerator()).thenReturn(null);
 
         assertThat(IslandWorldCheck.warningFor("world", terrain, "uxmSkyblock"))
-                .hasValueSatisfying(line -> assertThat(line).contains("generated terrain"));
+                .hasValueSatisfying(line -> assertThat(line)
+                        .contains("generated terrain")
+                        .contains("worlds:\n  world:\n    generator: uxmSkyblock"));
     }
 
     @Test

@@ -29,8 +29,8 @@ public final class IslandWorldCheck {
         ChunkGenerator generator = world.getGenerator();
         if (!(generator instanceof VoidIslandGenerator)) {
             return Optional.of("The island world '" + worldName + "' is generated terrain, so islands will be"
-                    + " placed into hills and caves. An empty world made by the " + pluginName
-                    + " generator is what an island is meant to float in.");
+                    + " placed into hills and caves. Give it the island generator in bukkit.yml before the world"
+                    + " is first made:\nworlds:\n  " + worldName + ":\n    generator: " + pluginName);
         }
         return Optional.empty();
     }

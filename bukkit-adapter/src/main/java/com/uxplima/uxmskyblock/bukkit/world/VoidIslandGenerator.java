@@ -11,8 +11,9 @@ import org.bukkit.generator.ChunkGenerator;
  *
  * <p>The plugin shipped without one, so a server that installed it placed every island into the
  * ordinary generated world: a starter island pasted into a hillside, caves under it and a village
- * beside it. A world loader names it as {@code uxmSkyblock}. The server's own default world cannot
- * take it yet, because the server makes that world before this plugin enables.
+ * beside it. {@code bukkit.yml} names it as {@code uxmSkyblock}. The plugin loads at startup so the
+ * server's own default world can take it, which on Folia is the only world a plugin's generator can
+ * reach, since Folia makes no world while it runs.
  */
 public final class VoidIslandGenerator extends ChunkGenerator {
 

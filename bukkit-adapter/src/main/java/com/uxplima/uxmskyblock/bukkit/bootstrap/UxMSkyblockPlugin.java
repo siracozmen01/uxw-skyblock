@@ -18,17 +18,32 @@ public class UxMSkyblockPlugin extends JavaPlugin {
 
     private @Nullable SkyblockBootstrap bootstrap;
 
+    private volatile boolean serverIsUp;
+
     @Override
     public void onEnable() {
-        // uxmLib is relocated into this jar, so no other plugin installs the skill source for this
-        // one. mcMMO loads first, so the source finds it.
-        Operands.readingSkills(ContentHooks.skillLevels(getServer()));
         this.bootstrap = SkyblockBootstrap.createDefault(this);
         this.bootstrap.enable();
-        String islandWorld = this.bootstrap.nodeConfiguration().worldName();
+        AfterStartup.run(this, this::whenServerIsUp);
+        getLogger().info("UXPLIMA Skyblock initialized successfully.");
+    }
+
+    /** The half of enabling that needs the worlds and the other plugins. See {@link AfterStartup}. */
+    private void whenServerIsUp() {
+        // uxmLib is relocated into this jar, so no other plugin installs the skill source for this
+        // one. mcMMO has enabled by now, so the source finds it.
+        Operands.readingSkills(ContentHooks.skillLevels(getServer()));
+        SkyblockBootstrap booted = bootstrap();
+        booted.whenServerIsUp();
+        String islandWorld = booted.nodeConfiguration().worldName();
         IslandWorldCheck.warningFor(islandWorld, getServer().getWorld(islandWorld), getName())
                 .ifPresent(getLogger()::warning);
-        getLogger().info("UXPLIMA Skyblock initialized successfully.");
+        this.serverIsUp = true;
+    }
+
+    /** Whether the half of enabling that waits for the server has run. */
+    public boolean serverIsUp() {
+        return serverIsUp;
     }
 
     @Override

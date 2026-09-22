@@ -175,11 +175,16 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 .protectionListener()
                 .loadPersistedIslands(configWiring.nodeConfig().worldName());
         integrationWiring.enable();
-        drawIslandsOnTheWebMap();
         startRestApiIfConfigured();
 
         BootstrapEventRegistrar.registerEvents(
                 Bukkit.getPluginManager(), plugin, featureModuleWiring, gameplayWiring, authorityWiring, configWiring);
+    }
+
+    /** What waits for the worlds and the other plugins. See {@link AfterStartup}. */
+    public void whenServerIsUp() {
+        integrationWiring.whenServerIsUp();
+        drawIslandsOnTheWebMap();
     }
 
     /**

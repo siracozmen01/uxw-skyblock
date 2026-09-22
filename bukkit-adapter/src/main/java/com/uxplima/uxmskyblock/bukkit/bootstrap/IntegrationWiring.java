@@ -350,7 +350,6 @@ public final class IntegrationWiring implements AutoCloseable {
         authorityService.heartbeat();
         this.authorityHeartbeat = scheduler.repeatAsync(
                 authorityService::heartbeat, authorityHeartbeatInterval, authorityHeartbeatInterval);
-        placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
         economyBridge
                 .economyRebinder()
                 .ifPresent(rebinder -> plugin.getServer().getPluginManager().registerEvents(rebinder, plugin));
@@ -359,8 +358,6 @@ public final class IntegrationWiring implements AutoCloseable {
                 .registerEvents(new PlaceholderCacheEviction(placeholderExpansion), plugin);
         commandTree.register(plugin);
         apiBridge.register();
-        economyBridge.recoverPendingSagas(serverNodeId);
-        recoverIncompleteRecycles();
         this.notificationSweep = scheduler.repeatAsync(
                 () -> {
                     sweepReadNotifications();
@@ -471,6 +468,16 @@ public final class IntegrationWiring implements AutoCloseable {
                         .log(java.util.logging.Level.WARNING, "Writing a finished mission into the feed failed.", e);
             }
         }));
+    }
+
+    /**
+     * What waits for the server to finish loading: PlaceholderAPI, the economy a half done saga pays
+     * back through, and the world a half done reset still has to empty.
+     */
+    public void whenServerIsUp() {
+        placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
+        economyBridge.recoverPendingSagas(serverNodeId);
+        recoverIncompleteRecycles();
     }
 
     /**
