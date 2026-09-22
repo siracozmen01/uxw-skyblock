@@ -270,10 +270,15 @@ class IslandRecycleServiceTest {
                 .thenReturn(List.of(opDelete));
         when(recycleOperationPort.findOperationsByState(IslandRecycleState.SLOT_RELEASED))
                 .thenReturn(List.of(opReleased));
+        // Where the slot is comes off the slot. The island row is gone by the time recovery runs,
+        // so the world and the coordinates the normal path reads off the island are not there.
+        when(spiralSlotPoolPort.findBySlotIndex(55L))
+                .thenReturn(Optional.of(new com.uxplima.uxmskyblock.core.domain.world.RecycledSlot(
+                        55L, "islands_alpha", 2000, -4000, true, null)));
 
         service.recoverIncompleteOperations();
 
-        verify(spiralSlotPoolPort).releaseSlot(eq(55L), any(), anyInt(), anyInt());
+        verify(spiralSlotPoolPort).releaseSlot(55L, "islands_alpha", 2000, -4000);
         verify(recycleOperationPort)
                 .updateState(eq("op-delete-1"), eq(IslandRecycleState.SLOT_RELEASED), any(), any(), any());
         verify(recycleOperationPort)

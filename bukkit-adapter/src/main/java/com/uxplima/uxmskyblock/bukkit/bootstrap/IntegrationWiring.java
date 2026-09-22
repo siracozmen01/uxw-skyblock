@@ -37,6 +37,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityService;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
+import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.webmap.IslandWebMapService;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
@@ -62,6 +63,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final SkyblockPlaceholderExpansion placeholderExpansion;
     private final TransactionalOutboxDispatcher outboxDispatcher;
     private final IslandAuthorityService authorityService;
+    private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
     private final java.time.Duration authorityHeartbeatInterval;
     private final com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler;
 
@@ -170,6 +172,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // Every write that needs authority is refused once it runs out, so an island stopped being
         // able to use its own bank one lease after it was created. This is the missing heartbeat.
         this.scheduler = gameplay.scheduler();
+        this.recycleService = gameplay.recycleService();
         this.authorityService = new IslandAuthorityService(
                 persistence.islandAuthorityPort(),
                 serverNodeId,
@@ -306,6 +309,36 @@ public final class IntegrationWiring implements AutoCloseable {
         commandTree.register(plugin);
         apiBridge.register();
         economyBridge.recoverPendingSagas(serverNodeId);
+        recoverIncompleteRecycles();
+    }
+
+    /**
+     * Finishes the island resets a crash left half done.
+     *
+     * <p>A reset deletes the island and then hands its grid slot back. A crash between the two
+     * leaves the operation sitting in CANONICAL_DELETE and the slot marked allocated for an island
+     * that no longer exists, so the grid never reuses it and the world grows a hole per crash. The
+     * recovery for exactly this was written, said "startup recovery" in its own documentation, and
+     * had no caller anywhere.
+     *
+     * <p>It runs off the thread that is starting the server, because it reads and writes rows.
+     */
+    private void recoverIncompleteRecycles() {
+        IslandRecycleService recycleService = this.recycleService;
+        if (recycleService == null) {
+            return;
+        }
+        scheduler.async(() -> {
+            try {
+                recycleService.recoverIncompleteOperations();
+            } catch (RuntimeException e) {
+                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                        .log(
+                                java.util.logging.Level.WARNING,
+                                "Finishing the island resets a crash left half done failed.",
+                                e);
+            }
+        });
     }
 
     private void closeAuthorityHeartbeat() {

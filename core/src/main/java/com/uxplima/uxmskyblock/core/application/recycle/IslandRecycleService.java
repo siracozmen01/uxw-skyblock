@@ -26,6 +26,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.recycle.IslandRecycleOperation;
 import com.uxplima.uxmskyblock.core.domain.recycle.IslandRecycleState;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
+import com.uxplima.uxmskyblock.core.domain.world.RecycledSlot;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
 import org.jspecify.annotations.Nullable;
 
@@ -35,6 +36,9 @@ import org.jspecify.annotations.Nullable;
  * Folia-native asynchronous chunk voiding, transactional state tracking, and Archimedean spiral slot recycling.
  */
 public final class IslandRecycleService {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandRecycleService.class.getName());
 
     public sealed interface RecycleResult {
         record Success(IslandId islandId, long slotIndex, String worldName, int gridX, int gridZ)
@@ -501,7 +505,7 @@ public final class IslandRecycleService {
                 recycleOperationPort.findOperationsByState(IslandRecycleState.CANONICAL_DELETE);
         for (IslandRecycleOperation op : pendingDeletes) {
             try {
-                spiralSlotPoolPort.releaseSlot(op.targetSlot(), "skyblock_world", 0, 0);
+                releaseSlotOnRecovery(op.targetSlot());
                 recycleOperationPort.updateState(
                         op.operationId(), IslandRecycleState.SLOT_RELEASED, null, null, clock.instant());
                 recycleOperationPort.updateState(
@@ -522,6 +526,31 @@ public final class IslandRecycleService {
             recycleOperationPort.updateState(
                     op.operationId(), IslandRecycleState.COMPLETED, null, null, clock.instant());
         }
+    }
+
+    /**
+     * Hands one slot back, reading where it is from the slot itself.
+     *
+     * <p>The island row is gone by the time recovery runs, so the world and the coordinates the
+     * normal path reads off the island are not there to read. This used to pass the world name
+     * {@code "skyblock_world"} and the coordinates 0, 0, which is a world name written in the code
+     * on a server whose world the operator names. The release keys on the slot index, so those
+     * three arguments only matter where the pool has no row yet, and there they would have written
+     * a row claiming a slot sits at 0, 0 in a world that may not exist: the next island recycled
+     * into it would be built on top of whatever is actually there.
+     *
+     * <p>The pool row is the only thing that knows. When it is there, it says where. When it is
+     * not, there is nothing allocated to hand back and inventing a row is worse than doing nothing.
+     */
+    private void releaseSlotOnRecovery(long slotIndex) {
+        Optional<RecycledSlot> slot = spiralSlotPoolPort.findBySlotIndex(slotIndex);
+        if (slot.isEmpty()) {
+            LOGGER.fine(() -> "Recovering a recycle that had no pool row for slot " + slotIndex
+                    + ". There is nothing allocated to hand back.");
+            return;
+        }
+        RecycledSlot held = slot.get();
+        spiralSlotPoolPort.releaseSlot(held.slotIndex(), held.worldName(), held.gridX(), held.gridZ());
     }
 
     /**

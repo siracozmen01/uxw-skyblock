@@ -66,6 +66,33 @@ class TheAuthorityLeaseHasAHeartbeatTest {
     }
 
     @Test
+    @DisplayName("Starting the plugin finishes the island resets a crash left half done")
+    void thePluginFinishesHalfDoneResets() throws IOException {
+        String source = Files.readString(WIRING, StandardCharsets.UTF_8);
+
+        assertThat(source)
+                .describedAs("a crash between deleting the island and handing its slot back leaves the "
+                        + "grid a hole that nothing ever fills")
+                .contains("recoverIncompleteRecycles();")
+                .contains("recycleService.recoverIncompleteOperations();");
+    }
+
+    @Test
+    @DisplayName("The recovery reads where a slot is off the slot, not out of the code")
+    void theSlotSaysWhereItIs() throws IOException {
+        Path recycle = Path.of(
+                "../core/src/main/java/com/uxplima/uxmskyblock/core/application/recycle/IslandRecycleService.java");
+        String source = Files.readString(recycle, StandardCharsets.UTF_8);
+
+        assertThat(source)
+                .describedAs("this call passed a world name and 0, 0 written in the code")
+                .doesNotContain("releaseSlot(op.targetSlot()");
+        assertThat(source)
+                .describedAs("the pool row is the only thing that knows where the slot is")
+                .contains("spiralSlotPoolPort.findBySlotIndex(slotIndex)");
+    }
+
+    @Test
     @DisplayName("Nothing takes a lease for a day written in the code any more")
     void noLeaseIsWrittenInTheCode() throws IOException {
         Path create = Path.of(
