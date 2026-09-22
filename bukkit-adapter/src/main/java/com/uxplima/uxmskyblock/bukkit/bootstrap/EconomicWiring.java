@@ -67,6 +67,10 @@ public final class EconomicWiring {
                 persistence.islandAuthorityPort(),
                 persistence.outboxPort());
         this.dynamicPricingEngine = new DynamicPricingEngine(config.shopConfig().dampingFactor());
+        // The engine had a damping factor, an elasticity and a stock baseline, and nothing ever put
+        // an item in it: every price it could be asked for was absent. What it trades is the
+        // operator's file, read here, once.
+        config.shopConfig().items().forEach(this.dynamicPricingEngine::registerItem);
         this.upgradeService = new IslandUpgradeService(
                 persistence.islandUpgradeStoragePort(),
                 config.upgradesConfig().definitions(),
