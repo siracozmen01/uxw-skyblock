@@ -10,8 +10,11 @@ import java.util.logging.Logger;
 
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Listener;
 
 import com.uxplima.uxmlib.hook.economy.EconomyBridge;
+import com.uxplima.uxmlib.hook.economy.EconomyServiceListener;
+import com.uxplima.uxmlib.hook.economy.RebindingEconomyBridge;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.application.economy.EconomySagaCoordinator;
 import com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort;
@@ -56,7 +59,10 @@ public final class SkyblockEconomyBridge {
 
     public static SkyblockEconomyBridge createDefault(
             IslandBankService bankService, SchedulerPort schedulerPort, @Nullable EconomySagaPort sagaPort) {
-        EconomyBridge bridge = EconomyBridge.orDummy();
+        // Rebinding rather than resolved once. An economy plugin that registers its service after this
+        // one enables, which is every economy plugin once this one loads at startup, used to leave the
+        // bridge on the dummy for as long as the server ran and the island bank refusing every move.
+        EconomyBridge bridge = new RebindingEconomyBridge();
         EconomySagaCoordinator coordinator = null;
         if (sagaPort != null) {
             BukkitVaultWalletAdapter walletAdapter = new BukkitVaultWalletAdapter(bridge);
@@ -67,6 +73,16 @@ public final class SkyblockEconomyBridge {
 
     public static SkyblockEconomyBridge createDefault(IslandBankService bankService, SchedulerPort schedulerPort) {
         return createDefault(bankService, schedulerPort, null);
+    }
+
+    /**
+     * The listener that keeps the economy current as economy plugins register and unregister, or
+     * nothing when this bridge was handed a fixed economy.
+     */
+    public Optional<Listener> economyRebinder() {
+        return economyBridge instanceof RebindingEconomyBridge rebinding
+                ? Optional.of(new EconomyServiceListener(rebinding))
+                : Optional.empty();
     }
 
     public boolean isEconomyAvailable() {

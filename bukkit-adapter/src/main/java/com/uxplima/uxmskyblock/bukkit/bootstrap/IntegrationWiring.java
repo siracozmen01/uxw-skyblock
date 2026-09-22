@@ -349,6 +349,9 @@ public final class IntegrationWiring implements AutoCloseable {
         this.authorityHeartbeat = scheduler.repeatAsync(
                 authorityService::heartbeat, authorityHeartbeatInterval, authorityHeartbeatInterval);
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
+        economyBridge
+                .economyRebinder()
+                .ifPresent(rebinder -> plugin.getServer().getPluginManager().registerEvents(rebinder, plugin));
         plugin.getServer()
                 .getPluginManager()
                 .registerEvents(new PlaceholderCacheEviction(placeholderExpansion), plugin);
