@@ -26,6 +26,7 @@ import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
@@ -272,12 +273,7 @@ public final class IslandMissionsMenu {
             return;
         }
 
-        int count = 0;
-        for (ItemStack is : player.getInventory().getContents()) {
-            if (is != null && is.getType() == requiredMat) {
-                count += is.getAmount();
-            }
-        }
+        int count = TradableStacks.countOf(player, requiredMat);
 
         if (count <= 0) {
             messages.send(player, "menu.missions.nothing_to_submit", Placeholder.unparsed("item", requiredMat.name()));
@@ -295,21 +291,7 @@ public final class IslandMissionsMenu {
             return;
         }
 
-        int remainingToTake = toTake;
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            ItemStack is = player.getInventory().getItem(i);
-            if (is != null && is.getType() == requiredMat) {
-                int amt = is.getAmount();
-                if (amt <= remainingToTake) {
-                    player.getInventory().setItem(i, null);
-                    remainingToTake -= amt;
-                } else {
-                    is.setAmount(amt - remainingToTake);
-                    remainingToTake = 0;
-                }
-                if (remainingToTake <= 0) break;
-            }
-        }
+        TradableStacks.take(player, requiredMat, toTake);
 
         final int taken = toTake;
         schedulerPort.async(() -> {
@@ -365,10 +347,6 @@ public final class IslandMissionsMenu {
         if (amount <= 0) {
             return;
         }
-        ItemStack stack = new ItemStack(material, amount);
-        Map<Integer, ItemStack> leftover = player.getInventory().addItem(stack);
-        for (ItemStack overflow : leftover.values()) {
-            player.getWorld().dropItemNaturally(player.getLocation(), overflow);
-        }
+        TradableStacks.give(player, material, amount);
     }
 }

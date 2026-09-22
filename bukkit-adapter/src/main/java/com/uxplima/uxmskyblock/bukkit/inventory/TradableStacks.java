@@ -15,6 +15,10 @@ import org.bukkit.inventory.ItemStack;
  * and a shop that counted them by material alone bought them at the plain price and destroyed
  * everything that made them worth more.
  *
+ * <p>A mission that asks for a material is the same line with a count in place of a price. A
+ * renamed sword handed in as one sword, or a filled shulker box handed in as one box, loses the
+ * player everything it held.
+ *
  * <p>The rule is therefore one comparison: a stack trades only when it is similar to a stack fresh
  * off the material. That leaves the player holding their enchanted sword and tells them they do not
  * hold what they offered to sell, which is true.
