@@ -129,10 +129,14 @@ public final class AdminWiring {
                 config.antiAbuseConfig().quarantineLookupTtl(),
                 java.time.Clock.systemUTC());
         this.antiAbuseListener = config.moduleSettings().isModuleEnabled("anti-abuse")
+                // The same index the protection listener uses, so an island one of them has seen is
+                // an island the other has too, and so a miss is filled off the thread rather than
+                // where the touch arrived.
                 ? new IslandAntiAbuseListener(
                         persistence.islandStoragePort(),
                         this.antiAbuseService,
                         config.antiAbuseConfig(),
+                        protectionListener.spatialIndex(),
                         config.messages())
                 : null;
     }

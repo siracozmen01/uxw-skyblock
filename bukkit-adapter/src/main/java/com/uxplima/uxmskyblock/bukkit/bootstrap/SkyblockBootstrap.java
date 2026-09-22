@@ -23,6 +23,7 @@ import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
+import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
 import com.uxplima.uxmskyblock.core.application.access.TemporaryAccessService;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatService;
@@ -101,12 +102,21 @@ public final class SkyblockBootstrap implements AutoCloseable {
                 visitorEvictionAdapter,
                 persistenceWiring.bootstrap().outboxPort());
 
+        // The index answers for every block anybody touches, and a miss has to be filled off the
+        // thread the touch arrived on. Built without a scheduler it filled the miss where it stood:
+        // a query on the region thread on the first touch of every island. The convenience
+        // constructor below this one is what did that, and it also handed the listener the bundled
+        // English catalogue, so every refusal a player read ignored the operator's language files.
+        SpatialIslandIndex spatialIndex =
+                new SpatialIslandIndex(persistenceWiring.bootstrap().islandStoragePort(), scheduler);
         IslandProtectionListener protectionListener = new IslandProtectionListener(
                 persistenceWiring.bootstrap().islandStoragePort(),
                 accessService,
                 allianceService,
                 temporaryAccessService,
-                freezeService);
+                freezeService,
+                spatialIndex,
+                configWiring.messages());
 
         this.authorityWiring = AuthorityWiring.create(
                 configWiring.nodeConfig().nodeId(),
