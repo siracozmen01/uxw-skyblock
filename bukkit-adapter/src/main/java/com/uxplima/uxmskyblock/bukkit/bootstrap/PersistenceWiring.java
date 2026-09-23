@@ -82,6 +82,13 @@ public final class PersistenceWiring implements AutoCloseable {
             persistenceBootstrap = PersistenceBootstrap.createSqlite(dbFile);
         }
 
+        // A commit is only as durable as the engine settings under it. Read once, at startup, before
+        // anything is written.
+        persistenceBootstrap.enforceDurability(com.uxplima.uxmskyblock.persistence.sql.DurabilityCheck.Profile.parse(
+                rootNode != null
+                        ? rootNode.node("database", "durability-profile").getString()
+                        : null));
+
         // The bucket is named once, whichever storage backend is chosen, because a backup written
         // under one name has to be read back under the same one.
         String configuredBucket =

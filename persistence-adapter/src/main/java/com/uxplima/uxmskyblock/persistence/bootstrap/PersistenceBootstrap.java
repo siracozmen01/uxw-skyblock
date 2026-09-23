@@ -189,6 +189,17 @@ public final class PersistenceBootstrap implements AutoCloseable {
                 new com.uxplima.uxmskyblock.persistence.recycle.SqlIslandRecycleStorageAdapter(database);
     }
 
+    /**
+     * Reads whether the database would keep a commit through a power loss, and acts as {@code profile}
+     * says.
+     *
+     * @throws com.uxplima.uxmskyblock.persistence.sql.FatalDurabilityConfigurationException when it
+     *     would not and the profile is strict
+     */
+    public void enforceDurability(com.uxplima.uxmskyblock.persistence.sql.DurabilityCheck.Profile profile) {
+        com.uxplima.uxmskyblock.persistence.sql.DurabilityCheck.enforce(database, profile);
+    }
+
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
         Objects.requireNonNull(databaseFile, "databaseFile");
         Database db = Database.builder().sqlite(databaseFile).build();
