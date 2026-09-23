@@ -45,12 +45,25 @@ public final class InteractionEffectPlayer {
     /** Vault's economy, looked up the first time a line asks for money rather than at startup. */
     private final Wallet wallet = BridgedWallet.ofServer(Economies.vault(), System.getLogger("uxmSkyblock"));
 
+    /**
+     * The catalogue a line's {@code @key} parts are read from, in the language of the player it is
+     * about. Unwired, the engine refuses such a line, and a line that names its words by key is how
+     * an operator writes one text in every language.
+     */
+    private final com.uxplima.uxmskyblock.bukkit.i18n.Messages messages;
+
     public InteractionEffectPlayer() {
         this(null);
     }
 
     public InteractionEffectPlayer(@Nullable SchedulerPort schedulerPort) {
+        this(schedulerPort, com.uxplima.uxmskyblock.bukkit.i18n.Messages.bundled());
+    }
+
+    public InteractionEffectPlayer(
+            @Nullable SchedulerPort schedulerPort, com.uxplima.uxmskyblock.bukkit.i18n.Messages messages) {
         this.schedulerPort = schedulerPort;
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
     /**
@@ -106,7 +119,9 @@ public final class InteractionEffectPlayer {
                     }
                 })
                 // The caller is on the player's own thread, which is where their command belongs.
-                .playerSink(line -> server.dispatchCommand(player, line));
+                .playerSink(line -> server.dispatchCommand(player, line))
+                // A part written as @key reads its words from the catalogue, for this player.
+                .words(key -> messages.raw(player, key));
         if (scheduler != null) {
             builder.later(scheduler::asyncAfter);
         }

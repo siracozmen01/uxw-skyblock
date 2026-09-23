@@ -11,6 +11,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.text.message.LocaleSource;
 import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The single seam between an outcome of the game and the words a player reads about it.
@@ -63,6 +64,16 @@ public final class Messages {
      */
     public Component renderPlain(Audience viewer, String key, TagResolver... resolvers) {
         return provider.getComponentWithoutPrefix(key, languageOf(viewer), resolvers);
+    }
+
+    /**
+     * The MiniMessage {@code key} holds for {@code viewer}, or {@code null} when no catalogue has it.
+     *
+     * <p>For a text that is drawn elsewhere, such as a part of an operator's effect line that names
+     * its words by key.
+     */
+    public @Nullable String raw(Audience viewer, String key) {
+        return has(key) ? provider.getRaw(key, languageOf(viewer)) : null;
     }
 
     /** Sends {@code key} to {@code viewer} in the language that viewer reads. */

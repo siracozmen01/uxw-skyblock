@@ -54,7 +54,7 @@ final class CommandGroupBuilder {
     CommandGroups build() {
         // One applier for every milestone in the tree. What each fires is the operator's list.
         com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer effectPlayer =
-                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(tree.schedulerPort);
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(tree.schedulerPort, tree.messages);
 
         IslandBankCommands bankCommands = new IslandBankCommands(
                 tree.islandBankService,

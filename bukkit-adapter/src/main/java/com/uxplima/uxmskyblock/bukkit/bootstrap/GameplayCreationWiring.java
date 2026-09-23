@@ -115,7 +115,7 @@ public final class GameplayCreationWiring {
                     config.messages());
             this.missionListener.useEffects(
                     config.effectsConfig(),
-                    new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler));
+                    new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler, config.messages()));
         } else {
             this.missionsMenu = null;
             this.missionListener = null;
