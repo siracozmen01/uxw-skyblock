@@ -147,6 +147,7 @@ public final class EconomicWiring {
                 : null;
         if (this.boosterListener != null) {
             authority.sessionCoordinator().whenSessionActive(this.boosterListener::onSessionActive);
+            authority.sessionCoordinator().whenProfileLeft(this.boosterListener::onProfileLeft);
         }
         this.boosterMenu = boostersEnabled
                 ? new IslandBoosterMenu(

@@ -141,6 +141,13 @@ public final class IslandChatListener implements Listener {
         activeProfileProvider.apply(player.getUniqueId()).ifPresent(onlineMembers::arrived);
     }
 
+    /** The profile a player switched away from is no longer playing here. */
+    public void onProfileLeft(Player player, ProfileId left) {
+        if (onlineMembers != null) {
+            onlineMembers.left(left);
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Optional<ProfileId> optProfile =

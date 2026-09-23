@@ -119,4 +119,23 @@ class IslandChatListenerTest extends MockBukkitHarness {
         assertThat(event.isCancelled()).isTrue();
         assertThat(player.nextComponentMessage()).isNotNull();
     }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A profile switch leaves the old profile off the island chat and puts the new one on it")
+    void aSwitchMovesThePlayerBetweenProfiles() {
+        ProfileId newProfile = ProfileId.of(java.util.UUID.randomUUID());
+        java.util.concurrent.atomic.AtomicReference<ProfileId> active =
+                new java.util.concurrent.atomic.AtomicReference<>(profileId);
+        com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider online =
+                new com.uxplima.uxmskyblock.bukkit.chat.BukkitIslandOnlineMemberProvider();
+        IslandChatListener switching = new IslandChatListener(
+                chatService, uuid -> Optional.ofNullable(active.get()), Messages.bundled(), online);
+        switching.onSessionActive(player);
+
+        active.set(newProfile);
+        switching.onProfileLeft(player, profileId);
+        switching.onSessionActive(player);
+
+        assertThat(online.onlineAmong(java.util.Set.of(profileId, newProfile))).containsExactly(newProfile);
+    }
 }

@@ -142,6 +142,39 @@ public final class PlayerSessionCoordinator {
         whenActive.add(java.util.Objects.requireNonNull(hook, "hook"));
     }
 
+    /** What runs on the player's thread when they switch away from a profile, with that profile. */
+    private final java.util.List<java.util.function.BiConsumer<Player, ProfileId>> whenLeft =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
+     * Runs {@code hook} when a player switches away from a profile, before the session hooks run for
+     * the one they switched to. A switch is a leave and an arrival: anything that tracks who is
+     * playing by profile has to hear both, or it keeps the old profile and misses the new one.
+     */
+    public void whenProfileLeft(java.util.function.BiConsumer<Player, ProfileId> hook) {
+        whenLeft.add(java.util.Objects.requireNonNull(hook, "hook"));
+    }
+
+    private void runActiveHooks(Player player) {
+        for (java.util.function.Consumer<Player> hook : whenActive) {
+            try {
+                hook.accept(player);
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING, "A hook on a new session failed for " + player.getName(), e);
+            }
+        }
+    }
+
+    private void runLeftHooks(Player player, ProfileId left) {
+        for (java.util.function.BiConsumer<Player, ProfileId> hook : whenLeft) {
+            try {
+                hook.accept(player, left);
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING, "A hook on a profile switch failed for " + player.getName(), e);
+            }
+        }
+    }
+
     /**
      * Handles player join: ensures session authority, applies saved inventory, starts heartbeats & checkpoints.
      */
@@ -196,13 +229,7 @@ public final class PlayerSessionCoordinator {
                         BukkitInventorySerializer.applyToPlayer(player, invOpt.get());
                     }
                     protectionListener.setActiveProfile(playerUuid, activeProfile);
-                    for (java.util.function.Consumer<Player> hook : whenActive) {
-                        try {
-                            hook.accept(player);
-                        } catch (RuntimeException e) {
-                            LOGGER.log(Level.WARNING, "A hook on a new session failed for " + player.getName(), e);
-                        }
-                    }
+                    runActiveHooks(player);
                 });
 
                 // Start async heartbeat task with fail-closed self-fencing
@@ -430,6 +457,9 @@ public final class PlayerSessionCoordinator {
                                             Placeholder.unparsed(
                                                     "profile",
                                                     targetProfileId.value().toString()));
+                                    // The old profile has left and the new one has arrived.
+                                    runLeftHooks(player, currentProfile);
+                                    runActiveHooks(player);
                                 }
                             });
                         } else {

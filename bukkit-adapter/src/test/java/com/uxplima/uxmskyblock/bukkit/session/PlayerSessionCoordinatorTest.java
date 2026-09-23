@@ -109,6 +109,30 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A profile switch tells the hooks the old profile left and the new one arrived")
+    void aSwitchIsALeaveAndAnArrival() {
+        PlayerMock player = createPlayer("SwitchHookPlayer");
+        java.util.List<ProfileId> left = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.List<ProfileId> arrived = new java.util.concurrent.CopyOnWriteArrayList<>();
+        coordinator.whenProfileLeft((who, profile) -> left.add(profile));
+        coordinator.whenSessionActive(
+                who -> arrived.add(coordinator.activeProfile(who.getUniqueId()).orElseThrow()));
+        coordinator.handlePlayerJoin(player);
+        eventuallyTick(() -> assertThat(arrived).hasSize(1));
+        ProfileId first = arrived.get(0);
+        ProfileId second = new ProfileId(UUID.randomUUID());
+        persistenceBootstrap.registerProfile(new PlayerUuid(player.getUniqueId()), second);
+        persistenceBootstrap
+                .inventoryPort()
+                .initializeInventory(ProfileInventoryRecord.createDefault(second, new byte[0], new byte[0]));
+
+        coordinator.switchProfile(player, second);
+
+        eventuallyTick(() -> assertThat(arrived).containsExactly(first, second));
+        assertThat(left).containsExactly(first);
+    }
+
+    @Test
     @DisplayName("checkpointPlayer saves updated player inventory snapshot")
     void checkpointSavesInventory() {
         PlayerMock player = createPlayer("CheckpointPlayer");

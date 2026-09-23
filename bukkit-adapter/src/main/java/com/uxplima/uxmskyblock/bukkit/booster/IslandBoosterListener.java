@@ -130,8 +130,18 @@ public final class IslandBoosterListener implements Listener {
             return;
         }
 
-        Player player = event.getPlayer();
-        UUID playerUuid = player.getUniqueId();
+        leftIsland(event.getPlayer().getUniqueId());
+    }
+
+    /** A player who switched profile has left the island the old profile belonged to. */
+    public void onProfileLeft(Player player, ProfileId left) {
+        if (!configuration.pauseWhenEmpty()) {
+            return;
+        }
+        leftIsland(player.getUniqueId());
+    }
+
+    private void leftIsland(UUID playerUuid) {
         Runnable task = () -> {
             IslandId islandId = playerIslandCache.get(playerUuid);
             if (islandId == null) {

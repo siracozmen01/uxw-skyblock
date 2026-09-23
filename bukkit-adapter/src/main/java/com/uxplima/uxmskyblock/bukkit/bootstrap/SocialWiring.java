@@ -122,6 +122,7 @@ public final class SocialWiring {
                 : null;
         if (this.chatListener != null) {
             authority.sessionCoordinator().whenSessionActive(this.chatListener::onSessionActive);
+            authority.sessionCoordinator().whenProfileLeft(this.chatListener::onProfileLeft);
         }
 
         this.homeService = new HomeService(
