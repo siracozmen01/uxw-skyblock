@@ -17,6 +17,7 @@ import java.util.function.ToIntFunction;
 
 import com.uxplima.uxmskyblock.core.application.island.IslandMutationLock;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
+import com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -149,6 +150,8 @@ public final class IslandMembershipService {
     /** Invitations waiting for an answer, keyed by who has to answer. */
     private final Map<ProfileId, PendingInvite> invites = new ConcurrentHashMap<>();
 
+    private volatile KeyedMutationLock<ProfileId> profileLock = new KeyedMutationLock<>();
+
     public IslandMembershipService(
             IslandStoragePort islandStoragePort,
             IslandMutationLock mutationLock,
@@ -212,11 +215,27 @@ public final class IslandMembershipService {
         return Optional.of(invite);
     }
 
+    /**
+     * The lock island creation holds per profile, so joining and creating wait for each other.
+     *
+     * <p>Each held its own. A player who created an island and accepted an invite at the same moment
+     * passed both checks that they had no island, and ended up owning one and belonging to another:
+     * two islands for one profile, which everything that asks "whose island is this" assumes cannot
+     * happen. The lock is taken before the island's, everywhere, so the two never wait on each other
+     * the other way round.
+     */
+    public void shareProfileLock(KeyedMutationLock<ProfileId> lock) {
+        this.profileLock = Objects.requireNonNull(lock, "lock must not be null");
+    }
+
     /** Puts {@code target} on the island that invited them. */
     public JoinOutcome accept(ProfileId target, PlayerUuid targetPlayerUuid) {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(targetPlayerUuid, "targetPlayerUuid must not be null");
+        return profileLock.inside(target, () -> acceptInside(target, targetPlayerUuid));
+    }
 
+    private JoinOutcome acceptInside(ProfileId target, PlayerUuid targetPlayerUuid) {
         Optional<PendingInvite> optInvite = pendingInvite(target);
         if (optInvite.isEmpty()) {
             return new JoinOutcome.NoInvite();

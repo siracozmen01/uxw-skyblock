@@ -67,6 +67,11 @@ public final class CreateIslandUseCase {
      */
     private final KeyedMutationLock<ProfileId> profileLock = new KeyedMutationLock<>();
 
+    /** The lock a creation holds for its profile, for anything else that must not overlap one. */
+    public KeyedMutationLock<ProfileId> profileLock() {
+        return profileLock;
+    }
+
     /**
      * How far a new island reaches from its centre.
      *

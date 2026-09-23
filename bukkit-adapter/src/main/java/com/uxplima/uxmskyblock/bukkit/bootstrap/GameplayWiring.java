@@ -232,6 +232,9 @@ public final class GameplayWiring {
                 persistence.islandStoragePort(),
                 persistence.islandMutationLock(),
                 new MemberAllowance(this.economicWiring.upgradeService()));
+        // Joining an island and making one hold the same lock per profile, so nobody does both.
+        this.membershipService.shareProfileLock(
+                creationWiring.createIslandUseCase().profileLock());
 
         this.environmentWiring = new GameplayEnvironmentWiring(
                 config,

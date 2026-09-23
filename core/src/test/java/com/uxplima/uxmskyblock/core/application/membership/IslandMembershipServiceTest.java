@@ -348,4 +348,36 @@ class IslandMembershipServiceTest {
         assertThat(service.setRolePermission(MATE, "member", "block_place", true))
                 .isInstanceOf(IslandMembershipService.PermissionOutcome.NotAllowed.class);
     }
+
+    @Test
+    @DisplayName("Accepting an invite waits for the player's own island being made, and then refuses")
+    void acceptingWaitsForACreationUnderWay() throws Exception {
+        com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock<ProfileId> profiles =
+                new com.uxplima.uxmskyblock.core.application.lock.KeyedMutationLock<>();
+        service.shareProfileLock(profiles);
+        service.invite(OWNER, MATE);
+        java.util.concurrent.atomic.AtomicBoolean created = new java.util.concurrent.atomic.AtomicBoolean();
+        when(storage.findIslandIdByProfileId(MATE))
+                .thenAnswer(ask -> created.get() ? Optional.of(IslandId.of(UUID.randomUUID())) : Optional.empty());
+        java.util.concurrent.CountDownLatch creating = new java.util.concurrent.CountDownLatch(1);
+
+        Thread creation = new Thread(() -> profiles.inside(MATE, () -> {
+            creating.countDown();
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            created.set(true);
+        }));
+        creation.start();
+        creating.await();
+
+        IslandMembershipService.JoinOutcome outcome = service.accept(MATE, MATE_UUID);
+        creation.join();
+
+        assertThat(outcome)
+                .describedAs("a player whose own island was being made does not also join another")
+                .isInstanceOf(IslandMembershipService.JoinOutcome.AlreadyOnAnIsland.class);
+    }
 }
