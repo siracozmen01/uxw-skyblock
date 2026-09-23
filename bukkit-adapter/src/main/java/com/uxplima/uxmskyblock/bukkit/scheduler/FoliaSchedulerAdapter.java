@@ -219,8 +219,11 @@ public final class FoliaSchedulerAdapter implements SchedulerPort {
         }
         long initMillis = Math.max(1L, initialDelay.toMillis());
         long periodMillis = Math.max(1L, period.toMillis());
+        // Each run is counted while it runs, the way a one-off async task is. A repeating run was not,
+        // so a shutdown that drained the async work closed the pool under a season check or a sweep that
+        // was half way through, and it failed with the pool closed.
         ScheduledTask scheduledTask = Bukkit.getAsyncScheduler()
-                .runAtFixedRate(plugin, ignored -> task.run(), initMillis, periodMillis, TimeUnit.MILLISECONDS);
+                .runAtFixedRate(plugin, ignored -> runCounted(task), initMillis, periodMillis, TimeUnit.MILLISECONDS);
         return scheduledTask::cancel;
     }
 }
