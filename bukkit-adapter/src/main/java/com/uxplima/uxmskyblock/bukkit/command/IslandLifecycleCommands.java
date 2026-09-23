@@ -401,7 +401,10 @@ public final class IslandLifecycleCommands {
                 // Opening an inventory belongs to the thread that owns the player.
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (player.isOnline()) {
-                        resetMenu.open(player, challenge.code());
+                        resetMenu.open(
+                                player,
+                                challenge.code(),
+                                () -> resetWithCode(player, recycleService, challenge.code()));
                     }
                 });
             }
@@ -441,10 +444,23 @@ public final class IslandLifecycleCommands {
         }
 
         String code = StringArgumentType.getString(ctx, "code");
+        resetWithCode(player, recycleService, code);
+        return Cmd.OK;
+    }
+
+    /**
+     * Erases the player's island once they have given the code, under every rule a reset is held to.
+     *
+     * <p>The typed confirmation and the confirmation window both come here. The window's button
+     * erased the island on its own, so a reset from the window was never counted against the daily
+     * allowance, had no guard against a double click and never emptied the inventory the operator
+     * asked to have emptied.
+     */
+    private void resetWithCode(Player player, IslandRecycleService recycleService, String code) {
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
             send(player, "error.session_not_active");
-            return Cmd.OK;
+            return;
         }
 
         ProfileId profileId = optProfile.get();
@@ -470,7 +486,6 @@ public final class IslandLifecycleCommands {
             }
             confirmReset(player, recycleService, antiAbuse, profileId, islandId, code);
         });
-        return Cmd.OK;
     }
 
     /** Erases the island and reports it, once the caller has been read off the database. */
@@ -492,6 +507,12 @@ public final class IslandLifecycleCommands {
                     }
                 })
                 .thenAccept(result -> {
+                    // Counted here, off any player's thread, whether or not the player is still on.
+                    // It was counted on the player's thread, so a player who left while the island
+                    // was erased was never counted, and the count was a database write on the region.
+                    if (result instanceof RecycleResult.Success && antiAbuse != null) {
+                        antiAbuse.recordReset(playerUuid, Instant.now());
+                    }
                     schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                         switch (result) {
                             case RecycleResult.Success s -> {
@@ -502,7 +523,6 @@ public final class IslandLifecycleCommands {
                                     markers.onIslandRemoved(islandId);
                                 }
                                 if (antiAbuse != null) {
-                                    antiAbuse.recordReset(new PlayerUuid(player.getUniqueId()), Instant.now());
                                     if (antiAbuse.purgeInventoryOnReset()) {
                                         player.getInventory().clear();
                                         player.getInventory().setArmorContents(null);

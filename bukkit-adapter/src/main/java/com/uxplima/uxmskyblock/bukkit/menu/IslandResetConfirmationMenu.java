@@ -17,7 +17,6 @@ import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
-import com.uxplima.uxmskyblock.bukkit.recycle.ResetAnnouncer;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
@@ -38,7 +37,6 @@ public final class IslandResetConfirmationMenu {
     private final SchedulerPort schedulerPort;
     private volatile @Nullable BedrockFormService bedrockFormService;
     private final Messages messages;
-    private final ResetAnnouncer announcer;
 
     public IslandResetConfirmationMenu(
             IslandRecycleService recycleService,
@@ -53,7 +51,6 @@ public final class IslandResetConfirmationMenu {
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.bedrockFormService = bedrockFormService;
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
-        this.announcer = new ResetAnnouncer(messages);
     }
 
     public IslandResetConfirmationMenu(
@@ -69,7 +66,14 @@ public final class IslandResetConfirmationMenu {
         this.bedrockFormService = bedrockFormService;
     }
 
-    public void open(Player player, String verificationCode) {
+    /**
+     * Opens the confirmation for {@code player}.
+     *
+     * @param onConfirm what confirming does. It is the command's own confirmation, so a reset from
+     *     here is held to the same rules as a typed one: the allowance, the double click guard and
+     *     the inventory the operator asked to have emptied.
+     */
+    public void open(Player player, String verificationCode, Runnable onConfirm) {
         UUID rawUuid = player.getUniqueId();
         PlayerUuid playerUuid = new PlayerUuid(rawUuid);
         Optional<ProfileId> activeOpt =
@@ -105,19 +109,14 @@ public final class IslandResetConfirmationMenu {
                                     player, "menu.reset.form_body", Placeholder.unparsed("code", verificationCode))),
                             legacy(messages.renderPlain(player, "menu.reset.confirm_name")),
                             legacy(messages.renderPlain(player, "menu.reset.cancel_name")),
-                            () -> {
-                                var unused = recycleService
-                                        .executeReset(profileId, islandId, verificationCode, false)
-                                        .thenAccept(result -> schedulerPort.onEntity(
-                                                playerUuid, () -> announcer.announce(player, result)));
-                            },
+                            onConfirm,
                             () -> {
                                 recycleService.cancelResetChallenge(profileId);
                                 messages.send(player, "menu.reset.cancelled");
                             });
                     return;
                 }
-                SimpleGui gui = buildGui(player, profileId, islandId, verificationCode);
+                SimpleGui gui = buildGui(player, profileId, islandId, verificationCode, onConfirm);
                 gui.open(player);
             });
         });
@@ -129,7 +128,8 @@ public final class IslandResetConfirmationMenu {
                 .serialize(component);
     }
 
-    public SimpleGui buildGui(Player player, ProfileId profileId, IslandId islandId, String verificationCode) {
+    public SimpleGui buildGui(
+            Player player, ProfileId profileId, IslandId islandId, String verificationCode, Runnable onConfirm) {
         SimpleGui gui = Guis.gui()
                 .title(messages.renderPlain(player, "menu.reset.title"))
                 .rows(3)
@@ -157,10 +157,7 @@ public final class IslandResetConfirmationMenu {
 
         gui.set(11, GuiItem.button(confirmItem, event -> {
             player.closeInventory();
-            var unused = recycleService
-                    .executeReset(profileId, islandId, verificationCode, false)
-                    .thenAccept(result ->
-                            schedulerPort.onEntity(player.getUniqueId(), () -> announcer.announce(player, result)));
+            onConfirm.run();
         }));
 
         // Cancel button
