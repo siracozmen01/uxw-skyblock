@@ -94,6 +94,21 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("Whatever waits for a session is called once the session is made, with the player")
+    void aSessionHookIsCalledOnceTheSessionIsMade() {
+        PlayerMock player = createPlayer("HookPlayer");
+        java.util.List<org.bukkit.entity.Player> called = new java.util.concurrent.CopyOnWriteArrayList<>();
+        coordinator.whenSessionActive(called::add);
+
+        coordinator.handlePlayerJoin(player);
+
+        eventuallyTick(() -> assertThat(called).containsExactly(player));
+        assertThat(coordinator.activeProfile(player.getUniqueId()))
+                .describedAs("the profile a hook would ask for")
+                .isPresent();
+    }
+
+    @Test
     @DisplayName("checkpointPlayer saves updated player inventory snapshot")
     void checkpointSavesInventory() {
         PlayerMock player = createPlayer("CheckpointPlayer");

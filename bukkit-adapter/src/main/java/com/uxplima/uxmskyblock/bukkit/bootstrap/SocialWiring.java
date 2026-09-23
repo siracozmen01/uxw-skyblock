@@ -128,6 +128,7 @@ public final class SocialWiring {
         this.notificationService = new NotificationService(persistence.notificationStoragePort());
         this.notificationListener = new IslandNotificationListener(
                 this.notificationService, scheduler, config.messages(), authority.sessionCoordinator());
+        authority.sessionCoordinator().whenSessionActive(this.notificationListener::onSessionActive);
 
         if (config.vaultConfig().enabled()) {
             this.vaultWindow = new IslandVaultWindow(

@@ -97,6 +97,27 @@ public final class NotificationService {
         return pending;
     }
 
+    /** What is waiting for {@code recipientProfileId}, without marking any of it read. */
+    public List<Notification> pendingNotifications(ProfileId recipientProfileId) {
+        Objects.requireNonNull(recipientProfileId, "recipientProfileId must not be null");
+        return storagePort.findPendingNotifications(recipientProfileId);
+    }
+
+    /**
+     * Marks exactly these notifications read, once they have been shown.
+     *
+     * <p>A drain marked everything read before anything was shown, and marked it by recipient, so a
+     * player who left before the notices reached them lost them, and a notice written between the
+     * read and the mark was marked read without being read at all.
+     */
+    public void markDelivered(java.util.Collection<Notification> delivered, Instant readAt) {
+        Objects.requireNonNull(delivered, "delivered must not be null");
+        Objects.requireNonNull(readAt, "readAt must not be null");
+        for (Notification notification : delivered) {
+            storagePort.markAsRead(notification.notificationId(), readAt);
+        }
+    }
+
     public int getUnreadCount(ProfileId recipientProfileId) {
         Objects.requireNonNull(recipientProfileId, "recipientProfileId must not be null");
         return storagePort.countUnread(recipientProfileId);

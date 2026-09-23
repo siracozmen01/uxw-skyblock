@@ -128,6 +128,20 @@ public final class PlayerSessionCoordinator {
         });
     }
 
+    /** What runs on the player's thread once their session is made and their inventory applied. */
+    private final java.util.List<java.util.function.Consumer<Player>> whenActive =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
+     * Runs {@code hook} for each player whose session is made, on the player's own thread.
+     *
+     * <p>A session is made off the join thread, after the join event, so anything that needs the
+     * player's profile cannot ask for it at join.
+     */
+    public void whenSessionActive(java.util.function.Consumer<Player> hook) {
+        whenActive.add(java.util.Objects.requireNonNull(hook, "hook"));
+    }
+
     /**
      * Handles player join: ensures session authority, applies saved inventory, starts heartbeats & checkpoints.
      */
@@ -182,6 +196,13 @@ public final class PlayerSessionCoordinator {
                         BukkitInventorySerializer.applyToPlayer(player, invOpt.get());
                     }
                     protectionListener.setActiveProfile(playerUuid, activeProfile);
+                    for (java.util.function.Consumer<Player> hook : whenActive) {
+                        try {
+                            hook.accept(player);
+                        } catch (RuntimeException e) {
+                            LOGGER.log(Level.WARNING, "A hook on a new session failed for " + player.getName(), e);
+                        }
+                    }
                 });
 
                 // Start async heartbeat task with fail-closed self-fencing

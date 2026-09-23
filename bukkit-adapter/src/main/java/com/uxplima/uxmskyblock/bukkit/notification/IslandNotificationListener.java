@@ -7,10 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
 
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
@@ -50,9 +47,14 @@ public final class IslandNotificationListener implements Listener {
         this.sessionCoordinator = sessionCoordinator;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
+    /**
+     * Reads out what waited for a player once their session is active.
+     *
+     * <p>It used to run on the join event, and a session is made off the join thread after it, so
+     * at join the player had no profile yet and every notice written while they were away stayed
+     * unread. The session coordinator calls this when the session is made.
+     */
+    public void onSessionActive(Player player) {
         deliverTo(player);
     }
 
@@ -70,12 +72,13 @@ public final class IslandNotificationListener implements Listener {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
 
         schedulerPort.async(() -> {
-            List<Notification> pending = notificationService.drainPendingNotifications(profileId);
+            List<Notification> pending = notificationService.pendingNotifications(profileId);
             if (pending.isEmpty()) {
                 return;
             }
             schedulerPort.onEntity(playerUuid, () -> {
                 if (!player.isOnline()) {
+                    // Gone before the notices reached them: they stay unread for the next login.
                     return;
                 }
                 messages.send(
@@ -83,6 +86,8 @@ public final class IslandNotificationListener implements Listener {
                 for (Notification notification : pending) {
                     sendOne(player, notification);
                 }
+                // Only what was shown is marked read, and only once it was.
+                schedulerPort.async(() -> notificationService.markDelivered(pending, java.time.Instant.now()));
             });
         });
     }

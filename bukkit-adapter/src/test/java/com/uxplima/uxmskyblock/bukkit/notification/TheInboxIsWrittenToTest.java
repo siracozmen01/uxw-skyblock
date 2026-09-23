@@ -125,6 +125,41 @@ class TheInboxIsWrittenToTest {
     }
 
     @Test
+    @DisplayName("A player who left before the notices reached them finds them unread next time")
+    void aNoticeNotShownStaysUnread() {
+        service.notify(profileId, NotificationCategory.KICK, "notification.kicked", Map.of("player", "Owner"), null);
+        SchedulerPort leftAlready = mock(SchedulerPort.class);
+        doAnswer(invocation -> {
+                    invocation.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(leftAlready)
+                .async(any(Runnable.class));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(profileId));
+        // The player's own thread never gets to it: they have gone.
+        new IslandNotificationListener(service, leftAlready, Messages.bundled(), sessions).deliverTo(player);
+
+        assertThat(service.getUnreadCount(profileId))
+                .describedAs("the notice nobody read")
+                .isEqualTo(1);
+        listener.deliverTo(player);
+        assertThat(player.nextMessage())
+                .describedAs("read out at the next chance")
+                .isNotNull();
+    }
+
+    @Test
+    @DisplayName("A session made after the join reads out what waited, through the coordinator's hook")
+    void theSessionHookReadsTheNotices() {
+        service.notify(profileId, NotificationCategory.KICK, "notification.kicked", Map.of("player", "Owner"), null);
+
+        listener.onSessionActive(player);
+
+        assertThat(player.nextMessage()).isNotNull();
+    }
+
+    @Test
     @DisplayName("Reading a notice marks it read, so it is not read out twice")
     void anoticeIsOnlyReadOnce() {
         service.notify(profileId, NotificationCategory.KICK, "notification.kicked", Map.of("player", "Owner"), null);
