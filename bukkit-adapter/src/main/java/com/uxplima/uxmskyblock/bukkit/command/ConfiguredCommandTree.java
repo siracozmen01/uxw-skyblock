@@ -37,6 +37,11 @@ final class ConfiguredCommandTree<S> {
 
     private final @Nullable ConfiguredCommands names;
 
+    /** A branch as a player reaches it: the key the code knows it by, the word typed, who may. */
+    record Branch<S>(String key, String name, java.util.function.Predicate<S> requirement) {}
+
+    private final List<Branch<S>> branches = new ArrayList<>();
+
     ConfiguredCommandTree(@Nullable ConfiguredCommands names) {
         this.names = names;
     }
@@ -69,6 +74,7 @@ final class ConfiguredCommandTree<S> {
             kept.add(child);
         }
         Set<String> answered = new HashSet<>();
+        branches.clear();
         for (CommandNode<S> child : kept) {
             if (!(child instanceof LiteralCommandNode<S> literal)) {
                 root.then(child);
@@ -89,13 +95,22 @@ final class ConfiguredCommandTree<S> {
                             + "', which another branch already answers to, so it keeps its own word.");
                     if (answered.add(key)) {
                         root.then(copy(literal, key));
+                        branches.add(new Branch<>(key, key, literal.getRequirement()));
                     }
                     continue;
                 }
                 root.then(copy(literal, word));
+                if (word.equals(entry.name())) {
+                    branches.add(new Branch<>(key, word, literal.getRequirement()));
+                }
             }
         }
         return root;
+    }
+
+    /** Every branch {@link #apply} kept, in the order the tree holds them, under its own name. */
+    List<Branch<S>> branches() {
+        return List.copyOf(branches);
     }
 
     /** {@code node} under another word, with everything it runs, requires and holds. */

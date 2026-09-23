@@ -11,6 +11,7 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -458,9 +459,21 @@ public final class IslandCommandTree {
      * a player types the line it guessed about.
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildRoot() {
-        return new ConfiguredCommandTree<CommandSourceStack>(commandNames)
-                .apply(assembleRoot(new CommandGroupBuilder(this).build()));
+        ConfiguredCommandTree<CommandSourceStack> names = new ConfiguredCommandTree<>(commandNames);
+        LiteralArgumentBuilder<CommandSourceStack> root =
+                names.apply(assembleRoot(new CommandGroupBuilder(this).build()));
+        this.rootWord = names.root().name();
+        this.helpBranches = names.branches();
+        return root;
     }
+
+    /** The word the root answers to, as {@code /is help} names it. */
+    private String rootWord = ConfiguredCommandTree.ROOT;
+
+    /** Every branch as the operator named it, which is what {@code /is help} lists. */
+    private java.util.List<ConfiguredCommandTree.Branch<CommandSourceStack>> helpBranches = java.util.List.of();
+
+    private static final int HELP_PAGE = 10;
 
     /** The vault window under whichever word the caller typed. */
     private LiteralArgumentBuilder<CommandSourceStack> vaultBranch(String verb) {
@@ -495,7 +508,12 @@ public final class IslandCommandTree {
     private LiteralArgumentBuilder<CommandSourceStack> assembleRoot(CommandGroupBuilder.CommandGroups groups) {
         LiteralArgumentBuilder<CommandSourceStack> root = Cmd.literal("island")
                 .executes(this::executeRoot)
-                .then(Cmd.literal("help").executes(this::executeHelp))
+                .then(Cmd.literal("help")
+                        .executes(ctx -> executeHelp(ctx, 1))
+                        .then(Cmd.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                                .executes(ctx -> executeHelp(
+                                        ctx,
+                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page")))))
                 .then(Cmd.literal("menu").executes(this::executeMenu))
                 .then(groups.mechanicsCommands().buildMissions())
                 .then(groups.mechanicsCommands().buildChallenges())
@@ -598,12 +616,13 @@ public final class IslandCommandTree {
         }
     }
 
-    private void send(Audience audience, Component component) {
-        sendFeedback(audience, component);
-    }
-
     private void send(Audience audience, String key) {
         sendFeedback(audience, messages.render(audience, key));
+    }
+
+    private void send(
+            Audience audience, String key, net.kyori.adventure.text.minimessage.tag.resolver.TagResolver... resolvers) {
+        sendFeedback(audience, messages.render(audience, key, resolvers));
     }
 
     private int executeRoot(CommandContext<CommandSourceStack> ctx) {
@@ -611,7 +630,7 @@ public final class IslandCommandTree {
             features.controlMenu().open(player);
             return Cmd.OK;
         }
-        return executeHelp(ctx);
+        return executeHelp(ctx, 1);
     }
 
     private int executeMenu(CommandContext<CommandSourceStack> ctx) {
@@ -627,19 +646,60 @@ public final class IslandCommandTree {
         return Cmd.OK;
     }
 
-    private int executeHelp(CommandContext<CommandSourceStack> ctx) {
+    /**
+     * Lists the commands the sender can use, under the words the operator gave them, a page at a time.
+     *
+     * <p>It was a list of twenty nine lines in the catalogue, and the command had seventy eight
+     * branches: a player never learned of invite, members, warp or shop from it, and a renamed word
+     * still printed as the shipped one. Each line is now drawn from the command the server registered,
+     * with its words from the reader's catalogue.
+     */
+    private int executeHelp(CommandContext<CommandSourceStack> ctx, int page) {
         CommandSender sender = ctx.getSource().getSender();
-        send(sender, "help.header");
-        for (Component line : messages.renderAll(sender, "help.lines")) {
-            send(sender, line);
-        }
-        if (sender.hasPermission(CatalogPermissions.ADMIN_MANAGE.node())
-                || sender.hasPermission(CatalogPermissions.ADMIN_FREEZE.node())
-                || sender.hasPermission(CatalogPermissions.ADMIN_INSPECT.node())
-                || sender.isOp()) {
-            for (Component line : messages.renderAll(sender, "help.admin_lines")) {
-                send(sender, line);
+        java.util.List<ConfiguredCommandTree.Branch<CommandSourceStack>> usable = new java.util.ArrayList<>();
+        String helpWord = "help";
+        for (ConfiguredCommandTree.Branch<CommandSourceStack> branch : helpBranches) {
+            if (branch.key().equals("help")) {
+                helpWord = branch.name();
             }
+            // A branch with no help words is not listed. The catalogue gives none to a second word
+            // for another branch, such as chest for the vault, so a command is one line.
+            if (messages.has("help.commands." + branch.key() + ".description")
+                    && branch.requirement().test(ctx.getSource())) {
+                usable.add(branch);
+            }
+        }
+        int pages = Math.max(1, (usable.size() + HELP_PAGE - 1) / HELP_PAGE);
+        int shown = Math.min(Math.max(1, page), pages);
+        send(
+                sender,
+                "help.header",
+                Placeholder.unparsed("page", Integer.toString(shown)),
+                Placeholder.unparsed("pages", Integer.toString(pages)));
+        for (ConfiguredCommandTree.Branch<CommandSourceStack> branch :
+                usable.subList((shown - 1) * HELP_PAGE, Math.min(usable.size(), shown * HELP_PAGE))) {
+            String usage = "help.commands." + branch.key() + ".usage";
+            Component usageLine = messages.has(usage)
+                            && !messages.provider().getRaw(usage, "en").isBlank()
+                    ? Component.space().append(messages.renderPlain(sender, usage))
+                    : Component.empty();
+            send(
+                    sender,
+                    "help.entry",
+                    Placeholder.unparsed("root", rootWord),
+                    Placeholder.unparsed("name", branch.name()),
+                    Placeholder.component("usage", usageLine),
+                    Placeholder.component(
+                            "description",
+                            messages.renderPlain(sender, "help.commands." + branch.key() + ".description")));
+        }
+        if (shown < pages) {
+            send(
+                    sender,
+                    "help.next_page",
+                    Placeholder.unparsed("root", rootWord),
+                    Placeholder.unparsed("help", helpWord),
+                    Placeholder.unparsed("page", Integer.toString(shown + 1)));
         }
         return Cmd.OK;
     }

@@ -118,11 +118,12 @@ class MessagesTest {
     void listKeyRendersEveryLine() {
         Player player = playerSpeaking(Locale.US);
 
-        List<Component> lines = messages.renderAll(player, "help.lines");
+        List<Component> lines = messages.renderAll(player, "menu.control.overview_lore");
 
         assertThat(lines).isNotEmpty();
-        assertThat(PLAIN.serialize(lines.get(0))).contains("/is menu");
-        assertThat(lines).allSatisfy(line -> assertThat(PLAIN.serialize(line)).isNotBlank());
+        // The help lines this test first read became /is help, drawn from the command itself; its
+        // file order and its angle brackets are held by IslandHelpListsEveryCommandTest.
+        assertThat(PLAIN.serialize(lines.get(0))).startsWith("Owner:");
     }
 
     @Test
@@ -139,21 +140,12 @@ class MessagesTest {
         Player turkish = playerSpeaking(Locale.of("tr"));
         Player english = playerSpeaking(Locale.US);
 
-        String turkishFirst =
-                PLAIN.serialize(messages.renderAll(turkish, "help.lines").get(0));
-        String englishFirst =
-                PLAIN.serialize(messages.renderAll(english, "help.lines").get(0));
+        String turkishFirst = PLAIN.serialize(
+                messages.renderAll(turkish, "menu.control.overview_lore").get(0));
+        String englishFirst = PLAIN.serialize(
+                messages.renderAll(english, "menu.control.overview_lore").get(0));
 
         assertThat(turkishFirst).isNotEqualTo(englishFirst);
-    }
-
-    @Test
-    @DisplayName("A command placeholder in a help line reaches the player as text, not as a tag")
-    void helpLinesKeepTheirAngleBrackets() {
-        Player player = playerSpeaking(Locale.US);
-
-        assertThat(messages.renderAll(player, "help.lines"))
-                .anySatisfy(line -> assertThat(PLAIN.serialize(line)).contains("<type>"));
     }
 
     @Test
