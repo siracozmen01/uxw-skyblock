@@ -97,20 +97,26 @@ public final class IslandUpgradeService {
         Objects.requireNonNull(actorUuid, "actorUuid");
         Objects.requireNonNull(serverNodeId, "serverNodeId");
         if (bankPort == null || authorityPort == null) {
-            return new UpgradePurchaseOutcome.PaymentFailed("Upgrades cannot be bought on this server.");
+            return new UpgradePurchaseOutcome.PaymentFailed(
+                    UpgradePurchaseOutcome.PaymentFailed.Kind.UNAVAILABLE, "Upgrades cannot be bought on this server.");
         }
 
         Optional<IslandAuthorityRecord> optAuthority = authorityPort.findAuthority(islandId);
         if (optAuthority.isEmpty()) {
-            return new UpgradePurchaseOutcome.PaymentFailed("No authority record found for island " + islandId);
+            return new UpgradePurchaseOutcome.PaymentFailed(
+                    UpgradePurchaseOutcome.PaymentFailed.Kind.ELSEWHERE,
+                    "No authority record found for island " + islandId);
         }
         IslandAuthorityRecord authority = optAuthority.get();
         if (!authority.authoritativeNode().equals(serverNodeId)) {
-            return new UpgradePurchaseOutcome.PaymentFailed("This server does not hold authority for island " + islandId
-                    + " (held by " + authority.authoritativeNode() + ")");
+            return new UpgradePurchaseOutcome.PaymentFailed(
+                    UpgradePurchaseOutcome.PaymentFailed.Kind.ELSEWHERE,
+                    "This server does not hold authority for island " + islandId + " (held by "
+                            + authority.authoritativeNode() + ")");
         }
         if (authority.leaseExpiresAt().isBefore(java.time.Instant.now())) {
             return new UpgradePurchaseOutcome.PaymentFailed(
+                    UpgradePurchaseOutcome.PaymentFailed.Kind.ELSEWHERE,
                     "Authority lease expired at " + authority.leaseExpiresAt() + " for island " + islandId);
         }
 
@@ -251,7 +257,10 @@ public final class IslandUpgradeService {
             if (bankOutcome instanceof BankTransactionOutcome.InsufficientFunds rej) {
                 return new UpgradePurchaseOutcome.InsufficientFunds(nextTier.costMinorUnits(), rej.currentBalance());
             } else if (!(bankOutcome instanceof BankTransactionOutcome.Success)) {
-                return new UpgradePurchaseOutcome.PaymentFailed("Bank transaction failed: " + bankOutcome);
+                return new UpgradePurchaseOutcome.PaymentFailed(
+                        UpgradePurchaseOutcome.PaymentFailed.Kind.BANK_REFUSED,
+                        "Bank transaction failed: " + bankOutcome,
+                        bankOutcome);
             }
             charged = true;
         }
@@ -266,6 +275,7 @@ public final class IslandUpgradeService {
             }
             invalidateCache(islandId);
             return new UpgradePurchaseOutcome.PaymentFailed(
+                    UpgradePurchaseOutcome.PaymentFailed.Kind.RACED,
                     "Another purchase moved this upgrade first. Nothing was charged.");
         }
         tierCache

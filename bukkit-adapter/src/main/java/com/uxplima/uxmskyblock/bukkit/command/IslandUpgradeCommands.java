@@ -25,6 +25,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType;
+import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -48,6 +49,9 @@ import org.jspecify.annotations.Nullable;
  * them: the list, the suggestions and the purchase all read whatever the operator's file defines.
  */
 public final class IslandUpgradeCommands {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandUpgradeCommands.class.getName());
 
     /**
      * What the operator wrote for the milestones this command group reaches.
@@ -337,9 +341,28 @@ public final class IslandUpgradeCommands {
                         player,
                         "upgrades.unknown",
                         Placeholder.unparsed("key", notFound.upgradeId().key()));
-            case UpgradePurchaseOutcome.PaymentFailed failed ->
-                send(player, "upgrades.refused", Placeholder.unparsed("reason", failed.reason()));
+            case UpgradePurchaseOutcome.PaymentFailed failed -> {
+                // The player is told from the catalogue, by the kind of refusal. The reason is an
+                // internal sentence, sometimes with an island id or a Java record in it, and it
+                // used to be put in front of the player as it was; it goes to the log.
+                LOGGER.info(() -> "Upgrade " + upgradeId.key() + " for " + player.getName() + " was not bought: "
+                        + failed.reason());
+                send(player, refusalLine(failed));
+            }
         }
+    }
+
+    /** The catalogue line for an upgrade that was not bought. */
+    static String refusalLine(UpgradePurchaseOutcome.PaymentFailed failed) {
+        return switch (failed.kind()) {
+            case UNAVAILABLE -> "upgrades.disabled";
+            case ELSEWHERE -> "bank.refused_elsewhere";
+            case RACED -> "upgrades.raced";
+            case BANK_REFUSED -> {
+                BankTransactionOutcome bank = failed.bank();
+                yield bank == null ? "bank.refused" : BankRefusalLines.keyFor(bank, "bank.refused");
+            }
+        };
     }
 
     private Optional<ProfileId> activeProfile(Player player) {
