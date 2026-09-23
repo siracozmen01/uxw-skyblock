@@ -35,11 +35,8 @@ public record GeneratorsConfiguration(boolean enabled, Map<Integer, Map<Material
      * @return selected Material
      */
     public Material roll(int tier, double randomValue) {
-        Map<Material, Double> rates = tierRates.get(tier);
-        if (rates == null || rates.isEmpty()) {
-            rates = tierRates.get(0);
-        }
-        if (rates == null || rates.isEmpty()) {
+        Map<Material, Double> rates = ratesFor(tier);
+        if (rates == null) {
             return Material.COBBLESTONE;
         }
 
@@ -66,6 +63,37 @@ public record GeneratorsConfiguration(boolean enabled, Map<Integer, Map<Material
         }
 
         return Material.COBBLESTONE;
+    }
+
+    /**
+     * The rates of the highest tier the file writes at or below {@code tier}, or of the lowest one
+     * when it writes none that low.
+     *
+     * <p>A tier the file does not write used to fall to tier 0, which is plain cobblestone. An island
+     * that had bought the top generator tier and whose operator then took that tier out of the file
+     * lost every ore it paid for, rather than keeping the best tier still there.
+     */
+    private @org.jspecify.annotations.Nullable Map<Material, Double> ratesFor(int tier) {
+        Map<Material, Double> exact = tierRates.get(tier);
+        if (exact != null && !exact.isEmpty()) {
+            return exact;
+        }
+        Integer below = null;
+        Integer lowest = null;
+        for (Map.Entry<Integer, Map<Material, Double>> entry : tierRates.entrySet()) {
+            if (entry.getValue().isEmpty()) {
+                continue;
+            }
+            int written = entry.getKey();
+            if (written <= tier && (below == null || written > below)) {
+                below = written;
+            }
+            if (lowest == null || written < lowest) {
+                lowest = written;
+            }
+        }
+        Integer chosen = below != null ? below : lowest;
+        return chosen == null ? null : tierRates.get(chosen);
     }
 
     public static GeneratorsConfiguration defaultConfiguration() {

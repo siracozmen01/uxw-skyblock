@@ -80,4 +80,30 @@ class GeneratorsConfigurationTest extends com.uxplima.uxmskyblock.bukkit.test.Mo
         assertThat(config.tierRates().get(1)).containsEntry(Material.COBBLESTONE, 0.8);
         assertThat(config.tierRates().get(1)).containsEntry(Material.IRON_ORE, 0.2);
     }
+
+    @Test
+    @DisplayName("A tier the file no longer writes keeps the best tier still written below it")
+    void anUnwrittenTierKeepsTheBestTierBelow() {
+        GeneratorsConfiguration config = new GeneratorsConfiguration(
+                true,
+                Map.of(
+                        0, Map.of(Material.COBBLESTONE, 1.0),
+                        2, Map.of(Material.IRON_ORE, 1.0),
+                        3, Map.of(Material.DIAMOND_ORE, 1.0)));
+
+        assertThat(config.roll(5, 0.5))
+                .describedAs("an island that bought tier five after the operator cut the file to three")
+                .isEqualTo(Material.DIAMOND_ORE);
+        assertThat(config.roll(1, 0.5))
+                .describedAs("a gap in the file falls to the tier below it, not above")
+                .isEqualTo(Material.COBBLESTONE);
+    }
+
+    @Test
+    @DisplayName("A tier below every tier the file writes takes the lowest one written")
+    void aTierBelowEveryWrittenTierTakesTheLowest() {
+        GeneratorsConfiguration config = new GeneratorsConfiguration(true, Map.of(2, Map.of(Material.IRON_ORE, 1.0)));
+
+        assertThat(config.roll(1, 0.5)).isEqualTo(Material.IRON_ORE);
+    }
 }
