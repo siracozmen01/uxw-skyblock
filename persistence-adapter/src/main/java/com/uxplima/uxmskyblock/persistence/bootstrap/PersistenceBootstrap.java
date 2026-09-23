@@ -202,7 +202,12 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public static PersistenceBootstrap createSqlite(Path databaseFile) {
         Objects.requireNonNull(databaseFile, "databaseFile");
-        Database db = Database.builder().sqlite(databaseFile).build();
+        // FULL, because the library opens SQLite at NORMAL, and NORMAL loses the last commits when the
+        // machine loses power: a bank move or a vault page the player saw land can be gone again.
+        Database db = Database.builder()
+                .sqlite(databaseFile)
+                .synchronous(com.uxplima.uxmlib.storage.sql.DatabaseBuilder.Synchronous.FULL)
+                .build();
         return new PersistenceBootstrap(db);
     }
 

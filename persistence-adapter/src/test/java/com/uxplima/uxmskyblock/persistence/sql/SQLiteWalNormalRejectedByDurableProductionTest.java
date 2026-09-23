@@ -60,6 +60,20 @@ class SQLiteWalNormalRejectedByDurableProductionTest {
     }
 
     @Test
+    @DisplayName("The plugin's own SQLite database opens durable, so the strict profile starts")
+    void thePluginsDatabaseIsDurable() {
+        com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap bootstrap =
+                com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap.createSqlite(
+                        folder.resolve("skyblock.db"));
+        try {
+            assertThatNoException()
+                    .isThrownBy(() -> bootstrap.enforceDurability(DurabilityCheck.Profile.PRODUCTION_STRICT));
+        } finally {
+            bootstrap.close();
+        }
+    }
+
+    @Test
     @DisplayName("A profile is read however the operator wrote it, and an unknown one warns rather than refuses")
     void profilesParse() {
         assertThat(DurabilityCheck.Profile.parse("production-strict"))
