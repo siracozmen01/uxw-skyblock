@@ -76,9 +76,9 @@ public final class PlayerIslandLeaderboardAdapter implements IslandLeaderboardPo
                     String customName = rs.getString("custom_name");
                     long score = rs.getLong("score");
 
-                    String displayName = (customName != null && !customName.isBlank())
-                            ? customName
-                            : "Island " + rawId.substring(0, Math.min(8, rawId.length()));
+                    boolean named = customName != null && !customName.isBlank();
+                    String displayName =
+                            named ? customName : "Island " + rawId.substring(0, Math.min(8, rawId.length()));
 
                     String formattedScore =
                             switch (category) {
@@ -87,7 +87,7 @@ public final class PlayerIslandLeaderboardAdapter implements IslandLeaderboardPo
                             };
 
                     entries.add(new LeaderboardEntry(
-                            rank++, IslandId.fromString(rawId), displayName, score, formattedScore));
+                            rank++, IslandId.fromString(rawId), displayName, score, formattedScore, named));
                 }
                 return Collections.unmodifiableList(entries);
             }

@@ -343,15 +343,31 @@ public final class IslandProgressionCommands {
                     send(audience, "leaderboard.empty");
                 } else {
                     for (LeaderboardEntry entry : entries) {
-                        String name = entry.islandName() != null
-                                ? entry.islandName()
-                                : entry.islandId().toString().substring(0, 8);
+                        // A name the island was not given, and a level, are words, so they come from
+                        // the reader's catalogue. The stored entry carries them in English for the API.
+                        Component name = entry.named()
+                                ? Component.text(entry.islandName())
+                                : messages.renderPlain(
+                                        audience,
+                                        "leaderboard.unnamed",
+                                        Placeholder.unparsed(
+                                                "id",
+                                                entry.islandId()
+                                                        .value()
+                                                        .toString()
+                                                        .substring(0, 8)));
+                        Component score = cat == LeaderboardCategory.LEVEL
+                                ? messages.renderPlain(
+                                        audience,
+                                        "leaderboard.score_level",
+                                        Placeholder.unparsed("level", Long.toString(entry.score())))
+                                : Component.text(entry.formattedScore());
                         send(
                                 audience,
                                 "leaderboard.entry",
                                 Placeholder.unparsed("rank", Integer.toString(entry.rank())),
-                                Placeholder.unparsed("name", name),
-                                Placeholder.unparsed("score", entry.formattedScore()));
+                                Placeholder.component("name", name),
+                                Placeholder.component("score", score));
                     }
                 }
                 if (ownRank == Rank.NOT_PLACED) {

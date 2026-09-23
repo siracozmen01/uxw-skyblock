@@ -130,4 +130,31 @@ class PlayerIslandLeaderboardSqliteTest {
         assertThat(topWorth.get(0).islandId()).isEqualTo(islandA);
         assertThat(topWorth.get(0).score()).isEqualTo(2000000L);
     }
+
+    @Test
+    @DisplayName("An island with a name it was given is marked named, and one without is not")
+    void anEntrySaysWhetherItsNameWasGiven() throws Exception {
+        IslandId unnamed = IslandId.of(UUID.randomUUID());
+        try (java.sql.Connection conn = database.connection();
+                java.sql.Statement stmt = conn.createStatement()) {
+            stmt.execute("INSERT INTO player_accounts (player_uuid) VALUES ('p-lb-4')");
+            stmt.execute("INSERT INTO player_profiles (profile_id, player_uuid) VALUES ('prof-lb-4', 'p-lb-4')");
+            stmt.execute(
+                    "INSERT INTO islands (id, owner_profile_id, owner_account_uuid, level_score, net_worth_minor_units)"
+                            + " VALUES ('" + unnamed.value() + "', 'prof-lb-4', 'p-lb-4', 50, 0)");
+        }
+
+        List<LeaderboardEntry> top = adapter.fetchTopIslands(LeaderboardCategory.LEVEL, 10);
+
+        assertThat(top)
+                .filteredOn(entry -> entry.islandId().equals(islandB))
+                .singleElement()
+                .satisfies(entry -> assertThat(entry.named()).isTrue());
+        assertThat(top)
+                .filteredOn(entry -> entry.islandId().equals(unnamed))
+                .singleElement()
+                .satisfies(entry -> assertThat(entry.named())
+                        .describedAs("a name made up from the id is for the API, not for a player")
+                        .isFalse());
+    }
 }
