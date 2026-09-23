@@ -36,6 +36,9 @@ public final class BootstrapEventRegistrar {
         {
             pm.registerEvents(gameplayWiring.notificationListener(), plugin);
         }
+        if (featureModuleWiring.moduleRegistry().isModuleEnabled("social")) {
+            pm.registerEvents(gameplayWiring.visitRecorder(), plugin);
+        }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("missions")
                 && gameplayWiring.missionListener() != null) {
             pm.registerEvents(gameplayWiring.missionListener(), plugin);

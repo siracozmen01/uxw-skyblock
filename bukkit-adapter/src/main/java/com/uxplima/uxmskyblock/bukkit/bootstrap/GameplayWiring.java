@@ -111,6 +111,7 @@ public final class GameplayWiring {
     private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
     private final SocialWiring socialWiring;
+    private final com.uxplima.uxmskyblock.bukkit.listener.IslandVisitRecorder visitRecorder;
     private final GameplayProtectionWiring protectionWiring;
     private final GameplayEnvironmentWiring environmentWiring;
 
@@ -198,6 +199,12 @@ public final class GameplayWiring {
                 this.economicWiring.upgradeService(),
                 chatTransport,
                 scheduler);
+        this.visitRecorder = new com.uxplima.uxmskyblock.bukkit.listener.IslandVisitRecorder(
+                protectionListener::findIslandAt,
+                authority.sessionCoordinator()::activeProfile,
+                this.socialWiring.socialService(),
+                scheduler,
+                java.time.Clock.systemUTC());
 
         this.backupBucket = java.util.Objects.requireNonNull(backupBucket, "backupBucket must not be null");
         // One place that forgets an island. Each service says once how to forget one, and erasing
@@ -312,6 +319,11 @@ public final class GameplayWiring {
 
     public EconomicWiring economicWiring() {
         return economicWiring;
+    }
+
+    /** Records the visits a rating needs. */
+    public com.uxplima.uxmskyblock.bukkit.listener.IslandVisitRecorder visitRecorder() {
+        return visitRecorder;
     }
 
     public SocialWiring socialWiring() {

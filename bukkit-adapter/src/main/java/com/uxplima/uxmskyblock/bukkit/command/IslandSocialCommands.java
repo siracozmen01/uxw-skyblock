@@ -1,11 +1,14 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -35,9 +38,12 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
+import com.uxplima.uxmskyblock.core.domain.social.DwellTimeNotMetException;
 import com.uxplima.uxmskyblock.core.domain.social.GuestbookEntry;
+import com.uxplima.uxmskyblock.core.domain.social.GuestbookMessageTooLongException;
 import com.uxplima.uxmskyblock.core.domain.social.GuestbookPinnedLimitExceededException;
 import com.uxplima.uxmskyblock.core.domain.social.RatingSummary;
+import com.uxplima.uxmskyblock.core.domain.social.SelfRatingNotAllowedException;
 import com.uxplima.uxmskyblock.core.domain.social.SocialSubjectRef;
 import org.jspecify.annotations.Nullable;
 
@@ -50,6 +56,8 @@ import org.jspecify.annotations.Nullable;
  * score or save an island, so every one of those tables was empty on every server that ran it.
  */
 public final class IslandSocialCommands {
+
+    private static final Logger LOGGER = Logger.getLogger(IslandSocialCommands.class.getName());
 
     private static final int PAGE_SIZE = 10;
     private static final int MIN_SCORE = 1;
@@ -230,13 +238,16 @@ public final class IslandSocialCommands {
             try {
                 service.signGuestbook(SocialSubjectRef.island(islandId), profileId, message, Instant.now());
                 onEntity(player, () -> send(player, "social.guestbook_signed"));
-            } catch (RuntimeException refused) {
+            } catch (GuestbookMessageTooLongException tooLong) {
                 onEntity(
                         player,
                         () -> send(
                                 player,
-                                "social.refused",
-                                Placeholder.unparsed("reason", String.valueOf(refused.getMessage()))));
+                                "social.guestbook_too_long",
+                                Placeholder.unparsed("max", Integer.toString(tooLong.maxLength()))));
+            } catch (RuntimeException refused) {
+                LOGGER.log(Level.WARNING, "A guestbook message could not be saved", refused);
+                onEntity(player, () -> send(player, "social.guestbook_failed"));
             }
         });
     }
@@ -264,13 +275,20 @@ public final class IslandSocialCommands {
                 onEntity(
                         player,
                         () -> send(player, "social.rated", Placeholder.unparsed("score", Integer.toString(score))));
-            } catch (RuntimeException refused) {
+            } catch (SelfRatingNotAllowedException own) {
+                onEntity(player, () -> send(player, "social.rate_own_island"));
+            } catch (DwellTimeNotMetException early) {
                 onEntity(
                         player,
                         () -> send(
                                 player,
-                                "social.refused",
-                                Placeholder.unparsed("reason", String.valueOf(refused.getMessage()))));
+                                "social.rate_stay_longer",
+                                Placeholder.unparsed("time", formatDuration(early.remaining()))));
+            } catch (RuntimeException refused) {
+                // The player is told from the catalogue. What went wrong is an internal sentence in
+                // English, and it used to be put in front of the player as it was.
+                LOGGER.log(Level.WARNING, "A rating could not be saved", refused);
+                onEntity(player, () -> send(player, "social.rate_failed"));
             }
         });
     }
@@ -393,5 +411,15 @@ public final class IslandSocialCommands {
         } else {
             audience.sendMessage(line);
         }
+    }
+
+    private static String formatDuration(Duration duration) {
+        long seconds = Math.max(1, (duration.toMillis() + 999) / 1000);
+        long minutes = seconds / 60;
+        long secs = seconds % 60;
+        if (minutes > 0) {
+            return String.format(Locale.ROOT, "%dm %ds", minutes, secs);
+        }
+        return String.format(Locale.ROOT, "%ds", secs);
     }
 }

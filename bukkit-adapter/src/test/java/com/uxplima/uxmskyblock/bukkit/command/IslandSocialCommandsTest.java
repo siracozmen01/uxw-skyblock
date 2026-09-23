@@ -253,6 +253,65 @@ class IslandSocialCommandsTest {
     }
 
     @Test
+    @DisplayName("A refused rating is told from the catalogue, by what kind of refusal it is")
+    void aRefusedRatingIsToldByKind() throws Exception {
+        org.mockito.Mockito.doThrow(new com.uxplima.uxmskyblock.core.domain.social.SelfRatingNotAllowedException(
+                        "Players cannot rate their own island"))
+                .when(social)
+                .rate(any(), any(), anyInt(), any());
+        run("rate 4", player);
+        assertThat(lastMessage()).contains("You cannot rate your own island");
+
+        org.mockito.Mockito.doThrow(new com.uxplima.uxmskyblock.core.domain.social.DwellTimeNotMetException(
+                        java.time.Duration.ofSeconds(30), java.time.Duration.ofSeconds(12)))
+                .when(social)
+                .rate(any(), any(), anyInt(), any());
+        run("rate 4", player);
+        assertThat(lastMessage()).contains("You can rate this island in").contains("12s");
+
+        org.mockito.Mockito.doThrow(new IllegalStateException("Failed to persist rating for subject"))
+                .when(social)
+                .rate(any(), any(), anyInt(), any());
+        run("rate 4", player);
+        assertThat(lastMessage()).contains("Your rating could not be saved").doesNotContain("persist");
+    }
+
+    @Test
+    @DisplayName("A guestbook message that is too long says how long one may be")
+    void aLongGuestbookMessageSaysTheLimit() throws Exception {
+        org.mockito.Mockito.doThrow(
+                        new com.uxplima.uxmskyblock.core.domain.social.GuestbookMessageTooLongException(300, 200))
+                .when(social)
+                .signGuestbook(any(), any(), any(), any());
+
+        run("guestbook sign far too long", player);
+
+        assertThat(lastMessage()).contains("at most").contains("200");
+    }
+
+    @Test
+    @DisplayName("No social line has room for a raw refusal reason")
+    void noSocialLineCarriesAReason() throws Exception {
+        for (String language : new String[] {"en", "tr"}) {
+            try (var in = getClass().getResourceAsStream("/messages/messages_" + language + ".conf")) {
+                String catalogue = new String(
+                        java.util.Objects.requireNonNull(in).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                String social = catalogue.substring(catalogue.indexOf("\nsocial {"));
+                social = social.substring(0, social.indexOf("\n}"));
+                assertThat(social).describedAs(language).doesNotContain("<reason>");
+            }
+        }
+    }
+
+    private String lastMessage() {
+        String last = null;
+        for (String next = player.nextMessage(); next != null; next = player.nextMessage()) {
+            last = next;
+        }
+        return java.util.Objects.requireNonNull(last, "nothing was said");
+    }
+
+    @Test
     @DisplayName("A score outside one to five never reaches the service")
     void aScoreOutOfRangeIsRefusedHere() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> run("rate 9", player))

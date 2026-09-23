@@ -11,7 +11,9 @@ import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.social.DwellTimeNotMetException;
 import com.uxplima.uxmskyblock.core.domain.social.GuestbookEntry;
+import com.uxplima.uxmskyblock.core.domain.social.GuestbookMessageTooLongException;
 import com.uxplima.uxmskyblock.core.domain.social.GuestbookPinnedLimitExceededException;
 import com.uxplima.uxmskyblock.core.domain.social.RatingPolicy;
 import com.uxplima.uxmskyblock.core.domain.social.RatingSummary;
@@ -102,13 +104,11 @@ public final class IslandSocialService {
         if (!minDwellTime.isZero() && !minDwellTime.isNegative()) {
             Optional<SubjectVisit> visitOpt = storage.findVisit(subject, raterProfileId);
             if (visitOpt.isEmpty()) {
-                throw new IllegalStateException(
-                        "Visitor has not met the minimum dwell time requirement of " + minDwellTime);
+                throw new DwellTimeNotMetException(minDwellTime, minDwellTime);
             }
             Duration dwellDuration = Duration.between(visitOpt.get().firstVisitedAt(), now);
             if (dwellDuration.compareTo(minDwellTime) < 0) {
-                throw new IllegalStateException(
-                        "Visitor has not met the minimum dwell time requirement of " + minDwellTime);
+                throw new DwellTimeNotMetException(minDwellTime, minDwellTime.minus(dwellDuration));
             }
         }
 
@@ -138,8 +138,7 @@ public final class IslandSocialService {
             throw new IllegalArgumentException("Guestbook message cannot be empty");
         }
         if (trimmed.length() > maxMessageLength) {
-            throw new IllegalArgumentException("Guestbook message length (" + trimmed.length()
-                    + ") exceeds maximum limit (" + maxMessageLength + ")");
+            throw new GuestbookMessageTooLongException(trimmed.length(), maxMessageLength);
         }
 
         String reviewId = UUID.randomUUID().toString();
