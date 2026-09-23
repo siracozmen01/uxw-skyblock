@@ -155,7 +155,8 @@ public final class EconomicWiring {
         ItemRewardDeliveryHandler itemDeliveryHandler = new ItemRewardDeliveryHandler(
                 authority.sessionCoordinator(),
                 persistence.mutationJournalPort(),
-                config.nodeConfig().nodeId());
+                config.nodeConfig().nodeId(),
+                scheduler);
 
         SqlCurrencyRewardDeliveryHandler currencyDeliveryHandler = new SqlCurrencyRewardDeliveryHandler(
                 persistence.islandStoragePort(),

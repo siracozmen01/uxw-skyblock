@@ -8,6 +8,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -20,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort;
 import com.uxplima.uxmskyblock.core.application.inventory.JournaledInventoryMutationService;
 import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalRecord;
@@ -53,6 +60,17 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
     private final JournaledInventoryMutationService mutations;
     private final ServerNodeId nodeId;
 
+    /**
+     * Where the player's inventory is touched. A claim runs on an asynchronous thread, and this
+     * handler used to read and change the inventory from there: on Folia the player's own region
+     * owns it, and on Paper the main thread does, so the delivery raced the player's own clicks and
+     * the undo read slots that were already moving. Absent in a test with no server threads.
+     */
+    private final @Nullable SchedulerPort scheduler;
+
+    /** How long a claim waits for the player's thread before it leaves the item in the inbox. */
+    private static final long PLAYER_THREAD_WAIT_SECONDS = 10;
+
     public ItemRewardDeliveryHandler(
             @Nullable Plugin plugin,
             PlayerSessionCoordinator sessionCoordinator,
@@ -65,6 +83,15 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             PlayerSessionCoordinator sessionCoordinator,
             InventoryMutationJournalPort journalPort,
             ServerNodeId nodeId) {
+        this(sessionCoordinator, journalPort, nodeId, null);
+    }
+
+    public ItemRewardDeliveryHandler(
+            PlayerSessionCoordinator sessionCoordinator,
+            InventoryMutationJournalPort journalPort,
+            ServerNodeId nodeId,
+            @Nullable SchedulerPort scheduler) {
+        this.scheduler = scheduler;
         this.sessionCoordinator = Objects.requireNonNull(sessionCoordinator, "sessionCoordinator must not be null");
         this.journalPort = Objects.requireNonNull(journalPort, "journalPort must not be null");
         this.mutations = new JournaledInventoryMutationService(this.journalPort);
@@ -116,30 +143,30 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             }
         }
 
-        // Verify inventory capacity before live mutation to prevent lost items / ground drops on crash
-        int neededAmount = itemToDeliver.getAmount();
-        int maxStack = itemToDeliver.getMaxStackSize();
-        int availableSpace = 0;
-        for (ItemStack slot : player.getInventory().getContents()) {
-            if (slot == null || slot.getType().isAir()) {
-                availableSpace += maxStack;
-            } else if (slot.isSimilar(itemToDeliver)) {
-                availableSpace += Math.max(0, maxStack - slot.getAmount());
+        // Verify inventory capacity before live mutation to prevent lost items / ground drops on crash,
+        // then take the real BEFORE and simulated AFTER fingerprints, all on the player's own thread.
+        UUID playerId = player.getUniqueId();
+        Result<Optional<Fingerprints>, String> read = onThePlayersThread(playerId, () -> {
+            if (!fits(player, itemToDeliver)) {
+                return Result.ok(Optional.empty());
             }
+            ItemStack[] contents = player.getInventory().getContents();
+            byte[] beforeInventoryNbt = BukkitInventorySerializer.serializeItemStacks(contents);
+            byte[] simulatedAfterNbt =
+                    BukkitInventorySerializer.serializeItemStacks(simulateAddItem(contents, itemToDeliver));
+            return Result.ok(
+                    Optional.of(new Fingerprints(computeSha256(beforeInventoryNbt), computeSha256(simulatedAfterNbt))));
+        });
+        if (read.isErr()) {
+            return DeliveryResult.failure(read.errorOrThrow());
         }
-        if (availableSpace < neededAmount) {
+        Optional<Fingerprints> fingerprints = read.orElseThrow();
+        if (fingerprints.isEmpty()) {
             return DeliveryResult.failure(
                     "Insufficient inventory space for item reward; item remains safely in inbox.");
         }
-
-        // 4. Calculate real BEFORE and simulated AFTER fingerprints
-        byte[] beforeInventoryNbt = BukkitInventorySerializer.serializeItemStacks(
-                player.getInventory().getContents());
-        String beforeFingerprint = computeSha256(beforeInventoryNbt);
-
-        ItemStack[] simulatedContents = simulateAddItem(player.getInventory().getContents(), itemToDeliver);
-        byte[] simulatedAfterNbt = BukkitInventorySerializer.serializeItemStacks(simulatedContents);
-        String afterFingerprint = computeSha256(simulatedAfterNbt);
+        String beforeFingerprint = fingerprints.get().before();
+        String afterFingerprint = fingerprints.get().after();
 
         // 5. Run the two phase protocol: intent, mutate, commit, and undo the world if the commit
         // is refused. The protocol itself lives in JournaledInventoryMutationService; what is left
@@ -159,8 +186,17 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
                 afterFingerprint,
                 component.payloadData(),
                 Duration.ofSeconds(60),
-                () -> applyItem(player, itemToDeliver, mutatedSlots),
-                () -> rollbackMutatedSlots(player, mutatedSlots));
+                () -> onThePlayersThread(playerId, () -> applyItem(player, itemToDeliver, mutatedSlots)),
+                () -> {
+                    Result<Boolean, String> undone = onThePlayersThread(playerId, () -> {
+                        rollbackMutatedSlots(player, mutatedSlots);
+                        return Result.ok(Boolean.TRUE);
+                    });
+                    if (undone.isErr()) {
+                        throw new IllegalStateException(
+                                "The item reward could not be taken back: " + undone.errorOrThrow());
+                    }
+                });
 
         if (outcome.isErr()) {
             return DeliveryResult.failure(outcome.errorOrThrow());
@@ -170,6 +206,73 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
 
         sessionCoordinator.checkpointPlayer(playerUuid);
         return DeliveryResult.success(opUuid);
+    }
+
+    /** The inventory as it is and as it will be once the item is in. */
+    private record Fingerprints(String before, String after) {}
+
+    private static boolean fits(Player player, ItemStack item) {
+        int maxStack = item.getMaxStackSize();
+        int availableSpace = 0;
+        for (ItemStack slot : player.getInventory().getContents()) {
+            if (slot == null || slot.getType().isAir()) {
+                availableSpace += maxStack;
+            } else if (slot.isSimilar(item)) {
+                availableSpace += Math.max(0, maxStack - slot.getAmount());
+            }
+        }
+        return availableSpace >= item.getAmount();
+    }
+
+    /**
+     * Runs {@code work} on the thread that owns the player and waits for it.
+     *
+     * <p>The work runs at most once and never after the wait gave up: an item put into an inventory
+     * after the claim reported it undelivered would be in the inventory and still in the inbox. If
+     * the player leaves first, or their thread does not get to it in time, nothing is done.
+     */
+    private <T> Result<T, String> onThePlayersThread(UUID playerId, Supplier<Result<T, String>> work) {
+        SchedulerPort owner = scheduler;
+        if (owner == null || owner.ownsEntity(playerId)) {
+            return work.get();
+        }
+        AtomicBoolean claimed = new AtomicBoolean();
+        CompletableFuture<Result<T, String>> done = new CompletableFuture<>();
+        owner.onEntity(
+                playerId,
+                () -> {
+                    if (!claimed.compareAndSet(false, true)) {
+                        return;
+                    }
+                    try {
+                        done.complete(work.get());
+                    } catch (RuntimeException e) {
+                        done.completeExceptionally(e);
+                    }
+                },
+                () -> {
+                    if (claimed.compareAndSet(false, true)) {
+                        done.complete(Result.err("The player left before the item reward reached them."));
+                    }
+                });
+        try {
+            return done.get(PLAYER_THREAD_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException slow) {
+            if (claimed.compareAndSet(false, true)) {
+                return Result.err("The player's thread did not take the item reward in time.");
+            }
+            // It started just now, so it finishes: wait for what it did.
+            return done.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (claimed.compareAndSet(false, true)) {
+                return Result.err("Interrupted before the item reward reached the player.");
+            }
+            return done.join();
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            throw cause instanceof RuntimeException runtime ? runtime : new IllegalStateException(cause);
+        }
     }
 
     /**
