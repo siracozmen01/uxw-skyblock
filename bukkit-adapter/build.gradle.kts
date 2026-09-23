@@ -35,6 +35,8 @@ dependencies {
     testImplementation(libs.vault.api) {
         exclude(group = "org.bukkit")
     }
+    // A restore test runs the real relational snapshot and vault store over an in-memory SQLite.
+    testImplementation(libs.uxmlib.storage)
     testImplementation(libs.archunit.junit)
     testImplementation(libs.jqwik)
 }
