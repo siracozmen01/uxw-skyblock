@@ -16,6 +16,9 @@ import org.bukkit.entity.Player;
 
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
+import com.uxplima.uxmlib.menu.render.ItemRenderer;
+import com.uxplima.uxmlib.menu.runtime.MenuContext;
+import com.uxplima.uxmlib.text.style.Theme;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +36,9 @@ import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
 class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
 
     private static final Path MENUS = Path.of("src/main/resources/menus");
+
+    @org.junit.jupiter.api.io.TempDir
+    Path dataDir;
 
     /** A word of two letters or more, once tags and placeholder tokens are taken out. */
     private static final Pattern WORD = Pattern.compile("[\\p{L}]{2,}");
@@ -63,17 +69,23 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("A catalogue line fills the value it spells, in English and in Turkish")
+    @DisplayName("A catalogue line drawn by the menu engine fills the value it spells, in English and in Turkish")
     void aCatalogueLineFillsItsValue() {
         org.mockbukkit.mockbukkit.entity.PlayerMock english = createPlayer("Reader");
         org.mockbukkit.mockbukkit.entity.PlayerMock turkish = createPlayer("Okur");
         turkish.setLocale(java.util.Locale.forLanguageTag("tr"));
-        CatalogueMenuWords words = new CatalogueMenuWords(Messages.bundled());
-        Map<String, String> values = new AskedFor(Map.of("argument_vault_pages", "3"));
+        // The engine the server builds, so a value it does not answer fails here rather than on a live server.
+        SkyblockMenuEngine engine = new SkyblockMenuEngine(
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir, null);
+        ItemRenderer renderer = new ItemRenderer(
+                new CatalogueMenuWords(Messages.bundled()),
+                Theme::defaults,
+                engine.bindings().placeholders());
+        Map<String, String> opened = Map.of("vault_pages", "3");
 
-        assertThat(plain(words.text(english, "menu.vault.pages_unlocked", values)))
+        assertThat(plain(renderer.title("@menu.vault.pages_unlocked", MenuContext.of(english, null, 0, opened))))
                 .isEqualTo("Pages unlocked: 3");
-        assertThat(plain(words.text(turkish, "menu.vault.pages_unlocked", values)))
+        assertThat(plain(renderer.title("@menu.vault.pages_unlocked", MenuContext.of(turkish, null, 0, opened))))
                 .isEqualTo("Açık sayfa: 3");
     }
 

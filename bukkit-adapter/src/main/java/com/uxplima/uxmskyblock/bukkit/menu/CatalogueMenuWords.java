@@ -64,8 +64,9 @@ public final class CatalogueMenuWords implements GuiText {
      *
      * <p>A catalogue line may also spell {@code <argument_<name>>} for a value the menu was opened
      * with. The line a menu file writes is only {@code @key}, so the engine hands over no values for
-     * it up front; it answers any name it is asked for, and the line asks for its own. Only
-     * {@code argument_} names are asked, so a colour tag is never taken for a placeholder.
+     * it up front; it answers a name it is asked for through its placeholders, where
+     * {@link SkyblockMenuEngine#answerArguments} puts the menu's values. Only {@code argument_} names
+     * are asked, so a colour tag is never taken for a placeholder.
      */
     private static TagResolver[] resolvers(Map<String, String> placeholders) {
         TagResolver[] spelled = placeholders.entrySet().stream()

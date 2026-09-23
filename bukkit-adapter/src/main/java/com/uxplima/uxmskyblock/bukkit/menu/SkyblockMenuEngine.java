@@ -27,6 +27,7 @@ import com.uxplima.uxmlib.gui.style.MenuSounds;
 import com.uxplima.uxmlib.menu.MenuBasics;
 import com.uxplima.uxmlib.menu.Menus;
 import com.uxplima.uxmlib.menu.binding.MenuBindings;
+import com.uxplima.uxmlib.menu.binding.PlaceholderRegistry;
 import com.uxplima.uxmlib.menu.render.ItemRenderer;
 import com.uxplima.uxmlib.menu.render.MenuRenderer;
 import com.uxplima.uxmlib.menu.runtime.MenuActionContext;
@@ -140,12 +141,28 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         // should be. The registry refuses a second registration under the same name, which is right:
         // a verb that quietly changed meaning depending on wiring order would be worse.
         MenuBasics.register(bindings);
+        answerArguments(bindings.placeholders());
 
         bindings.action("open", ctx -> {
             String target = ctx.arg().strip();
             menus.open(ctx.player(), target, null, 0, valuesFor(ctx.player().getUniqueId()));
         });
     }
+
+    /**
+     * Answers {@code argument_<name>} from the values the menu was opened with, for a catalogue line.
+     *
+     * <p>A menu file's own {@code %argument_<name>%} is filled by the engine. A catalogue line names
+     * its values as {@code <argument_<name>>} and asks for them by name, and the engine answers a name
+     * only through this registry, so without this every such line printed its tag.
+     */
+    static void answerArguments(PlaceholderRegistry placeholders) {
+        placeholders.fallback(
+                id -> id.startsWith(ARGUMENT),
+                (id, ctx) -> ctx.arguments().getOrDefault(id.substring(ARGUMENT.length()), ""));
+    }
+
+    private static final String ARGUMENT = "argument_";
 
     /** What the viewer's menus were last opened with, or nothing when they have opened none. */
     private Map<String, String> valuesFor(UUID viewer) {
