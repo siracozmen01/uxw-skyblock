@@ -159,7 +159,7 @@ class IdempotencyUniqueIndexContentionTest {
                 .isEqualTo(1);
     }
 
-    private static void seedIsland(Database db, IslandId islandId, UUID owner) throws Exception {
+    static void seedIsland(Database db, IslandId islandId, UUID owner) throws Exception {
         try (Connection conn = db.connection()) {
             try (PreparedStatement ps = conn.prepareStatement(
                     "INSERT INTO islands (id, owner_account_uuid, owner_profile_id, lifecycle, created_at, updated_at) "
