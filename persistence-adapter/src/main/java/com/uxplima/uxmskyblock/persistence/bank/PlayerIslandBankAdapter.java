@@ -127,6 +127,77 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
             String idempotencyKey,
             String operationScope,
             @Nullable StagedOutboxEvent outboxEvent) {
+        return Objects.requireNonNull(transact(
+                islandId,
+                actorUuid,
+                currencyId,
+                currencyScale,
+                deltaAmountMinorUnits,
+                reason,
+                currentNode,
+                expectedEpoch,
+                expectedVersion,
+                operationId,
+                idempotencyKey,
+                operationScope,
+                outboxEvent,
+                null));
+    }
+
+    /**
+     * The same charge, with {@code step} written in its transaction.
+     *
+     * @return the outcome, or {@code null} when the charge went through and {@code step} answered
+     *     false, so both were rolled back and nothing happened
+     */
+    public @Nullable BankTransactionOutcome executeTransactionWith(
+            IslandId islandId,
+            UUID actorUuid,
+            String currencyId,
+            int currencyScale,
+            long deltaAmountMinorUnits,
+            String reason,
+            String currentNode,
+            long expectedEpoch,
+            long expectedVersion,
+            UUID operationId,
+            String idempotencyKey,
+            String operationScope,
+            @Nullable StagedOutboxEvent outboxEvent,
+            InTransaction step) {
+        Objects.requireNonNull(step, "step");
+        return transact(
+                islandId,
+                actorUuid,
+                currencyId,
+                currencyScale,
+                deltaAmountMinorUnits,
+                reason,
+                currentNode,
+                expectedEpoch,
+                expectedVersion,
+                operationId,
+                idempotencyKey,
+                operationScope,
+                outboxEvent,
+                step);
+    }
+
+    private @Nullable BankTransactionOutcome transact(
+            IslandId islandId,
+            UUID actorUuid,
+            String currencyId,
+            int currencyScale,
+            long deltaAmountMinorUnits,
+            String reason,
+            String currentNode,
+            long expectedEpoch,
+            long expectedVersion,
+            UUID operationId,
+            String idempotencyKey,
+            String operationScope,
+            @Nullable StagedOutboxEvent outboxEvent,
+            @Nullable InTransaction step) {
 
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(actorUuid, "actorUuid");
@@ -308,6 +379,12 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                         tx.rollbackQuietly(connection);
                         return new BankTransactionOutcome.StaleVersion(expectedVersion, actualVersion);
                     }
+                }
+
+                // Step 5.5: The write this charge pays for, in the same transaction or not at all.
+                if (step != null && !step.apply(connection)) {
+                    tx.rollbackQuietly(connection);
+                    return null;
                 }
 
                 // Step 6: Append bank_transactions audit record

@@ -240,6 +240,27 @@ public final class IslandUpgradeService {
 
             UUID operationId = UUID.randomUUID();
             String idempotencyKey = "upg-" + upgradeId.key() + "-" + nextTierNum + "-" + operationId;
+            String reason = "Upgrade " + upgradeId.key() + " to tier " + nextTierNum;
+
+            // The charge and the tier it buys go in one transaction where the store can do that. Taken
+            // as two steps, a server that stopped between them kept the money and gave no tier.
+            Optional<PaidTierMove> together = storagePort.chargeAndMoveTier(new TierPurchase(
+                    islandId,
+                    upgradeId,
+                    currentTier,
+                    nextTierNum,
+                    actorUuid,
+                    nextTier.currencyId(),
+                    nextTier.costMinorUnits(),
+                    reason,
+                    currentNode,
+                    expectedEpoch,
+                    bank.version(),
+                    operationId,
+                    idempotencyKey));
+            if (together.isPresent()) {
+                return settle(together.get(), islandId, upgradeId, nextTierNum, nextTier);
+            }
 
             BankTransactionOutcome bankOutcome = bankPort.executeTransaction(
                     islandId,
@@ -247,7 +268,7 @@ public final class IslandUpgradeService {
                     nextTier.currencyId(),
                     2,
                     -nextTier.costMinorUnits(),
-                    "Upgrade " + upgradeId.key() + " to tier " + nextTierNum,
+                    reason,
                     currentNode,
                     expectedEpoch,
                     bank.version(),
@@ -278,6 +299,32 @@ public final class IslandUpgradeService {
                     UpgradePurchaseOutcome.PaymentFailed.Kind.RACED,
                     "Another purchase moved this upgrade first. Nothing was charged.");
         }
+        return moved(islandId, upgradeId, nextTierNum, nextTier);
+    }
+
+    /** What a purchase the store charged and moved in one transaction tells its caller. */
+    private UpgradePurchaseOutcome settle(
+            PaidTierMove result, IslandId islandId, UpgradeId upgradeId, int nextTierNum, UpgradeTier nextTier) {
+        if (result instanceof PaidTierMove.Moved) {
+            return moved(islandId, upgradeId, nextTierNum, nextTier);
+        }
+        if (result instanceof PaidTierMove.Refused refused) {
+            if (refused.outcome() instanceof BankTransactionOutcome.InsufficientFunds rej) {
+                return new UpgradePurchaseOutcome.InsufficientFunds(nextTier.costMinorUnits(), rej.currentBalance());
+            }
+            return new UpgradePurchaseOutcome.PaymentFailed(
+                    UpgradePurchaseOutcome.PaymentFailed.Kind.BANK_REFUSED,
+                    "Bank transaction failed: " + refused.outcome(),
+                    refused.outcome());
+        }
+        invalidateCache(islandId);
+        return new UpgradePurchaseOutcome.PaymentFailed(
+                UpgradePurchaseOutcome.PaymentFailed.Kind.RACED,
+                "Another purchase moved this upgrade first. Nothing was charged.");
+    }
+
+    private UpgradePurchaseOutcome moved(
+            IslandId islandId, UpgradeId upgradeId, int nextTierNum, UpgradeTier nextTier) {
         tierCache
                 .computeIfAbsent(islandId, k -> new java.util.concurrent.ConcurrentHashMap<>())
                 .put(upgradeId, nextTierNum);

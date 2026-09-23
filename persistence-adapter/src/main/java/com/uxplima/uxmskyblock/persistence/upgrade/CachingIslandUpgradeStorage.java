@@ -8,6 +8,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
+import com.uxplima.uxmskyblock.core.application.upgrade.PaidTierMove;
+import com.uxplima.uxmskyblock.core.application.upgrade.TierPurchase;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
 
@@ -78,6 +80,19 @@ public final class CachingIslandUpgradeStorage implements IslandUpgradeStoragePo
         Objects.requireNonNull(upgradeId, "upgradeId must not be null");
         delegate.setUpgradeTier(islandId, upgradeId, tier);
         tiers.put(new Key(islandId, upgradeId), new Entry(tier, clock.instant()));
+    }
+
+    @Override
+    public java.util.Optional<PaidTierMove> chargeAndMoveTier(TierPurchase purchase) {
+        java.util.Optional<PaidTierMove> result = delegate.chargeAndMoveTier(purchase);
+        Key key = new Key(purchase.islandId(), purchase.upgradeId());
+        if (result.isPresent() && result.get() instanceof PaidTierMove.Moved) {
+            tiers.put(key, new Entry(purchase.toTier(), clock.instant()));
+        } else if (result.isPresent() && result.get() instanceof PaidTierMove.Raced) {
+            // Somebody else moved the tier, so whatever is remembered here is wrong.
+            tiers.remove(key);
+        }
+        return result;
     }
 
     @Override

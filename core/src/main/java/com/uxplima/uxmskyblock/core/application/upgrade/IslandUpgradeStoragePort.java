@@ -46,4 +46,16 @@ public interface IslandUpgradeStoragePort {
      * @return true when this call moved the tier, false when somebody else moved it first
      */
     boolean compareAndSetUpgradeTier(IslandId islandId, UpgradeId upgradeId, int expectedTier, int newTier);
+
+    /**
+     * Charges the bank and moves the tier in one transaction, so neither happens without the other.
+     *
+     * <p>The purchase charged the bank, then moved the tier in a second step. A server that stopped
+     * between the two kept the money and gave no tier, and a refund that failed did the same. A store
+     * that can do both at once answers here; one that cannot answers empty and the caller takes the
+     * two steps itself.
+     */
+    default java.util.Optional<PaidTierMove> chargeAndMoveTier(TierPurchase purchase) {
+        return java.util.Optional.empty();
+    }
 }

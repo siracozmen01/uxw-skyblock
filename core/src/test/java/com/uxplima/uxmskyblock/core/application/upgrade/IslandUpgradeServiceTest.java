@@ -62,6 +62,43 @@ class IslandUpgradeServiceTest {
     }
 
     @Test
+    @DisplayName("A store that charges and moves together takes the whole purchase, and nothing is charged apart")
+    void aStoreThatDoesBothTakesThePurchase() {
+        bankPort.balance = 50_000L;
+        OneTransactionStorage together = new OneTransactionStorage(false);
+        IslandUpgradeService atomic = new IslandUpgradeService(together, service.definitions());
+
+        UpgradePurchaseOutcome outcome =
+                atomic.purchaseUpgrade(islandId, UpgradeId.SIZE, actorUuid, bankPort, "node-1", 1L);
+
+        assertThat(outcome).isInstanceOf(UpgradePurchaseOutcome.Success.class);
+        assertThat(together.asked).hasSize(1);
+        TierPurchase asked = together.asked.get(0);
+        assertThat(asked.fromTier()).isZero();
+        assertThat(asked.toTier()).isEqualTo(1);
+        assertThat(asked.costMinorUnits()).isEqualTo(10_000L);
+        assertThat(together.getUpgradeTier(islandId, UpgradeId.SIZE)).isEqualTo(1);
+        assertThat(bankPort.balance)
+                .describedAs("the store charged it; a second charge here would take it twice")
+                .isEqualTo(50_000L);
+    }
+
+    @Test
+    @DisplayName("A purchase the store says lost the race is refused with nothing charged and nothing refunded")
+    void aRaceTheStoreRolledBackIsRefused() {
+        bankPort.balance = 50_000L;
+        IslandUpgradeService atomic = new IslandUpgradeService(new OneTransactionStorage(true), service.definitions());
+
+        UpgradePurchaseOutcome outcome =
+                atomic.purchaseUpgrade(islandId, UpgradeId.SIZE, actorUuid, bankPort, "node-1", 1L);
+
+        assertThat(outcome).isInstanceOf(UpgradePurchaseOutcome.PaymentFailed.class);
+        assertThat(((UpgradePurchaseOutcome.PaymentFailed) outcome).kind())
+                .isEqualTo(UpgradePurchaseOutcome.PaymentFailed.Kind.RACED);
+        assertThat(bankPort.balance).isEqualTo(50_000L);
+    }
+
+    @Test
     @DisplayName("purchaseUpgrade advances tier and charges bank account")
     void purchaseUpgradeSuccess() {
         bankPort.balance = 50_000L;
@@ -134,6 +171,38 @@ class IslandUpgradeServiceTest {
         @Override
         public boolean compareAndSetUpgradeTier(IslandId id, UpgradeId upgradeId, int expectedTier, int newTier) {
             return false;
+        }
+    }
+
+    /** A store that charges and moves the tier in one transaction, as the SQL one does. */
+    private static final class OneTransactionStorage extends FakeUpgradeStorage {
+        private final boolean loses;
+        private final List<TierPurchase> asked = new java.util.ArrayList<>();
+
+        OneTransactionStorage(boolean loses) {
+            this.loses = loses;
+        }
+
+        @Override
+        public Optional<PaidTierMove> chargeAndMoveTier(TierPurchase purchase) {
+            asked.add(purchase);
+            if (loses) {
+                return Optional.of(new PaidTierMove.Raced());
+            }
+            setUpgradeTier(purchase.islandId(), purchase.upgradeId(), purchase.toTier());
+            IslandBank after = new IslandBank(purchase.islandId(), 0L, 0L, 0L, 2L, Instant.now());
+            BankTransaction charge = new BankTransaction(
+                    UUID.randomUUID(),
+                    purchase.operationId(),
+                    purchase.islandId(),
+                    purchase.actorUuid(),
+                    purchase.currencyId(),
+                    2,
+                    -purchase.costMinorUnits(),
+                    0L,
+                    purchase.reason(),
+                    Instant.now());
+            return Optional.of(new PaidTierMove.Moved(new BankTransactionOutcome.Success(after, charge)));
         }
     }
 

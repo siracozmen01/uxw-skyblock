@@ -8,12 +8,17 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeStoragePort;
+import com.uxplima.uxmskyblock.core.application.upgrade.PaidTierMove;
+import com.uxplima.uxmskyblock.core.application.upgrade.TierPurchase;
+import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.upgrade.UpgradeId;
+import com.uxplima.uxmskyblock.persistence.bank.PlayerIslandBankAdapter;
 import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
 /**
@@ -24,9 +29,13 @@ public final class PlayerIslandUpgradeAdapter implements IslandUpgradeStoragePor
     private final Database database;
     private final Dialect dialect;
 
+    /** The bank a paid tier move charges, on the same database and in the same transaction. */
+    private final PlayerIslandBankAdapter bank;
+
     public PlayerIslandUpgradeAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
         this.dialect = database.dialect();
+        this.bank = new PlayerIslandBankAdapter(database);
         SupportedDialects.require(dialect, "island upgrade persistence");
     }
 
@@ -78,44 +87,89 @@ public final class PlayerIslandUpgradeAdapter implements IslandUpgradeStoragePor
     public boolean compareAndSetUpgradeTier(IslandId islandId, UpgradeId upgradeId, int expectedTier, int newTier) {
         Objects.requireNonNull(islandId, "islandId");
         Objects.requireNonNull(upgradeId, "upgradeId");
+        try (Connection connection = database.connection()) {
+            return move(connection, islandId, upgradeId, expectedTier, newTier);
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Failed to move upgrade " + upgradeId.key() + " for island " + islandId.value(), e);
+        }
+    }
 
-        // Two statements rather than a conditional upsert, because the three dialects spell that
-        // three different ways and the update carries the condition portably in all of them.
+    @Override
+    public Optional<PaidTierMove> chargeAndMoveTier(TierPurchase purchase) {
+        Objects.requireNonNull(purchase, "purchase");
+        BankTransactionOutcome outcome = bank.executeTransactionWith(
+                purchase.islandId(),
+                purchase.actorUuid(),
+                purchase.currencyId(),
+                2,
+                -purchase.costMinorUnits(),
+                purchase.reason(),
+                purchase.currentNode(),
+                purchase.expectedEpoch(),
+                purchase.expectedBankVersion(),
+                purchase.operationId(),
+                purchase.idempotencyKey(),
+                "ISLAND_BANK",
+                null,
+                connection -> move(
+                        connection, purchase.islandId(), purchase.upgradeId(), purchase.fromTier(), purchase.toTier()));
+        if (outcome == null) {
+            return Optional.of(new PaidTierMove.Raced());
+        }
+        if (outcome instanceof BankTransactionOutcome.Success success) {
+            return Optional.of(new PaidTierMove.Moved(success));
+        }
+        return Optional.of(new PaidTierMove.Refused(outcome));
+    }
+
+    /**
+     * Moves an upgrade from {@code expectedTier} to {@code newTier} on {@code connection}, and only
+     * from there.
+     *
+     * <p>Two statements rather than a conditional upsert, because the three dialects spell that three
+     * different ways and the update carries the condition portably in all of them. The first tier is
+     * inserted with the conflict ignored rather than caught: on PostgreSQL a failed statement ends the
+     * transaction it is in, and this one may be carrying a bank charge.
+     */
+    private boolean move(Connection connection, IslandId islandId, UpgradeId upgradeId, int expectedTier, int newTier)
+            throws SQLException {
         String update = """
                 UPDATE island_upgrades SET tier = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE island_id = ? AND upgrade_key = ? AND tier = ?
                 """;
-        String insert = """
-                INSERT INTO island_upgrades (island_id, upgrade_key, tier, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                """;
-
-        try (Connection connection = database.connection()) {
-            try (PreparedStatement ps = connection.prepareStatement(update)) {
-                ps.setInt(1, newTier);
-                ps.setString(2, islandId.value().toString());
-                ps.setString(3, upgradeId.key());
-                ps.setInt(4, expectedTier);
-                if (ps.executeUpdate() > 0) {
-                    return true;
-                }
+        try (PreparedStatement ps = connection.prepareStatement(update)) {
+            ps.setInt(1, newTier);
+            ps.setString(2, islandId.value().toString());
+            ps.setString(3, upgradeId.key());
+            ps.setInt(4, expectedTier);
+            if (ps.executeUpdate() > 0) {
+                return true;
             }
-            if (expectedTier != 0) {
-                // There was a row and it did not hold what the caller expected.
-                return false;
-            }
-            try (PreparedStatement ps = connection.prepareStatement(insert)) {
-                ps.setString(1, islandId.value().toString());
-                ps.setString(2, upgradeId.key());
-                ps.setInt(3, newTier);
-                return ps.executeUpdate() > 0;
-            } catch (SQLException duplicate) {
-                // Another node inserted the first tier between the update and this insert.
-                return false;
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException(
-                    "Failed to move upgrade " + upgradeId.key() + " for island " + islandId.value(), e);
+        }
+        if (expectedTier != 0) {
+            // There was a row and it did not hold what the caller expected.
+            return false;
+        }
+        String insert =
+                switch (dialect) {
+                    case SQLITE, POSTGRES -> """
+                    INSERT INTO island_upgrades (island_id, upgrade_key, tier, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (island_id, upgrade_key) DO NOTHING
+                    """;
+                    case MYSQL -> """
+                    INSERT IGNORE INTO island_upgrades (island_id, upgrade_key, tier, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    """;
+                    case H2, GENERIC -> throw new UnsupportedOperationException("Unsupported dialect: " + dialect);
+                };
+        try (PreparedStatement ps = connection.prepareStatement(insert)) {
+            ps.setString(1, islandId.value().toString());
+            ps.setString(2, upgradeId.key());
+            ps.setInt(3, newTier);
+            // Nothing inserted means another purchase put the first tier in between the two statements.
+            return ps.executeUpdate() > 0;
         }
     }
 
