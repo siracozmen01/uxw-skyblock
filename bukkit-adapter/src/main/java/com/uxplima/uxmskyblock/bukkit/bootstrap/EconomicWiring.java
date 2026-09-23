@@ -189,6 +189,9 @@ public final class EconomicWiring {
                 config.rewardConfig().claimRecoveryWindow());
 
         this.rewardInboxService = new RewardInboxService(persistence.rewardStoragePort(), rewardClaimCoordinator);
+        if (this.shopMenu != null) {
+            this.shopMenu.keepUnreturnedIn(this.rewardInboxService);
+        }
 
         boolean upgradesEnabled = config.moduleSettings().isModuleEnabled("upgrades");
         this.oreGeneratorListener = upgradesEnabled

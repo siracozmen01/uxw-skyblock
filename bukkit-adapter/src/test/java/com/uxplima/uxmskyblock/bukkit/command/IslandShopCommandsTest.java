@@ -372,4 +372,59 @@ class IslandShopCommandsTest {
                         org.mockito.ArgumentMatchers.eq(NODE));
         assertThat(countOf(Material.DIAMOND)).isZero();
     }
+
+    @Test
+    @DisplayName("A seller who left before a refused sale's items came back finds them in the reward inbox")
+    void aSellerWhoLeftFindsTheItemsInTheInbox() throws Exception {
+        SchedulerPort gone = mock(SchedulerPort.class);
+        doAnswer(invocation -> {
+                    invocation.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(gone)
+                .async(any(Runnable.class));
+        doAnswer(invocation -> {
+                    invocation.getArgument(2, Runnable.class).run();
+                    return null;
+                })
+                .when(gone)
+                .onEntity(any(PlayerUuid.class), any(Runnable.class), any(Runnable.class));
+        when(shop.sell(any(), any(), anyString(), anyLong(), any()))
+                .thenReturn(new IslandShopService.TradeResult.Refused("STONE", "the bank said no", null));
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.SHOP_ACCESS);
+        player.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.STONE, 64));
+        player.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.STONE, 6));
+        com.uxplima.uxmskyblock.core.application.reward.RewardInboxService inbox =
+                mock(com.uxplima.uxmskyblock.core.application.reward.RewardInboxService.class);
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        IslandShopCommands commands = new IslandShopCommands(
+                () -> shop,
+                () -> null,
+                locations,
+                gone,
+                NODE,
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
+                sessions);
+        commands.keepUnreturnedIn(() -> inbox);
+        CommandDispatcher<CommandSourceStack> leaving = new CommandDispatcher<>();
+        leaving.register(commands.build());
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(player);
+
+        leaving.execute("shop sell STONE 70", source);
+
+        org.mockito.ArgumentCaptor<List<com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent>> filed =
+                org.mockito.ArgumentCaptor.captor();
+        verify(inbox)
+                .issueReward(
+                        org.mockito.ArgumentMatchers.eq(PROFILE),
+                        org.mockito.ArgumentMatchers.eq("SHOP_RETURN"),
+                        org.mockito.ArgumentMatchers.eq("STONE"),
+                        org.mockito.ArgumentMatchers.isNull(),
+                        filed.capture());
+        assertThat(filed.getValue())
+                .extracting(com.uxplima.uxmskyblock.core.application.reward.RewardDraftComponent::payloadData)
+                .containsExactly("{\"item\":\"STONE\",\"amount\":64}", "{\"item\":\"STONE\",\"amount\":6}");
+    }
 }

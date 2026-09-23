@@ -25,6 +25,7 @@ import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandShopMenu;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
+import com.uxplima.uxmskyblock.core.application.reward.RewardInboxService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.shop.IslandShopService;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -56,6 +57,14 @@ public final class IslandShopCommands {
     private final ServerNodeId serverNodeId;
     private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+
+    /** Where a refused sale's items go when the seller left before they could be given back. */
+    private volatile Supplier<@Nullable RewardInboxService> inbox = () -> null;
+
+    /** Names the reward inbox a refused sale's items go to when their seller is gone. */
+    public void keepUnreturnedIn(Supplier<@Nullable RewardInboxService> inbox) {
+        this.inbox = java.util.Objects.requireNonNull(inbox, "inbox must not be null");
+    }
 
     public IslandShopCommands(
             Supplier<@Nullable IslandShopService> shopServiceProvider,
@@ -223,8 +232,10 @@ public final class IslandShopCommands {
                             TradableStacks.give(player, material, amount);
                             send(player, "error.no_island");
                         },
-                        () -> ShopHandover.itemsNotReturned(
-                                playerUuid,
+                        () -> ShopHandover.keepUnreturned(
+                                schedulerPort,
+                                inbox.get(),
+                                profileId,
                                 material,
                                 amount,
                                 new IslandShopService.TradeResult.UnknownItem(material.name())));
@@ -237,8 +248,10 @@ public final class IslandShopCommands {
                             TradableStacks.give(player, material, amount);
                             send(player, "shop.permission_denied");
                         },
-                        () -> ShopHandover.itemsNotReturned(
-                                playerUuid,
+                        () -> ShopHandover.keepUnreturned(
+                                schedulerPort,
+                                inbox.get(),
+                                profileId,
                                 material,
                                 amount,
                                 new IslandShopService.TradeResult.UnknownItem(material.name())));
@@ -257,7 +270,7 @@ public final class IslandShopCommands {
                         TradableStacks.give(player, material, amount);
                         report(player, result);
                     },
-                    () -> ShopHandover.itemsNotReturned(playerUuid, material, amount, result));
+                    () -> ShopHandover.keepUnreturned(schedulerPort, inbox.get(), profileId, material, amount, result));
         });
         return Cmd.OK;
     }

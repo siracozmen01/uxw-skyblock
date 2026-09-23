@@ -117,6 +117,7 @@ final class CommandGroupBuilder {
                 tree.serverNodeId,
                 tree.messages,
                 tree.sessionCoordinator);
+        shopCommands.keepUnreturnedIn(() -> tree.rewardInboxService);
 
         IslandChatCommands chatCommands = new IslandChatCommands(
                 () -> tree.features.chatService(), tree.schedulerPort, tree.messages, tree.sessionCoordinator);

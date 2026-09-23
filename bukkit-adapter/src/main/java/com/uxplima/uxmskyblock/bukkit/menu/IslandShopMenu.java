@@ -56,6 +56,15 @@ public final class IslandShopMenu {
     private final SchedulerPort schedulerPort;
     private final com.uxplima.uxmskyblock.core.domain.session.ServerNodeId serverNodeId;
     private final Messages messages;
+
+    /** Where a refused sale's items go when the seller left before they could be given back. */
+    private volatile com.uxplima.uxmskyblock.core.application.reward.@Nullable RewardInboxService inbox;
+
+    /** Names the reward inbox a refused sale's items go to when their seller is gone. */
+    public void keepUnreturnedIn(com.uxplima.uxmskyblock.core.application.reward.@Nullable RewardInboxService inbox) {
+        this.inbox = inbox;
+    }
+
     private @Nullable BedrockFormService bedrockFormService;
 
     public IslandShopMenu(
@@ -231,6 +240,10 @@ public final class IslandShopMenu {
             TradableStacks.take(player, material, amount);
         }
 
+        PlayerSessionCoordinator sessions = this.sessionCoordinator;
+        com.uxplima.uxmskyblock.core.domain.identity.@Nullable ProfileId seller = sessions == null
+                ? null
+                : sessions.activeProfile(player.getUniqueId()).orElse(null);
         schedulerPort.async(() -> {
             IslandShopService.TradeResult result = buying
                     ? shopService.buy(islandId, playerUuid, material.name(), amount, serverNodeId)
@@ -240,9 +253,9 @@ public final class IslandShopMenu {
                 if (buying) {
                     com.uxplima.uxmskyblock.bukkit.command.ShopHandover.refundIfBought(
                             schedulerPort, shopService, islandId, playerUuid, result, serverNodeId);
-                } else {
-                    com.uxplima.uxmskyblock.bukkit.command.ShopHandover.itemsNotReturned(
-                            playerUuid, material, amount, result);
+                } else if (seller != null) {
+                    com.uxplima.uxmskyblock.bukkit.command.ShopHandover.keepUnreturned(
+                            schedulerPort, inbox, seller, material, amount, result);
                 }
             });
         });
