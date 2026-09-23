@@ -101,6 +101,23 @@ public final class Messages {
         return styler.tokens(line, Locale.forLanguageTag(languageOf(viewer)));
     }
 
+    /**
+     * A name or a sentence an operator wrote in a configuration file, in the language {@code viewer}
+     * reads.
+     *
+     * <p>A mission, an upgrade or a preset is named in its own file, and a file is one language. A
+     * value written as {@code @key} is read from the catalogue for the viewer; any other value is
+     * shown as it stands, so a server that wrote plain names keeps them.
+     */
+    public String words(Audience viewer, String written) {
+        Objects.requireNonNull(written, "written must not be null");
+        if (!written.startsWith("@")) {
+            return written;
+        }
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(renderPlain(viewer, written.substring(1)));
+    }
+
     /** Sends {@code key} to {@code viewer} in the language that viewer reads. */
     public void send(Audience viewer, String key, TagResolver... resolvers) {
         Objects.requireNonNull(viewer, "viewer must not be null");

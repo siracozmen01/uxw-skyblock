@@ -38,7 +38,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 sizeId,
                 new UpgradeDefinition(
                         sizeId,
-                        "Island Size",
+                        "@upgrades.names." + sizeId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 0L, "PRIMARY", Map.of("radius", 25.0, "size", 50.0)),
                                 new UpgradeTier(2, 50_000L, "PRIMARY", Map.of("radius", 37.5, "size", 75.0)),
@@ -52,7 +52,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 memberId,
                 new UpgradeDefinition(
                         memberId,
-                        "Team Size",
+                        "@upgrades.names." + memberId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 0L, "PRIMARY", Map.of("max_members", 4.0)),
                                 new UpgradeTier(2, 50_000L, "PRIMARY", Map.of("max_members", 8.0)),
@@ -65,7 +65,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 oreId,
                 new UpgradeDefinition(
                         oreId,
-                        "Ore Generator",
+                        "@upgrades.names." + oreId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 25_000L, "PRIMARY", Map.of("tier", 1.0)),
                                 new UpgradeTier(2, 75_000L, "PRIMARY", Map.of("tier", 2.0)),
@@ -78,7 +78,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 cropId,
                 new UpgradeDefinition(
                         cropId,
-                        "Crop Growth",
+                        "@upgrades.names." + cropId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 20_000L, "PRIMARY", Map.of("rate_multiplier", 1.10)),
                                 new UpgradeTier(2, 60_000L, "PRIMARY", Map.of("rate_multiplier", 1.25)),
@@ -90,7 +90,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 warpId,
                 new UpgradeDefinition(
                         warpId,
-                        "Warp Slots",
+                        "@upgrades.names." + warpId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 25_000L, "PRIMARY", Map.of("limit", 4.0)),
                                 new UpgradeTier(2, 100_000L, "PRIMARY", Map.of("limit", 6.0)),
@@ -102,7 +102,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 vaultId,
                 new UpgradeDefinition(
                         vaultId,
-                        "Vault Pages",
+                        "@upgrades.names." + vaultId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 40_000L, "PRIMARY", Map.of("limit", 2.0)),
                                 new UpgradeTier(2, 120_000L, "PRIMARY", Map.of("limit", 4.0)),
@@ -114,7 +114,7 @@ public record UpgradesConfiguration(boolean enabled, Map<UpgradeId, UpgradeDefin
                 spawnerId,
                 new UpgradeDefinition(
                         spawnerId,
-                        "Spawner Rates",
+                        "@upgrades.names." + spawnerId.key().toLowerCase(java.util.Locale.ROOT),
                         List.of(
                                 new UpgradeTier(1, 30_000L, "PRIMARY", Map.of("rate_multiplier", 1.10)),
                                 new UpgradeTier(2, 90_000L, "PRIMARY", Map.of("rate_multiplier", 1.25)),

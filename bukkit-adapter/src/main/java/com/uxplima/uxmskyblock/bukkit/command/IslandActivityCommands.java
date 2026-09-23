@@ -123,7 +123,8 @@ public final class IslandActivityCommands {
         if (messages.has(key)) {
             java.util.List<TagResolver> resolvers = new java.util.ArrayList<>(values.size() + 1);
             for (java.util.Map.Entry<String, String> value : values.entrySet()) {
-                resolvers.add(Placeholder.unparsed(value.getKey(), value.getValue()));
+                // A name stored as @key, such as a mission's, is read in this viewer's language.
+                resolvers.add(Placeholder.unparsed(value.getKey(), messages.words(player, value.getValue())));
             }
             resolvers.add(Placeholder.unparsed("ago", ago));
             send(player, key, resolvers.toArray(new TagResolver[0]));

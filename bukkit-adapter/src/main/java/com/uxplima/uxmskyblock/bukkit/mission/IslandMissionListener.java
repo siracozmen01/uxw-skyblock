@@ -196,7 +196,9 @@ public final class IslandMissionListener implements Listener {
                 return;
             }
             player.sendMessage(messages.render(
-                    player, "missions.completed_announce", Placeholder.unparsed("mission", def.displayName())));
+                    player,
+                    "missions.completed_announce",
+                    Placeholder.unparsed("mission", messages.words(player, def.displayName()))));
             try {
                 Location loc = player.getLocation();
                 com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;

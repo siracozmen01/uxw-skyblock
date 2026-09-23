@@ -211,7 +211,7 @@ public final class IslandUpgradeCommands {
     private void sendEntry(Player player, String packed) {
         String[] parts = packed.split("\u001f", -1);
         String key = parts[0];
-        String name = parts[1];
+        String name = messages.words(player, parts[1]);
         String tier = parts[2];
         String maxTier = parts[3];
         String cost = parts[4];

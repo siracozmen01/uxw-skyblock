@@ -150,7 +150,7 @@ public final class IslandMissionsMenu {
                     .serialize(messages.renderPlain(
                             player,
                             "menu.missions.form_button",
-                            Placeholder.unparsed("mission", def.displayName()),
+                            Placeholder.unparsed("mission", messages.words(player, def.displayName())),
                             Placeholder.component("status", status)));
             boolean submittable = !completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT;
             long drawnWith = count;
@@ -203,7 +203,9 @@ public final class IslandMissionsMenu {
 
             List<Component> lore = new ArrayList<>();
             lore.add(messages.renderPlain(
-                    player, "menu.missions.tile_description", Placeholder.unparsed("description", def.description())));
+                    player,
+                    "menu.missions.tile_description",
+                    Placeholder.unparsed("description", messages.words(player, def.description()))));
             lore.add(Component.empty());
             lore.add(messages.renderPlain(
                     player,
@@ -245,7 +247,7 @@ public final class IslandMissionsMenu {
                     .name(messages.renderPlain(
                                     player,
                                     completed ? "menu.missions.tile_name_done" : "menu.missions.tile_name_open",
-                                    Placeholder.unparsed("mission", def.displayName()))
+                                    Placeholder.unparsed("mission", messages.words(player, def.displayName())))
                             .decoration(TextDecoration.ITALIC, false))
                     .lore(lore)
                     .build();

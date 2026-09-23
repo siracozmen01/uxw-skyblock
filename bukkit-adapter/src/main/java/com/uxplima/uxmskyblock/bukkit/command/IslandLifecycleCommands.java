@@ -218,12 +218,7 @@ public final class IslandLifecycleCommands {
      * works: the name is shown as it stands.
      */
     private String presetName(Player player, com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset) {
-        String written = preset.displayName();
-        if (!written.startsWith("@")) {
-            return written;
-        }
-        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
-                .serialize(messages.renderPlain(player, written.substring(1)));
+        return messages.words(player, preset.displayName());
     }
 
     private Optional<ProfileId> activeProfile(Player player) {
