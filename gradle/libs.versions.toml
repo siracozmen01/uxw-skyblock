@@ -5,7 +5,7 @@ paper          = "26.2.build.112-stable"
 adventure      = "5.2.0"
 
 # UXPLIMA Toolkit
-uxmlib         = "5d34a0b073"
+uxmlib         = "0.115.0"
 
 # Test only: the Vault economy interface, so a booted test server can hold a real wallet
 vault-api      = "1.7.1"

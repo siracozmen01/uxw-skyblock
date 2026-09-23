@@ -66,9 +66,18 @@ class TheDoctorSaysHowThePluginIsTest extends MockBukkitHarness {
     private List<String> run(PlayerMock sender) {
         sender.performCommand("is doctor");
         List<String> lines = new ArrayList<>();
+        // The report is built on a real async thread, so this waits in time, but ticks only once per
+        // pause: every tick also runs the plugin's own repeating work, and ticking flat out for a few
+        // seconds queues thousands of those runs on the one connection the test database has.
         long until = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < until && lines.stream().noneMatch(line -> line.contains("operator"))) {
             server.getScheduler().performTicks(1);
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
             Component next;
             while ((next = sender.nextComponentMessage()) != null) {
                 lines.add(PLAIN.serialize(next));
