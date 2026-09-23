@@ -122,6 +122,7 @@ public final class AdminWiring {
                 this.objectStoragePort,
                 persistence.rootRelationalSnapshotPort(),
                 this.worldDimensionSnapshotPort);
+        this.islandRestoreService.quarantineWith(this.freezeService);
         this.islandBackupService = new IslandBackupService(
                 this.backupService,
                 persistence.rootRelationalSnapshotPort(),
