@@ -26,7 +26,12 @@ import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.alliance.IslandAllianceService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteExpiredException;
+import com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteNotFoundException;
+import com.uxplima.uxmskyblock.core.domain.alliance.AllianceLimitExceededException;
+import com.uxplima.uxmskyblock.core.domain.alliance.AlreadyAlliedException;
 import com.uxplima.uxmskyblock.core.domain.alliance.IslandAllianceInvite;
+import com.uxplima.uxmskyblock.core.domain.alliance.SelfAllianceNotAllowedException;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
@@ -41,6 +46,9 @@ import org.jspecify.annotations.Nullable;
  * put a row into.
  */
 public final class IslandAllianceCommands {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandAllianceCommands.class.getName());
 
     private final Supplier<@Nullable IslandAllianceService> allianceServiceProvider;
     private final IslandLocationService islandLocationService;
@@ -163,13 +171,31 @@ public final class IslandAllianceCommands {
         });
     }
 
+    /**
+     * Tells a player why an alliance move was refused, from the catalogue.
+     *
+     * <p>The refusal used to reach the player as the exception's own sentence, in English, with both
+     * islands' ids in it. The kind of refusal picks the line now; anything unexpected says it could
+     * not be done, and the sentence goes to the log.
+     */
     private void refuse(Player player, RuntimeException refused) {
-        onEntity(
-                player,
-                () -> send(
+        switch (refused) {
+            case SelfAllianceNotAllowedException _ -> onEntity(player, () -> send(player, "alliance.not_yourself"));
+            case AlreadyAlliedException _ -> onEntity(player, () -> send(player, "alliance.already_allied"));
+            case AllianceInviteNotFoundException _ -> onEntity(player, () -> send(player, "alliance.no_invite"));
+            case AllianceInviteExpiredException _ -> onEntity(player, () -> send(player, "alliance.invite_expired"));
+            case AllianceLimitExceededException full ->
+                onEntity(
                         player,
-                        "alliance.refused",
-                        Placeholder.unparsed("reason", String.valueOf(refused.getMessage()))));
+                        () -> send(
+                                player,
+                                "alliance.limit_reached",
+                                Placeholder.unparsed("max", Integer.toString(full.maxAllowed()))));
+            default -> {
+                LOGGER.log(java.util.logging.Level.WARNING, "An alliance move could not be made", refused);
+                onEntity(player, () -> send(player, "alliance.failed"));
+            }
+        }
     }
 
     @FunctionalInterface

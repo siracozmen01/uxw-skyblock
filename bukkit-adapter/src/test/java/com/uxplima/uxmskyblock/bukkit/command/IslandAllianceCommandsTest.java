@@ -177,6 +177,61 @@ class IslandAllianceCommandsTest {
     }
 
     @Test
+    @DisplayName("A refused alliance is told by its kind, never in the service's own words")
+    void aRefusedAllianceIsToldByKind() throws Exception {
+        org.mockito.Mockito.doThrow(
+                        new com.uxplima.uxmskyblock.core.domain.alliance.AllianceLimitExceededException(THEIRS, 5, 5))
+                .when(alliances)
+                .sendInvite(any(), any(), any());
+        run("alliance invite Theirs", me);
+        org.assertj.core.api.Assertions.assertThat(lastMessage()).isEqualTo("alliance.limit_reached");
+
+        org.mockito.Mockito.doThrow(
+                        new com.uxplima.uxmskyblock.core.domain.alliance.AlreadyAlliedException(MINE, THEIRS))
+                .when(alliances)
+                .sendInvite(any(), any(), any());
+        run("alliance invite Theirs", me);
+        org.assertj.core.api.Assertions.assertThat(lastMessage()).isEqualTo("alliance.already_allied");
+
+        org.mockito.Mockito.doThrow(new com.uxplima.uxmskyblock.core.domain.alliance.AllianceInviteExpiredException(
+                        THEIRS, MINE, java.time.Instant.EPOCH))
+                .when(alliances)
+                .acceptInvite(any(), any());
+        run("alliance accept Theirs", me);
+        org.assertj.core.api.Assertions.assertThat(lastMessage()).isEqualTo("alliance.invite_expired");
+
+        org.mockito.Mockito.doThrow(new IllegalStateException("database down for island " + MINE.value()))
+                .when(alliances)
+                .acceptInvite(any(), any());
+        run("alliance accept Theirs", me);
+        org.assertj.core.api.Assertions.assertThat(lastMessage()).isEqualTo("alliance.failed");
+    }
+
+    @Test
+    @DisplayName("No alliance line has room for a raw refusal reason")
+    void noAllianceLineCarriesAReason() throws Exception {
+        for (String language : new String[] {"en", "tr"}) {
+            try (var in = getClass().getResourceAsStream("/messages/messages_" + language + ".conf")) {
+                String catalogue = new String(
+                        java.util.Objects.requireNonNull(in).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                String alliance = catalogue.substring(catalogue.indexOf("\nalliance {"));
+                alliance = alliance.substring(0, alliance.indexOf("\n}"));
+                org.assertj.core.api.Assertions.assertThat(alliance)
+                        .describedAs(language)
+                        .doesNotContain("<reason>");
+            }
+        }
+    }
+
+    private String lastMessage() {
+        String last = null;
+        for (String next = me.nextMessage(); next != null; next = me.nextMessage()) {
+            last = next;
+        }
+        return java.util.Objects.requireNonNull(last, "nothing was said");
+    }
+
+    @Test
     @DisplayName("The bare command lists the allies")
     void theBareCommandLists() throws Exception {
         when(alliances.getAllies(MINE)).thenReturn(List.of(THEIRS));
