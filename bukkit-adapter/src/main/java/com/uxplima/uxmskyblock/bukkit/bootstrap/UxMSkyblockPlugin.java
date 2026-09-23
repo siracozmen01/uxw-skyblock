@@ -16,6 +16,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class UxMSkyblockPlugin extends JavaPlugin {
 
+    /** This plugin's id on bStats. */
+    private static final int METRICS_ID = 34261;
+
     private @Nullable SkyblockBootstrap bootstrap;
 
     private volatile boolean serverIsUp;
@@ -26,6 +29,7 @@ public class UxMSkyblockPlugin extends JavaPlugin {
         this.bootstrap.enable();
         AfterStartup.run(this, this::whenServerIsUp);
         getLogger().info("UXPLIMA Skyblock initialized successfully.");
+        new org.bstats.bukkit.Metrics(this, METRICS_ID);
     }
 
     /** The half of enabling that needs the worlds and the other plugins. See {@link AfterStartup}. */

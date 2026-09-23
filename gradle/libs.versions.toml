@@ -7,6 +7,9 @@ adventure      = "5.2.0"
 # UXPLIMA Toolkit
 uxmlib         = "0.141.0"
 
+# Usage statistics, shaded and relocated into the plugin jar
+bstats         = "3.0.2"
+
 # Test only: the Vault economy interface, so a booted test server can hold a real wallet
 vault-api      = "1.7.1"
 
@@ -39,6 +42,7 @@ paperweight    = "2.0.0-beta.22"
 run-paper      = "3.0.2"
 
 [libraries]
+bstats-bukkit     = { module = "org.bstats:bstats-bukkit",                        version.ref = "bstats" }
 # Server & Adventure
 paper-api         = { module = "io.papermc.paper:paper-api",                     version.ref = "paper" }
 adventure-api     = { module = "net.kyori:adventure-api",                        version.ref = "adventure" }

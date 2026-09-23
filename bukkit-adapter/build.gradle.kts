@@ -28,6 +28,7 @@ dependencies {
     implementation(libs.uxmlib.integration)
     implementation(libs.uxmlib.redis)
     implementation(libs.lettuce.core)
+    implementation(libs.bstats.bukkit)
 
     // Testing harness
     testImplementation(libs.mockbukkit)
@@ -55,7 +56,15 @@ tasks.shadowJar {
     // this plugin's logging go quiet, which is worse. Adventure is the server's too.
     exclude("org/slf4j/**")
     exclude("net/kyori/**")
+    // bStats insists on being relocated, so two plugins never share one copy of it.
+    relocate("org.bstats", "com.uxplima.uxmskyblock.libs.bstats")
     mergeServiceFiles()
+}
+
+tasks.test {
+    // The tests run bStats unshaded, and its relocation check would refuse every enabled plugin.
+    // The shaded jar is still relocated and a real server still runs the check.
+    systemProperty("bstats.relocatecheck", "false")
 }
 
 /**
@@ -70,7 +79,7 @@ val verifyJar by tasks.registering {
     dependsOn(tasks.shadowJar)
     val jar = tasks.shadowJar.flatMap { it.archiveFile }
     doLast {
-        val forbidden = listOf("org/slf4j/", "net/kyori/")
+        val forbidden = listOf("org/slf4j/", "net/kyori/", "org/bstats/")
         val found = mutableListOf<String>()
         ZipFile(jar.get().asFile).use { zip ->
             for (entry in zip.entries()) {
