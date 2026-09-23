@@ -346,9 +346,31 @@ final class PlayerIslandQueryHelper {
         }
     }
 
+    /**
+     * The island's roles with their permissions.
+     *
+     * <p>All the permissions are read in one query and handed to their roles. Each role used to ask
+     * for its own, one query per role on every island load.
+     */
     static Map<String, IslandRole> loadRoles(Connection conn, String islandIdStr) throws SQLException {
-        Map<String, IslandRole> roles = new HashMap<>();
+        Map<String, Set<IslandPermission>> permissions = new HashMap<>();
+        try (PreparedStatement stmt =
+                conn.prepareStatement("SELECT role_id, permission FROM island_role_permissions WHERE island_id = ?")) {
+            stmt.setString(1, islandIdStr);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    try {
+                        permissions
+                                .computeIfAbsent(rs.getString("role_id"), k -> EnumSet.noneOf(IslandPermission.class))
+                                .add(IslandPermission.valueOf(rs.getString("permission")));
+                    } catch (IllegalArgumentException expected) {
+                        // ignore unknown future permissions
+                    }
+                }
+            }
+        }
 
+        Map<String, IslandRole> roles = new HashMap<>();
         try (PreparedStatement stmt = conn.prepareStatement(
                 "SELECT role_id, weight, display_name, is_system FROM island_roles WHERE island_id = ?")) {
             stmt.setString(1, islandIdStr);
@@ -358,33 +380,13 @@ final class PlayerIslandQueryHelper {
                     int weight = rs.getInt("weight");
                     String displayName = rs.getString("display_name");
                     boolean isSystem = rs.getBoolean("is_system");
-
-                    Set<IslandPermission> perms = loadPermissions(conn, islandIdStr, roleId);
+                    Set<IslandPermission> perms =
+                            permissions.getOrDefault(roleId, EnumSet.noneOf(IslandPermission.class));
                     roles.put(roleId, new IslandRole(roleId, weight, displayName, perms, isSystem));
                 }
             }
         }
         return roles;
-    }
-
-    static Set<IslandPermission> loadPermissions(Connection conn, String islandIdStr, String roleId)
-            throws SQLException {
-        Set<IslandPermission> perms = EnumSet.noneOf(IslandPermission.class);
-        try (PreparedStatement stmt = conn.prepareStatement(
-                "SELECT permission FROM island_role_permissions WHERE island_id = ? AND role_id = ?")) {
-            stmt.setString(1, islandIdStr);
-            stmt.setString(2, roleId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    try {
-                        perms.add(IslandPermission.valueOf(rs.getString("permission")));
-                    } catch (IllegalArgumentException expected) {
-                        // ignore unknown future permissions
-                    }
-                }
-            }
-        }
-        return perms;
     }
 
     static Map<ProfileId, IslandMember> loadMembers(Connection conn, String islandIdStr, Map<String, IslandRole> roles)

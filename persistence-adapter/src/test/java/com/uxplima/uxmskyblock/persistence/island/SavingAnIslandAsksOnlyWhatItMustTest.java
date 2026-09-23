@@ -90,6 +90,35 @@ class SavingAnIslandAsksOnlyWhatItMustTest {
                 .isPresent();
     }
 
+    @Test
+    @DisplayName("Loading an island reads its permissions in one query, not one per role")
+    void loadingReadsPermissionsOnce() throws Exception {
+        Island island = Island.create(
+                ISLAND,
+                IslandBounds.fromCenterAndRadius(0, 0, 100),
+                PlayerUuid.of(UUID.randomUUID()),
+                ProfileId.of(UUID.randomUUID()),
+                Instant.now());
+        IslandLocation location = new IslandLocation(
+                ISLAND, "skyblock_world", IslandBounds.fromCenterAndRadius(0, 0, 100), 0.5, 100.0, 0.5, 0.0f, 0.0f);
+        try (Connection conn = database.connection()) {
+            PlayerIslandWriter.saveIsland(conn, island, location, null);
+        }
+        assertThat(island.roles()).describedAs("roles to read permissions for").hasSizeGreaterThan(1);
+
+        List<String> sent = new ArrayList<>();
+        Island loaded;
+        try (Connection conn = database.connection()) {
+            loaded = PlayerIslandQueryHelper.loadIsland(counting(conn, sent), ISLAND)
+                    .orElseThrow();
+        }
+
+        assertThat(sent.stream().filter(sql -> sql.contains("FROM island_role_permissions")))
+                .describedAs("permission queries for %d roles", island.roles().size())
+                .hasSize(1);
+        assertThat(loaded.roles()).isEqualTo(island.roles());
+    }
+
     /** A connection that writes down every statement it sends and how it sends it. */
     private static Connection counting(Connection real, List<String> sent) {
         return (Connection) Proxy.newProxyInstance(
