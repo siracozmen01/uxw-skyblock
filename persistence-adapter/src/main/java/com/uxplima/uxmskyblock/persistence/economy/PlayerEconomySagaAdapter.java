@@ -110,7 +110,7 @@ public final class PlayerEconomySagaAdapter implements EconomySagaPort {
                 SELECT saga_id, player_uuid, profile_id, island_id, saga_type, state,
                        amount_minor_units, currency, expires_at, created_at, updated_at
                 FROM economy_sagas
-                WHERE state IN ('STARTED', 'COMPENSATING') AND expires_at <= ?
+                WHERE state IN ('STARTED', 'COMPENSATING', 'REFUNDING_WALLET') AND expires_at <= ?
                 ORDER BY expires_at ASC
                 """;
         try (Connection conn = database.connection();

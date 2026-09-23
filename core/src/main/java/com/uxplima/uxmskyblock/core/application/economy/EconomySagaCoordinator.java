@@ -22,6 +22,9 @@ import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
  */
 public final class EconomySagaCoordinator {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(EconomySagaCoordinator.class.getName());
+
     private final EconomySagaPort sagaPort;
     private final ExternalWalletPort walletPort;
     private final IslandBankService bankService;
@@ -65,14 +68,16 @@ public final class EconomySagaCoordinator {
                     "Failed to withdraw funds from your wallet.");
         }
 
-        BankTransactionOutcome outcome = bankService.deposit(profileId, playerUuid, amountMinorUnits, nodeId);
+        BankTransactionOutcome outcome = bankService.moveOnce(
+                profileId, playerUuid, amountMinorUnits, "Player deposit", nodeId, forwardKey(sagaId));
         if (outcome instanceof BankTransactionOutcome.Success) {
             sagaPort.updateState(sagaId, SagaState.COMMITTED, now);
             return outcome;
         }
 
-        // Compensation phase: refund personal wallet
-        sagaPort.updateState(sagaId, SagaState.COMPENSATING, now);
+        // Compensation phase: refund personal wallet. The state is written first, because the
+        // wallet cannot say afterwards whether it was paid.
+        sagaPort.updateState(sagaId, SagaState.REFUNDING_WALLET, now);
         boolean refunded = walletPort.deposit(playerUuid, amountMinorUnits);
         if (refunded) {
             sagaPort.updateState(sagaId, SagaState.ROLLED_BACK, now);
@@ -102,7 +107,8 @@ public final class EconomySagaCoordinator {
 
         sagaPort.createSaga(saga);
 
-        BankTransactionOutcome outcome = bankService.withdraw(profileId, playerUuid, amountMinorUnits, nodeId);
+        BankTransactionOutcome outcome = bankService.moveOnce(
+                profileId, playerUuid, -amountMinorUnits, "Player withdrawal", nodeId, forwardKey(sagaId));
         if (!(outcome instanceof BankTransactionOutcome.Success)) {
             sagaPort.updateState(sagaId, SagaState.FAILED, now);
             return outcome;
@@ -116,8 +122,9 @@ public final class EconomySagaCoordinator {
 
         // Compensation phase: refund Island Bank
         sagaPort.updateState(sagaId, SagaState.COMPENSATING, now);
-        BankTransactionOutcome refundOutcome = bankService.deposit(profileId, playerUuid, amountMinorUnits, nodeId);
-        if (refundOutcome instanceof BankTransactionOutcome.Success) {
+        BankTransactionOutcome refundOutcome = bankService.moveOnce(
+                profileId, playerUuid, amountMinorUnits, "Withdrawal refund", nodeId, refundKey(sagaId));
+        if (IslandBankService.landed(refundOutcome)) {
             sagaPort.updateState(sagaId, SagaState.ROLLED_BACK, now);
         } else {
             sagaPort.updateState(sagaId, SagaState.FAILED, now);
@@ -127,30 +134,68 @@ public final class EconomySagaCoordinator {
                 "Failed to deposit funds into your personal wallet. Bank funds refunded.");
     }
 
+    /**
+     * Settles sagas a crash left unfinished.
+     *
+     * <p>Recovery used to repeat every compensation it found, and a compensation that had already
+     * run before the crash was run again: the wallet or the bank was paid twice. A bank refund is now
+     * keyed, so repeating it lands once. A wallet refund cannot be keyed, so it is marked as started
+     * before the wallet is asked; a saga found in that state is not paid again but marked failed and
+     * logged for an operator to settle by hand.
+     */
     public int recoverIncompleteSagas(Instant now, ServerNodeId nodeId) {
         List<EconomySagaRecord> incomplete = sagaPort.findIncompleteSagas(now);
         int recovered = 0;
         for (EconomySagaRecord saga : incomplete) {
-            if (saga.state() == SagaState.COMPENSATING) {
-                if (saga.sagaType() == SagaType.DEPOSIT) {
-                    boolean refunded = walletPort.deposit(saga.playerUuid(), saga.amountMinorUnits());
-                    sagaPort.updateState(saga.sagaId(), refunded ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
-                } else {
-                    BankTransactionOutcome refund =
-                            bankService.deposit(saga.profileId(), saga.playerUuid(), saga.amountMinorUnits(), nodeId);
-                    sagaPort.updateState(
-                            saga.sagaId(),
-                            (refund instanceof BankTransactionOutcome.Success)
-                                    ? SagaState.ROLLED_BACK
-                                    : SagaState.FAILED,
-                            now);
+            switch (saga.state()) {
+                case REFUNDING_WALLET -> {
+                    LOGGER.warning(() -> "Economy saga " + saga.sagaId() + " was giving " + saga.amountMinorUnits()
+                            + " back to the wallet of " + saga.playerUuid() + " when the server stopped. The"
+                            + " wallet cannot say whether it was paid, so it is not paid again. Check it by hand.");
+                    sagaPort.updateState(saga.sagaId(), SagaState.FAILED, now);
+                    recovered++;
                 }
-                recovered++;
-            } else if (saga.state() == SagaState.STARTED) {
-                sagaPort.updateState(saga.sagaId(), SagaState.FAILED, now);
-                recovered++;
+                case COMPENSATING -> {
+                    if (saga.sagaType() == SagaType.DEPOSIT) {
+                        // The refund had not started: that is written as REFUNDING_WALLET first.
+                        sagaPort.updateState(saga.sagaId(), SagaState.REFUNDING_WALLET, now);
+                        boolean refunded = walletPort.deposit(saga.playerUuid(), saga.amountMinorUnits());
+                        sagaPort.updateState(saga.sagaId(), refunded ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
+                    } else {
+                        BankTransactionOutcome refund = bankService.moveOnce(
+                                saga.profileId(),
+                                saga.playerUuid(),
+                                saga.amountMinorUnits(),
+                                "Withdrawal refund",
+                                nodeId,
+                                refundKey(saga.sagaId()));
+                        sagaPort.updateState(
+                                saga.sagaId(),
+                                IslandBankService.landed(refund) ? SagaState.ROLLED_BACK : SagaState.FAILED,
+                                now);
+                    }
+                    recovered++;
+                }
+                case STARTED -> {
+                    LOGGER.warning(() -> "Economy saga " + saga.sagaId() + " (" + saga.sagaType() + " of "
+                            + saga.amountMinorUnits() + " for " + saga.playerUuid() + ") stopped part way. Check it"
+                            + " by hand.");
+                    sagaPort.updateState(saga.sagaId(), SagaState.FAILED, now);
+                    recovered++;
+                }
+                default -> {}
             }
         }
         return recovered;
+    }
+
+    /** The key a saga's own bank move is recorded under. */
+    static String forwardKey(SagaId sagaId) {
+        return "saga:" + sagaId.value();
+    }
+
+    /** The key the bank refund of a withdrawal is recorded under, the same however often it is asked. */
+    static String refundKey(SagaId sagaId) {
+        return "saga-refund:" + sagaId.value();
     }
 }

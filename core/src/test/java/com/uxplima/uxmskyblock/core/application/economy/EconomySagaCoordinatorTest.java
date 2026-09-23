@@ -62,7 +62,8 @@ class EconomySagaCoordinatorTest {
     void depositSuccess() {
         SagaId sagaId = SagaId.random();
         when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
-        when(bankService.deposit(profileId, playerUuid, 1000L, nodeId)).thenReturn(successOutcome);
+        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+                .thenReturn(successOutcome);
 
         BankTransactionOutcome outcome =
                 coordinator.executeDeposit(sagaId, playerUuid, profileId, islandId, 1000L, "VAULT", nodeId, now);
@@ -82,7 +83,7 @@ class EconomySagaCoordinatorTest {
                 coordinator.executeDeposit(sagaId, playerUuid, profileId, islandId, 1000L, "VAULT", nodeId, now);
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
-        verify(bankService, never()).deposit(any(), any(), any(Long.class), any());
+        verify(bankService, never()).moveOnce(any(), any(), any(Long.class), any(), any(), any());
         assertThat(sagaPort.findSagaById(sagaId).get().state()).isEqualTo(SagaState.FAILED);
     }
 
@@ -91,7 +92,7 @@ class EconomySagaCoordinatorTest {
     void depositBankFailsCompensated() {
         SagaId sagaId = SagaId.random();
         when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
-        when(bankService.deposit(profileId, playerUuid, 1000L, nodeId))
+        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(new BankTransactionOutcome.AuthorityRejected("Bank full"));
         when(walletPort.deposit(playerUuid, 1000L)).thenReturn(true);
 
@@ -107,7 +108,8 @@ class EconomySagaCoordinatorTest {
     @DisplayName("executeWithdraw successfully commits saga when bank and wallet succeed")
     void withdrawSuccess() {
         SagaId sagaId = SagaId.random();
-        when(bankService.withdraw(profileId, playerUuid, 1000L, nodeId)).thenReturn(successOutcome);
+        when(bankService.moveOnce(profileId, playerUuid, -1000L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
+                .thenReturn(successOutcome);
         when(walletPort.deposit(playerUuid, 1000L)).thenReturn(true);
 
         BankTransactionOutcome outcome =
@@ -122,15 +124,19 @@ class EconomySagaCoordinatorTest {
     @DisplayName("executeWithdraw compensates and refunds bank when wallet deposit fails")
     void withdrawWalletFailsCompensated() {
         SagaId sagaId = SagaId.random();
-        when(bankService.withdraw(profileId, playerUuid, 1000L, nodeId)).thenReturn(successOutcome);
+        when(bankService.moveOnce(profileId, playerUuid, -1000L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
+                .thenReturn(successOutcome);
         when(walletPort.deposit(playerUuid, 1000L)).thenReturn(false);
-        when(bankService.deposit(profileId, playerUuid, 1000L, nodeId)).thenReturn(successOutcome);
+        when(bankService.moveOnce(
+                        profileId, playerUuid, 1000L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value()))
+                .thenReturn(successOutcome);
 
         BankTransactionOutcome outcome =
                 coordinator.executeWithdraw(sagaId, playerUuid, profileId, islandId, 1000L, "VAULT", nodeId, now);
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
-        verify(bankService).deposit(profileId, playerUuid, 1000L, nodeId);
+        verify(bankService)
+                .moveOnce(profileId, playerUuid, 1000L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value());
         assertThat(sagaPort.findSagaById(sagaId).get().state()).isEqualTo(SagaState.ROLLED_BACK);
     }
 
@@ -176,6 +182,72 @@ class EconomySagaCoordinatorTest {
         assertThat(sagaPort.findSagaById(saga2).get().state()).isEqualTo(SagaState.FAILED);
     }
 
+    @Test
+    @DisplayName("A withdrawal refund repeated by recovery is keyed, so the bank pays it once")
+    void aRepeatedBankRefundLandsOnce() {
+        SagaId sagaId = SagaId.random();
+        sagaPort.createSaga(stuck(sagaId, SagaType.WITHDRAW, SagaState.COMPENSATING, 700L));
+        // The refund landed before the server stopped; the bank answers the same key as done.
+        when(bankService.moveOnce(
+                        profileId, playerUuid, 700L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value()))
+                .thenReturn(new BankTransactionOutcome.DuplicateOperation(
+                        UUID.randomUUID(), "already", "APPLIED", "SUCCESS", null));
+
+        coordinator.recoverIncompleteSagas(now, nodeId);
+
+        verify(bankService)
+                .moveOnce(profileId, playerUuid, 700L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value());
+        assertThat(sagaPort.findSagaById(sagaId).orElseThrow().state())
+                .describedAs("a refund that already landed settles the saga, it is not called a failure")
+                .isEqualTo(SagaState.ROLLED_BACK);
+    }
+
+    @Test
+    @DisplayName("A wallet refund that may already have been paid is not paid again")
+    void aWalletRefundIsNeverRepeated() {
+        SagaId sagaId = SagaId.random();
+        sagaPort.createSaga(stuck(sagaId, SagaType.DEPOSIT, SagaState.REFUNDING_WALLET, 400L));
+
+        int recovered = coordinator.recoverIncompleteSagas(now, nodeId);
+
+        assertThat(recovered).isEqualTo(1);
+        verify(walletPort, never()).deposit(any(), any(Long.class));
+        assertThat(sagaPort.findSagaById(sagaId).orElseThrow().state()).isEqualTo(SagaState.FAILED);
+    }
+
+    @Test
+    @DisplayName("A deposit's wallet refund is written as started before the wallet is asked")
+    void theRefundIsMarkedBeforeTheWalletIsAsked() {
+        SagaId sagaId = SagaId.random();
+        when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
+        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+                .thenReturn(new BankTransactionOutcome.AuthorityRejected("Bank full"));
+        List<SagaState> seenWhenAsked = new java.util.ArrayList<>();
+        when(walletPort.deposit(playerUuid, 1000L)).thenAnswer(ask -> {
+            seenWhenAsked.add(sagaPort.findSagaById(sagaId).orElseThrow().state());
+            return true;
+        });
+
+        coordinator.executeDeposit(sagaId, playerUuid, profileId, islandId, 1000L, "VAULT", nodeId, now);
+
+        assertThat(seenWhenAsked).containsExactly(SagaState.REFUNDING_WALLET);
+    }
+
+    private EconomySagaRecord stuck(SagaId sagaId, SagaType type, SagaState state, long amount) {
+        return new EconomySagaRecord(
+                sagaId,
+                playerUuid,
+                profileId,
+                islandId,
+                type,
+                state,
+                amount,
+                "VAULT",
+                now.minusSeconds(10),
+                now.minusSeconds(60),
+                now.minusSeconds(10));
+    }
+
     private static class InMemoryEconomySagaPort implements EconomySagaPort {
         private final Map<SagaId, EconomySagaRecord> map = new HashMap<>();
 
@@ -200,7 +272,9 @@ class EconomySagaCoordinatorTest {
         @Override
         public List<EconomySagaRecord> findIncompleteSagas(Instant expiredBefore) {
             return map.values().stream()
-                    .filter(s -> (s.state() == SagaState.STARTED || s.state() == SagaState.COMPENSATING)
+                    .filter(s -> (s.state() == SagaState.STARTED
+                                    || s.state() == SagaState.COMPENSATING
+                                    || s.state() == SagaState.REFUNDING_WALLET)
                             && !s.expiresAt().isAfter(expiredBefore))
                     .toList();
         }

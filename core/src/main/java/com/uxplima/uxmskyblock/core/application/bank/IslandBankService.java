@@ -110,6 +110,52 @@ public final class IslandBankService {
         return execute(optIslandId.get(), playerUuid, -amountMinorUnits, "Player withdrawal", serverNodeId);
     }
 
+    /** The scope a wallet and bank saga records its bank moves under. */
+    public static final String SAGA_SCOPE = "ECONOMY_SAGA";
+
+    /**
+     * Moves money in or out of the profile's island bank once per {@code idempotencyKey}.
+     *
+     * <p>A saga between a wallet and the bank repeats a bank move when it recovers after a crash, and
+     * cannot tell whether the move had already landed. Keyed, the second ask is answered as the same
+     * operation instead of moving the money again.
+     *
+     * @param deltaMinorUnits positive to put money in, negative to take it out
+     */
+    public BankTransactionOutcome moveOnce(
+            ProfileId profileId,
+            PlayerUuid playerUuid,
+            long deltaMinorUnits,
+            String reason,
+            ServerNodeId serverNodeId,
+            String idempotencyKey) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+        Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
+        if (optIslandId.isEmpty()) {
+            return new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                    "No island associated with profile " + profileId);
+        }
+        UUID operationId = UUID.nameUUIDFromBytes(
+                (SAGA_SCOPE + ":" + idempotencyKey).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return execute(
+                optIslandId.get(),
+                playerUuid,
+                deltaMinorUnits,
+                reason,
+                serverNodeId,
+                operationId,
+                idempotencyKey,
+                SAGA_SCOPE);
+    }
+
+    /** Whether a keyed bank move has landed, now or on an earlier ask. */
+    public static boolean landed(BankTransactionOutcome outcome) {
+        return outcome instanceof BankTransactionOutcome.Success
+                || (outcome instanceof BankTransactionOutcome.DuplicateOperation dup && "APPLIED".equals(dup.status()));
+    }
+
     public BankTransactionOutcome depositToIsland(
             IslandId islandId,
             PlayerUuid playerUuid,
