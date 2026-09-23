@@ -6,6 +6,8 @@ import java.util.Objects;
 import org.bukkit.entity.Player;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.tag.Tag;
+import net.kyori.adventure.text.minimessage.tag.resolver.ArgumentQueue;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
@@ -57,10 +59,42 @@ public final class CatalogueMenuWords implements GuiText {
         return text(viewer, key, placeholders);
     }
 
-    /** Every value is unparsed: a menu placeholder holds an island name, never markup. */
+    /**
+     * Every value is unparsed: a menu placeholder holds an island name, never markup.
+     *
+     * <p>A catalogue line may also spell {@code <argument_<name>>} for a value the menu was opened
+     * with. The line a menu file writes is only {@code @key}, so the engine hands over no values for
+     * it up front; it answers any name it is asked for, and the line asks for its own. Only
+     * {@code argument_} names are asked, so a colour tag is never taken for a placeholder.
+     */
     private static TagResolver[] resolvers(Map<String, String> placeholders) {
-        return placeholders.entrySet().stream()
+        TagResolver[] spelled = placeholders.entrySet().stream()
                 .map(entry -> (TagResolver) Placeholder.unparsed(entry.getKey(), entry.getValue()))
                 .toArray(TagResolver[]::new);
+        TagResolver[] all = java.util.Arrays.copyOf(spelled, spelled.length + 1);
+        all[spelled.length] = new ArgumentTags(placeholders);
+        return all;
+    }
+
+    /** Fills {@code <argument_<name>>} from the values the menu was opened with, asked by name. */
+    private record ArgumentTags(Map<String, String> placeholders) implements TagResolver {
+
+        private static final String PREFIX = "argument_";
+
+        @Override
+        public @org.jspecify.annotations.Nullable Tag resolve(
+                String name, ArgumentQueue arguments, net.kyori.adventure.text.minimessage.Context ctx) {
+            String value = valueOf(name);
+            return value == null ? null : Tag.selfClosingInserting(Component.text(value));
+        }
+
+        @Override
+        public boolean has(String name) {
+            return valueOf(name) != null;
+        }
+
+        private @org.jspecify.annotations.Nullable String valueOf(String name) {
+            return name.startsWith(PREFIX) ? placeholders.get(name) : null;
+        }
     }
 }

@@ -1,0 +1,126 @@
+package com.uxplima.uxmskyblock.bukkit.menu;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+import org.bukkit.entity.Player;
+
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.spongepowered.configurate.ConfigurationNode;
+import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
+
+/**
+ * A menu says its words in the reader's language, including the lines that carry a live value.
+ *
+ * <p>Twenty six lines in the shipped menus wrote their words in the file because they carried a
+ * value, and the file is one language: a Turkish player read "Pages unlocked" and "Current tier" in
+ * English. A catalogue line can now spell the value itself, so a menu file names every word by key.
+ */
+class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
+
+    private static final Path MENUS = Path.of("src/main/resources/menus");
+
+    /** A word of two letters or more, once tags and placeholder tokens are taken out. */
+    private static final Pattern WORD = Pattern.compile("[\\p{L}]{2,}");
+
+    @Test
+    @DisplayName("Every title, name and lore line in a shipped menu is a catalogue key, blank or wordless")
+    void everyWordIsAKey() throws IOException {
+        List<String> written = new ArrayList<>();
+        try (Stream<Path> files = Files.list(MENUS)) {
+            for (Path file :
+                    files.filter(f -> f.toString().endsWith(".conf")).sorted().toList()) {
+                ConfigurationNode root =
+                        HoconConfigurationLoader.builder().path(file).build().load();
+                check(file, "title", root.node("title"), written);
+                check(file, "fill-item.name", root.node("fill-item", "name"), written);
+                for (Map.Entry<Object, ? extends ConfigurationNode> item :
+                        root.node("items").childrenMap().entrySet()) {
+                    check(file, item.getKey() + ".name", item.getValue().node("name"), written);
+                    for (ConfigurationNode line : item.getValue().node("lore").childrenList()) {
+                        check(file, item.getKey() + ".lore", line, written);
+                    }
+                }
+            }
+        }
+        assertThat(written)
+                .describedAs("lines every language reads in the file's one language")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("A catalogue line fills the value it spells, in English and in Turkish")
+    void aCatalogueLineFillsItsValue() {
+        org.mockbukkit.mockbukkit.entity.PlayerMock english = createPlayer("Reader");
+        org.mockbukkit.mockbukkit.entity.PlayerMock turkish = createPlayer("Okur");
+        turkish.setLocale(java.util.Locale.forLanguageTag("tr"));
+        CatalogueMenuWords words = new CatalogueMenuWords(Messages.bundled());
+        Map<String, String> values = new AskedFor(Map.of("argument_vault_pages", "3"));
+
+        assertThat(plain(words.text(english, "menu.vault.pages_unlocked", values)))
+                .isEqualTo("Pages unlocked: 3");
+        assertThat(plain(words.text(turkish, "menu.vault.pages_unlocked", values)))
+                .isEqualTo("Açık sayfa: 3");
+    }
+
+    @Test
+    @DisplayName("Only argument names are asked for, so a colour tag never runs a placeholder")
+    void onlyArgumentsAreAsked() {
+        Player viewer = createPlayer("Reader");
+        AskedFor values = new AskedFor(Map.of("argument_balance", "12.50"));
+
+        new CatalogueMenuWords(Messages.bundled()).text(viewer, "menu.bank.coins_line", values);
+
+        assertThat(values.asked).isNotEmpty().allMatch(name -> name.startsWith("argument_"));
+    }
+
+    private static void check(Path file, String where, ConfigurationNode node, List<String> written) {
+        String value = node.getString();
+        if (value == null || value.isBlank() || value.startsWith("@")) {
+            return;
+        }
+        String words = value.replaceAll("<[^>]*>", "").replaceAll("%[a-z0-9_]+%", "");
+        if (WORD.matcher(words).find()) {
+            written.add(file.getFileName() + " " + where + ": " + value);
+        }
+    }
+
+    private static String plain(net.kyori.adventure.text.Component component) {
+        return PlainTextComponentSerializer.plainText().serialize(component);
+    }
+
+    /** The engine's own shape: holds nothing up front and answers any name it is asked for. */
+    private static final class AskedFor extends java.util.AbstractMap<String, String> {
+        private final Map<String, String> values;
+        private final List<String> asked = new ArrayList<>();
+
+        AskedFor(Map<String, String> values) {
+            this.values = new HashMap<>(values);
+        }
+
+        @Override
+        public @org.jspecify.annotations.Nullable String get(Object key) {
+            asked.add(String.valueOf(key));
+            return values.get(key);
+        }
+
+        @Override
+        public java.util.Set<Entry<String, String>> entrySet() {
+            return java.util.Set.of();
+        }
+    }
+}

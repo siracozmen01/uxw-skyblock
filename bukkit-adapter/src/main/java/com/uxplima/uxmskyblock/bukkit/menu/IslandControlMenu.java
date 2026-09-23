@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -54,6 +55,8 @@ public final class IslandControlMenu {
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final @Nullable BedrockFormService bedrockFormService;
     private volatile @Nullable SkyblockMenuEngine menuEngine;
+
+    private volatile @Nullable ToIntFunction<IslandId> vaultPages;
     private final Messages messages;
 
     public IslandControlMenu(
@@ -173,6 +176,17 @@ public final class IslandControlMenu {
     }
 
     /**
+     * How many vault pages an island has, read where the other values are read, off the player's
+     * thread.
+     *
+     * <p>The vault tile showed the upgrade tier as the pages unlocked, so an island with its one base
+     * page read "Pages unlocked: 0".
+     */
+    public void useVaultPages(@Nullable ToIntFunction<IslandId> vaultPages) {
+        this.vaultPages = vaultPages;
+    }
+
+    /**
      * The live values {@code island-main.conf} may spell as {@code %argument_<name>%}.
      *
      * <p>Every token here is one the server can actually answer. The file that shipped before spelled
@@ -180,7 +194,7 @@ public final class IslandControlMenu {
      * a dead placeholder in a file nothing read.
      */
     private Map<String, String> liveValues(
-            Island island, @Nullable IslandBank bank, @Nullable Map<UpgradeId, Integer> upgrades) {
+            Island island, @Nullable IslandBank bank, @Nullable Map<UpgradeId, Integer> upgrades, int vaultPages) {
         long minorBalance = bank != null ? bank.primaryBalanceMinorUnits() : 0L;
         Map<UpgradeId, Integer> tiers = upgrades != null ? upgrades : Map.of();
         IslandBounds bounds = island.bounds();
@@ -199,6 +213,7 @@ public final class IslandControlMenu {
                 Map.entry("spawner_tier", String.valueOf(tiers.getOrDefault(UpgradeId.SPAWNER_RATES, 0))),
                 Map.entry("generator_tier", String.valueOf(tiers.getOrDefault(UpgradeId.ORE_GENERATOR, 0))),
                 Map.entry("vault_tier", String.valueOf(tiers.getOrDefault(UpgradeId.VAULT_PAGES, 0))),
+                Map.entry("vault_pages", String.valueOf(vaultPages)),
                 Map.entry("crop_tier", String.valueOf(tiers.getOrDefault(UpgradeId.CROP_GROWTH, 0))));
     }
 
@@ -236,6 +251,8 @@ public final class IslandControlMenu {
             Island island = optIsland.get();
             IslandBank bank = islandBankPort.findBankByIslandId(islandId).orElse(null);
             Map<UpgradeId, Integer> upgrades = upgradeStoragePort.getUpgrades(islandId);
+            ToIntFunction<IslandId> pagesOf = this.vaultPages;
+            int pages = pagesOf == null ? 1 : pagesOf.applyAsInt(islandId);
             Optional<IslandLocation> optLoc = locationService.resolveHome(profileId);
 
             schedulerPort.onEntity(playerUuid, () -> {
@@ -274,7 +291,7 @@ public final class IslandControlMenu {
                     return;
                 }
                 SkyblockMenuEngine engine = this.menuEngine;
-                if (engine != null && engine.open(player, "island-main", liveValues(island, bank, upgrades))) {
+                if (engine != null && engine.open(player, "island-main", liveValues(island, bank, upgrades, pages))) {
                     return;
                 }
                 SimpleGui gui = buildGui(player, island, bank, upgrades, optLoc);

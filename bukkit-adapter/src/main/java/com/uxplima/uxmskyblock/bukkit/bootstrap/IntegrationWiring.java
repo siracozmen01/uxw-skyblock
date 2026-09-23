@@ -174,6 +174,7 @@ public final class IntegrationWiring implements AutoCloseable {
         registerMenuVerbs(this.menuEngine, this.messages);
         this.menuEngine.install();
         this.controlMenu.useMenuEngine(this.menuEngine);
+        this.controlMenu.useVaultPages(gameplay.vaultService()::getMaxAllowedPages);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistence.islandStoragePort(),
