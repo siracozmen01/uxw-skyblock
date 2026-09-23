@@ -40,6 +40,14 @@ public final class VoidProtectionListener implements Listener {
 
     private final Map<UUID, Instant> fallDamageShields = new ConcurrentHashMap<>();
     private final Map<UUID, Instant> pvpInvulnerabilityShields = new ConcurrentHashMap<>();
+
+    /**
+     * Players whose move home is under way. The move is asynchronous, so the player keeps falling
+     * for a tick or more after it is asked for, and every move and void hit in that time asked again:
+     * another teleport, another message and another pair of shields for the same fall.
+     */
+    private final java.util.Set<UUID> beingRescued = ConcurrentHashMap.newKeySet();
+
     private final Messages messages;
 
     public VoidProtectionListener(
@@ -159,9 +167,20 @@ public final class VoidProtectionListener implements Listener {
         // Zero-velocity reset & clear fall distance to prevent carryover deaths
         player.setVelocity(new Vector(0, 0, 0));
         player.setFallDistance(0.0f);
+        UUID playerId = player.getUniqueId();
+        if (!beingRescued.add(playerId)) {
+            // Already on the way home. The void still lands no hit.
+            return true;
+        }
         // Asynchronous, because Folia refuses a synchronous teleport outright: it threw here, so a
         // player who fell off an island on a region threaded server fell to their death anyway.
-        var unused = player.teleportAsync(destination);
+        try {
+            var unused =
+                    player.teleportAsync(destination).whenComplete((moved, error) -> beingRescued.remove(playerId));
+        } catch (RuntimeException e) {
+            beingRescued.remove(playerId);
+            throw e;
+        }
 
         // Grant 10-second fall damage shield
         Instant now = Instant.now(clock);
