@@ -8,8 +8,10 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -171,17 +173,14 @@ public final class SqlTemporaryAccessAdapter implements TemporaryAccessStoragePo
                 WHERE grantee_profile_id = ? AND state = 'ACTIVE'
                 """;
 
-        try (Connection conn = database.connection();
-                PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, granteeProfileId.value().toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<TemporaryAccessGrant> results = new ArrayList<>();
-                while (rs.next()) {
-                    String grantIdStr = rs.getString("grant_id");
-                    Set<PermissionKey> perms = loadPermissions(conn, grantIdStr);
-                    results.add(mapRow(rs, perms));
-                }
-                return results;
+        try (Connection conn = database.connection()) {
+            Map<String, Set<PermissionKey>> permissions = permissionsOfGrants(
+                    conn,
+                    "g.grantee_profile_id = ? AND g.state = 'ACTIVE'",
+                    granteeProfileId.value().toString());
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, granteeProfileId.value().toString());
+                return mapRows(stmt, permissions);
             }
         } catch (SQLException e) {
             throw new TemporaryAccessPersistenceException(
@@ -203,18 +202,16 @@ public final class SqlTemporaryAccessAdapter implements TemporaryAccessStoragePo
                 WHERE target_root_type_id = ? AND target_root_key = ? AND state = 'ACTIVE'
                 """;
 
-        try (Connection conn = database.connection();
-                PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, targetRootTypeId);
-            stmt.setString(2, targetRootKey);
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<TemporaryAccessGrant> results = new ArrayList<>();
-                while (rs.next()) {
-                    String grantIdStr = rs.getString("grant_id");
-                    Set<PermissionKey> perms = loadPermissions(conn, grantIdStr);
-                    results.add(mapRow(rs, perms));
-                }
-                return results;
+        try (Connection conn = database.connection()) {
+            Map<String, Set<PermissionKey>> permissions = permissionsOfGrants(
+                    conn,
+                    "g.target_root_type_id = ? AND g.target_root_key = ? AND g.state = 'ACTIVE'",
+                    targetRootTypeId,
+                    targetRootKey);
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, targetRootTypeId);
+                stmt.setString(2, targetRootKey);
+                return mapRows(stmt, permissions);
             }
         } catch (SQLException e) {
             throw new TemporaryAccessPersistenceException(
@@ -264,6 +261,44 @@ public final class SqlTemporaryAccessAdapter implements TemporaryAccessStoragePo
         } catch (SQLException e) {
             throw new TemporaryAccessPersistenceException("Failed to purge expired grants at: " + now, e);
         }
+    }
+
+    /**
+     * The permissions of every grant {@code where} selects, read in one query.
+     *
+     * <p>A list of grants used to ask for each grant's permissions on its own, one query per grant,
+     * and the protection path reads the grants on an island whenever its cache runs out. The
+     * permissions are read before the grants, so a grant made between the two reads is read with
+     * none and grants nothing until the next read. It never reads the other way round.
+     */
+    private static Map<String, Set<PermissionKey>> permissionsOfGrants(Connection conn, String where, String... args)
+            throws SQLException {
+        String sql = "SELECT p.grant_id, p.permission_key FROM temporary_access_grant_permissions p"
+                + " JOIN temporary_access_grants g ON g.grant_id = p.grant_id WHERE " + where;
+        Map<String, Set<PermissionKey>> byGrant = new HashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                stmt.setString(i + 1, args[i]);
+            }
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    byGrant.computeIfAbsent(rs.getString("grant_id"), k -> new HashSet<>())
+                            .add(PermissionKey.of(rs.getString("permission_key")));
+                }
+            }
+        }
+        return byGrant;
+    }
+
+    private List<TemporaryAccessGrant> mapRows(PreparedStatement stmt, Map<String, Set<PermissionKey>> permissions)
+            throws SQLException {
+        List<TemporaryAccessGrant> results = new ArrayList<>();
+        try (ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                results.add(mapRow(rs, permissions.getOrDefault(rs.getString("grant_id"), Set.of())));
+            }
+        }
+        return results;
     }
 
     private Set<PermissionKey> loadPermissions(Connection conn, String grantId) throws SQLException {

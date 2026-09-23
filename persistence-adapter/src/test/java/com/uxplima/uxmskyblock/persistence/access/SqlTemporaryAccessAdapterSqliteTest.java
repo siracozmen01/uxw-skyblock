@@ -262,4 +262,52 @@ class SqlTemporaryAccessAdapterSqliteTest {
         adapter.purgeExpired(now);
         assertThat(adapter.findById(grant2).orElseThrow().state()).isEqualTo(GrantState.EXPIRED);
     }
+
+    @Test
+    @DisplayName("Listing grants reads their permissions in one query, not one per grant")
+    void listingReadsPermissionsOnce() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        java.util.Map<GrantId, Set<PermissionKey>> made = new java.util.HashMap<>();
+        for (int i = 0; i < 3; i++) {
+            GrantId grantId = GrantId.random();
+            Set<PermissionKey> permissions =
+                    Set.of(PermissionKey.of("uxm:block.break"), PermissionKey.of("uxm:grant." + i));
+            made.put(grantId, permissions);
+            adapter.save(new TemporaryAccessGrant(
+                    grantId,
+                    "skyblock-01",
+                    "ISLAND",
+                    "island-counted",
+                    granteeProfile,
+                    grantorProfile,
+                    TerminationPolicy.UNTIL_TIMESTAMP,
+                    grantorPlayer,
+                    1001L,
+                    "node-alpha",
+                    "gen-99",
+                    GrantState.ACTIVE,
+                    permissions,
+                    now,
+                    now.plus(3600, ChronoUnit.SECONDS),
+                    now));
+        }
+        java.util.List<String> sent = new java.util.ArrayList<>();
+        SqlTemporaryAccessAdapter counted = new SqlTemporaryAccessAdapter(
+                com.uxplima.uxmskyblock.persistence.testfixture.CountingConnections.over(database, sent));
+
+        java.util.List<TemporaryAccessGrant> onIsland = counted.findActiveByRoot("ISLAND", "island-counted");
+        int byRoot = sent.size();
+        sent.clear();
+        java.util.List<TemporaryAccessGrant> ofGrantee = counted.findActiveByGrantee(granteeProfile);
+
+        assertThat(byRoot)
+                .describedAs("queries to list three grants on an island")
+                .isEqualTo(2);
+        assertThat(sent).describedAs("queries to list a grantee's grants").hasSize(2);
+        assertThat(onIsland).hasSize(3);
+        for (TemporaryAccessGrant grant : onIsland) {
+            assertThat(grant.permissions()).containsExactlyInAnyOrderElementsOf(made.get(grant.grantId()));
+        }
+        assertThat(ofGrantee).extracting(TemporaryAccessGrant::grantId).containsAll(made.keySet());
+    }
 }
