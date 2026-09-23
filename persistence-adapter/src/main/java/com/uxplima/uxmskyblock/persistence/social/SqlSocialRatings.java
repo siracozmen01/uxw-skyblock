@@ -17,6 +17,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.social.RatingSummary;
 import com.uxplima.uxmskyblock.core.domain.social.SocialRating;
 import com.uxplima.uxmskyblock.core.domain.social.SocialSubjectRef;
+import com.uxplima.uxmskyblock.persistence.sql.UniqueViolations;
 
 /**
  * What players think of a subject, as a score each may give once and change later.
@@ -33,18 +34,19 @@ final class SqlSocialRatings {
         this.database = Objects.requireNonNull(database, "database must not be null");
     }
 
+    /**
+     * Records a player's score for a subject, replacing the one they gave before.
+     *
+     * <p>It read whether a rating existed and then inserted or updated, with nothing holding the
+     * answer between the two. Two first ratings from one player at once, a double click, both read
+     * "none" and both inserted, and the second hit the primary key and reached the player as an
+     * error. It now updates first, which is the whole of a changed rating, inserts only when there
+     * was nothing to update, and turns an insert that lost that race into the update it should have
+     * been. The rating keeps the time it was first given.
+     */
     public void saveRating(SocialRating rating) {
         Objects.requireNonNull(rating, "rating must not be null");
 
-        String checkSql = """
-                SELECT 1 FROM social_ratings
-                WHERE subject_type_id = ? AND subject_key = ? AND rater_profile_id = ?
-                """;
-        String updateSql = """
-                UPDATE social_ratings
-                SET score = ?, updated_at = ?
-                WHERE subject_type_id = ? AND subject_key = ? AND rater_profile_id = ?
-                """;
         String insertSql = """
                 INSERT INTO social_ratings (
                     subject_type_id, subject_key, rater_profile_id, score, created_at, updated_at
@@ -52,40 +54,43 @@ final class SqlSocialRatings {
                 """;
 
         try (Connection conn = database.connection()) {
-            boolean exists;
-            try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
-                checkStmt.setString(1, rating.subject().typeId());
-                checkStmt.setString(2, rating.subject().key());
-                checkStmt.setString(3, rating.raterProfileId().value().toString());
-                try (ResultSet rs = checkStmt.executeQuery()) {
-                    exists = rs.next();
-                }
+            if (update(conn, rating) > 0) {
+                return;
             }
-
-            if (exists) {
-                try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
-                    updateStmt.setInt(1, rating.score());
-                    updateStmt.setTimestamp(2, Timestamp.from(rating.updatedAt()));
-                    updateStmt.setString(3, rating.subject().typeId());
-                    updateStmt.setString(4, rating.subject().key());
-                    updateStmt.setString(5, rating.raterProfileId().value().toString());
-                    updateStmt.executeUpdate();
+            try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+                insertStmt.setString(1, rating.subject().typeId());
+                insertStmt.setString(2, rating.subject().key());
+                insertStmt.setString(3, rating.raterProfileId().value().toString());
+                insertStmt.setInt(4, rating.score());
+                insertStmt.setTimestamp(5, Timestamp.from(rating.createdAt()));
+                insertStmt.setTimestamp(6, Timestamp.from(rating.updatedAt()));
+                insertStmt.executeUpdate();
+            } catch (SQLException lostTheRace) {
+                if (!UniqueViolations.isUniqueViolation(lostTheRace)) {
+                    throw lostTheRace;
                 }
-            } else {
-                try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
-                    insertStmt.setString(1, rating.subject().typeId());
-                    insertStmt.setString(2, rating.subject().key());
-                    insertStmt.setString(3, rating.raterProfileId().value().toString());
-                    insertStmt.setInt(4, rating.score());
-                    insertStmt.setTimestamp(5, Timestamp.from(rating.createdAt()));
-                    insertStmt.setTimestamp(6, Timestamp.from(rating.updatedAt()));
-                    insertStmt.executeUpdate();
-                }
+                update(conn, rating);
             }
         } catch (SQLException e) {
             throw new SocialPersistenceException(
                     "Failed to persist rating for subject: " + rating.subject() + ", rater: " + rating.raterProfileId(),
                     e);
+        }
+    }
+
+    private static int update(Connection conn, SocialRating rating) throws SQLException {
+        String updateSql = """
+                UPDATE social_ratings
+                SET score = ?, updated_at = ?
+                WHERE subject_type_id = ? AND subject_key = ? AND rater_profile_id = ?
+                """;
+        try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+            updateStmt.setInt(1, rating.score());
+            updateStmt.setTimestamp(2, Timestamp.from(rating.updatedAt()));
+            updateStmt.setString(3, rating.subject().typeId());
+            updateStmt.setString(4, rating.subject().key());
+            updateStmt.setString(5, rating.raterProfileId().value().toString());
+            return updateStmt.executeUpdate();
         }
     }
 

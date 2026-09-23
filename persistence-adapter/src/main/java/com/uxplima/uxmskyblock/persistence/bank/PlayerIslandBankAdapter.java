@@ -23,6 +23,7 @@ import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.persistence.sql.DialectTransactions;
 import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
+import com.uxplima.uxmskyblock.persistence.sql.UniqueViolations;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -174,7 +175,7 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     // one committed. That is the same request, not a failure: roll this draft back and
                     // answer with what the other one recorded. It used to surface as a persistence
                     // error, so a caller retrying one deposit got a server error for its own retry.
-                    if (!isUniqueViolation(collided)) {
+                    if (!UniqueViolations.isUniqueViolation(collided)) {
                         throw collided;
                     }
                     tx.rollbackQuietly(connection);
@@ -468,25 +469,5 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                         resultPayload);
             }
         }
-    }
-
-    /** Whether the engine refused a row because a unique index already held its key. */
-    private static boolean isUniqueViolation(SQLException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof java.sql.SQLIntegrityConstraintViolationException) {
-                return true;
-            }
-            if (cause instanceof SQLException sql) {
-                String state = sql.getSQLState();
-                if (state != null && state.startsWith("23")) {
-                    return true;
-                }
-                // SQLite reports a constraint as error code 19 and no SQL state.
-                if (sql.getErrorCode() == 19) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 }
