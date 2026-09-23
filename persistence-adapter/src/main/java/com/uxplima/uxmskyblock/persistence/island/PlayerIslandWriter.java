@@ -50,17 +50,13 @@ final class PlayerIslandWriter {
         }
     }
 
-    private static void saveIslandCore(Connection conn, Island island) throws SQLException {
-        boolean exists;
-        try (PreparedStatement checkStmt = conn.prepareStatement("SELECT 1 FROM islands WHERE id = ?")) {
-            checkStmt.setString(1, island.id().value().toString());
-            try (ResultSet rs = checkStmt.executeQuery()) {
-                exists = rs.next();
-            }
-        }
+    // Every row below is updated first and inserted only when there was nothing to update. Each one
+    // used to be asked whether it existed and then written, which is one question and one answer per
+    // row on every save, and an island is saved whenever anything about it changes.
 
-        if (exists) {
-            try (PreparedStatement updateStmt = conn.prepareStatement("""
+    private static void saveIslandCore(Connection conn, Island island) throws SQLException {
+        int updated;
+        try (PreparedStatement updateStmt = conn.prepareStatement("""
                     UPDATE islands SET
                         owner_profile_id = ?,
                         owner_account_uuid = ?,
@@ -71,16 +67,16 @@ final class PlayerIslandWriter {
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """)) {
-                updateStmt.setString(1, island.ownerProfileId().value().toString());
-                updateStmt.setString(2, island.ownerPlayerUuid().value().toString());
-                updateStmt.setString(3, island.lifecycle().name());
-                updateStmt.setString(4, island.economicState().name());
-                updateStmt.setString(5, island.administrativeState().name());
-                updateStmt.setString(6, island.freezeReason());
-                updateStmt.setString(7, island.id().value().toString());
-                updateStmt.executeUpdate();
-            }
-        } else {
+            updateStmt.setString(1, island.ownerProfileId().value().toString());
+            updateStmt.setString(2, island.ownerPlayerUuid().value().toString());
+            updateStmt.setString(3, island.lifecycle().name());
+            updateStmt.setString(4, island.economicState().name());
+            updateStmt.setString(5, island.administrativeState().name());
+            updateStmt.setString(6, island.freezeReason());
+            updateStmt.setString(7, island.id().value().toString());
+            updated = updateStmt.executeUpdate();
+        }
+        if (updated == 0) {
             try (PreparedStatement insertStmt = conn.prepareStatement("""
                     INSERT INTO islands (
                         id, owner_profile_id, owner_account_uuid, custom_name, lifecycle,
@@ -102,18 +98,9 @@ final class PlayerIslandWriter {
     }
 
     private static void saveIslandLocation(Connection conn, IslandLocation location) throws SQLException {
-        boolean exists;
-        try (PreparedStatement checkStmt =
-                conn.prepareStatement("SELECT 1 FROM island_locations WHERE island_id = ?")) {
-            checkStmt.setString(1, location.islandId().value().toString());
-            try (ResultSet rs = checkStmt.executeQuery()) {
-                exists = rs.next();
-            }
-        }
-
         IslandBounds bounds = location.bounds();
-        if (exists) {
-            try (PreparedStatement updateStmt = conn.prepareStatement("""
+        int updated;
+        try (PreparedStatement updateStmt = conn.prepareStatement("""
                     UPDATE island_locations SET
                         world_name = ?, center_x = ?, center_z = ?,
                         min_x = ?, min_z = ?, max_x = ?, max_z = ?,
@@ -121,22 +108,22 @@ final class PlayerIslandWriter {
                         spawn_yaw = ?, spawn_pitch = ?
                     WHERE island_id = ?
                     """)) {
-                updateStmt.setString(1, location.worldName());
-                updateStmt.setInt(2, bounds.centerX());
-                updateStmt.setInt(3, bounds.centerZ());
-                updateStmt.setInt(4, bounds.minX());
-                updateStmt.setInt(5, bounds.minZ());
-                updateStmt.setInt(6, bounds.maxX());
-                updateStmt.setInt(7, bounds.maxZ());
-                updateStmt.setDouble(8, location.spawnX());
-                updateStmt.setDouble(9, location.spawnY());
-                updateStmt.setDouble(10, location.spawnZ());
-                updateStmt.setFloat(11, location.spawnYaw());
-                updateStmt.setFloat(12, location.spawnPitch());
-                updateStmt.setString(13, location.islandId().value().toString());
-                updateStmt.executeUpdate();
-            }
-        } else {
+            updateStmt.setString(1, location.worldName());
+            updateStmt.setInt(2, bounds.centerX());
+            updateStmt.setInt(3, bounds.centerZ());
+            updateStmt.setInt(4, bounds.minX());
+            updateStmt.setInt(5, bounds.minZ());
+            updateStmt.setInt(6, bounds.maxX());
+            updateStmt.setInt(7, bounds.maxZ());
+            updateStmt.setDouble(8, location.spawnX());
+            updateStmt.setDouble(9, location.spawnY());
+            updateStmt.setDouble(10, location.spawnZ());
+            updateStmt.setFloat(11, location.spawnYaw());
+            updateStmt.setFloat(12, location.spawnPitch());
+            updateStmt.setString(13, location.islandId().value().toString());
+            updated = updateStmt.executeUpdate();
+        }
+        if (updated == 0) {
             try (PreparedStatement insertStmt = conn.prepareStatement("""
                     INSERT INTO island_locations (
                         island_id, world_name, center_x, center_z,
@@ -172,27 +159,17 @@ final class PlayerIslandWriter {
         deleteRemovedRoles(conn, islandIdStr, island.roles().keySet());
 
         for (IslandRole role : island.roles().values()) {
-            boolean exists;
-            try (PreparedStatement checkStmt =
-                    conn.prepareStatement("SELECT 1 FROM island_roles WHERE island_id = ? AND role_id = ?")) {
-                checkStmt.setString(1, islandIdStr);
-                checkStmt.setString(2, role.id());
-                try (ResultSet rs = checkStmt.executeQuery()) {
-                    exists = rs.next();
-                }
+            int updated;
+            try (PreparedStatement updateStmt = conn.prepareStatement(
+                    "UPDATE island_roles SET weight = ?, display_name = ?, is_system = ? WHERE island_id = ? AND role_id = ?")) {
+                updateStmt.setInt(1, role.weight());
+                updateStmt.setString(2, role.displayName());
+                updateStmt.setBoolean(3, role.isSystem());
+                updateStmt.setString(4, islandIdStr);
+                updateStmt.setString(5, role.id());
+                updated = updateStmt.executeUpdate();
             }
-
-            if (exists) {
-                try (PreparedStatement updateStmt = conn.prepareStatement(
-                        "UPDATE island_roles SET weight = ?, display_name = ?, is_system = ? WHERE island_id = ? AND role_id = ?")) {
-                    updateStmt.setInt(1, role.weight());
-                    updateStmt.setString(2, role.displayName());
-                    updateStmt.setBoolean(3, role.isSystem());
-                    updateStmt.setString(4, islandIdStr);
-                    updateStmt.setString(5, role.id());
-                    updateStmt.executeUpdate();
-                }
-            } else {
+            if (updated == 0) {
                 try (PreparedStatement insertStmt = conn.prepareStatement(
                         "INSERT INTO island_roles (island_id, role_id, weight, display_name, is_system) VALUES (?, ?, ?, ?, ?)")) {
                     insertStmt.setString(1, islandIdStr);
@@ -219,8 +196,9 @@ final class PlayerIslandWriter {
                         insertPerm.setString(1, islandIdStr);
                         insertPerm.setString(2, role.id());
                         insertPerm.setString(3, perm.name());
-                        insertPerm.executeUpdate();
+                        insertPerm.addBatch();
                     }
+                    insertPerm.executeBatch();
                 }
             }
         }
@@ -320,25 +298,15 @@ final class PlayerIslandWriter {
         String islandIdStr = island.id().value().toString();
 
         for (Map.Entry<String, Boolean> entry : island.flags().values().entrySet()) {
-            boolean exists;
-            try (PreparedStatement checkStmt =
-                    conn.prepareStatement("SELECT 1 FROM island_flags WHERE island_id = ? AND flag_name = ?")) {
-                checkStmt.setString(1, islandIdStr);
-                checkStmt.setString(2, entry.getKey());
-                try (ResultSet rs = checkStmt.executeQuery()) {
-                    exists = rs.next();
-                }
+            int updated;
+            try (PreparedStatement updateStmt = conn.prepareStatement(
+                    "UPDATE island_flags SET flag_value = ? WHERE island_id = ? AND flag_name = ?")) {
+                updateStmt.setBoolean(1, entry.getValue());
+                updateStmt.setString(2, islandIdStr);
+                updateStmt.setString(3, entry.getKey());
+                updated = updateStmt.executeUpdate();
             }
-
-            if (exists) {
-                try (PreparedStatement updateStmt = conn.prepareStatement(
-                        "UPDATE island_flags SET flag_value = ? WHERE island_id = ? AND flag_name = ?")) {
-                    updateStmt.setBoolean(1, entry.getValue());
-                    updateStmt.setString(2, islandIdStr);
-                    updateStmt.setString(3, entry.getKey());
-                    updateStmt.executeUpdate();
-                }
-            } else {
+            if (updated == 0) {
                 try (PreparedStatement insertStmt = conn.prepareStatement(
                         "INSERT INTO island_flags (island_id, flag_name, flag_value) VALUES (?, ?, ?)")) {
                     insertStmt.setString(1, islandIdStr);
