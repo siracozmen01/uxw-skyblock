@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -25,6 +26,7 @@ import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.SettingsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Enterprise Zero-Velocity Void Recovery & Kinetic Shield Listener (Section 2.41 & Section 2.42 item 2).
@@ -152,16 +154,23 @@ public final class VoidProtectionListener implements Listener {
             return false;
         }
 
+        // The island's surface is not read here. This runs on the falling player's region, and on
+        // Folia the island's centre may be another region's chunk or no loaded chunk at all, so
+        // reading it threw and the player fell to their death. The player is moved over the centre
+        // first, and the surface is read once they are there, where the chunk is theirs.
+        World world = loc.getWorld();
         Location destination;
+        @Nullable Location centre = null;
         if (optIsland.isPresent()) {
             Island island = optIsland.get();
-            World world = loc.getWorld();
-            int spawnX = island.bounds().centerX();
-            int spawnZ = island.bounds().centerZ();
-            int spawnY = Math.max(65, world.getHighestBlockYAt(spawnX, spawnZ) + 1);
-            destination = new Location(world, spawnX + 0.5, spawnY, spawnZ + 0.5);
+            centre = new Location(
+                    world,
+                    island.bounds().centerX() + 0.5,
+                    world.getMaxHeight() - 1,
+                    island.bounds().centerZ() + 0.5);
+            destination = centre;
         } else {
-            destination = loc.getWorld().getSpawnLocation();
+            destination = world.getSpawnLocation();
         }
 
         // Zero-velocity reset & clear fall distance to prevent carryover deaths
@@ -175,8 +184,12 @@ public final class VoidProtectionListener implements Listener {
         // Asynchronous, because Folia refuses a synchronous teleport outright: it threw here, so a
         // player who fell off an island on a region threaded server fell to their death anyway.
         try {
-            var unused =
-                    player.teleportAsync(destination).whenComplete((moved, error) -> beingRescued.remove(playerId));
+            @Nullable Location overTheCentre = centre;
+            var unused = player.teleportAsync(destination)
+                    .thenCompose(moved -> moved && overTheCentre != null
+                            ? player.teleportAsync(onTheSurface(overTheCentre))
+                            : CompletableFuture.completedFuture(moved))
+                    .whenComplete((moved, error) -> beingRescued.remove(playerId));
         } catch (RuntimeException e) {
             beingRescued.remove(playerId);
             throw e;
@@ -194,6 +207,13 @@ public final class VoidProtectionListener implements Listener {
         player.sendMessage(messages.render(player, "protection.void_recovery"));
 
         return true;
+    }
+
+    /** Where to stand over {@code centre}: on its highest block, and never lower than y 65. */
+    private static Location onTheSurface(Location centre) {
+        World world = centre.getWorld();
+        int surface = world.getHighestBlockYAt(centre.getBlockX(), centre.getBlockZ());
+        return new Location(world, centre.getX(), Math.max(65, surface + 1), centre.getZ());
     }
 
     public void grantTeleportInvulnerability(Player player) {
