@@ -67,6 +67,9 @@ public final class EconomySagaCoordinator {
                     BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
                     "Failed to withdraw funds from your wallet.");
         }
+        // Written as soon as the wallet paid, so a crash from here on leaves a saga recovery can
+        // finish: the bank move is keyed and can be asked again.
+        sagaPort.updateState(sagaId, SagaState.WALLET_DEBITED, now);
 
         BankTransactionOutcome outcome = bankService.moveOnce(
                 profileId, playerUuid, amountMinorUnits, "Player deposit", nodeId, forwardKey(sagaId));
@@ -114,6 +117,7 @@ public final class EconomySagaCoordinator {
             return outcome;
         }
 
+        sagaPort.updateState(sagaId, SagaState.CREDITING_WALLET, now);
         boolean deposited = walletPort.deposit(playerUuid, amountMinorUnits);
         if (deposited) {
             sagaPort.updateState(sagaId, SagaState.COMMITTED, now);
@@ -176,17 +180,87 @@ public final class EconomySagaCoordinator {
                     }
                     recovered++;
                 }
-                case STARTED -> {
-                    LOGGER.warning(() -> "Economy saga " + saga.sagaId() + " (" + saga.sagaType() + " of "
-                            + saga.amountMinorUnits() + " for " + saga.playerUuid() + ") stopped part way. Check it"
-                            + " by hand.");
+                case WALLET_DEBITED -> {
+                    finishDeposit(saga, nodeId, now);
+                    recovered++;
+                }
+                case CREDITING_WALLET -> {
+                    LOGGER.warning(() -> "Economy saga " + saga.sagaId() + " was paying " + saga.amountMinorUnits()
+                            + " into the wallet of " + saga.playerUuid() + " when the server stopped. The wallet"
+                            + " cannot say whether it was paid, so nothing is moved again. Check it by hand.");
                     sagaPort.updateState(saga.sagaId(), SagaState.FAILED, now);
+                    recovered++;
+                }
+                case STARTED -> {
+                    if (saga.sagaType() == SagaType.WITHDRAW) {
+                        undoWithdrawal(saga, nodeId, now);
+                    } else {
+                        // The wallet was being asked and cannot say whether it paid.
+                        LOGGER.warning(() -> "Economy saga " + saga.sagaId() + " was taking " + saga.amountMinorUnits()
+                                + " from the wallet of " + saga.playerUuid() + " when the server stopped. Check it"
+                                + " by hand.");
+                        sagaPort.updateState(saga.sagaId(), SagaState.FAILED, now);
+                    }
                     recovered++;
                 }
                 default -> {}
             }
         }
         return recovered;
+    }
+
+    /**
+     * Puts a deposit's money into the bank, now that the wallet is known to have paid.
+     *
+     * <p>The bank move is keyed, so asking again lands it once whether or not it landed before the
+     * server stopped. If the bank refuses, the wallet gets its money back.
+     */
+    private void finishDeposit(EconomySagaRecord saga, ServerNodeId nodeId, Instant now) {
+        BankTransactionOutcome deposit = bankService.moveOnce(
+                saga.profileId(),
+                saga.playerUuid(),
+                saga.amountMinorUnits(),
+                "Player deposit",
+                nodeId,
+                forwardKey(saga.sagaId()));
+        if (IslandBankService.landed(deposit)) {
+            sagaPort.updateState(saga.sagaId(), SagaState.COMMITTED, now);
+            return;
+        }
+        sagaPort.updateState(saga.sagaId(), SagaState.REFUNDING_WALLET, now);
+        boolean refunded = walletPort.deposit(saga.playerUuid(), saga.amountMinorUnits());
+        sagaPort.updateState(saga.sagaId(), refunded ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
+    }
+
+    /**
+     * Undoes a withdrawal that stopped before it paid the wallet.
+     *
+     * <p>Whether the bank move had landed is not known, and both answers are settled the same way:
+     * the keyed withdrawal is asked again, which lands it once, and the keyed refund puts it back. The
+     * bank ends where it started and the wallet was never paid.
+     */
+    private void undoWithdrawal(EconomySagaRecord saga, ServerNodeId nodeId, Instant now) {
+        BankTransactionOutcome taken = bankService.moveOnce(
+                saga.profileId(),
+                saga.playerUuid(),
+                -saga.amountMinorUnits(),
+                "Player withdrawal",
+                nodeId,
+                forwardKey(saga.sagaId()));
+        if (!IslandBankService.landed(taken)) {
+            // Nothing was taken, so there is nothing to give back.
+            sagaPort.updateState(saga.sagaId(), SagaState.FAILED, now);
+            return;
+        }
+        BankTransactionOutcome refund = bankService.moveOnce(
+                saga.profileId(),
+                saga.playerUuid(),
+                saga.amountMinorUnits(),
+                "Withdrawal refund",
+                nodeId,
+                refundKey(saga.sagaId()));
+        sagaPort.updateState(
+                saga.sagaId(), IslandBankService.landed(refund) ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
     }
 
     /** The key a saga's own bank move is recorded under. */

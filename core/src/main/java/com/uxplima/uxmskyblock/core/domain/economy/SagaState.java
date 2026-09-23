@@ -5,6 +5,13 @@ package com.uxplima.uxmskyblock.core.domain.economy;
  */
 public enum SagaState {
     STARTED,
+    /** A deposit has taken the money out of the wallet and has yet to put it in the bank. */
+    WALLET_DEBITED,
+    /**
+     * A withdrawal has taken the money out of the bank and is about to pay the wallet. It is written
+     * before the wallet is asked, because a wallet cannot say afterwards whether it was paid.
+     */
+    CREDITING_WALLET,
     COMMITTED,
     COMPENSATING,
     /**
