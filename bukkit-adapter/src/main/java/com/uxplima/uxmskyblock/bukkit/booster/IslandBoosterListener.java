@@ -50,7 +50,28 @@ public final class IslandBoosterListener implements Listener {
     private final SchedulerPort schedulerPort;
 
     private final Clock clock;
-    private final Map<UUID, IslandId> playerIslandCache = new ConcurrentHashMap<>();
+    /**
+     * The island each player's kills are boosted by, and when that was read.
+     *
+     * <p>It was read once and kept until the player left, so a member kicked from an island kept
+     * its experience booster for the rest of their session. It is read again, off the thread the
+     * mob died on, once it is as old as {@code boosters.multiplier-cache-ttl}.
+     */
+    private final Map<UUID, CachedIsland> playerIslandCache = new ConcurrentHashMap<>();
+
+    /** Players whose island is already being read again, so a farm does not queue one read per mob. */
+    private final Set<UUID> resolving = ConcurrentHashMap.newKeySet();
+
+    private record CachedIsland(IslandId islandId, Instant readAt) {
+        boolean isFreshAt(Instant now, Duration ttl) {
+            return fresh(readAt, now, ttl);
+        }
+    }
+
+    private static boolean fresh(Instant readAt, Instant now, Duration ttl) {
+        // An expiry of zero is an operator saying they want no cache, so nothing is ever fresh.
+        return !ttl.isZero() && !readAt.plus(ttl).isBefore(now);
+    }
 
     /**
      * The last multiplier read for an island and a category, and when it was read.
@@ -69,8 +90,7 @@ public final class IslandBoosterListener implements Listener {
 
     private record CachedMultiplier(double value, Instant readAt) {
         boolean isFreshAt(Instant now, Duration ttl) {
-            // An expiry of zero is an operator saying they want no cache, so nothing is ever fresh.
-            return !ttl.isZero() && !readAt.plus(ttl).isBefore(now);
+            return fresh(readAt, now, ttl);
         }
     }
 
@@ -112,7 +132,7 @@ public final class IslandBoosterListener implements Listener {
         UUID playerUuid = player.getUniqueId();
         Runnable task = () -> {
             findIslandIdForPlayer(playerUuid).ifPresent(islandId -> {
-                playerIslandCache.put(playerUuid, islandId);
+                playerIslandCache.put(playerUuid, new CachedIsland(islandId, clock.instant()));
                 // The count is handed over rather than taken here, so the service can ask it again
                 // inside its lock. A join and a quit on one island arrive on this same pool, and
                 // whichever of them runs second has to be the one that decides.
@@ -143,7 +163,8 @@ public final class IslandBoosterListener implements Listener {
 
     private void leftIsland(UUID playerUuid) {
         Runnable task = () -> {
-            IslandId islandId = playerIslandCache.get(playerUuid);
+            CachedIsland remembered = playerIslandCache.get(playerUuid);
+            IslandId islandId = remembered == null ? null : remembered.islandId();
             if (islandId == null) {
                 islandId = findIslandIdForPlayer(playerUuid).orElse(null);
             }
@@ -174,14 +195,20 @@ public final class IslandBoosterListener implements Listener {
             return;
         }
 
-        IslandId islandId = playerIslandCache.get(killer.getUniqueId());
-        if (islandId == null) {
+        UUID killerUuid = killer.getUniqueId();
+        CachedIsland remembered = playerIslandCache.get(killerUuid);
+        if (remembered == null) {
             // Nothing on this path may touch the database. The island is resolved off the thread the
             // mob died on, and this kill goes unboosted: one mob's experience is a cheaper price
             // than a query on a region thread, and the next kill will find the answer waiting.
-            resolveIslandLater(killer.getUniqueId());
+            resolveIslandLater(killerUuid);
             return;
         }
+        if (!remembered.isFreshAt(clock.instant(), configuration.multiplierCacheTtl())) {
+            // Read again off this thread, keeping the island it had until the answer is in.
+            resolveIslandLater(killerUuid);
+        }
+        IslandId islandId = remembered.islandId();
 
         double multiplier = cachedMultiplier(islandId, BoosterCategory.MOB_EXP);
         if (multiplier > 1.0) {
@@ -232,18 +259,31 @@ public final class IslandBoosterListener implements Listener {
         // Built as a value and handed over, the way the join and quit handlers do it, so the one
         // branch that runs it in place is the wiring with no scheduler at all rather than a second
         // shape that has to be read on its own.
-        Runnable task = () -> findIslandIdForPlayer(playerUuid).ifPresent(id -> {
-            playerIslandCache.put(playerUuid, id);
-            refreshLater(new MultiplierKey(id, BoosterCategory.MOB_EXP));
-        });
+        if (!resolving.add(playerUuid)) {
+            return;
+        }
+        Runnable task = () -> {
+            try {
+                Optional<IslandId> found = findIslandIdForPlayer(playerUuid);
+                if (found.isEmpty()) {
+                    // Kicked, gone or never on one: nothing boosts this player's kills any more.
+                    playerIslandCache.remove(playerUuid);
+                    return;
+                }
+                playerIslandCache.put(playerUuid, new CachedIsland(found.get(), clock.instant()));
+                refreshLater(new MultiplierKey(found.get(), BoosterCategory.MOB_EXP));
+            } finally {
+                resolving.remove(playerUuid);
+            }
+        };
         schedulerPort.async(task);
     }
 
     /** Forgets what is remembered about a player, for a profile switch or a quit. */
     public void invalidatePlayer(UUID playerUuid) {
-        IslandId islandId = playerIslandCache.remove(playerUuid);
-        if (islandId != null) {
-            multiplierCache.keySet().removeIf(key -> key.islandId().equals(islandId));
+        CachedIsland remembered = playerIslandCache.remove(playerUuid);
+        if (remembered != null) {
+            multiplierCache.keySet().removeIf(key -> key.islandId().equals(remembered.islandId()));
         }
     }
 
