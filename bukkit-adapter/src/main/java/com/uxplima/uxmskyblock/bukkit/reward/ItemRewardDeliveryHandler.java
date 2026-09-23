@@ -387,7 +387,9 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
         }
         String clean =
                 payload.replace("{", "").replace("}", "").replace("\"", "").trim();
-        String materialName = "DIRT";
+        // A payload that names no item, or one the server does not know, gives nothing. It used to
+        // give dirt and diamonds, so a reward with a misspelt item handed out diamonds.
+        @Nullable String materialName = null;
         int amount = 1;
 
         int itemIdx = clean.indexOf("item:");
@@ -413,9 +415,12 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             }
         }
 
+        if (materialName == null) {
+            return null;
+        }
         Material mat = Material.matchMaterial(materialName);
-        if (mat == null) {
-            mat = Material.DIAMOND;
+        if (mat == null || !mat.isItem() || mat.isAir()) {
+            return null;
         }
         return new ItemStack(mat, Math.max(1, amount));
     }
