@@ -31,6 +31,7 @@ import com.uxplima.uxmlib.menu.binding.PlaceholderRegistry;
 import com.uxplima.uxmlib.menu.render.ItemRenderer;
 import com.uxplima.uxmlib.menu.render.MenuRenderer;
 import com.uxplima.uxmlib.menu.runtime.MenuActionContext;
+import com.uxplima.uxmlib.menu.runtime.MenuContext;
 import com.uxplima.uxmlib.menu.runtime.MenuListener;
 import com.uxplima.uxmlib.menu.spec.MenuSpec;
 import com.uxplima.uxmlib.menu.spec.MenuSpecLoader;
@@ -142,6 +143,7 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         // a verb that quietly changed meaning depending on wiring order would be worse.
         MenuBasics.register(bindings);
         answerArguments(bindings.placeholders());
+        bindings.condition("at-least", SkyblockMenuEngine::atLeast);
 
         bindings.action("open", ctx -> {
             String target = ctx.arg().strip();
@@ -163,6 +165,28 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     }
 
     private static final String ARGUMENT = "argument_";
+
+    /**
+     * {@code at-least:<value> <number>}: whether the value the menu was opened with is at least the
+     * number, so a file can show a vault page an island has and a locked one in its place otherwise.
+     *
+     * <p>A value that is missing or not a number is not at least anything, and neither is a line that
+     * does not name both halves: a locked tile shown by mistake costs a click, an open one costs a page.
+     */
+    static boolean atLeast(MenuContext ctx, Map<String, String> args) {
+        java.util.Scanner words = new java.util.Scanner(args.getOrDefault("value", ""));
+        String name = words.hasNext() ? words.next() : "";
+        String number = words.hasNext() ? words.next() : "";
+        if (name.isEmpty() || number.isEmpty() || words.hasNext()) {
+            return false;
+        }
+        try {
+            long have = Long.parseLong(ctx.arguments().getOrDefault(name, "").strip());
+            return have >= Long.parseLong(number);
+        } catch (NumberFormatException notANumber) {
+            return false;
+        }
+    }
 
     /** What the viewer's menus were last opened with, or nothing when they have opened none. */
     private Map<String, String> valuesFor(UUID viewer) {
