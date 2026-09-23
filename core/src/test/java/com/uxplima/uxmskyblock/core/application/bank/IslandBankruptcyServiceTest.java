@@ -119,6 +119,7 @@ class IslandBankruptcyServiceTest {
     void upkeepEntersGraceWhenInsufficient() {
         IslandBank bank = new IslandBank(islandId, 30_000L, 0L, 0L, 1L, now); // needs 80k
         when(mockBankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
+        bankAnswers(new BankTransactionOutcome.InsufficientFunds(30_000L, -80_000L));
 
         BankruptcyCycleResult result = service.processUpkeepCycle(islandId, 3, now, nodeId);
 
@@ -142,6 +143,7 @@ class IslandBankruptcyServiceTest {
 
         IslandBank bank = new IslandBank(islandId, 10_000L, 0L, 0L, 1L, now);
         when(mockBankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
+        bankAnswers(new BankTransactionOutcome.InsufficientFunds(10_000L, -60_000L));
 
         Instant nextCycle = now.plus(Duration.ofHours(24)); // Still 48h remaining
         BankruptcyCycleResult result = service.processUpkeepCycle(islandId, 1, nextCycle, nodeId); // 50k+10k = 60k fee
@@ -164,6 +166,7 @@ class IslandBankruptcyServiceTest {
         IslandBank bank = new IslandBank(islandId, 0L, 0L, 0L, 1L, now);
         when(mockBankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
 
+        bankAnswers(new BankTransactionOutcome.InsufficientFunds(0L, -50_000L));
         BankruptcyCycleResult result = service.processUpkeepCycle(islandId, 0, now, nodeId); // 50k fee
 
         assertThat(result).isInstanceOf(BankruptcyCycleResult.LockoutApplied.class);
@@ -172,6 +175,26 @@ class IslandBankruptcyServiceTest {
         assertThat(lockout.totalDebt()).isEqualTo(130_000L);
 
         assertThat(service.isIslandLocked(islandId, now)).isTrue();
+    }
+
+    @Test
+    @DisplayName("A charge the bank could not settle because it moved is tried again, not owed")
+    void aMovedBankDefersTheCharge() {
+        IslandBank bank = new IslandBank(islandId, 100_000L, 0L, 0L, 1L, now);
+        when(mockBankPort.findBankByIslandId(islandId)).thenReturn(Optional.of(bank));
+        bankAnswers(new BankTransactionOutcome.StaleVersion(1L, 2L));
+
+        BankruptcyCycleResult result = service.processUpkeepCycle(islandId, 3, now, nodeId);
+
+        assertThat(result).isInstanceOf(BankruptcyCycleResult.Deferred.class);
+        IslandBankruptcyRecord record = service.getBankruptcyRecord(islandId, now);
+        assertThat(record.status())
+                .describedAs("an island holding the money is not put into grace")
+                .isEqualTo(BankruptcyStatus.SOLVENT);
+        assertThat(record.debtMinorUnits()).isZero();
+        assertThat(record.charged(policy.periodOf(now)))
+                .describedAs("the period is still to be charged")
+                .isFalse();
     }
 
     @Test
@@ -350,5 +373,21 @@ class IslandBankruptcyServiceTest {
         public void deleteByIslandId(IslandId islandId) {
             records.remove(islandId);
         }
+    }
+
+    private void bankAnswers(BankTransactionOutcome outcome) {
+        when(mockBankPort.executeTransaction(
+                        eq(islandId),
+                        any(UUID.class),
+                        eq("PRIMARY"),
+                        eq(2),
+                        anyLong(),
+                        anyString(),
+                        eq("node-alpha"),
+                        anyLong(),
+                        anyLong(),
+                        any(UUID.class),
+                        anyString()))
+                .thenReturn(outcome);
     }
 }

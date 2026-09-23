@@ -116,73 +116,90 @@ public final class IslandBankruptcyService {
         }
 
         long fee = policy.calculateUpkeepFee(memberCount);
-        Optional<IslandBank> optBank = bankPort.findBankByIslandId(islandId);
-        long currentBalance = optBank.map(IslandBank::primaryBalanceMinorUnits).orElse(0L);
-
+        long period = policy.periodOf(now);
         IslandBankruptcyRecord record = getBankruptcyRecord(islandId, now);
-
-        if (currentBalance >= fee) {
-            // Sufficient funds: debit upkeep fee
-            long epoch = resolveAuthorityEpoch(islandId, serverNodeId);
-            long expectedVersion = optBank.map(IslandBank::version).orElse(1L);
-            UUID opId = UUID.randomUUID();
-            String idempotencyKey = "upkeep-" + opId;
-
-            BankTransactionOutcome outcome = bankPort.executeTransaction(
-                    islandId,
-                    SYSTEM_UPKEEP_ACTOR,
-                    "PRIMARY",
-                    2,
-                    -fee,
-                    "Automated island upkeep fee",
-                    serverNodeId.value(),
-                    epoch,
-                    expectedVersion,
-                    opId,
-                    idempotencyKey);
-
-            if (outcome instanceof BankTransactionOutcome.Success success) {
-                if (record.status() != BankruptcyStatus.SOLVENT || record.debtMinorUnits() > 0) {
-                    // Recover back to solvent if arrears were zero
-                    if (record.debtMinorUnits() == 0) {
-                        IslandBankruptcyRecord solvent = record.toSolvent(now);
-                        bankruptcyStoragePort.save(solvent);
-                        bankruptcyCache.put(islandId, solvent);
-                    }
-                }
-                return new BankruptcyCycleResult.Paid(fee, success.updatedBank().primaryBalanceMinorUnits());
-            }
+        if (record.charged(period)) {
+            return new BankruptcyCycleResult.AlreadyCharged(period);
         }
+
+        // The node that holds the island charges it. Every other node leaves it alone, where it used
+        // to draw a charge the lease then refused, every cycle.
+        Optional<IslandAuthorityRecord> authority = authorityPort.findAuthority(islandId);
+        if (authority.isPresent()
+                && !authority.get().authoritativeNode().equals(serverNodeId)
+                && !authority.get().isExpired(now)) {
+            return new BankruptcyCycleResult.HeldElsewhere(authority.get().authoritativeNode());
+        }
+
+        // One key per island and period. The cycle used to draw a random key every run, so a
+        // restart charged again at once and every node of a cluster charged every island.
+        String idempotencyKey = "upkeep-" + islandId.value() + "-" + period;
+        UUID opId = UUID.nameUUIDFromBytes(idempotencyKey.getBytes(StandardCharsets.UTF_8));
+        Optional<IslandBank> optBank = bankPort.findBankByIslandId(islandId);
+        BankTransactionOutcome outcome = optBank.isEmpty()
+                ? new BankTransactionOutcome.BankNotFound("no bank for island " + islandId.value())
+                : bankPort.executeTransaction(
+                        islandId,
+                        SYSTEM_UPKEEP_ACTOR,
+                        "PRIMARY",
+                        2,
+                        -fee,
+                        "Automated island upkeep fee",
+                        serverNodeId.value(),
+                        resolveAuthorityEpoch(authority, islandId, serverNodeId),
+                        optBank.get().version(),
+                        opId,
+                        idempotencyKey);
+
+        if (outcome instanceof BankTransactionOutcome.Success success) {
+            IslandBankruptcyRecord paid = record.debtMinorUnits() == 0 ? record.toSolvent(now) : record;
+            remember(paid.chargedFor(period));
+            return new BankruptcyCycleResult.Paid(fee, success.updatedBank().primaryBalanceMinorUnits());
+        }
+        if (outcome instanceof BankTransactionOutcome.DuplicateOperation duplicate
+                && "APPLIED".equals(duplicate.status())) {
+            remember(record.chargedFor(period));
+            return new BankruptcyCycleResult.AlreadyCharged(period);
+        }
+        if (!(outcome instanceof BankTransactionOutcome.InsufficientFunds
+                || outcome instanceof BankTransactionOutcome.BankNotFound
+                || outcome instanceof BankTransactionOutcome.DuplicateOperation)) {
+            // A bank that moved under the charge still holds the money. Owing it would put an island
+            // that can pay into grace, so the charge waits for the next cycle.
+            return new BankruptcyCycleResult.Deferred(outcome.getClass().getSimpleName());
+        }
+        record = record.chargedFor(period);
 
         // Insufficient funds: apply two-stage failure escalation
         if (record.status() == BankruptcyStatus.SOLVENT) {
             Instant graceDeadline = now.plus(policy.graceDuration());
             IslandBankruptcyRecord updated = record.toGrace(fee, graceDeadline, now);
-            bankruptcyStoragePort.save(updated);
-            bankruptcyCache.put(islandId, updated);
+            remember(updated);
             return new BankruptcyCycleResult.GraceEntered(fee, graceDeadline, fee);
         } else if (record.status() == BankruptcyStatus.GRACE) {
             Instant graceUntil = record.graceUntil() != null ? record.graceUntil() : now.plus(policy.graceDuration());
             if (!now.isBefore(graceUntil)) {
                 // Grace expired: escalate to quarantine lockout
                 IslandBankruptcyRecord updated = record.addDebt(fee, now).toLocked(now);
-                bankruptcyStoragePort.save(updated);
-                bankruptcyCache.put(islandId, updated);
+                remember(updated);
                 return new BankruptcyCycleResult.LockoutApplied(fee, updated.debtMinorUnits());
             } else {
                 // Still in grace: accumulate debt
                 IslandBankruptcyRecord updated = record.addDebt(fee, now);
-                bankruptcyStoragePort.save(updated);
-                bankruptcyCache.put(islandId, updated);
+                remember(updated);
                 return new BankruptcyCycleResult.GraceExtended(fee, graceUntil, updated.debtMinorUnits());
             }
         } else {
             // Already locked: accumulate additional debt
             IslandBankruptcyRecord updated = record.addDebt(fee, now);
-            bankruptcyStoragePort.save(updated);
-            bankruptcyCache.put(islandId, updated);
+            remember(updated);
             return new BankruptcyCycleResult.LockoutApplied(fee, updated.debtMinorUnits());
         }
+    }
+
+    private void remember(IslandBankruptcyRecord record) {
+        bankruptcyStoragePort.save(record);
+        bankruptcyCache.put(record.islandId(), record);
     }
 
     /**
@@ -351,7 +368,11 @@ public final class IslandBankruptcyService {
     }
 
     private long resolveAuthorityEpoch(IslandId islandId, ServerNodeId serverNodeId) {
-        Optional<IslandAuthorityRecord> optAuth = authorityPort.findAuthority(islandId);
+        return resolveAuthorityEpoch(authorityPort.findAuthority(islandId), islandId, serverNodeId);
+    }
+
+    private long resolveAuthorityEpoch(
+            Optional<IslandAuthorityRecord> optAuth, IslandId islandId, ServerNodeId serverNodeId) {
         if (optAuth.isPresent()) {
             return optAuth.get().authorityEpoch();
         }

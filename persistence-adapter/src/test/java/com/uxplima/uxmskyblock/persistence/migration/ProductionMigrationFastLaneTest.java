@@ -682,7 +682,12 @@ class ProductionMigrationFastLaneTest {
                 Set<String> bankruptcyCols = getColumnNames(meta, "island_bankruptcies");
                 assertThat(bankruptcyCols)
                         .containsExactlyInAnyOrder(
-                                "island_id", "status", "debt_minor_units", "grace_until", "updated_at");
+                                "island_id",
+                                "status",
+                                "debt_minor_units",
+                                "grace_until",
+                                "updated_at",
+                                "upkeep_period");
 
                 // game_mode_instances and primary_gameplay_roots columns (V25)
                 Set<String> gmiCols = getColumnNames(meta, "game_mode_instances");
@@ -2878,7 +2883,7 @@ class ProductionMigrationFastLaneTest {
                         + "VALUES ('00000000-0000-0000-0000-00000000aaaa', 2)");
             }
 
-            assertThat(runner.apply(allMigrations)).isEqualTo(1);
+            assertThat(runner.apply(allMigrations.subList(0, 29))).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(29);
 
             try (java.sql.Connection conn = db.connection();
@@ -2888,6 +2893,41 @@ class ProductionMigrationFastLaneTest {
                 assertThat(rs.next()).isTrue();
                 assertThat(rs.getInt(1)).describedAs("the record kept").isEqualTo(2);
                 assertThat(rs.getBoolean(2)).describedAs("nothing owed yet").isFalse();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("33. Step-by-step upgrade from V29 to V30 records the upkeep period charged and keeps existing debts")
+    void stepByStepUpgradeFromV29ToV30AddsTheUpkeepPeriod() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            assertThat(runner.apply(allMigrations.subList(0, 29))).isEqualTo(29);
+            try (java.sql.Connection conn = db.connection();
+                    java.sql.Statement stmt = conn.createStatement()) {
+                stmt.execute(
+                        "INSERT INTO player_accounts (player_uuid) VALUES ('00000000-0000-0000-0000-00000000aaaa')");
+                stmt.execute("INSERT INTO player_profiles (profile_id, player_uuid) VALUES "
+                        + "('00000000-0000-0000-0000-00000000bbbb', '00000000-0000-0000-0000-00000000aaaa')");
+                stmt.execute(
+                        "INSERT INTO islands (id, owner_account_uuid, owner_profile_id, lifecycle, created_at, updated_at) "
+                                + "VALUES ('00000000-0000-0000-0000-00000000cccc', '00000000-0000-0000-0000-00000000aaaa', "
+                                + "'00000000-0000-0000-0000-00000000bbbb', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+                stmt.execute("INSERT INTO island_bankruptcies (island_id, status, debt_minor_units) "
+                        + "VALUES ('00000000-0000-0000-0000-00000000cccc', 'GRACE', 60000)");
+            }
+
+            assertThat(runner.apply(allMigrations)).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(30);
+
+            try (java.sql.Connection conn = db.connection();
+                    java.sql.Statement stmt = conn.createStatement();
+                    java.sql.ResultSet rs =
+                            stmt.executeQuery("SELECT debt_minor_units, upkeep_period FROM island_bankruptcies")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getLong(1)).describedAs("the debt kept").isEqualTo(60_000L);
+                assertThat(rs.getLong(2)).describedAs("no period charged yet").isEqualTo(-1L);
             }
         }
     }

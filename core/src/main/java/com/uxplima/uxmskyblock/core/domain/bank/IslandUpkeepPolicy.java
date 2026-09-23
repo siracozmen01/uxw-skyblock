@@ -39,6 +39,14 @@ public record IslandUpkeepPolicy(
     }
 
     /**
+     * The upkeep period an instant falls in: the interval counted from the epoch. An island is
+     * charged once for each, however often the cycle runs inside it.
+     */
+    public long periodOf(java.time.Instant now) {
+        return Math.floorDiv(now.toEpochMilli(), interval.toMillis());
+    }
+
+    /**
      * Calculates the total upkeep fee for an island based on its active member count.
      */
     public long calculateUpkeepFee(int memberCount) {
