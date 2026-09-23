@@ -158,6 +158,12 @@ class WhatAShopRefusalTellsAPlayerTest extends MockBukkitHarness {
                 })
                 .when(scheduler)
                 .onEntity(any(PlayerUuid.class), any(Runnable.class));
+        doAnswer(call -> {
+                    call.getArgument(1, Runnable.class).run();
+                    return null;
+                })
+                .when(scheduler)
+                .onEntity(any(PlayerUuid.class), any(Runnable.class), any(Runnable.class));
         return scheduler;
     }
 }

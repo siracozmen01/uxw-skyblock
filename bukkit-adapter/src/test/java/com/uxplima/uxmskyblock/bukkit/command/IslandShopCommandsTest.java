@@ -80,6 +80,12 @@ class IslandShopCommandsTest {
                 })
                 .when(scheduler)
                 .onEntity(any(PlayerUuid.class), any(Runnable.class));
+        doAnswer(invocation -> {
+                    invocation.getArgument(1, Runnable.class).run();
+                    return null;
+                })
+                .when(scheduler)
+                .onEntity(any(PlayerUuid.class), any(Runnable.class), any(Runnable.class));
         return scheduler;
     }
 
@@ -320,5 +326,50 @@ class IslandShopCommandsTest {
         assertThat(countOf(Material.DIAMOND_SWORD))
                 .describedAs("the shop priced a sword, not this one")
                 .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("A buyer who left before the items reached them is paid back")
+    void aBuyerWhoLeftIsPaidBack() throws Exception {
+        SchedulerPort gone = mock(SchedulerPort.class);
+        doAnswer(invocation -> {
+                    invocation.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(gone)
+                .async(any(Runnable.class));
+        doAnswer(invocation -> {
+                    invocation.getArgument(2, Runnable.class).run();
+                    return null;
+                })
+                .when(gone)
+                .onEntity(any(PlayerUuid.class), any(Runnable.class), any(Runnable.class));
+        IslandShopService.TradeResult.Traded bought =
+                new IslandShopService.TradeResult.Traded("DIAMOND", 2, 20_000L, 40_000L, 60_000L);
+        when(shop.buy(any(), any(), anyString(), anyLong(), any())).thenReturn(bought);
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        CommandDispatcher<CommandSourceStack> leaving = new CommandDispatcher<>();
+        leaving.register(new IslandShopCommands(
+                        () -> shop,
+                        () -> null,
+                        locations,
+                        gone,
+                        NODE,
+                        Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
+                        sessions)
+                .build());
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(player);
+
+        leaving.execute("shop buy DIAMOND 2", source);
+
+        verify(shop)
+                .refundPurchase(
+                        org.mockito.ArgumentMatchers.eq(ISLAND),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(bought),
+                        org.mockito.ArgumentMatchers.eq(NODE));
+        assertThat(countOf(Material.DIAMOND)).isZero();
     }
 }

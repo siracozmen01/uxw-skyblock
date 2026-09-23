@@ -235,7 +235,16 @@ public final class IslandShopMenu {
             IslandShopService.TradeResult result = buying
                     ? shopService.buy(islandId, playerUuid, material.name(), amount, serverNodeId)
                     : shopService.sell(islandId, playerUuid, material.name(), amount, serverNodeId);
-            schedulerPort.onEntity(playerUuid, () -> report(player, material, amount, buying, result));
+            schedulerPort.onEntity(playerUuid, () -> report(player, material, amount, buying, result), () -> {
+                // The player left before the answer reached them.
+                if (buying) {
+                    com.uxplima.uxmskyblock.bukkit.command.ShopHandover.refundIfBought(
+                            schedulerPort, shopService, islandId, playerUuid, result, serverNodeId);
+                } else {
+                    com.uxplima.uxmskyblock.bukkit.command.ShopHandover.itemsNotReturned(
+                            playerUuid, material, amount, result);
+                }
+            });
         });
     }
 

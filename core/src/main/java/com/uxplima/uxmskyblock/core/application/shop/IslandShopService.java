@@ -152,6 +152,23 @@ public final class IslandShopService {
                 key, quantity, unitPrice, total, success.updatedBank().primaryBalanceMinorUnits());
     }
 
+    /**
+     * Gives back what a purchase cost, when the items it bought could not be handed over.
+     *
+     * <p>The bank is charged before the items are given, on the buyer's own thread. A buyer who left
+     * in between paid for items nobody gave them.
+     */
+    public BankTransactionOutcome refundPurchase(
+            IslandId islandId, PlayerUuid actor, TradeResult.Traded purchase, ServerNodeId serverNodeId) {
+        Objects.requireNonNull(purchase, "purchase must not be null");
+        return bankService.depositToIsland(
+                islandId,
+                actor,
+                purchase.total(),
+                "Shop purchase refund: " + purchase.quantity() + " " + purchase.itemKey(),
+                serverNodeId);
+    }
+
     private static String normalise(String itemKey) {
         return itemKey.trim().toUpperCase(java.util.Locale.ROOT);
     }

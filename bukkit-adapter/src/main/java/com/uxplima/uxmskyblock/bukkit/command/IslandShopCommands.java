@@ -157,16 +157,21 @@ public final class IslandShopCommands {
             }
             IslandShopService.TradeResult result =
                     service.buy(islandId, new PlayerUuid(player.getUniqueId()), material.name(), amount, serverNodeId);
-            schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                if (result instanceof IslandShopService.TradeResult.Traded traded) {
-                    // What does not fit is dropped where they stand. An item on the ground can be
-                    // picked up; an item that was paid for and never handed over cannot.
-                    TradableStacks.give(player, material, amount);
-                    reportTraded(player, "shop.bought", traded);
-                    return;
-                }
-                report(player, result);
-            });
+            PlayerUuid buyer = new PlayerUuid(player.getUniqueId());
+            schedulerPort.onEntity(
+                    buyer,
+                    () -> {
+                        if (result instanceof IslandShopService.TradeResult.Traded traded) {
+                            // What does not fit is dropped where they stand. An item on the ground can be
+                            // picked up; an item that was paid for and never handed over cannot.
+                            TradableStacks.give(player, material, amount);
+                            reportTraded(player, "shop.bought", traded);
+                            return;
+                        }
+                        report(player, result);
+                    },
+                    // The buyer left before the items could be handed over: the purchase is paid back.
+                    () -> ShopHandover.refundIfBought(schedulerPort, service, islandId, buyer, result, serverNodeId));
         });
     }
 
@@ -212,30 +217,47 @@ public final class IslandShopCommands {
         schedulerPort.async(() -> {
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
             if (optIsland.isEmpty()) {
-                schedulerPort.onEntity(playerUuid, () -> {
-                    TradableStacks.give(player, material, amount);
-                    send(player, "error.no_island");
-                });
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> {
+                            TradableStacks.give(player, material, amount);
+                            send(player, "error.no_island");
+                        },
+                        () -> ShopHandover.itemsNotReturned(
+                                playerUuid,
+                                material,
+                                amount,
+                                new IslandShopService.TradeResult.UnknownItem(material.name())));
                 return;
             }
             if (!mayTrade(optIsland.get(), profileId)) {
-                schedulerPort.onEntity(playerUuid, () -> {
-                    TradableStacks.give(player, material, amount);
-                    send(player, "shop.permission_denied");
-                });
+                schedulerPort.onEntity(
+                        playerUuid,
+                        () -> {
+                            TradableStacks.give(player, material, amount);
+                            send(player, "shop.permission_denied");
+                        },
+                        () -> ShopHandover.itemsNotReturned(
+                                playerUuid,
+                                material,
+                                amount,
+                                new IslandShopService.TradeResult.UnknownItem(material.name())));
                 return;
             }
             IslandShopService.TradeResult result =
                     service.sell(optIsland.get(), playerUuid, material.name(), amount, serverNodeId);
-            schedulerPort.onEntity(playerUuid, () -> {
-                if (result instanceof IslandShopService.TradeResult.Traded traded) {
-                    reportTraded(player, "shop.sold", traded);
-                    return;
-                }
-                // Items handed to a shop that did not pay are items nobody has.
-                TradableStacks.give(player, material, amount);
-                report(player, result);
-            });
+            schedulerPort.onEntity(
+                    playerUuid,
+                    () -> {
+                        if (result instanceof IslandShopService.TradeResult.Traded traded) {
+                            reportTraded(player, "shop.sold", traded);
+                            return;
+                        }
+                        // Items handed to a shop that did not pay are items nobody has.
+                        TradableStacks.give(player, material, amount);
+                        report(player, result);
+                    },
+                    () -> ShopHandover.itemsNotReturned(playerUuid, material, amount, result));
         });
         return Cmd.OK;
     }
