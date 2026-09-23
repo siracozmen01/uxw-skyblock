@@ -174,7 +174,13 @@ public final class IslandWarpCommands {
                             player,
                             "warp.entry",
                             Placeholder.unparsed("name", warp.name().value()),
-                            Placeholder.unparsed("category", warp.category().name()),
+                            Placeholder.unparsed(
+                                    "category",
+                                    messages.named(
+                                            player,
+                                            "warp.categories",
+                                            warp.category().name(),
+                                            warp.category().name())),
                             Placeholder.unparsed("state", warp.isLocked() ? "locked" : "open"));
                 }
             });
@@ -259,7 +265,12 @@ public final class IslandWarpCommands {
                         if (only == null) {
                             send(player, "warp.browse_header");
                         } else {
-                            send(player, "warp.browse_header_category", Placeholder.unparsed("category", only.name()));
+                            send(
+                                    player,
+                                    "warp.browse_header_category",
+                                    Placeholder.unparsed(
+                                            "category",
+                                            messages.named(player, "warp.categories", only.name(), only.name())));
                         }
                         if (warps.isEmpty()) {
                             send(player, "warp.browse_empty");
@@ -278,7 +289,12 @@ public final class IslandWarpCommands {
                                     Placeholder.unparsed("name", warp.name().value()),
                                     Placeholder.unparsed("owner", ownerNames.getOrDefault(warp.islandId(), "?")),
                                     Placeholder.unparsed(
-                                            "category", warp.category().name()));
+                                            "category",
+                                            messages.named(
+                                                    player,
+                                                    "warp.categories",
+                                                    warp.category().name(),
+                                                    warp.category().name())));
                         }
                     });
                 }));
@@ -408,14 +424,24 @@ public final class IslandWarpCommands {
                                 "name",
                                 warp.name().value(),
                                 "category",
-                                warp.category().name()));
+                                // Stored as its key, so each reader of the feed sees their own word.
+                                messages.stored(
+                                        "warp.categories",
+                                        warp.category().name(),
+                                        warp.category().name())));
                 onEntity(
                         player,
                         () -> send(
                                 player,
                                 "warp.created",
                                 Placeholder.unparsed("name", warp.name().value()),
-                                Placeholder.unparsed("category", warp.category().name())));
+                                Placeholder.unparsed(
+                                        "category",
+                                        messages.named(
+                                                player,
+                                                "warp.categories",
+                                                warp.category().name(),
+                                                warp.category().name()))));
             } catch (SecurityException denied) {
                 onEntity(player, () -> send(player, "warp.no_permission"));
             } catch (RuntimeException refused) {
@@ -521,7 +547,9 @@ public final class IslandWarpCommands {
                                 player,
                                 "warp.category_changed",
                                 Placeholder.unparsed("name", rawName),
-                                Placeholder.unparsed("category", chosen.name())));
+                                Placeholder.unparsed(
+                                        "category",
+                                        messages.named(player, "warp.categories", chosen.name(), chosen.name()))));
             } catch (SecurityException denied) {
                 onEntity(player, () -> send(player, "warp.no_permission"));
             } catch (RuntimeException missing) {

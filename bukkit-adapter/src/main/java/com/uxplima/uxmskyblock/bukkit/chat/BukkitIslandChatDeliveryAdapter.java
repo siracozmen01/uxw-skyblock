@@ -11,6 +11,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.config.ChatConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatDeliveryPort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel;
@@ -28,9 +29,18 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
     private final MiniMessage miniMessage;
     private final SchedulerPort schedulerPort;
 
+    /** Names the sender's role in each recipient's language. */
+    private final Messages messages;
+
     public BukkitIslandChatDeliveryAdapter(ChatConfiguration configuration, SchedulerPort schedulerPort) {
+        this(configuration, schedulerPort, Messages.bundled());
+    }
+
+    public BukkitIslandChatDeliveryAdapter(
+            ChatConfiguration configuration, SchedulerPort schedulerPort, Messages messages) {
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.miniMessage = MiniMessage.miniMessage();
     }
 
@@ -41,13 +51,17 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
 
         // An alliance message reads differently from an island one, because a player who cannot
         // tell them apart does not know who just heard them.
-        Component component = miniMessage.deserialize(
-                frame.channel() == IslandChatChannel.ALLIANCE ? configuration.allianceFormat() : configuration.format(),
-                Placeholder.parsed("role", frame.senderRole().displayName()),
-                Placeholder.parsed("player", frame.senderName()),
-                Placeholder.unparsed("message", frame.message()));
-
-        deliver(recipients, component);
+        // The line is drawn for each recipient, because the sender's role is a word and each reads
+        // their own language.
+        String format =
+                frame.channel() == IslandChatChannel.ALLIANCE ? configuration.allianceFormat() : configuration.format();
+        deliver(
+                recipients,
+                reader -> miniMessage.deserialize(
+                        format,
+                        Placeholder.parsed("role", roleOf(reader, frame)),
+                        Placeholder.parsed("player", frame.senderName()),
+                        Placeholder.unparsed("message", frame.message())));
     }
 
     @Override
@@ -56,14 +70,19 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
         Objects.requireNonNull(frame, "frame must not be null");
         Objects.requireNonNull(islandName, "islandName must not be null");
 
-        Component component = miniMessage.deserialize(
-                configuration.spyFormat(),
-                Placeholder.parsed("role", frame.senderRole().displayName()),
-                Placeholder.parsed("player", frame.senderName()),
-                Placeholder.parsed("island_name", islandName),
-                Placeholder.unparsed("message", frame.message()));
+        deliver(
+                spies,
+                reader -> miniMessage.deserialize(
+                        configuration.spyFormat(),
+                        Placeholder.parsed("role", roleOf(reader, frame)),
+                        Placeholder.parsed("player", frame.senderName()),
+                        Placeholder.parsed("island_name", islandName),
+                        Placeholder.unparsed("message", frame.message())));
+    }
 
-        deliver(spies, component);
+    private String roleOf(Player reader, IslandChatFrame frame) {
+        return messages.named(
+                reader, "roles", frame.senderRole().id(), frame.senderRole().displayName());
     }
 
     /**
@@ -74,13 +93,13 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
      * them from a thread that does not own them is the thing Folia exists to stop. The lookup and
      * the write both happen on the hop.
      */
-    private void deliver(Set<ProfileId> recipients, Component component) {
+    private void deliver(Set<ProfileId> recipients, java.util.function.Function<Player, Component> line) {
         for (ProfileId recipient : recipients) {
             PlayerUuid playerUuid = new PlayerUuid(recipient.value());
             schedulerPort.onEntity(playerUuid, () -> {
                 Player player = Bukkit.getPlayer(recipient.value());
                 if (player != null && player.isOnline()) {
-                    player.sendMessage(component);
+                    player.sendMessage(line.apply(player));
                 }
             });
         }

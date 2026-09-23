@@ -118,6 +118,26 @@ public final class Messages {
                 .serialize(renderPlain(viewer, written.substring(1)));
     }
 
+    /**
+     * A thing the code names by id, such as a role or a warp category, in the language {@code viewer}
+     * reads: the catalogue's {@code <group>.<id>} when it has one, {@code written} when it does not.
+     *
+     * <p>A role an operator made up has no line in any catalogue, so it keeps the name it was given.
+     */
+    public String named(Audience viewer, String group, String id, String written) {
+        String key = group + "." + id.toLowerCase(Locale.ROOT);
+        return has(key) ? words(viewer, "@" + key) : written;
+    }
+
+    /**
+     * The same thing as it is stored for later readers, such as a row of the activity feed: its key
+     * when the catalogue has one, so each reader sees their own language, and {@code written} when not.
+     */
+    public String stored(String group, String id, String written) {
+        String key = group + "." + id.toLowerCase(Locale.ROOT);
+        return has(key) ? "@" + key : written;
+    }
+
     /** Sends {@code key} to {@code viewer} in the language that viewer reads. */
     public void send(Audience viewer, String key, TagResolver... resolvers) {
         Objects.requireNonNull(viewer, "viewer must not be null");

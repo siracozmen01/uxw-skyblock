@@ -158,7 +158,13 @@ public final class BedrockFormService {
                             player,
                             "bedrock.warp_button",
                             Placeholder.unparsed("name", warp.name().value()),
-                            Placeholder.unparsed("category", warp.category().name())),
+                            Placeholder.unparsed(
+                                    "category",
+                                    messages.named(
+                                            player,
+                                            "warp.categories",
+                                            warp.category().name(),
+                                            warp.category().name()))),
                     null));
         }
 

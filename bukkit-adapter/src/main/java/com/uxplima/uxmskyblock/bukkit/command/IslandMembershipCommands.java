@@ -233,7 +233,8 @@ public final class IslandMembershipCommands {
                             .forEach(role -> send(
                                     player,
                                     "member.permissions_entry",
-                                    Placeholder.unparsed("role", role.id().toLowerCase(java.util.Locale.ROOT)),
+                                    Placeholder.unparsed(
+                                            "role", messages.named(player, "roles", role.id(), role.displayName())),
                                     Placeholder.unparsed("permissions", permissionsOf(role))));
                 }));
     }
@@ -268,7 +269,9 @@ public final class IslandMembershipCommands {
                             send(
                                     player,
                                     changed.allowed() ? "member.permission_granted" : "member.permission_revoked",
-                                    Placeholder.unparsed("role", changed.roleId()),
+                                    Placeholder.unparsed(
+                                            "role",
+                                            messages.named(player, "roles", changed.roleId(), changed.roleId())),
                                     Placeholder.unparsed("permission", changed.permission()));
                         case IslandMembershipService.PermissionOutcome.NotAllowed ignored ->
                             send(player, "member.role_no_permission");
@@ -438,7 +441,13 @@ public final class IslandMembershipCommands {
                                 player,
                                 "member.entry",
                                 Placeholder.unparsed("player", nameOf(member.playerUuid())),
-                                Placeholder.unparsed("role", member.role().displayName()));
+                                Placeholder.unparsed(
+                                        "role",
+                                        messages.named(
+                                                player,
+                                                "roles",
+                                                member.role().id(),
+                                                member.role().displayName())));
                     }
                 }));
     }
@@ -463,17 +472,27 @@ public final class IslandMembershipCommands {
                                             actor,
                                             ActivityEventType.ROLE_CHANGED,
                                             "activity.role_changed",
-                                            Map.of("player", target, "role", changed.roleId())));
+                                            Map.of(
+                                                    "player",
+                                                    target,
+                                                    "role",
+                                                    messages.stored("roles", changed.roleId(), changed.roleId()))));
                             leaveNotice(
                                     optTarget.get(),
                                     NotificationCategory.ROLE_CHANGED,
                                     "notification.role_changed",
-                                    Map.of("player", player.getName(), "role", changed.roleId()));
+                                    Map.of(
+                                            "player",
+                                            player.getName(),
+                                            "role",
+                                            messages.stored("roles", changed.roleId(), changed.roleId())));
                             send(
                                     player,
                                     "member.role_changed",
                                     Placeholder.unparsed("player", target),
-                                    Placeholder.unparsed("role", changed.roleId()));
+                                    Placeholder.unparsed(
+                                            "role",
+                                            messages.named(player, "roles", changed.roleId(), changed.roleId())));
                         }
                         case IslandMembershipService.RoleOutcome.NotAllowed ignored ->
                             send(player, "member.role_no_permission");

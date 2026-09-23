@@ -109,7 +109,8 @@ public final class IslandNotificationListener implements Listener {
         if (messages.has(key)) {
             List<TagResolver> resolvers = new ArrayList<>(values.size());
             for (Map.Entry<String, String> value : values.entrySet()) {
-                resolvers.add(Placeholder.unparsed(value.getKey(), value.getValue()));
+                // A value stored as @key, such as a role, is read in this player's language.
+                resolvers.add(Placeholder.unparsed(value.getKey(), messages.words(player, value.getValue())));
             }
             messages.send(player, key, resolvers.toArray(new TagResolver[0]));
             return;
@@ -117,7 +118,13 @@ public final class IslandNotificationListener implements Listener {
         messages.send(
                 player,
                 "notification.entry",
-                Placeholder.unparsed("category", notification.category().name()),
+                Placeholder.unparsed(
+                        "category",
+                        messages.named(
+                                player,
+                                "notification.categories",
+                                notification.category().name(),
+                                notification.category().name())),
                 Placeholder.unparsed("body", values.getOrDefault("body", notification.payloadData())));
     }
 

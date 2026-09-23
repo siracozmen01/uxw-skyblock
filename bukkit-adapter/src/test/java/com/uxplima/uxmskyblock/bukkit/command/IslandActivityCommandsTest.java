@@ -191,6 +191,51 @@ class IslandActivityCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("A category, a role and a preset read in the viewer's language, stored as a key or as a bare id")
+    void storedNamesReadInTheViewersLanguage() throws Exception {
+        player.setLocale(java.util.Locale.forLanguageTag("tr"));
+        Instant now = Instant.now();
+        when(feed.getRecentActivities(anyString(), anyInt()))
+                .thenReturn(List.of(
+                        eventOf(
+                                "activity.warp_created",
+                                com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(java.util.Map.of(
+                                        "player", "Ayse", "name", "kapi", "category", "@warp.categories.general")),
+                                now),
+                        eventOf(
+                                "activity.warp_created",
+                                com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                        java.util.Map.of("player", "Ayse", "name", "eski", "category", "SHOPS")),
+                                now),
+                        eventOf(
+                                "activity.role_changed",
+                                com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                        java.util.Map.of("player", "Ayse", "role", "MEMBER")),
+                                now),
+                        eventOf(
+                                "activity.template_applied",
+                                com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                        java.util.Map.of("player", "Ayse", "preset", "classic")),
+                                now)));
+
+        runOn(overTheRealCatalogue(), "activity");
+
+        List<String> lines = new java.util.ArrayList<>();
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            lines.add(line);
+        }
+        String said = String.join("\n", lines);
+        assertThat(said)
+                .contains("Genel")
+                .contains("Dükkanlar ve Pazarlar")
+                .contains("Üye")
+                .doesNotContain("GENERAL")
+                .doesNotContain("SHOPS")
+                .doesNotContain("MEMBER")
+                .doesNotContain("classic");
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("An entry whose type the catalogue does not answer still reaches the player")
     void anentryOfAnUnknownTypeFallsBack() throws Exception {
         when(feed.getRecentActivities(anyString(), anyInt()))

@@ -402,7 +402,8 @@ public final class IslandMechanicsCommands {
      * as a success with a Java class name at the end of them.
      */
     private void reportBoosterResult(Player player, BoosterCategory category, BoosterApplyResult result) {
-        TagResolver categoryName = Placeholder.unparsed("category", category.displayName());
+        TagResolver categoryName = Placeholder.unparsed(
+                "category", messages.named(player, "booster.categories", category.name(), category.displayName()));
         switch (result) {
             case BoosterApplyResult.Success success ->
                 send(
@@ -442,7 +443,13 @@ public final class IslandMechanicsCommands {
                 send(
                         player,
                         "booster.category_disabled",
-                        Placeholder.unparsed("category", disabled.category().displayName()));
+                        Placeholder.unparsed(
+                                "category",
+                                messages.named(
+                                        player,
+                                        "booster.categories",
+                                        disabled.category().name(),
+                                        disabled.category().displayName())));
         }
     }
 

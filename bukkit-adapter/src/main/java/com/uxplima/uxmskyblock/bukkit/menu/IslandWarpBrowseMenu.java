@@ -132,7 +132,13 @@ public final class IslandWarpBrowseMenu {
         lore.add(messages.renderPlain(
                 player,
                 "menu.warp_browse.tile_category",
-                Placeholder.unparsed("category", entry.warp().category().name())));
+                Placeholder.unparsed(
+                        "category",
+                        messages.named(
+                                player,
+                                "warp.categories",
+                                entry.warp().category().name(),
+                                entry.warp().category().name()))));
         lore.add(Component.empty());
         lore.add(messages.renderPlain(player, "menu.warp_browse.tile_visit"));
 

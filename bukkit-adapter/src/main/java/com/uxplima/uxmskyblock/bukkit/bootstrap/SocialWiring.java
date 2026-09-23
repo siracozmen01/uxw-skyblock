@@ -104,7 +104,7 @@ public final class SocialWiring {
         IslandChatTransportPort actualChatTransport =
                 Objects.requireNonNull(chatTransport, "chatTransport must not be null");
         BukkitIslandChatDeliveryAdapter chatDelivery =
-                new BukkitIslandChatDeliveryAdapter(config.chatConfig(), scheduler);
+                new BukkitIslandChatDeliveryAdapter(config.chatConfig(), scheduler, config.messages());
         BukkitIslandOnlineMemberProvider chatMemberProvider = new BukkitIslandOnlineMemberProvider();
         this.chatService = new IslandChatService(
                 persistence.islandStoragePort(),

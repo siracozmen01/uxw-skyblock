@@ -127,7 +127,12 @@ public final class IslandInfoCommands {
                     player,
                     "info.booster_entry",
                     Placeholder.unparsed(
-                            "category", lowerCase(booster.category().key())),
+                            "category",
+                            messages.named(
+                                    player,
+                                    "booster.categories",
+                                    booster.category().name(),
+                                    lowerCase(booster.category().key()))),
                     Placeholder.unparsed("multiplier", String.format(Locale.ROOT, "%.2f", booster.multiplier())),
                     Placeholder.unparsed("remaining", remainingOf(booster)));
         }

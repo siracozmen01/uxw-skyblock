@@ -173,7 +173,10 @@ public final class IslandBoosterMenu {
                     .serialize(messages.renderPlain(
                             player,
                             "menu.booster.form_button",
-                            Placeholder.unparsed("category", category.displayName()),
+                            Placeholder.unparsed(
+                                    "category",
+                                    messages.named(
+                                            player, "booster.categories", category.name(), category.displayName())),
                             Placeholder.component("status", messages.renderPlain(player, statusKey)),
                             Placeholder.unparsed(
                                     "multiplier",
@@ -273,7 +276,11 @@ public final class IslandBoosterMenu {
 
         ItemStack card = ItemBuilder.of(icon)
                 .name(messages.renderPlain(
-                        player, "menu.booster.card_name", Placeholder.unparsed("category", category.displayName())))
+                        player,
+                        "menu.booster.card_name",
+                        Placeholder.unparsed(
+                                "category",
+                                messages.named(player, "booster.categories", category.name(), category.displayName()))))
                 .lore(List.of(
                         messages.renderPlain(
                                 player,

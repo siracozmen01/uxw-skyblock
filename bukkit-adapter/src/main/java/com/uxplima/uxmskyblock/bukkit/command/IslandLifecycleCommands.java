@@ -277,7 +277,8 @@ public final class IslandLifecycleCommands {
                                     "player",
                                     player.getName(),
                                     "preset",
-                                    success.preset().id()));
+                                    // The preset's own name, which is a key a reader resolves.
+                                    success.preset().displayName()));
                     protectionListener.cacheIsland(success.island());
                     IslandMarkerSynchroniser markers = this.markerSynchroniser;
                     if (markers != null) {

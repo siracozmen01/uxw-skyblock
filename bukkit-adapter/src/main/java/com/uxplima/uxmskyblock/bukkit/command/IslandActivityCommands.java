@@ -108,6 +108,28 @@ public final class IslandActivityCommands {
     }
 
     /**
+     * One stored value in this viewer's language.
+     *
+     * <p>A value stored as {@code @key}, such as a mission's name, is read from the catalogue. A row
+     * written before roles, warp categories and presets were stored that way holds the bare id, such
+     * as {@code GENERAL} or {@code classic}, and is read the same way by what it names.
+     */
+    private String readable(Player player, String name, String value) {
+        if (value.startsWith("@")) {
+            return messages.words(player, value);
+        }
+        return switch (name) {
+            case "role" -> messages.named(player, "roles", value, value);
+            case "category" -> messages.named(player, "warp.categories", value, value);
+            case "preset" ->
+                messages.has("presets." + value + ".name")
+                        ? messages.words(player, "@presets." + value + ".name")
+                        : value;
+            default -> value;
+        };
+    }
+
+    /**
      * Writes one line of the feed out in the reader's own language.
      *
      * <p>What was stored is the name of a message and the values it has holes for, never the
@@ -123,8 +145,7 @@ public final class IslandActivityCommands {
         if (messages.has(key)) {
             java.util.List<TagResolver> resolvers = new java.util.ArrayList<>(values.size() + 1);
             for (java.util.Map.Entry<String, String> value : values.entrySet()) {
-                // A name stored as @key, such as a mission's, is read in this viewer's language.
-                resolvers.add(Placeholder.unparsed(value.getKey(), messages.words(player, value.getValue())));
+                resolvers.add(Placeholder.unparsed(value.getKey(), readable(player, value.getKey(), value.getValue())));
             }
             resolvers.add(Placeholder.unparsed("ago", ago));
             send(player, key, resolvers.toArray(new TagResolver[0]));
