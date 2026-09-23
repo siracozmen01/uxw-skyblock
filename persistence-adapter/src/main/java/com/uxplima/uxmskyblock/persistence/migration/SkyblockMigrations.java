@@ -28,10 +28,13 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 28;
+    public static final int LATEST_VERSION = 29;
 
     /** Human-readable description of migration V28. */
     public static final String V28_DESCRIPTION = "create profile cosmetics and island recycle operations";
+
+    /** Human-readable description of migration V29. */
+    public static final String V29_DESCRIPTION = "record an inventory purge a reset still owes";
 
     /** Human-readable description of migration V27. */
     public static final String V27_DESCRIPTION =
@@ -127,7 +130,7 @@ public final class SkyblockMigrations {
      * (such as {@link Dialect#H2} or {@link Dialect#GENERIC}) fail fast with {@link IllegalArgumentException}.
      *
      * @param dialect the target SQL dialect
-     * @return ordered list of production migrations (versions 1 to 28)
+     * @return ordered list of production migrations (versions 1 to 29)
      * @throws NullPointerException if dialect is null
      * @throws IllegalArgumentException if dialect is unsupported
      */

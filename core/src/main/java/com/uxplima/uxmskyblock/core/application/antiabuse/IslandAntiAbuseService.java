@@ -213,6 +213,43 @@ public final class IslandAntiAbuseService {
     }
 
     /**
+     * Records that a finished reset still owes {@code playerUuid} an inventory purge.
+     *
+     * <p>The purge runs on the player's own thread, which a player who left while their island was
+     * erased does not have. What is owed is kept with their record and paid when they next play.
+     */
+    public void oweInventoryPurge(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        PlayerAntiAbuseRecord updated = getOrLoadRecord(playerUuid).withInventoryPurgeOwed(true);
+        playerRecords.put(playerUuid, updated);
+        storagePort.saveRecord(updated);
+    }
+
+    /** Records that the purge a reset owed has been carried out. */
+    public void settleInventoryPurge(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        PlayerAntiAbuseRecord existing = getOrLoadRecord(playerUuid);
+        if (!existing.inventoryPurgeOwed()) {
+            return;
+        }
+        PlayerAntiAbuseRecord updated = existing.withInventoryPurgeOwed(false);
+        playerRecords.put(playerUuid, updated);
+        storagePort.saveRecord(updated);
+    }
+
+    /**
+     * Whether {@code playerUuid} still owes the inventory purge a reset asked for.
+     *
+     * <p>Read from the store, not from memory: the reset may have finished on another server.
+     */
+    public boolean isInventoryPurgeOwed(PlayerUuid playerUuid) {
+        Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+        Optional<PlayerAntiAbuseRecord> stored = storagePort.findRecord(playerUuid);
+        stored.ifPresent(record -> playerRecords.put(playerUuid, record));
+        return stored.map(PlayerAntiAbuseRecord::inventoryPurgeOwed).orElse(false);
+    }
+
+    /**
      * Checks if a player is permitted to join an island co-op.
      *
      * @param playerUuid target player UUID

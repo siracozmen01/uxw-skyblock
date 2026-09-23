@@ -100,6 +100,58 @@ class AResetIsCountedWhenThePlayerLeavesTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A player who left before the erasure finished still owes the inventory purge")
+    void aPurgeIsOwedWithThePlayerGone() throws Exception {
+        server.addSimpleWorld(WORLD);
+        PlayerMock player = createRegionThreadedPlayer("Leaver2");
+        IslandRecycleService recycle = mock(IslandRecycleService.class);
+        when(recycle.executeReset(any(), any(), any(), anyBoolean()))
+                .thenReturn(CompletableFuture.completedFuture(
+                        new IslandRecycleService.RecycleResult.Success(ISLAND, 3L, WORLD, 1, 2)));
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService antiAbuse =
+                mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        when(antiAbuse.checkResetAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult.Allowed(3));
+        when(antiAbuse.beginReset(any())).thenReturn(true);
+        when(antiAbuse.purgeInventoryOnReset()).thenReturn(true);
+        SchedulerPort gone = mock(SchedulerPort.class);
+        doAnswer(call -> {
+                    call.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(gone)
+                .async(any(Runnable.class));
+        IslandLifecycleCommands commands = new IslandLifecycleCommands(
+                mock(CreateIslandUseCase.class),
+                locations,
+                new StarterPresetCatalog(),
+                mock(StarterSchematicEngine.class),
+                mock(IslandProtectionListener.class),
+                sessions,
+                gone,
+                ServerNodeId.of("node-1"),
+                WORLD,
+                () -> antiAbuse,
+                () -> recycle,
+                () -> null,
+                () -> null,
+                Messages.bundled());
+        CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.buildReset());
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(player);
+
+        dispatcher.execute("reset confirm 1234", source);
+
+        verify(antiAbuse).oweInventoryPurge(new PlayerUuid(player.getUniqueId()));
+        verify(antiAbuse, org.mockito.Mockito.never()).settleInventoryPurge(any());
+    }
+
+    @Test
     @DisplayName("A reset confirmed in the window is held to the same rules and counted like a typed one")
     void aResetFromTheWindowIsCounted() throws Exception {
         server.addSimpleWorld(WORLD);

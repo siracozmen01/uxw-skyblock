@@ -150,4 +150,17 @@ class SqlAntiAbuseStorageAdapterTest {
         adapter.deleteQuarantine(islandId);
         assertThat(adapter.findQuarantine(islandId)).isEmpty();
     }
+
+    @Test
+    @DisplayName("An inventory purge a reset owes is kept, and cleared once paid")
+    void anOwedPurgeIsKept() {
+        PlayerUuid owing = PlayerUuid.of(java.util.UUID.randomUUID());
+        adapter.saveRecord(PlayerAntiAbuseRecord.initial(owing).withInventoryPurgeOwed(true));
+
+        assertThat(adapter.findRecord(owing).orElseThrow().inventoryPurgeOwed()).isTrue();
+
+        adapter.saveRecord(adapter.findRecord(owing).orElseThrow().withInventoryPurgeOwed(false));
+
+        assertThat(adapter.findRecord(owing).orElseThrow().inventoryPurgeOwed()).isFalse();
+    }
 }

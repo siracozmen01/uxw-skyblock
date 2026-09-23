@@ -2793,7 +2793,7 @@ class ProductionMigrationFastLaneTest {
             assertThat(runner.currentVersion()).isEqualTo(27);
 
             // 2. Upgrade by applying V28
-            int v28Applied = runner.apply(allMigrations);
+            int v28Applied = runner.apply(allMigrations.subList(0, 28));
             assertThat(v28Applied).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(28);
 
@@ -2830,7 +2830,7 @@ class ProductionMigrationFastLaneTest {
             }
 
             // 4. Rerun and assert zero migrations applied
-            int rerun = runner.apply(allMigrations);
+            int rerun = runner.apply(allMigrations.subList(0, 28));
             assertThat(rerun).isEqualTo(0);
             assertThat(runner.currentVersion()).isEqualTo(28);
         }
@@ -2863,5 +2863,32 @@ class ProductionMigrationFastLaneTest {
             }
         }
         return columns;
+    }
+
+    @Test
+    @DisplayName("32. Step-by-step upgrade from V28 to V29 records an owed inventory purge and keeps existing records")
+    void stepByStepUpgradeFromV28ToV29AddsTheOwedPurge() throws Exception {
+        try (Database db = DatabaseTestFixture.createSqliteInMemory()) {
+            MigrationRunner runner = new MigrationRunner(db);
+            List<Migration> allMigrations = SkyblockMigrations.getMigrations(db.dialect());
+            assertThat(runner.apply(allMigrations.subList(0, 28))).isEqualTo(28);
+            try (java.sql.Connection conn = db.connection();
+                    java.sql.Statement stmt = conn.createStatement()) {
+                stmt.execute("INSERT INTO player_anti_abuse_records (player_uuid, resets_today_count) "
+                        + "VALUES ('00000000-0000-0000-0000-00000000aaaa', 2)");
+            }
+
+            assertThat(runner.apply(allMigrations)).isEqualTo(1);
+            assertThat(runner.currentVersion()).isEqualTo(29);
+
+            try (java.sql.Connection conn = db.connection();
+                    java.sql.Statement stmt = conn.createStatement();
+                    java.sql.ResultSet rs = stmt.executeQuery(
+                            "SELECT resets_today_count, inventory_purge_owed FROM player_anti_abuse_records")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getInt(1)).describedAs("the record kept").isEqualTo(2);
+                assertThat(rs.getBoolean(2)).describedAs("nothing owed yet").isFalse();
+            }
+        }
     }
 }

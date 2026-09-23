@@ -36,7 +36,8 @@ public final class SqlAntiAbuseStorageAdapter implements AntiAbuseStoragePort {
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
 
         String sql = """
-                SELECT last_island_reset_at, resets_today_count, reset_window_start, coop_cooldown_expires_at
+                SELECT last_island_reset_at, resets_today_count, reset_window_start, coop_cooldown_expires_at,
+                       inventory_purge_owed
                 FROM player_anti_abuse_records
                 WHERE player_uuid = ?
                 """;
@@ -62,7 +63,12 @@ public final class SqlAntiAbuseStorageAdapter implements AntiAbuseStoragePort {
                 Instant coopExpiresAt = coopTs != null ? coopTs.toInstant() : null;
 
                 return Optional.of(new PlayerAntiAbuseRecord(
-                        playerUuid, lastResetAt, resetsCount, resetWindowStart, coopExpiresAt));
+                        playerUuid,
+                        lastResetAt,
+                        resetsCount,
+                        resetWindowStart,
+                        coopExpiresAt,
+                        rs.getBoolean("inventory_purge_owed")));
             }
         } catch (SQLException e) {
             throw new AntiAbusePersistenceException(
@@ -78,14 +84,14 @@ public final class SqlAntiAbuseStorageAdapter implements AntiAbuseStoragePort {
         String updateSql = """
                 UPDATE player_anti_abuse_records
                 SET last_island_reset_at = ?, resets_today_count = ?, reset_window_start = ?,
-                    coop_cooldown_expires_at = ?, updated_at = ?
+                    coop_cooldown_expires_at = ?, updated_at = ?, inventory_purge_owed = ?
                 WHERE player_uuid = ?
                 """;
         String insertSql = """
                 INSERT INTO player_anti_abuse_records (
                     player_uuid, last_island_reset_at, resets_today_count, reset_window_start,
-                    coop_cooldown_expires_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    coop_cooldown_expires_at, updated_at, inventory_purge_owed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
 
         Instant now = Instant.now();
@@ -111,7 +117,8 @@ public final class SqlAntiAbuseStorageAdapter implements AntiAbuseStoragePort {
                     update.setTimestamp(3, windowStartTs);
                     update.setTimestamp(4, coopExpiresTs);
                     update.setTimestamp(5, nowTs);
-                    update.setString(6, record.playerUuid().value().toString());
+                    update.setBoolean(6, record.inventoryPurgeOwed());
+                    update.setString(7, record.playerUuid().value().toString());
                     update.executeUpdate();
                 }
             } else {
@@ -122,6 +129,7 @@ public final class SqlAntiAbuseStorageAdapter implements AntiAbuseStoragePort {
                     insert.setTimestamp(4, windowStartTs);
                     insert.setTimestamp(5, coopExpiresTs);
                     insert.setTimestamp(6, nowTs);
+                    insert.setBoolean(7, record.inventoryPurgeOwed());
                     insert.executeUpdate();
                 }
             }

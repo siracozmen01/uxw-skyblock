@@ -15,16 +15,35 @@ import org.jspecify.annotations.Nullable;
  * @param resetsTodayCount number of resets consumed in current rolling window
  * @param resetWindowStart start timestamp of the current daily reset window, or null
  * @param coopCooldownExpiresAt timestamp when co-op hopping quarantine expires, or null
+ * @param inventoryPurgeOwed whether a reset emptied the island while the player was away, so their
+ *     inventory is still to be emptied when they next play
  */
 public record PlayerAntiAbuseRecord(
         PlayerUuid playerUuid,
         @Nullable Instant lastResetAt,
         int resetsTodayCount,
         @Nullable Instant resetWindowStart,
-        @Nullable Instant coopCooldownExpiresAt) {
+        @Nullable Instant coopCooldownExpiresAt,
+        boolean inventoryPurgeOwed) {
 
     public PlayerAntiAbuseRecord {
         Objects.requireNonNull(playerUuid, "playerUuid must not be null");
+    }
+
+    /** A record that owes no inventory purge. */
+    public PlayerAntiAbuseRecord(
+            PlayerUuid playerUuid,
+            @Nullable Instant lastResetAt,
+            int resetsTodayCount,
+            @Nullable Instant resetWindowStart,
+            @Nullable Instant coopCooldownExpiresAt) {
+        this(playerUuid, lastResetAt, resetsTodayCount, resetWindowStart, coopCooldownExpiresAt, false);
+    }
+
+    /** This record, owing an inventory purge or not. */
+    public PlayerAntiAbuseRecord withInventoryPurgeOwed(boolean owed) {
+        return new PlayerAntiAbuseRecord(
+                playerUuid, lastResetAt, resetsTodayCount, resetWindowStart, coopCooldownExpiresAt, owed);
     }
 
     public static PlayerAntiAbuseRecord initial(PlayerUuid playerUuid) {
@@ -100,7 +119,8 @@ public record PlayerAntiAbuseRecord(
             newCount = resetsTodayCount + 1;
         }
 
-        return new PlayerAntiAbuseRecord(playerUuid, now, newCount, newWindowStart, coopCooldownExpiresAt);
+        return new PlayerAntiAbuseRecord(
+                playerUuid, now, newCount, newWindowStart, coopCooldownExpiresAt, inventoryPurgeOwed);
     }
 
     public boolean isCoopCooldownActive(Instant now) {
@@ -117,10 +137,12 @@ public record PlayerAntiAbuseRecord(
     }
 
     public PlayerAntiAbuseRecord withCoopCooldown(Instant expiresAt) {
-        return new PlayerAntiAbuseRecord(playerUuid, lastResetAt, resetsTodayCount, resetWindowStart, expiresAt);
+        return new PlayerAntiAbuseRecord(
+                playerUuid, lastResetAt, resetsTodayCount, resetWindowStart, expiresAt, inventoryPurgeOwed);
     }
 
     public PlayerAntiAbuseRecord withoutCoopCooldown() {
-        return new PlayerAntiAbuseRecord(playerUuid, lastResetAt, resetsTodayCount, resetWindowStart, null);
+        return new PlayerAntiAbuseRecord(
+                playerUuid, lastResetAt, resetsTodayCount, resetWindowStart, null, inventoryPurgeOwed);
     }
 }

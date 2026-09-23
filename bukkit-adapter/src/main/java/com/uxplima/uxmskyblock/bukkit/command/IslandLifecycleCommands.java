@@ -512,6 +512,11 @@ public final class IslandLifecycleCommands {
                     // was erased was never counted, and the count was a database write on the region.
                     if (result instanceof RecycleResult.Success && antiAbuse != null) {
                         antiAbuse.recordReset(playerUuid, Instant.now());
+                        // Owed first, paid below if the player is still here, and otherwise when
+                        // they next play: a player who left kept everything they carried.
+                        if (antiAbuse.purgeInventoryOnReset()) {
+                            antiAbuse.oweInventoryPurge(playerUuid);
+                        }
                     }
                     schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                         switch (result) {
@@ -522,16 +527,9 @@ public final class IslandLifecycleCommands {
                                 if (markers != null) {
                                     markers.onIslandRemoved(islandId);
                                 }
-                                if (antiAbuse != null) {
-                                    if (antiAbuse.purgeInventoryOnReset()) {
-                                        player.getInventory().clear();
-                                        player.getInventory().setArmorContents(null);
-                                        player.getInventory().setItemInOffHand(null);
-                                        player.getEnderChest().clear();
-                                        player.setExp(0.0f);
-                                        player.setLevel(0);
-                                        player.setTotalExperience(0);
-                                    }
+                                if (antiAbuse != null && antiAbuse.purgeInventoryOnReset()) {
+                                    com.uxplima.uxmskyblock.bukkit.antiabuse.ResetInventoryPurge.purgeAndSettle(
+                                            antiAbuse, schedulerPort, player);
                                 }
                                 // Asynchronous, because Folia throws on a synchronous teleport, and
                                 // that left the player standing where their island had been with no
