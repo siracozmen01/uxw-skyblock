@@ -40,6 +40,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandRewardCommands {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandRewardCommands.class.getName());
+
     private final Supplier<@Nullable RewardInboxService> rewardServiceProvider;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
@@ -148,15 +151,17 @@ public final class IslandRewardCommands {
                         send(player, "rewards.claimed_one", Placeholder.unparsed("id", raw));
                         return;
                     }
-                    send(
-                            player,
-                            "rewards.claim_failed",
-                            Placeholder.unparsed("id", raw),
-                            Placeholder.unparsed(
-                                    "reason",
-                                    result.failureReason() != null
-                                            ? result.failureReason()
-                                            : result.finalState().name()));
+                    // The player is told what kind of refusal this is, from the catalogue. The
+                    // reason itself is an internal sentence in English, and it used to be put in
+                    // front of the player as it was; it goes to the log instead.
+                    if (result.refusal() == ClaimRewardResult.Refusal.ALREADY_BEING_CLAIMED) {
+                        send(player, "rewards.claim_in_progress", Placeholder.unparsed("id", raw));
+                        return;
+                    }
+                    LOGGER.info(() -> "Reward " + raw + " for " + player.getName() + " was not handed over: "
+                            + result.optFailureReason()
+                                    .orElse(result.finalState().name()));
+                    send(player, "rewards.claim_failed", Placeholder.unparsed("id", raw));
                 });
             });
         });

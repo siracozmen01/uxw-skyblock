@@ -183,7 +183,7 @@ public final class RewardClaimCoordinator {
     }
 
     private static ClaimRewardResult alreadyBeingClaimed(RewardGrant grant) {
-        return ClaimRewardResult.failure(
-                grant.grantId(), grant.state(), 0, grant.components().size(), "This reward is already being claimed.");
+        return ClaimRewardResult.alreadyBeingClaimed(
+                grant.grantId(), grant.state(), grant.components().size());
     }
 }

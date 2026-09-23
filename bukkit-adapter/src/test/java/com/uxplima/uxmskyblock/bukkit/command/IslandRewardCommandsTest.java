@@ -195,4 +195,50 @@ class IslandRewardCommandsTest {
                 .describedAs("a reward that did not arrive must say so")
                 .isNotNull();
     }
+
+    @Test
+    @DisplayName("A refused claim is told from the catalogue, never in the service's own words")
+    void theServicesReasonNeverReachesThePlayer() throws Exception {
+        RewardGrantId id = RewardGrantId.random();
+        when(rewards.claimReward(eq(id), eq(PROFILE)))
+                .thenReturn(ClaimRewardResult.failure(
+                        id, RewardGrantState.RECOVERY_REQUIRED, 0, 1, "Insufficient inventory space for item reward"));
+        player.nextMessage();
+
+        run("rewards claim " + id.value(), player);
+
+        String told = player.nextMessage();
+        assertThat(told).isNotNull();
+        assertThat(told).doesNotContain("Insufficient").isEqualTo("rewards.claim_failed");
+    }
+
+    @Test
+    @DisplayName("No catalogue's refused-claim line has room for the service's reason")
+    void theRefusedClaimLineCarriesNoReason() throws Exception {
+        for (String language : new String[] {"en", "tr"}) {
+            try (var in = getClass().getResourceAsStream("/messages/messages_" + language + ".conf")) {
+                String catalogue = new String(
+                        java.util.Objects.requireNonNull(in).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                String line = catalogue
+                        .lines()
+                        .filter(l -> l.trim().startsWith("claim_failed"))
+                        .findFirst()
+                        .orElseThrow();
+                assertThat(line).describedAs(language).doesNotContain("<reason>");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("A claim of a reward already being claimed says so")
+    void aClaimUnderWayIsSaidToBe() throws Exception {
+        RewardGrantId id = RewardGrantId.random();
+        when(rewards.claimReward(eq(id), eq(PROFILE)))
+                .thenReturn(ClaimRewardResult.alreadyBeingClaimed(id, RewardGrantState.CLAIMING, 1));
+        player.nextMessage();
+
+        run("rewards claim " + id.value(), player);
+
+        assertThat(player.nextMessage()).isEqualTo("rewards.claim_in_progress");
+    }
 }
