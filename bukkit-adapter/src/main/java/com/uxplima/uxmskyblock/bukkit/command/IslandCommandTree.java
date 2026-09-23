@@ -424,8 +424,30 @@ public final class IslandCommandTree {
         return backupService;
     }
 
+    /**
+     * The names the operator gave the command and its branches, from {@code commands.conf}. Absent,
+     * every word is the one the code ships.
+     */
+    private com.uxplima.uxmlib.command.annotation.@Nullable ConfiguredCommands commandNames;
+
+    /** Reads the command's names from {@code commands.conf}, as {@link #register} does. */
+    public void useCommandNames(com.uxplima.uxmlib.command.annotation.@Nullable ConfiguredCommands names) {
+        this.commandNames = names;
+    }
+
     public void register(JavaPlugin plugin) {
-        CommandRegistrar.register(plugin, buildRoot(), "Main Skyblock command tree", "is");
+        java.nio.file.Path file = plugin.getDataFolder().toPath().resolve("commands.conf");
+        if (!java.nio.file.Files.exists(file)) {
+            plugin.saveResource("commands.conf", false);
+        }
+        this.commandNames = com.uxplima.uxmlib.command.annotation.ConfiguredCommands.load(file);
+        ConfiguredCommandTree<CommandSourceStack> names = new ConfiguredCommandTree<>(this.commandNames);
+        com.uxplima.uxmlib.command.annotation.ConfiguredCommands.Entry root = names.root();
+        if (!root.enabled()) {
+            // The operator turned the whole command off, which is how a server keeps only the menu.
+            return;
+        }
+        CommandRegistrar.register(plugin, buildRoot().build(), "Main Skyblock command tree", root.aliases());
     }
 
     /**
@@ -436,7 +458,8 @@ public final class IslandCommandTree {
      * a player types the line it guessed about.
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildRoot() {
-        return assembleRoot(new CommandGroupBuilder(this).build());
+        return new ConfiguredCommandTree<CommandSourceStack>(commandNames)
+                .apply(assembleRoot(new CommandGroupBuilder(this).build()));
     }
 
     /** The vault window under whichever word the caller typed. */
