@@ -102,6 +102,8 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
         Timestamp nowTs = Timestamp.from(now);
         Timestamp expiresTs = Timestamp.from(claimExpiresAt);
 
+        // A server engine skips what another node's claim holds rather than waiting for it. A plain
+        // FOR UPDATE on MariaDB and MySQL put the second node's relay in the first node's lock queue.
         String selectSql =
                 switch (dialect) {
                     case SQLITE -> """
@@ -125,7 +127,7 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
                       AND status != 'DEAD_LETTER'
                     ORDER BY created_at ASC
                     LIMIT ?
-                    FOR UPDATE
+                    FOR UPDATE SKIP LOCKED
                     """;
                     case POSTGRES -> """
                     SELECT event_id, event_type, aggregate_id, payload, status,
