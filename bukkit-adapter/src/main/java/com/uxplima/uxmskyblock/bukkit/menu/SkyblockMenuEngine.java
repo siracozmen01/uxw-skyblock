@@ -143,6 +143,16 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         // a verb that quietly changed meaning depending on wiring order would be worse.
         MenuBasics.register(bindings);
         answerArguments(bindings.placeholders());
+        // message:@key says the catalogue line in the reader's language. The library's message verb
+        // draws its words as written, and a file is one language.
+        bindings.action("message", ctx -> {
+            String line = ctx.arg().strip();
+            if (line.startsWith("@")) {
+                messages.sendPlain(ctx.player(), line.substring(1));
+            } else {
+                ctx.player().sendMessage(messages.provider().renderTemplate(line));
+            }
+        });
         bindings.condition("at-least", SkyblockMenuEngine::atLeast);
 
         bindings.action("open", ctx -> {

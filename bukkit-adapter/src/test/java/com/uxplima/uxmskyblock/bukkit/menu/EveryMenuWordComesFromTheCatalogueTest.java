@@ -44,7 +44,7 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
     private static final Pattern WORD = Pattern.compile("[\\p{L}]{2,}");
 
     @Test
-    @DisplayName("Every title, name and lore line in a shipped menu is a catalogue key, blank or wordless")
+    @DisplayName("Every title, name, lore and message line in a shipped menu is a catalogue key, blank or wordless")
     void everyWordIsAKey() throws IOException {
         List<String> written = new ArrayList<>();
         try (Stream<Path> files = Files.list(MENUS)) {
@@ -59,6 +59,15 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
                     check(file, item.getKey() + ".name", item.getValue().node("name"), written);
                     for (ConfigurationNode line : item.getValue().node("lore").childrenList()) {
                         check(file, item.getKey() + ".lore", line, written);
+                    }
+                    for (ConfigurationNode gesture :
+                            item.getValue().node("click").childrenMap().values()) {
+                        for (ConfigurationNode verb : gesture.childrenList()) {
+                            String line = verb.getString("");
+                            if (line.startsWith("message:")) {
+                                checkText(file, item.getKey() + ".click", line.substring("message:".length()), written);
+                            }
+                        }
                     }
                 }
             }
@@ -90,6 +99,26 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A message verb naming a key says the catalogue line in the reader's language")
+    void aMessageVerbSaysItsKey() {
+        org.mockbukkit.mockbukkit.entity.PlayerMock turkish = createPlayer("Okur");
+        turkish.setLocale(java.util.Locale.forLanguageTag("tr"));
+        SkyblockMenuEngine engine = new SkyblockMenuEngine(
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir, null);
+        java.util.function.Consumer<com.uxplima.uxmlib.menu.runtime.MenuActionContext> verb =
+                engine.bindings().actions().get("message").orElseThrow();
+
+        verb.accept(new com.uxplima.uxmlib.menu.runtime.MenuActionContext(
+                MenuContext.of(turkish, null, 0, Map.of()),
+                turkish,
+                com.uxplima.uxmlib.menu.spec.ClickKind.LEFT,
+                Map.of("value", "@menu.bank.shared_note")));
+
+        assertThat(plain(java.util.Objects.requireNonNull(turkish.nextComponentMessage())))
+                .isEqualTo("Ada bankası her üyenin ortak bankasıdır.");
+    }
+
+    @Test
     @DisplayName("Only argument names are asked for, so a colour tag never runs a placeholder")
     void onlyArgumentsAreAsked() {
         Player viewer = createPlayer("Reader");
@@ -102,7 +131,13 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
 
     private static void check(Path file, String where, ConfigurationNode node, List<String> written) {
         String value = node.getString();
-        if (value == null || value.isBlank() || value.startsWith("@")) {
+        if (value != null) {
+            checkText(file, where, value, written);
+        }
+    }
+
+    private static void checkText(Path file, String where, String value, List<String> written) {
+        if (value.isBlank() || value.startsWith("@")) {
             return;
         }
         String words = value.replaceAll("<[^>]*>", "").replaceAll("%[a-z0-9_]+%", "");
