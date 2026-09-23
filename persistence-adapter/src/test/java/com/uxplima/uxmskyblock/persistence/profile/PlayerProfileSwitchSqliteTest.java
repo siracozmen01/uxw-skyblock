@@ -234,4 +234,46 @@ class PlayerProfileSwitchSqliteTest {
             throw new RuntimeException(e);
         }
     }
+
+    @Test
+    @DisplayName("A switch to a profile another player owns is refused and reserves nothing")
+    void anotherPlayersProfileIsRefused() throws Exception {
+        PlayerUuid victim = PlayerUuid.of(UUID.randomUUID());
+        ProfileId victimsProfile = ProfileId.of(victim.value());
+        try (Connection conn = database.connection()) {
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
+                ps.setString(1, victim.toString());
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
+                ps.setString(1, victimsProfile.toString());
+                ps.setString(2, victim.toString());
+                ps.executeUpdate();
+            }
+        }
+
+        var refused = adapter.reserveSwitch(UUID.randomUUID(), playerUuid, profileP1, victimsProfile, nodeA, 1);
+        var unknown = adapter.reserveSwitch(
+                UUID.randomUUID(), playerUuid, profileP1, ProfileId.of(UUID.randomUUID()), nodeA, 1);
+
+        assertThat(refused.isErr()).isTrue();
+        assertThat(refused.errorOrThrow()).isEqualTo("TARGET_PROFILE_NOT_OWNED");
+        assertThat(unknown.isErr()).describedAs("a profile nobody owns").isTrue();
+        try (Connection conn = database.connection();
+                PreparedStatement ps = conn.prepareStatement(
+                        "SELECT active_switch_operation_id FROM player_accounts WHERE player_uuid = ?")) {
+            ps.setString(1, playerUuid.toString());
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getString(1))
+                        .describedAs("no reservation left behind")
+                        .isNull();
+            }
+        }
+        assertThat(adapter.reserveSwitch(UUID.randomUUID(), playerUuid, profileP1, profileP2, nodeA, 1)
+                        .isOk())
+                .describedAs("the player's own profile still switches")
+                .isTrue();
+    }
 }

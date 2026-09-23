@@ -148,6 +148,41 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A switch to another player's profile is refused, and told from the catalogue")
+    void aRefusedSwitchIsToldPlainly() {
+        PlayerMock player = createPlayer("RefusedSwitchPlayer");
+        coordinator.handlePlayerJoin(player);
+        eventuallyTick(() ->
+                assertThat(coordinator.getActiveSession(player.getUniqueId())).isNotNull());
+        while (player.nextMessage() != null) {
+            // What joining said is not what this test is about.
+        }
+
+        // Another player's first profile carries that player's uuid, which anyone can read.
+        PlayerMock victim = createPlayer("Victim");
+        coordinator.handlePlayerJoin(victim);
+        eventuallyTick(() ->
+                assertThat(coordinator.getActiveSession(victim.getUniqueId())).isNotNull());
+
+        coordinator.switchProfile(player, new ProfileId(victim.getUniqueId()));
+
+        java.util.List<String> said = new java.util.ArrayList<>();
+        eventuallyTick(() -> {
+            for (String next = player.nextMessage(); next != null; next = player.nextMessage()) {
+                said.add(next);
+            }
+            assertThat(said).anyMatch(line -> line.contains("could not be switched"));
+        });
+        assertThat(said)
+                .describedAs("the use case's sentence stays in the log")
+                .noneMatch(line -> line.contains("TARGET_PROFILE") || line.contains("Failed"));
+        assertThat(Objects.requireNonNull(coordinator.getActiveSession(player.getUniqueId()))
+                        .activeProfileId())
+                .describedAs("the player is still on their own profile")
+                .isEqualTo(new ProfileId(player.getUniqueId()));
+    }
+
+    @Test
     @DisplayName("switchProfile transitions player items between profiles")
     void switchProfileTransfersInventory() {
         PlayerMock player = createPlayer("SwitchPlayer");

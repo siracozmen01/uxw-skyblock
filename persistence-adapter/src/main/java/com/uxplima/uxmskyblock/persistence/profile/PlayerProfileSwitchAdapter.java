@@ -100,6 +100,23 @@ public final class PlayerProfileSwitchAdapter implements ProfileSwitchPort {
                     }
                 }
 
+                // The profile switched to must be one of this player's own. Nothing asked: a player
+                // could name any profile id, and a player's first profile carries their public uuid,
+                // so switching to another player's id loaded that player's inventory while their own
+                // row kept every item, which is theft and a duplication at once. SQLite does not
+                // enforce the foreign key that would have refused it at commit.
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "SELECT 1 FROM player_profiles WHERE profile_id = ? AND player_uuid = ?")) {
+                    ps.setString(1, toProfileId.toString());
+                    ps.setString(2, playerId.toString());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            tx.rollbackQuietly(connection);
+                            return Result.err("TARGET_PROFILE_NOT_OWNED");
+                        }
+                    }
+                }
+
                 // Step 2: Atomic CAS reservation on player_accounts
                 String casSql = "UPDATE player_accounts "
                         + "SET active_switch_operation_id = ?, updated_at = CURRENT_TIMESTAMP "

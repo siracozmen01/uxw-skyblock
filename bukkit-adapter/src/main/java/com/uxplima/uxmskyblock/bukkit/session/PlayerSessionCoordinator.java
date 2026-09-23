@@ -361,10 +361,8 @@ public final class PlayerSessionCoordinator {
                     LOGGER.log(Level.WARNING, "Failed to prepare profile switch: {0}", prepRes.errorOrThrow());
                     schedulerPort.onEntity(playerUuid, () -> {
                         if (player.isOnline()) {
-                            messages.send(
-                                    player,
-                                    "session.switch_failed",
-                                    Placeholder.unparsed("reason", String.valueOf(prepRes.errorOrThrow())));
+                            // The reason is a code for the log, and it used to be shown as it was.
+                            messages.send(player, "session.switch_failed");
                         }
                     });
                     return;
