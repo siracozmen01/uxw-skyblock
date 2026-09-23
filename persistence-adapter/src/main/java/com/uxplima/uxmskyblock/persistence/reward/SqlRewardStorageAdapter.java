@@ -8,7 +8,9 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -159,15 +161,7 @@ public final class SqlRewardStorageAdapter implements RewardStoragePort {
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, recipientProfileId.value().toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<RewardGrant> results = new ArrayList<>();
-                while (rs.next()) {
-                    String grantIdStr = rs.getString("grant_id");
-                    List<RewardGrantComponent> components = loadComponents(conn, grantIdStr);
-                    results.add(mapGrant(rs, components));
-                }
-                return results;
-            }
+            return withComponents(conn, stmt, recipientProfileId);
         } catch (SQLException e) {
             throw new RewardPersistenceException(
                     "Failed to query pending reward grants for recipient: " + recipientProfileId, e);
@@ -189,15 +183,7 @@ public final class SqlRewardStorageAdapter implements RewardStoragePort {
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, recipientProfileId.value().toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<RewardGrant> results = new ArrayList<>();
-                while (rs.next()) {
-                    String grantIdStr = rs.getString("grant_id");
-                    List<RewardGrantComponent> components = loadComponents(conn, grantIdStr);
-                    results.add(mapGrant(rs, components));
-                }
-                return results;
-            }
+            return withComponents(conn, stmt, recipientProfileId);
         } catch (SQLException e) {
             throw new RewardPersistenceException(
                     "Failed to query all reward grants for recipient: " + recipientProfileId, e);
@@ -321,6 +307,64 @@ public final class SqlRewardStorageAdapter implements RewardStoragePort {
         }
     }
 
+    /**
+     * The grants {@code grants} selects, each with its components, in two queries.
+     *
+     * <p>Each grant used to ask for its own components, one query per grant, every time a player
+     * opened their inbox or claimed from it. The grants are read first and their components after, so
+     * every grant read has its components: a grant and its components are written in one transaction.
+     * Read the other way round, a grant written between the two reads would carry no components, and
+     * a claim of a grant with no components completes and hands out nothing.
+     */
+    private List<RewardGrant> withComponents(Connection conn, PreparedStatement grants, ProfileId recipient)
+            throws SQLException {
+        List<RewardGrant> read = new ArrayList<>();
+        try (ResultSet rs = grants.executeQuery()) {
+            while (rs.next()) {
+                read.add(mapGrant(rs, List.of()));
+            }
+        }
+        if (read.isEmpty()) {
+            return read;
+        }
+
+        Map<RewardGrantId, List<RewardGrantComponent>> byGrant = new HashMap<>();
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT c.component_id, c.grant_id, c.component_index, c.component_operation_id,
+                       c.component_type, c.payload_type_id, c.payload_schema_version, c.payload_data,
+                       c.state, c.journal_operation_id, c.updated_at
+                FROM reward_grant_components c
+                JOIN reward_grants g ON g.grant_id = c.grant_id
+                WHERE g.recipient_profile_id = ?
+                ORDER BY c.component_index ASC
+                """)) {
+            stmt.setString(1, recipient.value().toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    RewardGrantComponent component = mapComponent(rs);
+                    byGrant.computeIfAbsent(component.grantId(), k -> new ArrayList<>())
+                            .add(component);
+                }
+            }
+        }
+
+        List<RewardGrant> complete = new ArrayList<>(read.size());
+        for (RewardGrant grant : read) {
+            complete.add(new RewardGrant(
+                    grant.grantId(),
+                    grant.recipientProfileId(),
+                    grant.sourceType(),
+                    grant.sourceId(),
+                    grant.state(),
+                    byGrant.getOrDefault(grant.grantId(), List.of()),
+                    grant.claimedAt(),
+                    grant.expiresAt(),
+                    grant.createdAt(),
+                    grant.updatedAt()));
+        }
+        return complete;
+    }
+
     private List<RewardGrantComponent> loadComponents(Connection conn, String grantIdStr) throws SQLException {
         String sql = """
                 SELECT component_id, grant_id, component_index, component_operation_id,
@@ -336,37 +380,40 @@ public final class SqlRewardStorageAdapter implements RewardStoragePort {
             stmt.setString(1, grantIdStr);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    UUID compId = UUID.fromString(rs.getString("component_id"));
-                    RewardGrantId grantId = RewardGrantId.fromString(rs.getString("grant_id"));
-                    int index = rs.getInt("component_index");
-                    RewardComponentOperationId opId =
-                            RewardComponentOperationId.fromString(rs.getString("component_operation_id"));
-                    RewardComponentType type = RewardComponentType.valueOf(rs.getString("component_type"));
-                    String payloadTypeId = rs.getString("payload_type_id");
-                    int schemaVersion = rs.getInt("payload_schema_version");
-                    String payloadData = rs.getString("payload_data");
-                    RewardComponentState state = RewardComponentState.valueOf(rs.getString("state"));
-                    String journalOpStr = rs.getString("journal_operation_id");
-                    UUID journalOp = journalOpStr != null ? UUID.fromString(journalOpStr) : null;
-                    Timestamp updatedTs = rs.getTimestamp("updated_at");
-                    Instant updatedAt = updatedTs != null ? updatedTs.toInstant() : Instant.now();
-
-                    list.add(new RewardGrantComponent(
-                            compId,
-                            grantId,
-                            index,
-                            opId,
-                            type,
-                            payloadTypeId,
-                            schemaVersion,
-                            payloadData,
-                            state,
-                            journalOp,
-                            updatedAt));
+                    list.add(mapComponent(rs));
                 }
             }
         }
         return list;
+    }
+
+    private static RewardGrantComponent mapComponent(ResultSet rs) throws SQLException {
+        UUID compId = UUID.fromString(rs.getString("component_id"));
+        RewardGrantId grantId = RewardGrantId.fromString(rs.getString("grant_id"));
+        int index = rs.getInt("component_index");
+        RewardComponentOperationId opId = RewardComponentOperationId.fromString(rs.getString("component_operation_id"));
+        RewardComponentType type = RewardComponentType.valueOf(rs.getString("component_type"));
+        String payloadTypeId = rs.getString("payload_type_id");
+        int schemaVersion = rs.getInt("payload_schema_version");
+        String payloadData = rs.getString("payload_data");
+        RewardComponentState state = RewardComponentState.valueOf(rs.getString("state"));
+        String journalOpStr = rs.getString("journal_operation_id");
+        UUID journalOp = journalOpStr != null ? UUID.fromString(journalOpStr) : null;
+        Timestamp updatedTs = rs.getTimestamp("updated_at");
+        Instant updatedAt = updatedTs != null ? updatedTs.toInstant() : Instant.now();
+
+        return new RewardGrantComponent(
+                compId,
+                grantId,
+                index,
+                opId,
+                type,
+                payloadTypeId,
+                schemaVersion,
+                payloadData,
+                state,
+                journalOp,
+                updatedAt);
     }
 
     private RewardGrant mapGrant(ResultSet rs, List<RewardGrantComponent> components) throws SQLException {

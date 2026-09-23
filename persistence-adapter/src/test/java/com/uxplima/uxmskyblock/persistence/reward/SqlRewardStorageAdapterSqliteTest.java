@@ -237,6 +237,38 @@ class SqlRewardStorageAdapterSqliteTest {
         assertThat(adapter.findGrantById(grantId)).isEmpty();
     }
 
+    @Test
+    @DisplayName("An inbox is read in two queries however many grants it holds, each grant with its own components")
+    void anInboxIsReadInTwoQueries() {
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        java.util.List<RewardGrantId> made = new java.util.ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            RewardGrantId id = RewardGrantId.random();
+            made.add(id);
+            adapter.saveGrant(createGrant(id, recipientProfile, RewardGrantState.PENDING, now.plusSeconds(i), null));
+        }
+        adapter.saveGrant(createGrant(RewardGrantId.random(), otherProfile, RewardGrantState.PENDING, now, null));
+        java.util.List<String> sent = new java.util.ArrayList<>();
+        SqlRewardStorageAdapter counted = new SqlRewardStorageAdapter(
+                com.uxplima.uxmskyblock.persistence.testfixture.CountingConnections.over(database, sent));
+
+        List<RewardGrant> pending = counted.findPendingGrantsByRecipient(recipientProfile);
+        int forPending = sent.size();
+        sent.clear();
+        List<RewardGrant> all = counted.findAllGrantsByRecipient(recipientProfile);
+
+        assertThat(forPending).describedAs("queries for an inbox of four").isEqualTo(2);
+        assertThat(sent).describedAs("queries for every grant of a recipient").hasSize(2);
+        assertThat(pending).extracting(RewardGrant::grantId).containsExactlyElementsOf(made);
+        assertThat(all).hasSize(4);
+        for (RewardGrant grant : pending) {
+            assertThat(grant.components())
+                    .describedAs("the components of %s", grant.grantId())
+                    .hasSize(1)
+                    .allMatch(component -> component.grantId().equals(grant.grantId()));
+        }
+    }
+
     private RewardGrant createGrant(
             RewardGrantId grantId,
             ProfileId recipient,
