@@ -25,6 +25,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
+import com.uxplima.uxmlib.text.language.LibraryWords;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
@@ -128,6 +129,33 @@ public final class MessageProvider {
             } catch (IOException e) {
                 LOGGER.warning(() -> "Failed to load bundled localization for " + lang + ": " + e.getMessage());
             }
+        }
+        underlayLibraryWords();
+    }
+
+    /**
+     * Puts the words uxmLib ships for its own windows under every language this plugin speaks.
+     *
+     * <p>The library's windows ask the plugin's catalogue for {@code gui.*} keys: the note a cancelled
+     * prompt sends, the page arrows, the confirm buttons. This catalogue never had them, so a player
+     * who cancelled a prompt read {@code gui.input.cancelled} in chat. The library carries the words
+     * in its jar; they go in under this plugin's own lines, which still win key by key, as does an
+     * operator's file read after this.
+     */
+    private void underlayLibraryWords() {
+        Map<String, Map<String, String>> library = new HashMap<>();
+        for (Map.Entry<Locale, Map<String, String>> language :
+                LibraryWords.shipped().entrySet()) {
+            library.put(language.getKey().getLanguage().toLowerCase(Locale.ROOT), language.getValue());
+        }
+        for (String locale : Set.copyOf(localeCatalogs.keySet())) {
+            Map<String, String> words = library.get(locale);
+            if (words == null) {
+                continue;
+            }
+            Map<String, String> catalog = new HashMap<>(localeCatalogs.get(locale));
+            words.forEach(catalog::putIfAbsent);
+            localeCatalogs.put(locale, Collections.unmodifiableMap(catalog));
         }
     }
 
