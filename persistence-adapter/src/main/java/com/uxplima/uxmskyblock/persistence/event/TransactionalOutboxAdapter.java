@@ -256,12 +256,13 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
 
         try (Connection conn = database.connection()) {
             boolean toDeadLetter = false;
+            int retries = 0;
             try (PreparedStatement checkStmt =
                     conn.prepareStatement("SELECT retry_count FROM outbox_events WHERE event_id = ?")) {
                 checkStmt.setString(1, eventId.value().toString());
                 try (ResultSet rs = checkStmt.executeQuery()) {
                     if (rs.next()) {
-                        int retries = rs.getInt("retry_count");
+                        retries = rs.getInt("retry_count");
                         if (retries >= maxRetries) {
                             toDeadLetter = true;
                         }
@@ -286,7 +287,10 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
                     ps.executeUpdate();
                 }
             } else {
-                Instant nextAttempt = Instant.now().plus(retryBackoff);
+                // Doubles with every attempt, as the testing standard says a poison event backs off. It
+                // waited the same length every time, so an event that could never succeed was tried at
+                // the same pace to the end of its retries.
+                Instant nextAttempt = Instant.now().plus(backoffAfter(retryBackoff, retries));
                 try (PreparedStatement ps = conn.prepareStatement("""
                         UPDATE outbox_events
                         SET status = 'PENDING',
@@ -399,5 +403,11 @@ public final class TransactionalOutboxAdapter implements OutboxPort {
                 lastError,
                 createdAt,
                 processedAt);
+    }
+
+    /** The wait before the next attempt: the base for the first failure, doubling after each one. */
+    static Duration backoffAfter(Duration base, int attempts) {
+        int doublings = Math.min(Math.max(attempts - 1, 0), 16);
+        return base.multipliedBy(1L << doublings);
     }
 }
