@@ -205,7 +205,11 @@ public final class TransactionalOutboxDispatcher implements AutoCloseable {
                     if (completed) {
                         processedCount++;
                     } else {
-                        LOGGER.warning(() -> "Outbox claim completion fenced for event " + event.eventId());
+                        // Another worker took this event over after the claim lapsed, and it owns
+                        // the delivery now. The marker is the one the testing standard names, so an
+                        // operator can search for a worker that stalls past its lease.
+                        LOGGER.warning(() -> "STALE_OUTBOX_WORKER_FENCED: " + workerId + " lost its claim on event "
+                                + event.eventId() + " and left it to its new owner");
                     }
                 } else {
                     String message = failureMessage != null ? failureMessage : "Unknown failure during event dispatch";
