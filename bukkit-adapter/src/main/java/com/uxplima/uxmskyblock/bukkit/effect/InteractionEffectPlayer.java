@@ -121,7 +121,10 @@ public final class InteractionEffectPlayer {
                 // The caller is on the player's own thread, which is where their command belongs.
                 .playerSink(line -> server.dispatchCommand(player, line))
                 // A part written as @key reads its words from the catalogue, for this player.
-                .words(key -> messages.raw(player, key));
+                .words(key -> messages.raw(player, key))
+                // The text is painted with this server's theme in the player's language. Unwired,
+                // the library's default colours painted it rather than the operator's.
+                .style(line -> messages.paint(player, line));
         if (scheduler != null) {
             builder.later(scheduler::asyncAfter);
         }

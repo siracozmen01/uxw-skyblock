@@ -10,6 +10,8 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.text.message.LocaleSource;
+import com.uxplima.uxmlib.text.style.Styler;
+import com.uxplima.uxmlib.text.style.Theme;
 import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
 import org.jspecify.annotations.Nullable;
 
@@ -26,9 +28,17 @@ public final class Messages {
     private final MessageProvider provider;
     private final LocaleSource locales;
 
+    /** The server's theme, which paints the roles and labels of a line an operator wrote. */
+    private final Styler styler;
+
     public Messages(MessageProvider provider, LocaleSource locales) {
+        this(provider, locales, Theme.defaults());
+    }
+
+    public Messages(MessageProvider provider, LocaleSource locales, Theme theme) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         this.locales = Objects.requireNonNull(locales, "locales must not be null");
+        this.styler = new Styler(Objects.requireNonNull(theme, "theme must not be null"));
     }
 
     /**
@@ -36,11 +46,16 @@ public final class Messages {
      * the operator turned {@code language.follow-client} off and asked for one language throughout.
      */
     public static Messages of(MessageProvider provider, LanguageConfiguration language) {
+        return of(provider, language, Theme.defaults());
+    }
+
+    /** The same, painting an operator's lines with the server's own theme. */
+    public static Messages of(MessageProvider provider, LanguageConfiguration language, Theme theme) {
         Objects.requireNonNull(language, "language must not be null");
         LocaleSource source = language.followClient()
                 ? LocaleSource.ofDefault(language.defaultLocale())
                 : new ServerLocaleSource(language.defaultLocale());
-        return new Messages(provider, source);
+        return new Messages(provider, source, theme);
     }
 
     /**
@@ -74,6 +89,16 @@ public final class Messages {
      */
     public @Nullable String raw(Audience viewer, String key) {
         return has(key) ? provider.getRaw(key, languageOf(viewer)) : null;
+    }
+
+    /**
+     * A line an operator wrote, with the theme's roles and labels painted for the language
+     * {@code viewer} reads. Every other letter is left as written, so a placeholder in it still
+     * fills in.
+     */
+    public String paint(Audience viewer, String line) {
+        Objects.requireNonNull(line, "line must not be null");
+        return styler.tokens(line, Locale.forLanguageTag(languageOf(viewer)));
     }
 
     /** Sends {@code key} to {@code viewer} in the language that viewer reads. */

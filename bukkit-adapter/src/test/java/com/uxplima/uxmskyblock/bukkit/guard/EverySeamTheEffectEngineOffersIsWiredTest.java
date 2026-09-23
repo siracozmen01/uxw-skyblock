@@ -67,7 +67,7 @@ class EverySeamTheEffectEngineOffersIsWiredTest {
         assertThat(seams())
                 .describedAs("if this set changed, the library moved and every context here must answer for it")
                 .containsExactlyInAnyOrder(
-                        "later", "broadcast", "consoleSink", "playerSink", "wallet", "itemStore", "words");
+                        "later", "broadcast", "consoleSink", "playerSink", "wallet", "itemStore", "words", "style");
         assertThat(everySeam()).contains(SUBJECT, TARGET);
     }
 

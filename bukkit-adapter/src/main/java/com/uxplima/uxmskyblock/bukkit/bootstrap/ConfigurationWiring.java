@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.logging.Logger;
 
+import com.uxplima.uxmlib.text.style.Theme;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.BankConfiguration;
@@ -133,7 +134,9 @@ public final class ConfigurationWiring {
                 LOGGER.warning("Failed listing the messages folder " + messagesDir + ": " + e.getMessage());
             }
         }
-        return Messages.of(provider, language);
+        // The same theme the menus read, so a line an operator wrote is painted like the rest.
+        Theme theme = rootNode == null ? Theme.defaults() : Theme.from(rootNode);
+        return Messages.of(provider, language, theme);
     }
 
     ConfigurationWiring(
