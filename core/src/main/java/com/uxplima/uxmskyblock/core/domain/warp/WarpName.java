@@ -15,8 +15,7 @@ public record WarpName(String value) {
         Objects.requireNonNull(value, "value must not be null");
         String trimmed = value.trim();
         if (trimmed.isEmpty() || !VALID_NAME_PATTERN.matcher(trimmed).matches()) {
-            throw new IllegalArgumentException(
-                    "Warp name must be 1-32 alphanumeric characters, dashes, or underscores: '" + value + "'");
+            throw new InvalidWarpNameException(value);
         }
         value = trimmed.toLowerCase(Locale.ROOT);
     }

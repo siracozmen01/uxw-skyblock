@@ -29,6 +29,7 @@ import com.uxplima.uxmskyblock.core.domain.warp.WarpLimitExceededException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLocation;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpNotFoundException;
+import com.uxplima.uxmskyblock.core.domain.warp.WarpOutsideIslandException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -149,7 +150,7 @@ public final class IslandWarpService {
         }
 
         if (!island.bounds().contains(location.blockX(), location.blockZ())) {
-            throw new IllegalArgumentException("Warp location (" + location.blockX() + ", " + location.blockZ()
+            throw new WarpOutsideIslandException("Warp location (" + location.blockX() + ", " + location.blockZ()
                     + ") is outside island bounds: " + island.bounds());
         }
 
@@ -301,7 +302,7 @@ public final class IslandWarpService {
         }
 
         if (!island.bounds().contains(newLocation.blockX(), newLocation.blockZ())) {
-            throw new IllegalArgumentException("Warp location (" + newLocation.blockX() + ", " + newLocation.blockZ()
+            throw new WarpOutsideIslandException("Warp location (" + newLocation.blockX() + ", " + newLocation.blockZ()
                     + ") is outside island bounds: " + island.bounds());
         }
 

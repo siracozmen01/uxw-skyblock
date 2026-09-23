@@ -295,6 +295,53 @@ class IslandWarpCommandsTest {
     }
 
     @Test
+    @DisplayName("A refused warp is told by its kind, never in the service's own words")
+    void aRefusedWarpIsToldByKind() throws Exception {
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.WarpLimitExceededException(ISLAND, 3, 3))
+                .when(warps)
+                .createWarp(any(), any(), any(), any(), any(), any());
+        run("warp create shop", player);
+        assertThat(lastMessage()).isEqualTo("warp.limit_reached");
+
+        doThrow(new com.uxplima.uxmskyblock.core.domain.warp.DuplicateWarpNameException(ISLAND, WarpName.of("shop")))
+                .when(warps)
+                .createWarp(any(), any(), any(), any(), any(), any());
+        run("warp create shop", player);
+        assertThat(lastMessage()).isEqualTo("warp.name_taken");
+
+        run("warp create a.b", player);
+        assertThat(lastMessage()).isEqualTo("warp.bad_name");
+
+        doThrow(new IllegalStateException("database down for island " + ISLAND.value()))
+                .when(warps)
+                .createWarp(any(), any(), any(), any(), any(), any());
+        run("warp create shop", player);
+        assertThat(lastMessage()).isEqualTo("warp.failed");
+    }
+
+    @Test
+    @DisplayName("No warp line has room for a raw refusal reason")
+    void noWarpLineCarriesAReason() throws Exception {
+        for (String language : new String[] {"en", "tr"}) {
+            try (var in = getClass().getResourceAsStream("/messages/messages_" + language + ".conf")) {
+                String catalogue = new String(
+                        java.util.Objects.requireNonNull(in).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                String warp = catalogue.substring(catalogue.indexOf("\nwarp {"));
+                warp = warp.substring(0, warp.indexOf("\n}"));
+                assertThat(warp).describedAs(language).doesNotContain("<reason>");
+            }
+        }
+    }
+
+    private String lastMessage() {
+        String last = null;
+        for (String next = player.nextMessage(); next != null; next = player.nextMessage()) {
+            last = next;
+        }
+        return java.util.Objects.requireNonNull(last, "nothing was said");
+    }
+
+    @Test
     @DisplayName("A role that may not create a warp is told, not thrown at")
     void aRefusedCreateIsExplained() throws Exception {
         doThrow(new SecurityException("not your island"))

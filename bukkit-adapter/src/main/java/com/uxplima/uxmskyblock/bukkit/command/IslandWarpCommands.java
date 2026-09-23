@@ -35,16 +35,20 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.warp.DuplicateWarpNameException;
+import com.uxplima.uxmskyblock.core.domain.warp.InvalidWarpNameException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandClosedToVisitorsException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.IslandWarp;
 import com.uxplima.uxmskyblock.core.domain.warp.PlayerBannedFromIslandException;
 import com.uxplima.uxmskyblock.core.domain.warp.UnsafeTeleportDestinationException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpCategory;
+import com.uxplima.uxmskyblock.core.domain.warp.WarpLimitExceededException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLocation;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpLockedException;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpName;
 import com.uxplima.uxmskyblock.core.domain.warp.WarpNotFoundException;
+import com.uxplima.uxmskyblock.core.domain.warp.WarpOutsideIslandException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -56,6 +60,9 @@ import org.jspecify.annotations.Nullable;
  * one.
  */
 public final class IslandWarpCommands {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandWarpCommands.class.getName());
 
     private static final int PAGE_SIZE = 20;
 
@@ -318,14 +325,37 @@ public final class IslandWarpCommands {
             } catch (WarpNotFoundException missing) {
                 onEntity(player, () -> send(player, "warp.unknown", Placeholder.unparsed("name", rawName)));
             } catch (RuntimeException refused) {
+                tellRefusal(player, rawName, refused);
+            }
+        });
+    }
+
+    /**
+     * Tells a player why a warp was not made or moved, from the catalogue.
+     *
+     * <p>The refusal used to reach the player as the exception's own sentence, in English, with the
+     * island's id and bounds in it. The kind of refusal picks the line now; anything unexpected is a
+     * line saying it could not be saved, and the sentence goes to the log.
+     */
+    private void tellRefusal(Player player, String rawName, RuntimeException refused) {
+        String name = rawName;
+        switch (refused) {
+            case InvalidWarpNameException _ -> onEntity(player, () -> send(player, "warp.bad_name"));
+            case WarpOutsideIslandException _ -> onEntity(player, () -> send(player, "warp.outside_island"));
+            case DuplicateWarpNameException _ ->
+                onEntity(player, () -> send(player, "warp.name_taken", Placeholder.unparsed("name", name)));
+            case WarpLimitExceededException full ->
                 onEntity(
                         player,
                         () -> send(
                                 player,
-                                "warp.refused",
-                                Placeholder.unparsed("reason", String.valueOf(refused.getMessage()))));
+                                "warp.limit_reached",
+                                Placeholder.unparsed("max", Integer.toString(full.maxAllowed()))));
+            default -> {
+                LOGGER.log(java.util.logging.Level.WARNING, "A warp could not be saved", refused);
+                onEntity(player, () -> send(player, "warp.failed"));
             }
-        });
+        }
     }
 
     private int executeCreateWithCategory(CommandContext<CommandSourceStack> ctx) {
@@ -389,12 +419,7 @@ public final class IslandWarpCommands {
             } catch (SecurityException denied) {
                 onEntity(player, () -> send(player, "warp.no_permission"));
             } catch (RuntimeException refused) {
-                onEntity(
-                        player,
-                        () -> send(
-                                player,
-                                "warp.refused",
-                                Placeholder.unparsed("reason", String.valueOf(refused.getMessage()))));
+                tellRefusal(player, rawName, refused);
             }
         });
     }
