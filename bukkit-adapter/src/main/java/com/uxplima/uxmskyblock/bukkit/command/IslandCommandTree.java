@@ -116,6 +116,8 @@ public final class IslandCommandTree {
     volatile @Nullable IslandMembershipService membershipService;
     volatile @Nullable IslandSeasonService seasonService;
     volatile @Nullable SkyblockReloader reloader;
+    volatile java.util.function.Supplier<java.util.List<com.uxplima.uxmlib.health.HealthCheck>> healthChecks =
+            java.util.List::of;
     volatile @Nullable IslandWarpService warpService;
 
     /** What the operator wrote for the milestones the commands reach. */
@@ -407,6 +409,12 @@ public final class IslandCommandTree {
         this.seasonService = seasonService;
     }
 
+    /** Hands the doctor the checks it runs. */
+    public void setHealthChecks(
+            java.util.function.Supplier<java.util.List<com.uxplima.uxmlib.health.HealthCheck>> healthChecks) {
+        this.healthChecks = java.util.Objects.requireNonNull(healthChecks, "healthChecks must not be null");
+    }
+
     /** The files an operator may change while the server is running: catalogues and menus. */
     public void setReloader(@Nullable SkyblockReloader reloader) {
         this.reloader = reloader;
@@ -523,6 +531,7 @@ public final class IslandCommandTree {
                 .then(groups.chatCommands().buildAllianceChatAlias())
                 .then(groups.seasonCommands().buildSeason())
                 .then(groups.reloadCommands().buildReload())
+                .then(groups.doctorCommands().buildDoctor())
                 .then(gated(groups.upgradeCommands().build(), CatalogPermissions.ISLAND_UPGRADE))
                 .then(groups.shopCommands().build())
                 // The menu file and the documents both say upgrades; a player typing the singular

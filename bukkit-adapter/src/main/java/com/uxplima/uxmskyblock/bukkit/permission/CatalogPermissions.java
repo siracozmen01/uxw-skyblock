@@ -14,6 +14,10 @@ import org.bukkit.plugin.PluginManager;
 public enum CatalogPermissions {
     ADMIN_BYPASS("uxmskyblock.admin.bypass", "Bypass all island protection and boundaries", PermissionDefault.OP),
     ADMIN_RELOAD("uxmskyblock.admin.reload", "Reload plugin configuration", PermissionDefault.OP),
+    ADMIN_DOCTOR(
+            "uxmskyblock.admin.doctor",
+            "Ask how the plugin is, one line per thing that can be wrong",
+            PermissionDefault.OP),
     ADMIN_MANAGE("uxmskyblock.admin.manage", "Administrative island management", PermissionDefault.OP),
     ADMIN_FREEZE("uxmskyblock.admin.freeze", "Freeze and unfreeze islands administratively", PermissionDefault.OP),
     ADMIN_INSPECT("uxmskyblock.admin.inspect", "Inspect and bypass frozen island quarantines", PermissionDefault.OP),

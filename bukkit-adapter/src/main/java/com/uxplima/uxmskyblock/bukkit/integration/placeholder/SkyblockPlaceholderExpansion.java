@@ -75,6 +75,7 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     private final PlaceholderRegistry registry;
     private final Map<UUID, CachedPlayerIsland> playerCache = new ConcurrentHashMap<>();
     private final Set<UUID> refreshingPlayers = ConcurrentHashMap.newKeySet();
+    private volatile boolean published;
 
     private final Map<LeaderboardCategory, List<LeaderboardEntry>> cachedLeaderboards = new ConcurrentHashMap<>();
     /**
@@ -143,7 +144,14 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     }
 
     public boolean registerExpansion(String author, String version) {
-        return PlaceholderExpansions.register(IDENTIFIER, registry, author, version);
+        boolean registered = PlaceholderExpansions.register(IDENTIFIER, registry, author, version);
+        this.published = registered;
+        return registered;
+    }
+
+    /** Whether PlaceholderAPI took the expansion, which the doctor asks. */
+    public boolean isPublished() {
+        return published;
     }
 
     public void cacheData(UUID playerUuid, CachedPlayerIsland data) {

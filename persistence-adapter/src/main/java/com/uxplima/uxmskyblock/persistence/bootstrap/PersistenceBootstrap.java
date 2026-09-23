@@ -351,6 +351,15 @@ public final class PersistenceBootstrap implements AutoCloseable {
         return gameModeHierarchyAdapter;
     }
 
+    /** Whether the database hands out a connection that answers, which the doctor asks. */
+    public boolean databaseAnswers() {
+        try (java.sql.Connection connection = database.connection()) {
+            return connection.isValid(2);
+        } catch (java.sql.SQLException | RuntimeException refused) {
+            return false;
+        }
+    }
+
     public DatabaseBackupPort databaseBackupPort() {
         return databaseBackupAdapter;
     }

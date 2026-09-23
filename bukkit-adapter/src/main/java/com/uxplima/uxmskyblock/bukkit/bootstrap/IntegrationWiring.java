@@ -15,6 +15,7 @@ import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockScreen;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
 import com.uxplima.uxmskyblock.bukkit.command.IslandFeatures;
 import com.uxplima.uxmskyblock.bukkit.config.NotificationConfiguration;
+import com.uxplima.uxmskyblock.bukkit.health.SkyblockHealth;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
@@ -31,6 +32,7 @@ import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.IslandMarkerSynchroniser;
 import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
+import com.uxplima.uxmskyblock.bukkit.world.IslandWorldCheck;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.DeduplicatingOutboxConsumer;
@@ -314,6 +316,17 @@ public final class IntegrationWiring implements AutoCloseable {
         // no table is touched, because hot swapping a subsystem is how a plugin leaks classloaders
         // and leaves listeners behind.
         this.commandTree.setReloader(new SkyblockReloader(this.messages.provider(), config.dataDir(), this.menuEngine));
+        String islandWorld = config.nodeConfig().worldName();
+        java.util.List<com.uxplima.uxmlib.health.HealthCheck> checks = java.util.List.of(
+                SkyblockHealth.storage(persistence::databaseAnswers),
+                SkyblockHealth.windows(() -> this.menuEngine.loadedSpecs().size()),
+                SkyblockHealth.placeholders(() -> this.placeholderExpansion.isPublished()),
+                SkyblockHealth.islandWorld(
+                        () -> IslandWorldCheck.warningFor(
+                                islandWorld, plugin.getServer().getWorld(islandWorld), plugin.getName()),
+                        () -> plugin.getServer().getWorld(islandWorld) != null),
+                SkyblockHealth.economy(() -> this.economyBridge.isEconomyAvailable()));
+        this.commandTree.setHealthChecks(() -> checks);
         // Four subsystems that were running with no door. Every one of them had a service, a table
         // and a feature module, and no command a player could type.
         this.commandTree.setWarpService(gameplay.warpService());
