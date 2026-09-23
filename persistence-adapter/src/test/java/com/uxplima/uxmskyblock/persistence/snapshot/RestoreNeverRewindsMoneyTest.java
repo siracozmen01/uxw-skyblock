@@ -41,6 +41,23 @@ class RestoreNeverRewindsMoneyTest {
     }
 
     @Test
+    @DisplayName("Upgrades come back only with a full island restore")
+    void onlyFullIslandWritesUpgrades() throws Exception {
+        assertThat(tableNamesFor(RestoreMode.FULL_ISLAND)).contains("island_upgrades");
+        assertThat(tableNamesFor(RestoreMode.WORLD_CONTENT_SAFE)).doesNotContain("island_upgrades");
+    }
+
+    @Test
+    @DisplayName("No mode writes an old authority lease back")
+    void noModeRestoresTheLease() throws Exception {
+        for (RestoreMode mode : RestoreMode.values()) {
+            assertThat(tableNamesFor(mode))
+                    .describedAs("tables %s would write", mode)
+                    .doesNotContain("island_authorities");
+        }
+    }
+
+    @Test
     @DisplayName("Every relational mode still writes the island and where it is, which is what a restore is for")
     void everyRelationalModeWritesTheIsland() throws Exception {
         for (RestoreMode mode : List.of(RestoreMode.WORLD_CONTENT_SAFE, RestoreMode.FULL_ISLAND)) {

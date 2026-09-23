@@ -6,10 +6,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -53,13 +56,26 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
     /**
      * Tables a restore never writes back, whatever the payload holds and whatever mode was asked
      * for. Money a player has already spent cannot be un-spent by restoring last night's file, and
-     * a bankruptcy that was settled cannot be reinstated.
+     * a bankruptcy that was settled cannot be reinstated. The authority lease is live state: writing
+     * back an old epoch would hand the island to a node that has already lost it.
      */
-    private static final Set<String> NEVER_RESTORED = Set.of("island_banks", "island_bankruptcies", "island_boosters");
+    private static final Set<String> NEVER_RESTORED =
+            Set.of("island_banks", "island_bankruptcies", "island_boosters", "island_authorities");
 
-    /** Tables that say who belongs to the island and what they may do. */
+    /**
+     * The row every other table hangs off, by a key that cascades. It is never deleted: deleting it
+     * took the bank, its history, the vault pages and every other child with it on an engine that
+     * enforces the key. It is written only when it is missing, and a full island restore gives back
+     * its name. Its lifecycle, level, worth and version only move forward.
+     */
+    private static final String ISLANDS = "islands";
+
+    /**
+     * Tables only a full island restore writes: who belongs to the island, what they may do and what
+     * it has bought.
+     */
     private static final Set<String> MEMBERSHIP_TABLES =
-            Set.of("island_members", "island_roles", "island_role_permissions");
+            Set.of("island_members", "island_roles", "island_role_permissions", "island_upgrades");
 
     /** The tables {@code mode} is allowed to write, in the order the foreign keys want them. */
     private static List<TableSpec> tablesFor(RestoreMode mode) {
@@ -132,17 +148,14 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
 
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
-            try (Statement stmt = conn.createStatement()) {
-                // Disable foreign keys temporarily for clean deletion and restore
-                try {
-                    stmt.execute("PRAGMA foreign_keys = OFF;");
-                } catch (SQLException ignored) {
-                    // Not SQLite, ignore
-                }
-
-                // Delete child tables first (reverse order)
+            try {
+                // Children first, so no key is ever left pointing at nothing. The island row itself
+                // stays where it is.
                 for (int i = restorable.size() - 1; i >= 0; i--) {
                     TableSpec spec = restorable.get(i);
+                    if (spec.tableName().equals(ISLANDS)) {
+                        continue;
+                    }
                     String deleteSql = "DELETE FROM " + spec.tableName() + " WHERE " + spec.rootColumn() + " = ?";
                     try (PreparedStatement delStmt = conn.prepareStatement(deleteSql)) {
                         delStmt.setString(1, rootRef.rootId());
@@ -150,18 +163,16 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
                     }
                 }
 
-                // Insert saved rows in forward order
                 for (TableSpec spec : restorable) {
-                    if (tablesJson.has(spec.tableName())) {
-                        JsonArray rowsArray = tablesJson.getAsJsonArray(spec.tableName());
+                    if (!tablesJson.has(spec.tableName())) {
+                        continue;
+                    }
+                    JsonArray rowsArray = tablesJson.getAsJsonArray(spec.tableName());
+                    if (spec.tableName().equals(ISLANDS)) {
+                        restoreIslandRow(conn, rootRef.rootId(), rowsArray, mode);
+                    } else {
                         insertTableRows(conn, spec.tableName(), rowsArray);
                     }
-                }
-
-                try {
-                    stmt.execute("PRAGMA foreign_keys = ON;");
-                } catch (SQLException ignored) {
-                    // Not SQLite, ignore
                 }
 
                 conn.commit();
@@ -173,6 +184,32 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
             }
         } catch (SQLException e) {
             throw new RuntimeException("Database error during relational snapshot restoration", e);
+        }
+    }
+
+    /** Writes the island row back when it is gone, and otherwise only what the mode may give back. */
+    private static void restoreIslandRow(Connection conn, String islandId, JsonArray rows, RestoreMode mode)
+            throws SQLException {
+        boolean present;
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT 1 FROM islands WHERE id = ?")) {
+            stmt.setString(1, islandId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                present = rs.next();
+            }
+        }
+        if (!present) {
+            insertTableRows(conn, ISLANDS, rows);
+            return;
+        }
+        if (!mode.restoresMembership() || rows.isEmpty()) {
+            return;
+        }
+        JsonElement name = rows.get(0).getAsJsonObject().get("custom_name");
+        try (PreparedStatement stmt =
+                conn.prepareStatement("UPDATE islands SET custom_name = ?, version = version + 1 WHERE id = ?")) {
+            stmt.setString(1, name == null || name.isJsonNull() ? null : name.getAsString());
+            stmt.setString(2, islandId);
+            stmt.executeUpdate();
         }
     }
 
@@ -207,10 +244,34 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
         return array;
     }
 
+    /**
+     * The columns of {@code tableName} that hold a time, which the snapshot keeps as text. PostgreSQL
+     * refuses text for a timestamp column, so those go back as timestamps. SQLite keeps a time as text
+     * in the first place, so there it goes back the way it was read.
+     */
+    private static Set<String> timeColumnsOf(Connection conn, String tableName) throws SQLException {
+        if (conn.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("sqlite")) {
+            return Set.of();
+        }
+        Set<String> found = new HashSet<>();
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT * FROM " + tableName + " WHERE 1 = 0");
+                ResultSet rs = stmt.executeQuery()) {
+            ResultSetMetaData meta = rs.getMetaData();
+            for (int i = 1; i <= meta.getColumnCount(); i++) {
+                int type = meta.getColumnType(i);
+                if (type == Types.TIMESTAMP || type == Types.TIMESTAMP_WITH_TIMEZONE) {
+                    found.add(meta.getColumnName(i));
+                }
+            }
+        }
+        return found;
+    }
+
     private static void insertTableRows(Connection conn, String tableName, JsonArray rows) throws SQLException {
         if (rows.isEmpty()) {
             return;
         }
+        Set<String> timeColumns = timeColumnsOf(conn, tableName);
 
         for (JsonElement elem : rows) {
             JsonObject row = elem.getAsJsonObject();
@@ -226,6 +287,8 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
                     values.add(jsonVal.getAsNumber());
                 } else if (jsonVal.getAsJsonPrimitive().isBoolean()) {
                     values.add(jsonVal.getAsBoolean());
+                } else if (timeColumns.contains(entry.getKey())) {
+                    values.add(Timestamp.valueOf(jsonVal.getAsString()));
                 } else {
                     values.add(jsonVal.getAsString());
                 }
