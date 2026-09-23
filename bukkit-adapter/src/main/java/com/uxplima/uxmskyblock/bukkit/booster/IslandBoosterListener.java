@@ -16,7 +16,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
@@ -99,13 +98,17 @@ public final class IslandBoosterListener implements Listener {
         this(islandStoragePort, boosterService, configuration, sessionCoordinator, schedulerPort, Clock.systemUTC());
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerJoin(PlayerJoinEvent event) {
+    /**
+     * Resumes an island's paused boosters when a member arrives.
+     *
+     * <p>Called once the player's session is made. It ran on the join event, when the player has no
+     * profile yet, so the island was never found and its boosters stayed paused with members on it.
+     */
+    public void onSessionActive(Player player) {
         if (!configuration.pauseWhenEmpty()) {
             return;
         }
 
-        Player player = event.getPlayer();
         UUID playerUuid = player.getUniqueId();
         Runnable task = () -> {
             findIslandIdForPlayer(playerUuid).ifPresent(islandId -> {

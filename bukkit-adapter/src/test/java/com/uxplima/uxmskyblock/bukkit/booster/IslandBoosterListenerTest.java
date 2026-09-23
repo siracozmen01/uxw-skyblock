@@ -21,7 +21,6 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
@@ -104,8 +103,7 @@ class IslandBoosterListenerTest extends MockBukkitHarness {
     @Test
     @DisplayName("A join hands over a count that reports the joining member as on the island")
     void aJoinReportsSomebodyOn() {
-        PlayerJoinEvent event = new PlayerJoinEvent(testPlayer, net.kyori.adventure.text.Component.empty());
-        listener.onPlayerJoin(event);
+        listener.onSessionActive(testPlayer);
 
         assertThat(handedOverCount().getAsInt())
                 .describedAs("members the service will see on the island")

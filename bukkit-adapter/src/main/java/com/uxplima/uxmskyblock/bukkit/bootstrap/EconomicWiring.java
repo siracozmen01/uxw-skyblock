@@ -106,6 +106,9 @@ public final class EconomicWiring {
                         scheduler,
                         config.messages())
                 : null;
+        if (this.bankruptcyListener != null) {
+            authority.sessionCoordinator().whenSessionActive(this.bankruptcyListener::onSessionActive);
+        }
 
         boolean worthEnabled = config.moduleSettings().isModuleEnabled("worth");
         this.chunkScanner = worthEnabled
@@ -142,6 +145,9 @@ public final class EconomicWiring {
                         authority.sessionCoordinator(),
                         scheduler)
                 : null;
+        if (this.boosterListener != null) {
+            authority.sessionCoordinator().whenSessionActive(this.boosterListener::onSessionActive);
+        }
         this.boosterMenu = boostersEnabled
                 ? new IslandBoosterMenu(
                         persistence.islandStoragePort(),

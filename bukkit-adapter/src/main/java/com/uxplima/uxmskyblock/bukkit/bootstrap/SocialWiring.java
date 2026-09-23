@@ -120,6 +120,9 @@ public final class SocialWiring {
                 ? new IslandChatListener(
                         this.chatService, authority.activeProfileProvider(), config.messages(), chatMemberProvider)
                 : null;
+        if (this.chatListener != null) {
+            authority.sessionCoordinator().whenSessionActive(this.chatListener::onSessionActive);
+        }
 
         this.homeService = new HomeService(
                 persistence.homeStoragePort(), config.homeConfig().limitPolicy());

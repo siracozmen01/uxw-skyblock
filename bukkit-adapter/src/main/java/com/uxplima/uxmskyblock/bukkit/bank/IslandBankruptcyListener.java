@@ -17,7 +17,6 @@ import org.bukkit.event.block.BlockGrowEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.SpawnerSpawnEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
@@ -254,13 +253,17 @@ public final class IslandBankruptcyListener implements Listener {
         });
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerJoin(PlayerJoinEvent event) {
+    /**
+     * Warns a member who logs in to an island in debt.
+     *
+     * <p>Called once the player's session is made. It ran on the join event, when the player has no
+     * profile yet, so the warning raced the session and was mostly never shown.
+     */
+    public void onSessionActive(Player player) {
         if (islandStoragePort == null) {
             return;
         }
 
-        Player player = event.getPlayer();
         UUID playerUuid = player.getUniqueId();
         Runnable checkTask = () -> {
             Optional<ProfileId> optProfile = activeProfileProvider.apply(playerUuid);

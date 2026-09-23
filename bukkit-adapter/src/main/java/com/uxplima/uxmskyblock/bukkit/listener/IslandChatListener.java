@@ -130,14 +130,15 @@ public final class IslandChatListener implements Listener {
      * Records that this profile is playing here.
      *
      * <p>The online set is kept as players arrive and leave, so a chat message never has to walk
-     * every player on the server from a thread that does not own the list.
+     * every player on the server from a thread that does not own the list. A player arrives when
+     * their session is made, not at the join event: at join they have no profile yet, and a member
+     * recorded nowhere never heard their island's chat.
      */
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+    public void onSessionActive(Player player) {
         if (onlineMembers == null) {
             return;
         }
-        activeProfileProvider.apply(event.getPlayer().getUniqueId()).ifPresent(onlineMembers::arrived);
+        activeProfileProvider.apply(player.getUniqueId()).ifPresent(onlineMembers::arrived);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

@@ -184,7 +184,7 @@ class IslandBankruptcyListenerTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("PlayerJoinEvent sends warning message when island is in GRACE")
+    @DisplayName("A member whose session is made is warned when the island is in GRACE")
     void playerJoinGraceWarning() {
         ProfileId ownerProfileId = new ProfileId(ownerPlayer.getUniqueId());
         when(mockStoragePort.findIslandIdByProfileId(ownerProfileId)).thenReturn(Optional.of(islandId));
@@ -194,7 +194,7 @@ class IslandBankruptcyListenerTest extends MockBukkitHarness {
         when(mockService.getBankruptcyRecord(eq(islandId), any())).thenReturn(graceRecord);
 
         PlayerJoinEvent joinEvent = new PlayerJoinEvent(ownerPlayer, net.kyori.adventure.text.Component.empty());
-        listener.onPlayerJoin(joinEvent);
+        listener.onSessionActive(ownerPlayer);
 
         // Check player received warning
         // MockBukkit player messages can be queried
