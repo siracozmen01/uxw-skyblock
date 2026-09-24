@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyFloat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -86,6 +87,13 @@ class IslandNavigationCommandsTest {
                 })
                 .when(scheduler)
                 .onEntity(any(PlayerUuid.class), any(Runnable.class));
+        // A teleport checks the spawn on the thread that owns it first.
+        doAnswer(invocation -> {
+                    invocation.getArgument(3, Runnable.class).run();
+                    return null;
+                })
+                .when(scheduler)
+                .onRegion(anyString(), anyInt(), anyInt(), any(Runnable.class));
         return scheduler;
     }
 

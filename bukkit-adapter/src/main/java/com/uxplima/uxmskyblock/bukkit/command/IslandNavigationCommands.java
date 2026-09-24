@@ -135,22 +135,34 @@ public final class IslandNavigationCommands {
             Player player, IslandLocation loc, String successKey, TagResolver... resolvers) {
         World world = Bukkit.getWorld(loc.worldName());
         if (world != null) {
-            Location destination =
+            Location spawn =
                     new Location(world, loc.spawnX(), loc.spawnY(), loc.spawnZ(), loc.spawnYaw(), loc.spawnPitch());
-            var unused = player.teleportAsync(destination).thenAccept(teleported -> {
-                // Said once the teleport has answered. It used to be said as the teleport was asked
-                // for, so a teleport another plugin cancelled still read as a welcome.
-                if (Boolean.TRUE.equals(teleported)) {
-                    player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                    player.setFallDistance(0.0f);
-                    send(player, successKey, resolvers);
-                } else {
-                    send(player, "navigation.teleport_refused");
-                }
+            // The spawn is checked on the thread that owns it, and the player moved on theirs.
+            schedulerPort.onRegion(world.getName(), spawn.getBlockX() >> 4, spawn.getBlockZ() >> 4, () -> {
+                Location destination = com.uxplima.uxmskyblock.bukkit.navigation.SafeLanding.clear(spawn);
+                schedulerPort.onEntity(
+                        new PlayerUuid(player.getUniqueId()), () -> arrive(player, destination, successKey, resolvers));
             });
         } else {
             send(player, "navigation.world_unloaded");
         }
+    }
+
+    private void arrive(Player player, Location destination, String successKey, TagResolver... resolvers) {
+        if (!player.isOnline()) {
+            return;
+        }
+        var unused = player.teleportAsync(destination).thenAccept(teleported -> {
+            // Said once the teleport has answered. It used to be said as the teleport was asked
+            // for, so a teleport another plugin cancelled still read as a welcome.
+            if (Boolean.TRUE.equals(teleported)) {
+                player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                player.setFallDistance(0.0f);
+                send(player, successKey, resolvers);
+            } else {
+                send(player, "navigation.teleport_refused");
+            }
+        });
     }
 
     private int executeHome(CommandContext<CommandSourceStack> ctx) {
