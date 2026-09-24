@@ -81,8 +81,13 @@ class PlayerProfileInventorySqliteTest {
         assertThat(initial.get().inventoryNbt()).isEqualTo(initialNbt);
 
         // Perform authoritative mutation
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, updatedNbt);
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, updatedNbt, new byte[0]));
 
         assertThat(outcome.isSuccess()).isTrue();
         assertThat(outcome).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
@@ -103,13 +108,23 @@ class PlayerProfileInventorySqliteTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {2}));
 
         // 1 -> 2
-        ProfileInventoryMutationOutcome first =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {10});
+        ProfileInventoryMutationOutcome first = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {10}, new byte[0]));
         assertThat(first).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
 
         // 2 -> 3
-        ProfileInventoryMutationOutcome second =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 2L, new byte[] {20});
+        ProfileInventoryMutationOutcome second = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                2L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {20}, new byte[0]));
         assertThat(second).isEqualTo(ProfileInventoryMutationOutcome.success(3L));
 
         Optional<ProfileInventoryRecord> loaded = adapter.loadInventory(profile);
@@ -129,8 +144,13 @@ class PlayerProfileInventorySqliteTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Call with stale expectedVersion 99L (current is 1L)
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 99L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                99L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -151,8 +171,13 @@ class PlayerProfileInventorySqliteTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Calling from NODE_B when session is owned by NODE_A
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(player, profile, NODE_B, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_B,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -174,8 +199,13 @@ class PlayerProfileInventorySqliteTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Calling with stale epoch 1L
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -204,8 +234,13 @@ class PlayerProfileInventorySqliteTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profileB, nbtB, new byte[] {0}));
 
         // Calling routine checkpoint for playerA session but targeting profileB
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(playerA, profileB, NODE_A, 1L, 1L, new byte[] {9, 9, 9});
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                playerA,
+                profileB,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profileB, new byte[] {9, 9, 9}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -233,8 +268,13 @@ class PlayerProfileInventorySqliteTest {
         seedSession(database, player, profile, NODE_A, 1L, "ACTIVE", true);
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -255,19 +295,37 @@ class PlayerProfileInventorySqliteTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // DRAINING rejected
-        assertThat(adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99})
+        assertThat(adapter.checkpointInventory(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                1L,
+                                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]))
                         .isRejected())
                 .isTrue();
 
         // HANDOFF_READY rejected
         setSessionState(database, player, "HANDOFF_READY");
-        assertThat(adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99})
+        assertThat(adapter.checkpointInventory(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                1L,
+                                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]))
                         .isRejected())
                 .isTrue();
 
         // RECOVERING rejected
         setSessionState(database, player, "RECOVERING");
-        assertThat(adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99})
+        assertThat(adapter.checkpointInventory(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                1L,
+                                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]))
                         .isRejected())
                 .isTrue();
 
@@ -297,7 +355,13 @@ class PlayerProfileInventorySqliteTest {
         }
 
         try {
-            assertThatThrownBy(() -> adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {99}))
+            assertThatThrownBy(() -> adapter.checkpointInventory(
+                            player,
+                            profile,
+                            NODE_A,
+                            1L,
+                            1L,
+                            ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0])))
                     .isInstanceOf(InventoryPersistenceException.class);
 
             // Verify row was rolled back cleanly
@@ -357,7 +421,13 @@ class PlayerProfileInventorySqliteTest {
                 // TxB: calls the REAL production checkpointInventory (competing writer)
                 Future<ProfileInventoryMutationOutcome> txBFuture = executor.submit(() -> {
                     txBAttemptStarted.countDown();
-                    return fileAdapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2);
+                    return fileAdapter.checkpointInventory(
+                            player,
+                            profile,
+                            NODE_A,
+                            1L,
+                            1L,
+                            ProfileInventoryRecord.createDefault(profile, v2, new byte[0]));
                 });
 
                 assertThat(txBAttemptStarted.await(5, TimeUnit.SECONDS))
@@ -396,8 +466,13 @@ class PlayerProfileInventorySqliteTest {
                             .isEqualTo(2L);
                 } else {
                     // If TxB failed with busy, subsequent call now succeeds cleanly
-                    ProfileInventoryMutationOutcome retryResult =
-                            fileAdapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2);
+                    ProfileInventoryMutationOutcome retryResult = fileAdapter.checkpointInventory(
+                            player,
+                            profile,
+                            NODE_A,
+                            1L,
+                            1L,
+                            ProfileInventoryRecord.createDefault(profile, v2, new byte[0]));
                     assertThat(retryResult.isSuccess()).isTrue();
                     assertThat(retryResult).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
                     assertThat(fileAdapter.loadInventory(profile).get().version())

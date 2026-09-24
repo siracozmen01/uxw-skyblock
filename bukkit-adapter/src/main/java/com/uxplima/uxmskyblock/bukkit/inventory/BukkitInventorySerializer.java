@@ -140,7 +140,7 @@ public final class BukkitInventorySerializer {
                 version,
                 invBytes,
                 ecBytes,
-                player.getTotalExperience(),
+                experienceOf(player),
                 player.getHealth(),
                 player.getFoodLevel(),
                 player.getSaturation(),
@@ -151,6 +151,41 @@ public final class BukkitInventorySerializer {
                 locZ,
                 player.getGameMode().name(),
                 player.getAllowFlight());
+    }
+
+    /**
+     * The experience points {@code player} holds, worked out from their level and the bar.
+     *
+     * <p>{@link Player#getTotalExperience()} is only the points picked up since the last death, and
+     * levels given by a command never reach it: a player given thirty levels read as none, and came
+     * back to none. The level and the bar are what the player sees, so the points are counted from
+     * them, with the thresholds the game uses.
+     */
+    static int experienceOf(Player player) {
+        int level = Math.max(0, player.getLevel());
+        return pointsToReach(level) + Math.round(player.getExp() * pointsInLevel(level));
+    }
+
+    /** The points it takes to reach {@code level} from nothing. */
+    static int pointsToReach(int level) {
+        if (level <= 16) {
+            return level * level + 6 * level;
+        }
+        if (level <= 31) {
+            return (5 * level * level - 81 * level + 720) / 2;
+        }
+        return (9 * level * level - 325 * level + 4440) / 2;
+    }
+
+    /** The points between {@code level} and the next. */
+    private static int pointsInLevel(int level) {
+        if (level <= 15) {
+            return 2 * level + 7;
+        }
+        if (level <= 30) {
+            return 5 * level - 38;
+        }
+        return 9 * level - 158;
     }
 
     /**

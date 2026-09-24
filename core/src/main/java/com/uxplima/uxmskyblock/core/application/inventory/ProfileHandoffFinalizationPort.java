@@ -5,6 +5,7 @@ import java.util.OptionalLong;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 
 /**
@@ -42,7 +43,9 @@ public interface ProfileHandoffFinalizationPort {
      * @param currentNode the claiming authoritative server node
      * @param expectedEpoch the expected session epoch
      * @param expectedVersion the expected durable inventory version before flush
-     * @param inventoryNbt the updated serialized inventory payload
+     * @param state everything the player carries: inventory, ender chest, experience, health, hunger,
+     *     effects, where they logged out, game mode and flight. All of it is written, because a join
+     *     puts all of it back; its profile must be {@code profileId}
      * @return {@link ProfileInventoryMutationOutcome.Success} carrying new version (expectedVersion + 1) if committed,
      *         or {@link ProfileInventoryMutationOutcome.Rejected}
      */
@@ -52,7 +55,7 @@ public interface ProfileHandoffFinalizationPort {
             ServerNodeId currentNode,
             long expectedEpoch,
             long expectedVersion,
-            byte[] inventoryNbt);
+            ProfileInventoryRecord state);
 
     /**
      * Reads the current durable inventory version recorded on the player's session, if present.

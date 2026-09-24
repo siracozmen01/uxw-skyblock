@@ -296,7 +296,7 @@ public final class PlayerSessionCoordinator {
                         nodeId,
                         session.sessionEpoch(),
                         session.lastDurableVersion(),
-                        snapshot.inventoryNbt());
+                        snapshot);
 
                 if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
                     session.setLastDurableVersion(succ.newVersion());
@@ -346,7 +346,7 @@ public final class PlayerSessionCoordinator {
                         nodeId,
                         session.sessionEpoch(),
                         session.lastDurableVersion(),
-                        snapshot.inventoryNbt());
+                        snapshot);
 
                 if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
                     session.setLastDurableVersion(succ.newVersion());
@@ -477,7 +477,7 @@ public final class PlayerSessionCoordinator {
     }
 
     /**
-     * The inventory {@code playerUuid} holds, read on this thread if this thread owns the player.
+     * What the player of {@code session} holds, read on this thread if this thread owns the player.
      *
      * <p>Shutdown used to hand the read to the player's own thread and take the answer at once. The
      * plugin is already disabled when shutdown runs, so the scheduler dropped the task, the answer was
@@ -486,13 +486,13 @@ public final class PlayerSessionCoordinator {
      * shutdown thread, and each of those owns every player. A thread that does not own the player
      * reads nothing, and nothing is written.
      */
-    private Optional<byte[]> heldInventory(PlayerUuid playerUuid) {
-        Player player = Bukkit.getPlayer(playerUuid.value());
-        if (player == null || !player.isOnline() || !schedulerPort.ownsEntity(playerUuid)) {
+    private Optional<ProfileInventoryRecord> heldState(ActiveSession session) {
+        Player player = Bukkit.getPlayer(session.playerUuid().value());
+        if (player == null || !player.isOnline() || !schedulerPort.ownsEntity(session.playerUuid())) {
             return Optional.empty();
         }
-        return Optional.of(BukkitInventorySerializer.serializeItemStacks(
-                player.getInventory().getContents()));
+        return Optional.of(BukkitInventorySerializer.snapshotPlayer(
+                player, session.activeProfileId(), session.lastDurableVersion()));
     }
 
     /**
@@ -505,7 +505,7 @@ public final class PlayerSessionCoordinator {
             }
             session.closeTasks();
             try {
-                Optional<byte[]> held = heldInventory(session.playerUuid());
+                Optional<ProfileInventoryRecord> held = heldState(session);
 
                 SessionAuthorityOutcome drainOutcome =
                         sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());

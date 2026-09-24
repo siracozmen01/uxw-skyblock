@@ -14,6 +14,7 @@ import com.uxplima.uxmskyblock.core.application.inventory.ProfileHandoffFinaliza
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.sql.SupportedDialects;
 
@@ -72,7 +73,7 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
     private static String buildUpdateInventoryOccSql() {
         return "UPDATE profile_inventories "
                 + "SET profile_inventory_version = profile_inventory_version + 1, "
-                + "inventory_nbt = ?, "
+                + PlayerStateColumns.ASSIGNMENTS + ", "
                 + "updated_at = CURRENT_TIMESTAMP "
                 + "WHERE profile_id = ? "
                 + "AND profile_inventory_version = ?";
@@ -96,18 +97,20 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
             ServerNodeId currentNode,
             long expectedEpoch,
             long expectedVersion,
-            byte[] inventoryNbt) {
+            ProfileInventoryRecord state) {
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(profileId, "profileId");
         Objects.requireNonNull(currentNode, "currentNode");
-        Objects.requireNonNull(inventoryNbt, "inventoryNbt");
+        Objects.requireNonNull(state, "state");
+        if (!state.profileId().equals(profileId)) {
+            throw new IllegalArgumentException(
+                    "The state of " + state.profileId() + " cannot be written as " + profileId);
+        }
 
         if (dialect == Dialect.SQLITE) {
-            return executeSqliteFinalization(
-                    playerUuid, profileId, currentNode, expectedEpoch, expectedVersion, inventoryNbt);
+            return executeSqliteFinalization(playerUuid, profileId, currentNode, expectedEpoch, expectedVersion, state);
         }
-        return executeServerFinalization(
-                playerUuid, profileId, currentNode, expectedEpoch, expectedVersion, inventoryNbt);
+        return executeServerFinalization(playerUuid, profileId, currentNode, expectedEpoch, expectedVersion, state);
     }
 
     private ProfileInventoryMutationOutcome executeSqliteFinalization(
@@ -116,7 +119,7 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
             ServerNodeId currentNode,
             long expectedEpoch,
             long expectedVersion,
-            byte[] inventoryNbt) {
+            ProfileInventoryRecord state) {
         try (Connection conn = database.connection()) {
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("BEGIN IMMEDIATE");
@@ -128,7 +131,7 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
                     return ProfileInventoryMutationOutcome.rejected();
                 }
 
-                int affectedInventory = updateOcc(conn, profileId, expectedVersion, inventoryNbt);
+                int affectedInventory = updateOcc(conn, profileId, expectedVersion, state);
                 if (affectedInventory != 1) {
                     rollbackSqlite(conn);
                     return ProfileInventoryMutationOutcome.rejected();
@@ -160,7 +163,7 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
             ServerNodeId currentNode,
             long expectedEpoch,
             long expectedVersion,
-            byte[] inventoryNbt) {
+            ProfileInventoryRecord state) {
         try (Connection conn = database.connection()) {
             conn.setAutoCommit(false);
             try {
@@ -170,7 +173,7 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
                     return ProfileInventoryMutationOutcome.rejected();
                 }
 
-                int affectedInventory = updateOcc(conn, profileId, expectedVersion, inventoryNbt);
+                int affectedInventory = updateOcc(conn, profileId, expectedVersion, state);
                 if (affectedInventory != 1) {
                     conn.rollback();
                     return ProfileInventoryMutationOutcome.rejected();
@@ -222,12 +225,12 @@ public final class PlayerProfileHandoffFinalizationAdapter implements ProfileHan
         }
     }
 
-    private int updateOcc(Connection conn, ProfileId profileId, long expectedVersion, byte[] inventoryNbt)
+    private int updateOcc(Connection conn, ProfileId profileId, long expectedVersion, ProfileInventoryRecord state)
             throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(updateInventoryOccSql)) {
-            ps.setBytes(1, inventoryNbt);
-            ps.setString(2, profileId.value().toString());
-            ps.setLong(3, expectedVersion);
+            int next = PlayerStateColumns.bind(ps, 1, state);
+            ps.setString(next, profileId.value().toString());
+            ps.setLong(next + 1, expectedVersion);
             return ps.executeUpdate();
         }
     }

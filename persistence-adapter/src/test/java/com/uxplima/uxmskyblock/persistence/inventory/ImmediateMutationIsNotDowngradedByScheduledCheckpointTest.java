@@ -15,6 +15,7 @@ import com.uxplima.uxmskyblock.core.application.inventory.JournaledInventoryMuta
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryFingerprint;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,7 +79,8 @@ class ImmediateMutationIsNotDowngradedByScheduledCheckpointTest {
                                             NODE_A,
                                             scene.epochOnA,
                                             version,
-                                            bytes(AFTER)));
+                                            ProfileInventoryRecord.createDefault(
+                                                    scene.profile, bytes(AFTER), new byte[0])));
                                     return Result.ok(new JournaledInventoryMutationService.MutationExecution<>(
                                             true, bytes(AFTER)));
                                 },
@@ -101,7 +103,12 @@ class ImmediateMutationIsNotDowngradedByScheduledCheckpointTest {
         scene.intentOnA();
         assertThat(scene.inventories
                         .checkpointInventory(
-                                scene.player, scene.profile, NODE_A, scene.epochOnA, scene.version(), bytes("moved"))
+                                scene.player,
+                                scene.profile,
+                                NODE_A,
+                                scene.epochOnA,
+                                scene.version(),
+                                ProfileInventoryRecord.createDefault(scene.profile, bytes("moved"), new byte[0]))
                         .isSuccess())
                 .isFalse();
         assertThat(scene.inventory()).isEqualTo(BEFORE);

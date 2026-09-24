@@ -13,6 +13,7 @@ import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
@@ -63,7 +64,12 @@ final class OnePlayerAcrossNodes implements AutoCloseable {
     /** {@code node} writes {@code contents} as the inventory, under the version it last read. */
     ProfileInventoryMutationOutcome flush(ServerNodeId node, long epoch, long version, String contents) {
         return inventories.checkpointInventory(
-                player, profile, node, epoch, version, contents.getBytes(StandardCharsets.UTF_8));
+                player,
+                profile,
+                node,
+                epoch,
+                version,
+                ProfileInventoryRecord.createDefault(profile, contents.getBytes(StandardCharsets.UTF_8), new byte[0]));
     }
 
     /** A flush that must have gone through. */

@@ -18,6 +18,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryFingerprint;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalOutcome;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
@@ -79,7 +80,13 @@ final class JournalCrashScene implements AutoCloseable {
     /** Writes {@code contents} as the inventory, the way an ambient checkpoint does. */
     void write(ServerNodeId node, long epoch, String contents) {
         assertThat(inventories
-                        .checkpointInventory(player, profile, node, epoch, version(), bytes(contents))
+                        .checkpointInventory(
+                                player,
+                                profile,
+                                node,
+                                epoch,
+                                version(),
+                                ProfileInventoryRecord.createDefault(profile, bytes(contents), new byte[0]))
                         .isSuccess())
                 .isTrue();
     }
@@ -92,7 +99,13 @@ final class JournalCrashScene implements AutoCloseable {
     void leavesWith(String contents) {
         assertThat(sessions.drain(player, NODE_A, epochOnA).isSuccess()).isTrue();
         assertThat(new PlayerProfileHandoffFinalizationAdapter(database)
-                        .finalizeHandoffFlush(player, profile, NODE_A, epochOnA, version(), bytes(contents))
+                        .finalizeHandoffFlush(
+                                player,
+                                profile,
+                                NODE_A,
+                                epochOnA,
+                                version(),
+                                ProfileInventoryRecord.createDefault(profile, bytes(contents), new byte[0]))
                         .isSuccess())
                 .isTrue();
     }

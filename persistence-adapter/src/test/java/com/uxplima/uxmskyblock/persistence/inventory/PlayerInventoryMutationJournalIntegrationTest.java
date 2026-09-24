@@ -479,7 +479,13 @@ class PlayerInventoryMutationJournalIntegrationTest {
                 player, profile, NODE_A, 1L, 1L, quarantinedOp, "TRADE", "fp7", "fp8", "{}", Duration.ofMinutes(1));
         assertThat(journalAdapter.findOpenIntents(profile)).containsExactlyInAnyOrder(keptOp, quarantinedOp);
         assertThat(invAdapter
-                        .checkpointInventory(player, profile, NODE_A, 1L, 1L, new byte[] {9})
+                        .checkpointInventory(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                1L,
+                                ProfileInventoryRecord.createDefault(profile, new byte[] {9}, new byte[0]))
                         .isSuccess())
                 .describedAs("an ambient checkpoint while the journal holds the inventory")
                 .isFalse();

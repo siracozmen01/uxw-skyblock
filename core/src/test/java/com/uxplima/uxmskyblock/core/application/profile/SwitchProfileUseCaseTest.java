@@ -240,8 +240,8 @@ class SwitchProfileUseCaseTest {
                 ServerNodeId currentNode,
                 long expectedEpoch,
                 long expectedVersion,
-                byte[] inventoryNbt) {
-            records.put(profileId, ProfileInventoryRecord.createDefault(profileId, inventoryNbt, new byte[0]));
+                ProfileInventoryRecord state) {
+            records.put(profileId, state);
             return new ProfileInventoryMutationOutcome.Success(expectedVersion + 1);
         }
 

@@ -175,7 +175,8 @@ class PlayerProfileInventoryIntegrationTest {
         assertThat(initial.get().inventoryNbt()).isEqualTo(v1Nbt);
 
         // 2. Valid OCC mutation (1 -> 2)
-        ProfileInventoryMutationOutcome outcome1 = adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2Nbt);
+        ProfileInventoryMutationOutcome outcome1 = adapter.checkpointInventory(
+                player, profile, NODE_A, 1L, 1L, ProfileInventoryRecord.createDefault(profile, v2Nbt, new byte[0]));
         assertThat(outcome1).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
 
         Optional<ProfileInventoryRecord> loaded1 = adapter.loadInventory(profile);
@@ -184,7 +185,8 @@ class PlayerProfileInventoryIntegrationTest {
         assertThat(loaded1.get().inventoryNbt()).isEqualTo(v2Nbt);
 
         // 3. Monotonic increment (2 -> 3)
-        ProfileInventoryMutationOutcome outcome2 = adapter.checkpointInventory(player, profile, NODE_A, 1L, 2L, v3Nbt);
+        ProfileInventoryMutationOutcome outcome2 = adapter.checkpointInventory(
+                player, profile, NODE_A, 1L, 2L, ProfileInventoryRecord.createDefault(profile, v3Nbt, new byte[0]));
         assertThat(outcome2).isEqualTo(ProfileInventoryMutationOutcome.success(3L));
 
         Optional<ProfileInventoryRecord> loaded2 = adapter.loadInventory(profile);
@@ -193,31 +195,56 @@ class PlayerProfileInventoryIntegrationTest {
         assertThat(loaded2.get().inventoryNbt()).isEqualTo(v3Nbt);
 
         // 4. Stale OCC version rejected (expectedVersion 2 when version is 3)
-        ProfileInventoryMutationOutcome stale =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 2L, new byte[] {99});
+        ProfileInventoryMutationOutcome stale = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                2L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
         assertThat(stale.isRejected()).isTrue();
 
         // 5. Wrong node rejected
-        ProfileInventoryMutationOutcome wrongNode =
-                adapter.checkpointInventory(player, profile, NODE_B, 1L, 3L, new byte[] {99});
+        ProfileInventoryMutationOutcome wrongNode = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_B,
+                1L,
+                3L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
         assertThat(wrongNode.isRejected()).isTrue();
 
         // 6. Stale epoch rejected
-        ProfileInventoryMutationOutcome staleEpoch =
-                adapter.checkpointInventory(player, profile, NODE_A, 99L, 3L, new byte[] {99});
+        ProfileInventoryMutationOutcome staleEpoch = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                99L,
+                3L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
         assertThat(staleEpoch.isRejected()).isTrue();
 
         // 7. Non-ACTIVE state rejected (DRAINING)
         setSessionState(database, player, "DRAINING");
-        ProfileInventoryMutationOutcome draining =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 3L, new byte[] {99});
+        ProfileInventoryMutationOutcome draining = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                3L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
         assertThat(draining.isRejected()).isTrue();
 
         // 8. Expired lease rejected
         setSessionState(database, player, "ACTIVE");
         expireSession(database, player);
-        ProfileInventoryMutationOutcome expired =
-                adapter.checkpointInventory(player, profile, NODE_A, 1L, 3L, new byte[] {99});
+        ProfileInventoryMutationOutcome expired = adapter.checkpointInventory(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                3L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
         assertThat(expired.isRejected()).isTrue();
 
         // Verify final aggregate is untouched at version 3
@@ -253,8 +280,13 @@ class PlayerProfileInventoryIntegrationTest {
         adapter.initializeInventory(ProfileInventoryRecord.createDefault(profileB, vB, new byte[] {0}));
 
         // Player A attempts to checkpoint Profile B with matching expected version (1L)
-        ProfileInventoryMutationOutcome outcome =
-                adapter.checkpointInventory(playerA, profileB, NODE_A, 1L, 1L, payload);
+        ProfileInventoryMutationOutcome outcome = adapter.checkpointInventory(
+                playerA,
+                profileB,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profileB, payload, new byte[0]));
 
         assertThat(outcome.isRejected())
                 .as("Cross-profile mutation must be rejected")
@@ -315,7 +347,13 @@ class PlayerProfileInventoryIntegrationTest {
             // TxB: calls real production checkpointInventory on the SAME player_uuid
             Future<ProfileInventoryMutationOutcome> txBFuture = executor.submit(() -> {
                 bAttemptStarted.countDown();
-                return adapter.checkpointInventory(player, profile, NODE_A, 1L, 1L, v2Nbt);
+                return adapter.checkpointInventory(
+                        player,
+                        profile,
+                        NODE_A,
+                        1L,
+                        1L,
+                        ProfileInventoryRecord.createDefault(profile, v2Nbt, new byte[0]));
             });
 
             // Wait for TxB to begin its execution attempt

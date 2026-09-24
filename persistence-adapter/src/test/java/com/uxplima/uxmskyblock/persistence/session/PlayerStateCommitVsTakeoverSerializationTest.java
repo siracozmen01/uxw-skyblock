@@ -15,6 +15,7 @@ import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
@@ -104,7 +105,12 @@ class PlayerStateCommitVsTakeoverSerializationTest {
             SessionRowLockScene.InventoryRowHeld held = scene.holdInventoryRow();
             try {
                 write = nodes.submit(() -> scene.inventories.checkpointInventory(
-                        scene.player, scene.profile, NODE_A, epoch, version, bytes("written-by-a")));
+                        scene.player,
+                        scene.profile,
+                        NODE_A,
+                        epoch,
+                        version,
+                        ProfileInventoryRecord.createDefault(scene.profile, bytes("written-by-a"), new byte[0])));
                 stillWaiting(write, "node A, held at the inventory row after taking the session row");
 
                 scene.awaitLeaseEnded();
@@ -127,7 +133,12 @@ class PlayerStateCommitVsTakeoverSerializationTest {
         assertThat(scene.inventory()).isEqualTo("written-by-a");
         assertThat(scene.inventories
                         .checkpointInventory(
-                                scene.player, scene.profile, NODE_A, epoch, scene.version(), bytes("late-by-a"))
+                                scene.player,
+                                scene.profile,
+                                NODE_A,
+                                epoch,
+                                scene.version(),
+                                ProfileInventoryRecord.createDefault(scene.profile, bytes("late-by-a"), new byte[0]))
                         .isSuccess())
                 .describedAs("node A after the takeover")
                 .isFalse();

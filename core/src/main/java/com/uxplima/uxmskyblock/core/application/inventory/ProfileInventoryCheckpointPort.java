@@ -39,7 +39,9 @@ public interface ProfileInventoryCheckpointPort {
      * @param currentNode the claiming authoritative server node
      * @param expectedEpoch the expected session epoch
      * @param expectedVersion the expected durable inventory version
-     * @param inventoryNbt the updated serialized inventory payload
+     * @param state everything the player carries: inventory, ender chest, experience, health, hunger,
+     *     effects, where they logged out, game mode and flight. All of it is written, because a join
+     *     puts all of it back; its profile must be {@code profileId}
      * @return {@link ProfileInventoryMutationOutcome.Success} with version + 1 if committed,
      *         or {@link ProfileInventoryMutationOutcome.Rejected}
      */
@@ -49,7 +51,7 @@ public interface ProfileInventoryCheckpointPort {
             ServerNodeId currentNode,
             long expectedEpoch,
             long expectedVersion,
-            byte[] inventoryNbt);
+            ProfileInventoryRecord state);
 
     /**
      * Reads the current durable inventory record for a profile, if present.

@@ -24,6 +24,7 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionState;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
@@ -124,8 +125,11 @@ class ARestartKeepsWhatPlayersHoldTest extends MockBukkitHarness {
                         ServerNodeId.of("restart-node"),
                         session.sessionEpoch(),
                         session.lastDurableVersion(),
-                        BukkitInventorySerializer.serializeItemStacks(
-                                player.getInventory().getContents()));
+                        ProfileInventoryRecord.createDefault(
+                                session.activeProfileId(),
+                                BukkitInventorySerializer.serializeItemStacks(
+                                        player.getInventory().getContents()),
+                                new byte[0]));
         assertThat(outcome).isInstanceOf(ProfileInventoryMutationOutcome.Success.class);
         session.setLastDurableVersion(((ProfileInventoryMutationOutcome.Success) outcome).newVersion());
         assertThat(stored(player)).containsExactly(new ItemStack(Material.EMERALD, 3));

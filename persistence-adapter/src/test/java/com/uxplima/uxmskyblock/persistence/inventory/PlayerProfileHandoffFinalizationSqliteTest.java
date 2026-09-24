@@ -95,8 +95,8 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         assertThat(initialMarker).hasValue(1L);
 
         // Execute handoff finalization flush
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, finalNbt);
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player, profile, NODE_A, 1L, 1L, ProfileInventoryRecord.createDefault(profile, finalNbt, new byte[0]));
 
         assertThat(outcome.isSuccess()).isTrue();
         assertThat(outcome).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
@@ -122,14 +122,24 @@ class PlayerProfileHandoffFinalizationSqliteTest {
                 ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {2}));
 
         // 1 -> 2
-        ProfileInventoryMutationOutcome first =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {10});
+        ProfileInventoryMutationOutcome first = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {10}, new byte[0]));
         assertThat(first).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
         assertThat(finalizationAdapter.loadLastDurableInventoryVersion(player)).hasValue(2L);
 
         // 2 -> 3
-        ProfileInventoryMutationOutcome second =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 2L, new byte[] {20});
+        ProfileInventoryMutationOutcome second = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                2L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {20}, new byte[0]));
         assertThat(second).isEqualTo(ProfileInventoryMutationOutcome.success(3L));
         assertThat(finalizationAdapter.loadLastDurableInventoryVersion(player)).hasValue(3L);
 
@@ -150,8 +160,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Call with stale expected version 99L (actual version is 1L)
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 99L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                99L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -175,8 +190,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Calling from NODE_B while authoritative_node is NODE_A
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_B, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_B,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
         assertThat(inventoryAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
@@ -194,8 +214,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Calling with stale epoch 1L while current epoch is 2L
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
         assertThat(inventoryAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
@@ -221,8 +246,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profileB, nbtB, new byte[] {0}));
 
         // Calling finalization for playerA session but targeting profileB
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(playerA, profileB, NODE_A, 1L, 1L, new byte[] {9, 9, 9});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                playerA,
+                profileB,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profileB, new byte[] {9, 9, 9}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
 
@@ -253,8 +283,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(ProfileInventoryRecord.createDefault(profile, initialNbt, new byte[] {9}));
 
         // Finalization adapter MUST reject ACTIVE sessions
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
         assertThat(inventoryAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
@@ -271,8 +306,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(
                 ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {2}));
 
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
         assertThat(inventoryAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
@@ -290,13 +330,25 @@ class PlayerProfileHandoffFinalizationSqliteTest {
                 ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {2}));
 
         assertThat(finalizationAdapter
-                        .finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99})
+                        .finalizeHandoffFlush(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                1L,
+                                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]))
                         .isRejected())
                 .isTrue();
 
         setSessionState(database, player, "OFFLINE");
         assertThat(finalizationAdapter
-                        .finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99})
+                        .finalizeHandoffFlush(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                1L,
+                                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]))
                         .isRejected())
                 .isTrue();
 
@@ -314,8 +366,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         inventoryAdapter.initializeInventory(
                 ProfileInventoryRecord.createDefault(profile, new byte[] {1}, new byte[] {2}));
 
-        ProfileInventoryMutationOutcome outcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99});
+        ProfileInventoryMutationOutcome outcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0]));
 
         assertThat(outcome.isRejected()).isTrue();
         assertThat(inventoryAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
@@ -345,8 +402,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
 
         try {
             // Call normal production method with NO test callback
-            assertThatThrownBy(() ->
-                            finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {99}))
+            assertThatThrownBy(() -> finalizationAdapter.finalizeHandoffFlush(
+                            player,
+                            profile,
+                            NODE_A,
+                            1L,
+                            1L,
+                            ProfileInventoryRecord.createDefault(profile, new byte[] {99}, new byte[0])))
                     .isInstanceOf(InventoryPersistenceException.class);
 
             // Verify both tables were rolled back cleanly
@@ -408,7 +470,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
                 // TxB: calls the REAL production finalizeHandoffFlush (competing writer)
                 Future<ProfileInventoryMutationOutcome> txBFuture = executor.submit(() -> {
                     txBAttemptStarted.countDown();
-                    return fileFinalAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {10});
+                    return fileFinalAdapter.finalizeHandoffFlush(
+                            player,
+                            profile,
+                            NODE_A,
+                            1L,
+                            1L,
+                            ProfileInventoryRecord.createDefault(profile, new byte[] {10}, new byte[0]));
                 });
 
                 assertThat(txBAttemptStarted.await(5, TimeUnit.SECONDS))
@@ -447,8 +515,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
                             .hasValue(2L);
                 } else {
                     // If TxB failed with busy, subsequent call now succeeds cleanly
-                    ProfileInventoryMutationOutcome retryResult =
-                            fileFinalAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, new byte[] {10});
+                    ProfileInventoryMutationOutcome retryResult = fileFinalAdapter.finalizeHandoffFlush(
+                            player,
+                            profile,
+                            NODE_A,
+                            1L,
+                            1L,
+                            ProfileInventoryRecord.createDefault(profile, new byte[] {10}, new byte[0]));
                     assertThat(retryResult.isSuccess()).isTrue();
                     assertThat(retryResult).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
                     assertThat(fileFinalAdapter.loadLastDurableInventoryVersion(player))
@@ -478,8 +551,13 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         assertThat(drainOutcome.isSuccess()).isTrue();
 
         // Step 2: Node A executes final durable inventory flush
-        ProfileInventoryMutationOutcome flushOutcome =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, v2FinalNbt);
+        ProfileInventoryMutationOutcome flushOutcome = finalizationAdapter.finalizeHandoffFlush(
+                player,
+                profile,
+                NODE_A,
+                1L,
+                1L,
+                ProfileInventoryRecord.createDefault(profile, v2FinalNbt, new byte[0]));
         assertThat(flushOutcome.isSuccess()).isTrue();
         assertThat(flushOutcome).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
 
@@ -527,8 +605,8 @@ class PlayerProfileHandoffFinalizationSqliteTest {
         assertThat(drain.isSuccess()).isTrue();
 
         // 2. Final durable inventory flush on Node A (commits version 2, updates last_durable = 2)
-        ProfileInventoryMutationOutcome flush =
-                finalizationAdapter.finalizeHandoffFlush(player, profile, NODE_A, 1L, 1L, finalNbt);
+        ProfileInventoryMutationOutcome flush = finalizationAdapter.finalizeHandoffFlush(
+                player, profile, NODE_A, 1L, 1L, ProfileInventoryRecord.createDefault(profile, finalNbt, new byte[0]));
         assertThat(flush.isSuccess()).isTrue();
         assertThat(flush).isEqualTo(ProfileInventoryMutationOutcome.success(2L));
         assertThat(finalizationAdapter.loadLastDurableInventoryVersion(player)).hasValue(2L);

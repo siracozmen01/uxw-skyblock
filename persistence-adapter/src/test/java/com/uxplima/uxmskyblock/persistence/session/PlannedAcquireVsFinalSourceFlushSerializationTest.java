@@ -15,6 +15,7 @@ import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.session.SessionState;
 import com.uxplima.uxmskyblock.persistence.inventory.PlayerProfileHandoffFinalizationAdapter;
@@ -117,7 +118,12 @@ class PlannedAcquireVsFinalSourceFlushSerializationTest {
             SessionRowLockScene.InventoryRowHeld held = scene.holdInventoryRow();
             try {
                 finalWrite = nodes.submit(() -> finals.finalizeHandoffFlush(
-                        scene.player, scene.profile, NODE_A, epoch, version, bytes("final-by-a")));
+                        scene.player,
+                        scene.profile,
+                        NODE_A,
+                        epoch,
+                        version,
+                        ProfileInventoryRecord.createDefault(scene.profile, bytes("final-by-a"), new byte[0])));
                 stillWaiting(finalWrite, "node A, held at the inventory row after taking the session row");
 
                 early = nodes.submit(() -> scene.sessions.plannedAcquire(scene.player, NODE_A, epoch, HANDOFF, NODE_B));
