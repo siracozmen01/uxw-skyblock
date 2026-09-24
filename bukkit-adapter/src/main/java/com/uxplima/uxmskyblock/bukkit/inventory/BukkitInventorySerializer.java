@@ -166,6 +166,24 @@ public final class BukkitInventorySerializer {
         return pointsToReach(level) + Math.round(player.getExp() * pointsInLevel(level));
     }
 
+    /**
+     * Sets the level and the bar that {@code points} make, with the thresholds {@link #experienceOf}
+     * counts by.
+     *
+     * <p>Giving the points one by one through the game rolls the bar over in floating point, and at an
+     * exact threshold it can stop a hair short: twelve levels came back as eleven and a full bar.
+     */
+    static void applyExperience(Player player, int points) {
+        int remaining = Math.max(0, points);
+        int level = 0;
+        while (pointsToReach(level + 1) <= remaining) {
+            level++;
+        }
+        player.setLevel(level);
+        player.setExp((float) (remaining - pointsToReach(level)) / pointsInLevel(level));
+        player.setTotalExperience(remaining);
+    }
+
     /** The points it takes to reach {@code level} from nothing. */
     static int pointsToReach(int level) {
         if (level <= 16) {
@@ -214,12 +232,7 @@ public final class BukkitInventorySerializer {
         }
 
         // Experience
-        player.setExp(0);
-        player.setLevel(0);
-        player.setTotalExperience(0);
-        if (record.experiencePoints() > 0) {
-            player.giveExp(record.experiencePoints());
-        }
+        applyExperience(player, record.experiencePoints());
 
         // Health
         double maxHealth = 20.0;

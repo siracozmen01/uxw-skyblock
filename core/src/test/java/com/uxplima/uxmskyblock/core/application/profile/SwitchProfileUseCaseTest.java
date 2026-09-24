@@ -56,8 +56,14 @@ class SwitchProfileUseCaseTest {
         byte[] targetNbt = new byte[] {4, 5, 6};
         checkpointPort.records.put(profileB, ProfileInventoryRecord.createDefault(profileB, targetNbt, new byte[0]));
 
-        Result<SwitchProfileUseCase.PreparedSwitch, String> result =
-                useCase.prepareSwitch(opId, playerUuid, profileA, profileB, nodeId, 1L, srcNbt);
+        Result<SwitchProfileUseCase.PreparedSwitch, String> result = useCase.prepareSwitch(
+                opId,
+                playerUuid,
+                profileA,
+                profileB,
+                nodeId,
+                1L,
+                ProfileInventoryRecord.createDefault(profileA, srcNbt, new byte[0]));
 
         assertThat(result.isOk()).isTrue();
         SwitchProfileUseCase.PreparedSwitch prepared = result.orElseThrow();
@@ -66,6 +72,10 @@ class SwitchProfileUseCaseTest {
         assertThat(prepared.targetInventoryNbt()).isEqualTo(targetNbt);
 
         assertThat(switchPort.sourceSnapshots).containsEntry(opId, srcNbt);
+        assertThat(java.util.Objects.requireNonNull(checkpointPort.records.get(profileA))
+                        .inventoryNbt())
+                .describedAs("the leaving profile, written to the profile itself")
+                .isEqualTo(srcNbt);
         assertThat(switchPort.targetSnapshots).containsEntry(opId, targetNbt);
         assertThat(switchPort.appliedIntents).contains(opId);
     }
@@ -74,8 +84,14 @@ class SwitchProfileUseCaseTest {
     @DisplayName("prepareSwitch fails when switching to identical profile")
     void prepareSwitchRejectsSameProfile() {
         UUID opId = UUID.randomUUID();
-        Result<SwitchProfileUseCase.PreparedSwitch, String> result =
-                useCase.prepareSwitch(opId, playerUuid, profileA, profileA, nodeId, 1L, new byte[0]);
+        Result<SwitchProfileUseCase.PreparedSwitch, String> result = useCase.prepareSwitch(
+                opId,
+                playerUuid,
+                profileA,
+                profileA,
+                nodeId,
+                1L,
+                ProfileInventoryRecord.createDefault(profileA, new byte[0], new byte[0]));
 
         assertThat(result.isErr()).isTrue();
         assertThat(result.errorOrThrow()).contains("Cannot switch to currently active profile");
@@ -118,8 +134,14 @@ class SwitchProfileUseCaseTest {
         switchPort.failReserve = true;
         UUID opId = UUID.randomUUID();
 
-        Result<SwitchProfileUseCase.PreparedSwitch, String> result =
-                useCase.prepareSwitch(opId, playerUuid, profileA, profileB, nodeId, 1L, new byte[0]);
+        Result<SwitchProfileUseCase.PreparedSwitch, String> result = useCase.prepareSwitch(
+                opId,
+                playerUuid,
+                profileA,
+                profileB,
+                nodeId,
+                1L,
+                ProfileInventoryRecord.createDefault(profileA, new byte[0], new byte[0]));
 
         assertThat(result.isErr()).isTrue();
         assertThat(result.errorOrThrow()).contains("Failed to reserve switch");

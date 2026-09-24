@@ -401,13 +401,7 @@ public final class PlayerSessionCoordinator {
                 }
                 UUID opId = UUID.randomUUID();
                 Result<SwitchProfileUseCase.PreparedSwitch, String> prepRes = switchProfileUseCase.prepareSwitch(
-                        opId,
-                        playerUuid,
-                        currentProfile,
-                        targetProfileId,
-                        nodeId,
-                        session.sessionEpoch(),
-                        srcSnapshot.inventoryNbt());
+                        opId, playerUuid, currentProfile, targetProfileId, nodeId, session.sessionEpoch(), srcSnapshot);
 
                 if (prepRes.isErr()) {
                     LOGGER.log(Level.WARNING, "Failed to prepare profile switch: {0}", prepRes.errorOrThrow());

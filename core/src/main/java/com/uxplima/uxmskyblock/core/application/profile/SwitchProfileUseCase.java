@@ -10,6 +10,7 @@ import com.uxplima.uxmskyblock.core.domain.event.EventId;
 import com.uxplima.uxmskyblock.core.domain.event.StagedOutboxEvent;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.profile.ProfileSwitchOperation;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
@@ -101,7 +102,7 @@ public final class SwitchProfileUseCase {
      * @param toProfileId destination profile ID
      * @param currentNode claiming server node ID
      * @param expectedEpoch expected session epoch
-     * @param sourceSnapshot serialized source inventory snapshot
+     * @param sourceState everything the player holds on the leaving profile, at its durable version
      * @return result carrying prepared switch state with target inventory payload
      */
     public Result<PreparedSwitch, String> prepareSwitch(
@@ -111,13 +112,17 @@ public final class SwitchProfileUseCase {
             ProfileId toProfileId,
             ServerNodeId currentNode,
             long expectedEpoch,
-            byte[] sourceSnapshot) {
+            ProfileInventoryRecord sourceState) {
         Objects.requireNonNull(operationId, "operationId must not be null");
         Objects.requireNonNull(playerId, "playerId must not be null");
         Objects.requireNonNull(fromProfileId, "fromProfileId must not be null");
         Objects.requireNonNull(toProfileId, "toProfileId must not be null");
         Objects.requireNonNull(currentNode, "currentNode must not be null");
-        Objects.requireNonNull(sourceSnapshot, "sourceSnapshot must not be null");
+        Objects.requireNonNull(sourceState, "sourceState must not be null");
+        if (!sourceState.profileId().equals(fromProfileId)) {
+            throw new IllegalArgumentException(
+                    "The state of " + sourceState.profileId() + " is not the state of " + fromProfileId);
+        }
 
         if (fromProfileId.equals(toProfileId)) {
             return Result.err("Cannot switch to currently active profile");
@@ -129,7 +134,18 @@ public final class SwitchProfileUseCase {
             return Result.err("Failed to reserve switch: " + reserveRes.errorOrThrow());
         }
 
-        Result<?, String> srcRes = profileSwitchPort.recordSourceSnapshot(operationId, sourceSnapshot);
+        // The leaving profile is written, whole, before anything moves. The switch used to keep it on
+        // its own row and never write it to the profile, which stayed as the last checkpoint left it:
+        // a player who switched away and back lost everything gained since, and every switch lost the
+        // ender chest and experience. A profile that cannot be written is not left.
+        ProfileInventoryMutationOutcome kept = inventoryCheckpointPort.checkpointInventory(
+                playerId, fromProfileId, currentNode, expectedEpoch, sourceState.version(), sourceState);
+        if (!kept.isSuccess()) {
+            profileSwitchPort.abortSwitch(operationId, playerId, "The leaving profile could not be saved: " + kept);
+            return Result.err("The leaving profile could not be saved");
+        }
+
+        Result<?, String> srcRes = profileSwitchPort.recordSourceSnapshot(operationId, sourceState.inventoryNbt());
         if (srcRes.isErr()) {
             profileSwitchPort.abortSwitch(
                     operationId, playerId, "Failed to save source snapshot: " + srcRes.errorOrThrow());
