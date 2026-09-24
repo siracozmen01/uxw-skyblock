@@ -29,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 class IslandBoosterMenuTest extends MockBukkitHarness {
 
@@ -77,6 +78,32 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
         assertThat(gui.getItem(21)).isNotNull(); // Island Worth
         assertThat(gui.getItem(23)).isNotNull(); // Mission Rewards
         assertThat(gui.getItem(31)).isNotNull(); // Close button
+    }
+
+    @Test
+    @DisplayName("A Turkish reader sees a booster card in words: no colour tags, no None, no enum names")
+    void aCardReadsInWords() {
+        PlayerMock turkish = createPlayer("Okur");
+        turkish.setLocale(java.util.Locale.forLanguageTag("tr"));
+        Instant now = Instant.now();
+        IslandBoosterService.BoosterOverview overview =
+                new IslandBoosterService.BoosterOverview(false, List.of(), java.util.Map.of());
+
+        SimpleGui gui = menu.buildGui(turkish, overview, now);
+
+        org.bukkit.inventory.ItemStack card =
+                ((com.uxplima.uxmlib.gui.item.GuiItem.Static) java.util.Objects.requireNonNull(gui.getItem(10))).item();
+        List<String> lore = java.util.Objects.requireNonNull(card.lore()).stream()
+                .map(line -> net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                        .serialize(line))
+                .toList();
+        assertThat(String.join("\n", lore))
+                .doesNotContain("<")
+                .doesNotContain("None")
+                .doesNotContain("DURATION")
+                .contains("□□□□□□□□□□")
+                .contains("süreler toplanır")
+                .contains("Kalan: yok");
     }
 
     @Test

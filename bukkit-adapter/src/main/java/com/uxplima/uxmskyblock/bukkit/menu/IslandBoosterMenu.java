@@ -23,6 +23,7 @@ import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
@@ -181,7 +182,9 @@ public final class IslandBoosterMenu {
                             Placeholder.unparsed(
                                     "multiplier",
                                     String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(category))),
-                            Placeholder.unparsed("remaining", formatDuration(Duration.ofSeconds(remainingSeconds)))));
+                            Placeholder.unparsed(
+                                    "remaining",
+                                    DurationText.of(messages, player, Duration.ofSeconds(remainingSeconds)))));
             choices.add(new BedrockFormService.Choice(label, () -> {}));
         }
         forms.openChoiceForm(player, "menu.booster.title", "menu.booster.form_body", choices);
@@ -261,7 +264,7 @@ public final class IslandBoosterMenu {
 
         double ratio =
                 (maxDuration.toSeconds() > 0) ? (double) totalRemainingSec / (double) maxDuration.toSeconds() : 0.0;
-        String progressBar = renderProgressBar(ratio, 10);
+        Component progressBar = renderProgressBar(player, ratio, 10);
 
         String statusKey;
         if (!policy.enabled()) {
@@ -295,46 +298,44 @@ public final class IslandBoosterMenu {
                         messages.renderPlain(
                                 player,
                                 "menu.booster.card_remaining",
-                                Placeholder.unparsed("remaining", formatDuration(remaining))),
+                                Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining))),
                         messages.renderPlain(
-                                player, "menu.booster.card_progress", Placeholder.unparsed("bar", progressBar)),
+                                player, "menu.booster.card_progress", Placeholder.component("bar", progressBar)),
                         Component.empty(),
                         messages.renderPlain(
                                 player,
                                 "menu.booster.card_stacking",
-                                Placeholder.unparsed("mode", policy.stackMode().name()),
+                                Placeholder.unparsed(
+                                        "mode",
+                                        messages.named(
+                                                player,
+                                                "booster.stack_modes",
+                                                policy.stackMode().name(),
+                                                policy.stackMode().name())),
                                 Placeholder.unparsed(
                                         "cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier()))),
                         messages.renderPlain(
                                 player,
                                 "menu.booster.card_max_duration",
-                                Placeholder.unparsed("duration", formatDuration(policy.maxDuration())))))
+                                Placeholder.unparsed(
+                                        "duration", DurationText.of(messages, player, policy.maxDuration())))))
                 .build();
 
         gui.set(slot, GuiItem.display(card));
     }
 
-    private String renderProgressBar(double ratio, int totalBars) {
+    /**
+     * The bar, one catalogue piece per step. It was a string of colour tags put into the line as text,
+     * so the player read the tags; the pieces are now components, and an operator draws them.
+     */
+    private Component renderProgressBar(Player player, double ratio, int totalBars) {
         int filled = (int) Math.round(Math.clamp(ratio, 0.0, 1.0) * totalBars);
-        int empty = totalBars - filled;
-        return "<green>" + "■".repeat(filled) + "</green><dark_gray>" + "□".repeat(empty) + "</dark_gray>";
-    }
-
-    private String formatDuration(Duration duration) {
-        long totalSeconds = duration.toSeconds();
-        if (totalSeconds <= 0) {
-            return "None";
+        Component full = messages.renderPlain(player, "menu.booster.bar_filled");
+        Component blank = messages.renderPlain(player, "menu.booster.bar_empty");
+        net.kyori.adventure.text.TextComponent.Builder bar = Component.text();
+        for (int step = 0; step < totalBars; step++) {
+            bar.append(step < filled ? full : blank);
         }
-        long days = totalSeconds / 86400;
-        long hours = (totalSeconds % 86400) / 3600;
-        long minutes = (totalSeconds % 3600) / 60;
-        long seconds = totalSeconds % 60;
-
-        StringBuilder sb = new StringBuilder();
-        if (days > 0) sb.append(days).append("d ");
-        if (hours > 0) sb.append(hours).append("h ");
-        if (minutes > 0) sb.append(minutes).append("m ");
-        if (seconds > 0 || sb.isEmpty()) sb.append(seconds).append("s");
-        return sb.toString().trim();
+        return bar.build();
     }
 }

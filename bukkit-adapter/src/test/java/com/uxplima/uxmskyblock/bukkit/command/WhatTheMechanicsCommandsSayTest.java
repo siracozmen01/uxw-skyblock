@@ -224,7 +224,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         assertThat(run("booster apply spawner_rate 2.5 3h"))
                 .singleElement()
                 .asString()
-                .endsWith("Applied a 2.50x booster to Spawner Rate for 3h 0m 0s.");
+                .endsWith("Applied a 2.50x booster to Spawner Rate for 3h.");
         verify(feed)
                 .record(
                         eq(ISLAND.value().toString()),
@@ -270,8 +270,8 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         String plain = String.join("\n", run("booster apply spawner_rate 2 1h"));
         String capped = String.join("\n", run("booster apply spawner_rate 2 1h"));
 
-        assertThat(plain).contains("2h 0m 0s").doesNotContain("cap");
-        assertThat(capped).contains("4h 0m 0s").contains("cap");
+        assertThat(plain).contains("runs for 2h at").doesNotContain("cap");
+        assertThat(capped).contains("cap of 4h at").contains("cap");
     }
 
     private List<String> run(String line) throws Exception {

@@ -22,6 +22,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandBoosterMenu;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu;
@@ -227,7 +228,7 @@ public final class IslandMechanicsCommands {
                     send(
                             player,
                             "quarantine.active",
-                            Placeholder.unparsed("remaining", formatDuration(optRemaining.get())));
+                            Placeholder.unparsed("remaining", DurationText.of(messages, player, optRemaining.get())));
                 } else {
                     send(player, "quarantine.inactive");
                 }
@@ -411,21 +412,23 @@ public final class IslandMechanicsCommands {
                         "booster.applied",
                         categoryName,
                         multiplierOf(success.effectiveMultiplier()),
-                        Placeholder.unparsed("duration", formatDuration(success.remainingDuration())));
+                        Placeholder.unparsed(
+                                "duration", DurationText.of(messages, player, success.remainingDuration())));
             case BoosterApplyResult.DurationExtended extended ->
                 send(
                         player,
                         extended.capped() ? "booster.duration_extended_capped" : "booster.duration_extended",
                         categoryName,
                         multiplierOf(extended.effectiveMultiplier()),
-                        Placeholder.unparsed("duration", formatDuration(extended.totalDuration())));
+                        Placeholder.unparsed("duration", DurationText.of(messages, player, extended.totalDuration())));
             case BoosterApplyResult.MultiplierStacked stacked ->
                 send(
                         player,
                         stacked.capped() ? "booster.multiplier_stacked_capped" : "booster.multiplier_stacked",
                         categoryName,
                         multiplierOf(stacked.effectiveMultiplier()),
-                        Placeholder.unparsed("duration", formatDuration(stacked.remainingDuration())));
+                        Placeholder.unparsed(
+                                "duration", DurationText.of(messages, player, stacked.remainingDuration())));
             case BoosterApplyResult.Replaced replaced ->
                 send(
                         player,
@@ -490,22 +493,5 @@ public final class IslandMechanicsCommands {
         } catch (NumberFormatException e) {
             return Duration.ZERO;
         }
-    }
-
-    private static String formatDuration(Duration duration) {
-        if (duration.isNegative() || duration.isZero()) {
-            return "0s";
-        }
-        long seconds = duration.toSeconds();
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
-        if (hours > 0) {
-            return String.format(Locale.ROOT, "%dh %dm %ds", hours, minutes, secs);
-        }
-        if (minutes > 0) {
-            return String.format(Locale.ROOT, "%dm %ds", minutes, secs);
-        }
-        return String.format(Locale.ROOT, "%ds", secs);
     }
 }

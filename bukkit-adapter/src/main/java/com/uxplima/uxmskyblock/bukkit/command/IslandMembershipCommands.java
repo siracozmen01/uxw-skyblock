@@ -21,6 +21,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
@@ -618,7 +619,10 @@ public final class IslandMembershipCommands {
 
         if (lock.checkCoopJoinAllowed(playerUuid, bypass)
                 instanceof com.uxplima.uxmskyblock.core.domain.antiabuse.CoopJoinCheckResult.CooldownActive held) {
-            send(player, "member.coop_cooldown", Placeholder.unparsed("remaining", formatDuration(held.remaining())));
+            send(
+                    player,
+                    "member.coop_cooldown",
+                    Placeholder.unparsed("remaining", DurationText.of(messages, player, held.remaining())));
             return true;
         }
         return false;
@@ -630,24 +634,6 @@ public final class IslandMembershipCommands {
         if (lock != null) {
             var unused = lock.recordCoopDeparture(playerUuid, java.time.Instant.now());
         }
-    }
-
-    /** How long is left, the way every other wait in this plugin reads. */
-    private static String formatDuration(java.time.Duration duration) {
-        if (duration.isNegative() || duration.isZero()) {
-            return "0s";
-        }
-        long seconds = duration.toSeconds();
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
-        if (hours > 0) {
-            return String.format(java.util.Locale.ROOT, "%dh %dm %ds", hours, minutes, secs);
-        }
-        if (minutes > 0) {
-            return String.format(java.util.Locale.ROOT, "%dm %ds", minutes, secs);
-        }
-        return String.format(java.util.Locale.ROOT, "%ds", secs);
     }
 
     /** The player behind a name, for the rules that are about a player rather than a profile. */

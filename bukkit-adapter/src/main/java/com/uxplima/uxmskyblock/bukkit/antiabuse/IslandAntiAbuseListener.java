@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
@@ -105,19 +106,6 @@ public final class IslandAntiAbuseListener implements Listener {
         return false;
     }
 
-    private String formatDuration(Duration duration) {
-        long seconds = duration.toSeconds();
-        if (seconds < 60) {
-            return seconds + "s";
-        }
-        long minutes = seconds / 60;
-        long remSec = seconds % 60;
-        if (remSec == 0) {
-            return minutes + "m";
-        }
-        return minutes + "m " + remSec + "s";
-    }
-
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerDropItem(PlayerDropItemEvent event) {
         Player player = event.getPlayer();
@@ -135,7 +123,7 @@ public final class IslandAntiAbuseListener implements Listener {
                 messages.send(
                         player,
                         "protection.quarantine_no_drop",
-                        Placeholder.unparsed("remaining", formatDuration(remaining)));
+                        Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining)));
             }
         });
     }
@@ -163,7 +151,7 @@ public final class IslandAntiAbuseListener implements Listener {
                     messages.send(
                             player,
                             "protection.quarantine_no_visitors",
-                            Placeholder.unparsed("remaining", formatDuration(remaining)));
+                            Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining)));
                 }
             }
         });
@@ -198,7 +186,7 @@ public final class IslandAntiAbuseListener implements Listener {
                         messages.send(
                                 player,
                                 "protection.quarantine_no_visitors",
-                                Placeholder.unparsed("remaining", formatDuration(remaining)));
+                                Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining)));
                     }
                 }
             }

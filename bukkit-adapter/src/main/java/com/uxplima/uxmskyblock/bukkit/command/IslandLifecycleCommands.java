@@ -1,8 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -23,6 +21,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandResetConfirmationMenu;
@@ -415,14 +414,17 @@ public final class IslandLifecycleCommands {
         }
         ResetCheckResult check = antiAbuse.checkResetAllowed(new PlayerUuid(player.getUniqueId()), bypass);
         if (check instanceof ResetCheckResult.CooldownActive cd) {
-            send(player, "reset.cooldown", Placeholder.unparsed("remaining", formatDuration(cd.remaining())));
+            send(
+                    player,
+                    "reset.cooldown",
+                    Placeholder.unparsed("remaining", DurationText.of(messages, player, cd.remaining())));
             return true;
         } else if (check instanceof ResetCheckResult.DailyLimitExceeded dl) {
             send(
                     player,
                     "reset.daily_limit",
                     Placeholder.unparsed("max", Integer.toString(dl.maxDailyResets())),
-                    Placeholder.unparsed("remaining", formatDuration(dl.remaining())));
+                    Placeholder.unparsed("remaining", DurationText.of(messages, player, dl.remaining())));
             return true;
         }
         return false;
@@ -653,22 +655,5 @@ public final class IslandLifecycleCommands {
                 ? com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration.DEFAULT_RESET_BYPASS_PERMISSION
                 : rules.resetBypassPermission();
         return player.hasPermission(node) || player.isOp();
-    }
-
-    private static String formatDuration(Duration duration) {
-        if (duration.isNegative() || duration.isZero()) {
-            return "0s";
-        }
-        long seconds = duration.toSeconds();
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
-        if (hours > 0) {
-            return String.format(Locale.ROOT, "%dh %dm %ds", hours, minutes, secs);
-        }
-        if (minutes > 0) {
-            return String.format(Locale.ROOT, "%dm %ds", minutes, secs);
-        }
-        return String.format(Locale.ROOT, "%ds", secs);
     }
 }

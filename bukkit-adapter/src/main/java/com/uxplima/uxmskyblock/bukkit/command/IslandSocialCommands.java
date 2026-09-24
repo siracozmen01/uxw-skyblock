@@ -1,6 +1,5 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +24,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.bukkit.spatial.SpatialIslandIndex;
@@ -283,7 +283,7 @@ public final class IslandSocialCommands {
                         () -> send(
                                 player,
                                 "social.rate_stay_longer",
-                                Placeholder.unparsed("time", formatDuration(early.remaining()))));
+                                Placeholder.unparsed("time", DurationText.of(messages, player, early.remaining()))));
             } catch (RuntimeException refused) {
                 // The player is told from the catalogue. What went wrong is an internal sentence in
                 // English, and it used to be put in front of the player as it was.
@@ -411,15 +411,5 @@ public final class IslandSocialCommands {
         } else {
             audience.sendMessage(line);
         }
-    }
-
-    private static String formatDuration(Duration duration) {
-        long seconds = Math.max(1, (duration.toMillis() + 999) / 1000);
-        long minutes = seconds / 60;
-        long secs = seconds % 60;
-        if (minutes > 0) {
-            return String.format(Locale.ROOT, "%dm %ds", minutes, secs);
-        }
-        return String.format(Locale.ROOT, "%ds", secs);
     }
 }
