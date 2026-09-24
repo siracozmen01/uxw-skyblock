@@ -361,7 +361,13 @@ public final class IslandProgressionCommands {
                                         audience,
                                         "leaderboard.score_level",
                                         Placeholder.unparsed("level", Long.toString(entry.score())))
-                                : Component.text(entry.formattedScore());
+                                // Money is written through the catalogue, where the operator names the
+                                // currency. The stored entry spells it with a dollar sign for the API.
+                                : messages.renderPlain(
+                                        audience,
+                                        "leaderboard.score_money",
+                                        Placeholder.unparsed(
+                                                "amount", String.format(Locale.ROOT, "%,.2f", entry.score() / 100.0)));
                         send(
                                 audience,
                                 "leaderboard.entry",

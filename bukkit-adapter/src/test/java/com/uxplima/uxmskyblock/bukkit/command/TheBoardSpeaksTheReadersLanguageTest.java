@@ -108,4 +108,43 @@ class TheBoardSpeaksTheReadersLanguageTest extends MockBukkitHarness {
         }
         return said;
     }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A money board names the currency the way the catalogue does, which the operator may change")
+    void moneyIsWrittenByTheCatalogue() throws Exception {
+        when(leaderboard.getTop(any(LeaderboardCategory.class), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of(new LeaderboardEntry(1, NAMED, "Güneş Adası", 123_450L, "$1,234.50", true)));
+        com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider provider =
+                new com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider("en");
+        provider.loadBundledDefaults(getClass().getClassLoader());
+        provider.loadFromStream(
+                "en",
+                new java.io.ByteArrayInputStream("leaderboard { score_money = \"<amount> TL\" }"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(any(UUID.class))).thenReturn(Optional.empty());
+        IslandProgressionCommands commands = new IslandProgressionCommands(
+                mock(IslandLocationService.class),
+                mock(IslandBankService.class),
+                leaderboard,
+                mock(BiomeModificationPort.class),
+                sessions,
+                new InlineSchedulerPort(),
+                () -> mock(IslandWorthService.class),
+                () -> mock(IslandMissionService.class),
+                Messages.of(provider, com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration.defaults()));
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.buildTop());
+        PlayerMock reader = createPlayer("Reader");
+
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn((CommandSender) reader);
+        dispatcher.execute("top bank", source);
+        List<String> said = new ArrayList<>();
+        for (Component line = reader.nextComponentMessage(); line != null; line = reader.nextComponentMessage()) {
+            said.add(PlainTextComponentSerializer.plainText().serialize(line));
+        }
+
+        assertThat(said).anyMatch(line -> line.contains("1,234.50 TL")).noneMatch(line -> line.contains("$"));
+    }
 }
