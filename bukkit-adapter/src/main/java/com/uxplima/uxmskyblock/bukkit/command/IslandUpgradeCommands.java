@@ -19,6 +19,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.i18n.MoneyText;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
@@ -196,7 +197,7 @@ public final class IslandUpgradeCommands {
         int tier = service.getCurrentTier(islandId, definition.id());
         Optional<UpgradeTier> next = definition.getTier(tier + 1);
         String cost =
-                next.map(candidate -> Long.toString(candidate.costMinorUnits())).orElse("");
+                next.map(candidate -> MoneyText.of(candidate.costMinorUnits())).orElse("");
         return definition.id().key()
                 + '\u001f'
                 + definition.displayName()
@@ -307,35 +308,44 @@ public final class IslandUpgradeCommands {
                                 "tier",
                                 Integer.toString(bought.newTier())));
             }
-            schedulerPort.onEntity(playerUuid, () -> report(player, upgradeId, outcome));
+            String displayName = service.getDefinition(upgradeId)
+                    .map(UpgradeDefinition::displayName)
+                    .orElse(upgradeId.key());
+            schedulerPort.onEntity(playerUuid, () -> report(player, upgradeId, displayName, outcome));
         });
         return Cmd.OK;
     }
 
-    private void report(Player player, UpgradeId upgradeId, UpgradePurchaseOutcome outcome) {
+    private void report(Player player, UpgradeId upgradeId, String displayName, UpgradePurchaseOutcome outcome) {
+        // The name the operator gave the upgrade, in the reader's language; the key stays for a line
+        // an operator wrote before there was a name to show.
+        TagResolver name = Placeholder.unparsed("name", messages.words(player, displayName));
         switch (outcome) {
             case UpgradePurchaseOutcome.Success success -> {
                 send(
                         player,
                         "upgrades.bought",
+                        name,
                         Placeholder.unparsed("key", upgradeId.key()),
                         Placeholder.unparsed("tier", Integer.toString(success.newTier())),
-                        Placeholder.unparsed("cost", Long.toString(success.costPaid())));
+                        Placeholder.unparsed("cost", MoneyText.of(success.costPaid())));
                 fireMilestone("upgrade-bought", player);
             }
             case UpgradePurchaseOutcome.MaxTierReached maxed ->
                 send(
                         player,
                         "upgrades.maxed",
+                        name,
                         Placeholder.unparsed("key", upgradeId.key()),
                         Placeholder.unparsed("tier", Integer.toString(maxed.currentTier())));
             case UpgradePurchaseOutcome.InsufficientFunds poor ->
                 send(
                         player,
                         "upgrades.too_poor",
+                        name,
                         Placeholder.unparsed("key", upgradeId.key()),
-                        Placeholder.unparsed("cost", Long.toString(poor.requiredAmount())),
-                        Placeholder.unparsed("balance", Long.toString(poor.availableAmount())));
+                        Placeholder.unparsed("cost", MoneyText.of(poor.requiredAmount())),
+                        Placeholder.unparsed("balance", MoneyText.of(poor.availableAmount())));
             case UpgradePurchaseOutcome.UpgradeNotFound notFound ->
                 send(
                         player,

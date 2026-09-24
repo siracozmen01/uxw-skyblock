@@ -58,6 +58,7 @@ class IslandUpgradeCommandsTest {
     private IslandLocationService locations;
     private IslandUpgradeService upgrades;
     private CommandDispatcher<CommandSourceStack> dispatcher;
+    private PlayerSessionCoordinator sessions;
 
     private static SchedulerPort inlineScheduler() {
         SchedulerPort scheduler = mock(SchedulerPort.class);
@@ -94,7 +95,7 @@ class IslandUpgradeCommandsTest {
         locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
 
-        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
         IslandUpgradeCommands commands = new IslandUpgradeCommands(
@@ -153,6 +154,25 @@ class IslandUpgradeCommandsTest {
 
         verify(upgrades, never()).purchaseUpgrade(any(), any(), any(), any(ServerNodeId.class));
         assertThat(player.nextMessage()).describedAs("and is told why").isNotNull();
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A purchase is told with the upgrade's name and its price as money, not the key and a count")
+    void aPurchaseIsToldAsThePlayerReadsIt() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+        when(upgrades.purchaseUpgrade(any(), any(), any(), any(ServerNodeId.class)))
+                .thenReturn(new UpgradePurchaseOutcome.Success(UpgradeId.SIZE, 2, 50_000L));
+
+        // The catalogue a server ships, rather than the bare keys the rest of this class reads.
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(new IslandUpgradeCommands(
+                        () -> upgrades, locations, inlineScheduler(), NODE, Messages.bundled(), sessions)
+                .build());
+
+        run("upgrades buy island_size", player);
+
+        String told = String.valueOf(player.nextMessage());
+        assertThat(told).contains("Island Size").contains("500.00").doesNotContain("ISLAND_SIZE");
     }
 
     @org.junit.jupiter.api.Test

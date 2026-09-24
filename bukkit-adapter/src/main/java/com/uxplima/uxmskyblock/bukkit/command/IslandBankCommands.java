@@ -401,7 +401,7 @@ public final class IslandBankCommands {
 
     /** Minor units are stored as an integer; a player reads them as money. */
     private static String money(long minorUnits) {
-        return String.format(java.util.Locale.ROOT, "%.2f", minorUnits / 100.0);
+        return com.uxplima.uxmskyblock.bukkit.i18n.MoneyText.of(minorUnits);
     }
 
     private void send(Audience audience, Component component) {
