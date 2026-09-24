@@ -201,15 +201,43 @@ public final class SqlRootRelationalSnapshotAdapter implements RootRelationalSna
             insertTableRows(conn, ISLANDS, rows);
             return;
         }
-        if (!mode.restoresMembership() || rows.isEmpty()) {
-            return;
+        if (mode.restoresMembership() && !rows.isEmpty()) {
+            JsonElement name = rows.get(0).getAsJsonObject().get("custom_name");
+            try (PreparedStatement stmt = conn.prepareStatement("UPDATE islands SET custom_name = ? WHERE id = ?")) {
+                stmt.setString(1, name == null || name.isJsonNull() ? null : name.getAsString());
+                stmt.setString(2, islandId);
+                stmt.executeUpdate();
+            }
         }
-        JsonElement name = rows.get(0).getAsJsonObject().get("custom_name");
-        try (PreparedStatement stmt =
-                conn.prepareStatement("UPDATE islands SET custom_name = ?, version = version + 1 WHERE id = ?")) {
-            stmt.setString(1, name == null || name.isJsonNull() ? null : name.getAsString());
-            stmt.setString(2, islandId);
+        // Past both the live version and the one the backup holds, by a margin no ordinary write
+        // closes: every cache and every writer holding an older version is refused and reads again,
+        // rather than laying the state it had before the restore over the restored one.
+        long snapshotVersion = versionOf(rows);
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "UPDATE islands SET version = (CASE WHEN version > ? THEN version ELSE ? END) + ? WHERE id = ?")) {
+            stmt.setLong(1, snapshotVersion);
+            stmt.setLong(2, snapshotVersion);
+            stmt.setLong(3, RESTORE_VERSION_STEP);
+            stmt.setString(4, islandId);
             stmt.executeUpdate();
+        }
+    }
+
+    /** How far a restore moves the island's version past the newer of the live and backed up ones. */
+    static final long RESTORE_VERSION_STEP = 100L;
+
+    private static long versionOf(JsonArray rows) {
+        if (rows.isEmpty()) {
+            return 0L;
+        }
+        JsonElement version = rows.get(0).getAsJsonObject().get("version");
+        if (version == null || version.isJsonNull()) {
+            return 0L;
+        }
+        try {
+            return version.getAsLong();
+        } catch (NumberFormatException | UnsupportedOperationException notANumber) {
+            return 0L;
         }
     }
 

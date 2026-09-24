@@ -214,6 +214,11 @@ public final class IslandRestoreService {
             verified.add(Map.entry(filename, data));
         }
 
+        // The world first and the rows last. The specification restores the island's configuration,
+        // members and upgrades only after every world region is back, so an island whose world could
+        // not be put back is never left with rows that describe a world it does not have.
+        verified.sort(java.util.Comparator.comparing(entry -> isRelational(entry.getKey())));
+
         @Nullable IslandId quarantined = enterQuarantine(rootRef.rootId(), resuming);
         RestoreProgressPort port = this.progress;
         if (port != null && !resuming) {
@@ -225,8 +230,7 @@ public final class IslandRestoreService {
                 String filename = entry.getKey();
                 byte[] data = entry.getValue();
                 // 4. Dispatch restoration based on artifact role
-                boolean relational =
-                        filename.contains("relational") || filename.endsWith(".sql") || filename.endsWith(".json");
+                boolean relational = isRelational(filename);
                 boolean worldUnit = !relational
                         && (filename.contains("world") || filename.endsWith(".dat") || filename.endsWith(".zst"));
                 if ((relational && !mode.restoresRelationalState()) || (!relational && !worldUnit)) {
@@ -327,6 +331,11 @@ public final class IslandRestoreService {
             LOGGER.log(
                     Level.WARNING, "Island " + islandId + " was restored and is still frozen. Unfreeze it by hand.", e);
         }
+    }
+
+    /** Whether an artifact holds the island's rows rather than a piece of its world. */
+    private static boolean isRelational(String filename) {
+        return filename.contains("relational") || filename.endsWith(".sql") || filename.endsWith(".json");
     }
 
     /** A unit's name in the progress table, which holds 64 characters. */
