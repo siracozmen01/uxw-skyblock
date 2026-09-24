@@ -187,4 +187,45 @@ class TheContainerPermissionIsEnforcedTest extends MockBukkitHarness {
                 .describedAs("the player's own window, or one this plugin drew")
                 .isFalse();
     }
+
+    @Test
+    @DisplayName("An anvil window drawn where the player stands is a prompt, not the island's anvil")
+    void aDrawnAnvilIsNotChecked() {
+        memberHolding();
+        org.bukkit.block.Block air = world.getBlockAt(50, 64, 50);
+        air.setType(Material.AIR);
+
+        InventoryOpenEvent event = new InventoryOpenEvent(member.openInventory(
+                server.createInventory(heldAt(air), org.bukkit.event.inventory.InventoryType.ANVIL)));
+        listener.onContainerOpen(event);
+
+        assertThat(event.isCancelled())
+                .describedAs("a menu asking for a name, on an island where this role may not use an anvil")
+                .isFalse();
+        assertThat(member.nextMessage())
+                .describedAs("and nobody is told storage is denied")
+                .isNull();
+    }
+
+    @Test
+    @DisplayName("A real anvil on the island still asks the role for anvil use")
+    void aRealAnvilIsStillChecked() {
+        memberHolding();
+        org.bukkit.block.Block anvil = world.getBlockAt(50, 64, 50);
+        anvil.setType(Material.ANVIL);
+
+        InventoryOpenEvent event = new InventoryOpenEvent(member.openInventory(
+                server.createInventory(heldAt(anvil), org.bukkit.event.inventory.InventoryType.ANVIL)));
+        listener.onContainerOpen(event);
+
+        assertThat(event.isCancelled()).isTrue();
+    }
+
+    /** A holder at {@code block}, the way Paper places a window a plugin opens at a player. */
+    private static org.bukkit.inventory.BlockInventoryHolder heldAt(org.bukkit.block.Block block) {
+        org.bukkit.inventory.BlockInventoryHolder holder =
+                org.mockito.Mockito.mock(org.bukkit.inventory.BlockInventoryHolder.class);
+        org.mockito.Mockito.when(holder.getBlock()).thenReturn(block);
+        return holder;
+    }
 }

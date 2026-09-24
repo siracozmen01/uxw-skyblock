@@ -362,6 +362,11 @@ public final class IslandProtectionListener implements Listener {
         if (required == null) {
             return;
         }
+        if (!standsThere(event.getInventory().getType(), location.getBlock())) {
+            // A window drawn where the player stands, such as the anvil a menu asks a name in:
+            // Paper gives it the player's place, but no anvil or chest is there to protect.
+            return;
+        }
         if (player.hasPermission("uxmskyblock.admin.bypass")) {
             return;
         }
@@ -382,6 +387,24 @@ public final class IslandProtectionListener implements Listener {
                 block.getBlock().getLocation();
             case org.bukkit.block.DoubleChest chest -> chest.getLocation();
             case null, default -> null;
+        };
+    }
+
+    /**
+     * Whether the block at an inventory's place is the block that holds that inventory.
+     *
+     * <p>A menu that asks a player to type something opens an anvil window, and Paper gives that
+     * window the place the player stands. Read as a real anvil there, it was refused wherever the
+     * player's role could not use an anvil, and on another island or at spawn setting a home or
+     * inviting a member from the menu said storage access was denied.
+     */
+    private static boolean standsThere(InventoryType type, org.bukkit.block.Block block) {
+        org.bukkit.Material material = block.getType();
+        return switch (type) {
+            case ANVIL -> org.bukkit.Tag.ANVIL.isTagged(material);
+            case SMITHING -> material == org.bukkit.Material.SMITHING_TABLE;
+            case BEACON -> material == org.bukkit.Material.BEACON;
+            default -> block.getState() instanceof org.bukkit.inventory.InventoryHolder;
         };
     }
 
