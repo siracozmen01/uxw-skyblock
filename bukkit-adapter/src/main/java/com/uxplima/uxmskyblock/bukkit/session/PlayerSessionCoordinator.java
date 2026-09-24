@@ -85,6 +85,12 @@ public final class PlayerSessionCoordinator {
         return activeSessions.get(playerUuid);
     }
 
+    /** Whether {@code playerUuid} holds their session's state here and may use it. */
+    public boolean inPlay(UUID playerUuid) {
+        ActiveSession session = activeSessions.get(playerUuid);
+        return session != null && session.inPlay();
+    }
+
     /**
      * Resolves the canonical active profile for a connected player, if one is currently active and not fenced.
      */
@@ -232,6 +238,7 @@ public final class PlayerSessionCoordinator {
                     if (invOpt.isPresent()) {
                         BukkitInventorySerializer.applyToPlayer(player, invOpt.get());
                     }
+                    session.enterPlay();
                     protectionListener.setActiveProfile(playerUuid, activeProfile);
                     runActiveHooks(player);
                 });
@@ -391,6 +398,8 @@ public final class PlayerSessionCoordinator {
                 return;
             }
 
+            // Nothing is done with what the player holds until the other profile's state replaces it.
+            session.leavePlay();
             ProfileInventoryRecord srcSnapshot =
                     BukkitInventorySerializer.snapshotPlayer(player, currentProfile, session.lastDurableVersion());
 
@@ -406,6 +415,7 @@ public final class PlayerSessionCoordinator {
                 if (prepRes.isErr()) {
                     LOGGER.log(Level.WARNING, "Failed to prepare profile switch: {0}", prepRes.errorOrThrow());
                     schedulerPort.onEntity(playerUuid, () -> {
+                        session.enterPlay();
                         if (player.isOnline()) {
                             // The reason is a code for the log, and it used to be shown as it was.
                             messages.send(player, "session.switch_failed");
@@ -434,6 +444,7 @@ public final class PlayerSessionCoordinator {
                     }
 
                     protectionListener.setActiveProfile(playerUuid, targetProfileId);
+                    session.enterPlay();
 
                     // 4. Complete switch asynchronously
                     schedulerPort.async(() -> {

@@ -28,6 +28,7 @@ public final class ActiveSession {
     private final AtomicReference<SessionState> state = new AtomicReference<>(SessionState.ACTIVE);
     private final AtomicReference<@Nullable AutoCloseable> heartbeatTask = new AtomicReference<>(null);
     private final AtomicReference<@Nullable AutoCloseable> checkpointTask = new AtomicReference<>(null);
+    private volatile boolean inPlay;
 
     public ActiveSession(PlayerUuid playerUuid, ProfileId activeProfileId, long sessionEpoch, long lastDurableVersion) {
         this(playerUuid, activeProfileId, sessionEpoch, lastDurableVersion, SessionState.ACTIVE);
@@ -68,6 +69,27 @@ public final class ActiveSession {
 
     public void setLastDurableVersion(long version) {
         this.lastDurableVersion.set(version);
+    }
+
+    /**
+     * Whether the player holds what this session says they hold, and may use it.
+     *
+     * <p>From the join until the durable state is put on the player, and while a profile switch
+     * swaps one state for another, what the player holds is about to be replaced. An item dropped
+     * then stayed on the ground and came back with the state as well.
+     */
+    public boolean inPlay() {
+        return inPlay && !isFenced();
+    }
+
+    /** The player now holds this session's state. */
+    public void enterPlay() {
+        inPlay = true;
+    }
+
+    /** What the player holds is about to be replaced; nothing may be done with it until it is. */
+    public void leavePlay() {
+        inPlay = false;
     }
 
     public boolean isFenced() {
