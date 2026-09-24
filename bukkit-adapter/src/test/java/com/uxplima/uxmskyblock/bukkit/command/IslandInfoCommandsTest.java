@@ -156,6 +156,28 @@ class IslandInfoCommandsTest {
     }
 
     @Test
+    @DisplayName("A Turkish reader sees an unnamed island as the board names it, and its state in words")
+    void anUnnamedIslandReadsInWords() throws Exception {
+        when(names.getIslandName(ISLAND)).thenReturn(Optional.empty());
+        player.setLocale(java.util.Locale.forLanguageTag("tr"));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(OWNER));
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(new IslandInfoCommands(
+                        locations, () -> names, () -> boosters, inlineScheduler(), Messages.bundled(), sessions)
+                .buildInfo());
+
+        run("info", player);
+
+        String screen = allLines().replaceAll("\u00a7.", "");
+        assertThat(screen)
+                .contains("Ada " + ISLAND.value().toString().substring(0, 8))
+                .doesNotContain(ISLAND.value().toString())
+                .contains("Durum: etkin")
+                .doesNotContain("active");
+    }
+
+    @Test
     @DisplayName("The whole screen is one block of lines, not one line per command")
     void theWholeScreenIsOneBlock() throws Exception {
         run("info", player);

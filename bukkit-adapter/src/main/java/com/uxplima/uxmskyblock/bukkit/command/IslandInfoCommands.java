@@ -101,7 +101,7 @@ public final class IslandInfoCommands {
     }
 
     private void report(Player player, IslandId islandId, Island island) {
-        send(player, "info.header", Placeholder.unparsed("name", nameOf(islandId)));
+        send(player, "info.header", Placeholder.component("name", nameOf(player, islandId)));
         send(player, "info.owner", Placeholder.unparsed("owner", ownerNameOf(island)));
         send(
                 player,
@@ -110,7 +110,13 @@ public final class IslandInfoCommands {
         send(
                 player,
                 "info.lifecycle",
-                Placeholder.unparsed("lifecycle", lowerCase(island.lifecycle().name())));
+                Placeholder.unparsed(
+                        "lifecycle",
+                        messages.named(
+                                player,
+                                "admin.lifecycles",
+                                island.lifecycle().name(),
+                                lowerCase(island.lifecycle().name()))));
         send(player, "info.access", Placeholder.component("access", messages.renderPlain(player, accessKeyOf(island))));
 
         IslandBoosterService boosters = boosterServiceProvider.get();
@@ -159,15 +165,20 @@ public final class IslandInfoCommands {
         return "info.access_open";
     }
 
-    /** The island's own name, or its id when nobody has named it. */
-    private String nameOf(IslandId islandId) {
+    /**
+     * The island's own name, or the reader's words for an island nobody named: the leaderboard's
+     * "Island 533805ad" rather than the whole id.
+     */
+    private net.kyori.adventure.text.Component nameOf(Player player, IslandId islandId) {
         IslandNameService names = nameServiceProvider.get();
-        if (names == null) {
-            return islandId.value().toString();
-        }
-        return names.getIslandName(islandId)
-                .map(name -> name.value())
-                .orElseGet(() -> islandId.value().toString());
+        java.util.Optional<String> named = names == null
+                ? java.util.Optional.empty()
+                : names.getIslandName(islandId).map(name -> name.value());
+        return named.<net.kyori.adventure.text.Component>map(net.kyori.adventure.text.Component::text)
+                .orElseGet(() -> messages.renderPlain(
+                        player,
+                        "leaderboard.unnamed",
+                        Placeholder.unparsed("id", islandId.value().toString().substring(0, 8))));
     }
 
     /** The owner's name, or their uuid when the server has never seen them. */
