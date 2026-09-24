@@ -379,7 +379,14 @@ public final class BackupService {
         String normalizedPrefix =
                 rootPrefix.endsWith("/") ? rootPrefix.substring(0, rootPrefix.length() - 1) : rootPrefix;
         String manifestKey = normalizedPrefix + "/" + MANIFEST_FILE_NAME;
+        String markerKey = normalizedPrefix + "/" + AVAILABILITY_MARKER_FILE_NAME;
         for (ObjectStoragePort destination : storageDestinations) {
+            // A manifest is only a backup where its marker was published. Without the marker it is
+            // a publication that stopped short, or a deletion that already began, and restoring it by
+            // id put back whatever half of it was left, which discovery had rightly hidden.
+            if (!destination.exists(bucket, markerKey)) {
+                continue;
+            }
             Optional<byte[]> opt = destination.getObject(bucket, manifestKey);
             if (opt.isPresent()) {
                 try {
