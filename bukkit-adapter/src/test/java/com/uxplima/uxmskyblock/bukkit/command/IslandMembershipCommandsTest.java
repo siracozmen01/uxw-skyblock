@@ -111,6 +111,8 @@ class IslandMembershipCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(owner.getUniqueId())).thenReturn(Optional.of(OWNER));
         when(sessions.activeProfile(mate.getUniqueId())).thenReturn(Optional.of(MATE));
+        // Mate's profile as it is found while they are away.
+        when(sessions.findDurableActiveProfile(mate.getUniqueId())).thenReturn(Optional.of(MATE));
 
         commands = new IslandMembershipCommands(
                 () -> membership,
@@ -135,8 +137,35 @@ class IslandMembershipCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("A member on the server is told at once that they were invited, promoted or removed")
+    void aMemberOnTheServerIsToldAtOnce() throws Exception {
+        run("invite Mate", owner);
+        assertThat(heardBy(mate)).contains("member.invite_received");
+
+        run("role Mate moderator", owner);
+        assertThat(heardBy(mate)).contains("member.role_changed_you");
+
+        run("kick Mate", owner);
+        assertThat(heardBy(mate)).contains("member.kicked_you");
+
+        org.mockito.Mockito.verify(notifications, org.mockito.Mockito.never())
+                .notify(any(), any(), anyString(), any(), any());
+    }
+
+    /** Everything {@code player} was told since last asked, one line each. */
+    private static java.util.List<String> heardBy(org.mockbukkit.mockbukkit.entity.PlayerMock player) {
+        java.util.List<String> heard = new java.util.ArrayList<>();
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            heard.add(line);
+        }
+        return heard;
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("A member who is kicked is told on their next join, not left to find out")
     void akickedMemberIsToldLater() throws Exception {
+        // Away: a member on the server is told at once, which the tests below hold.
+        mate.disconnect();
         run("kick Mate", owner);
 
         org.mockito.Mockito.verify(notifications)
@@ -162,6 +191,7 @@ class IslandMembershipCommandsTest {
     @org.junit.jupiter.api.Test
     @DisplayName("A member whose role changed is told which role they now hold")
     void arolechangeIsToldToo() throws Exception {
+        mate.disconnect();
         run("role Mate moderator", owner);
 
         org.mockito.Mockito.verify(notifications)

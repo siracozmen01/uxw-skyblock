@@ -143,6 +143,57 @@ public final class IslandMembershipCommands {
     }
 
     /**
+     * Tells {@code recipient} now when they are on this server, and leaves a notice for their next
+     * login when they are not.
+     *
+     * <p>Every change to a member was left as a notice only, and a notice is read out when a session
+     * is made, so a player standing on the island when they were invited, promoted or kicked heard
+     * nothing until they logged in again. An invite has no notice at all, because it runs out long
+     * before a later login.
+     */
+    private void tellOrLeave(
+            ProfileId recipient,
+            String liveKey,
+            NotificationCategory category,
+            @Nullable String noticeKey,
+            Map<String, String> values) {
+        Optional<Player> online = onlinePlayerOf(recipient);
+        if (online.isPresent()) {
+            Player reader = online.get();
+            schedulerPort.onEntity(new PlayerUuid(reader.getUniqueId()), () -> {
+                if (!reader.isOnline()) {
+                    return;
+                }
+                java.util.List<TagResolver> resolvers = new java.util.ArrayList<>(values.size());
+                for (Map.Entry<String, String> value : values.entrySet()) {
+                    resolvers.add(Placeholder.unparsed(value.getKey(), messages.words(reader, value.getValue())));
+                }
+                messages.send(reader, liveKey, resolvers.toArray(new TagResolver[0]));
+            });
+            return;
+        }
+        if (noticeKey != null) {
+            leaveNotice(recipient, category, noticeKey, values);
+        }
+    }
+
+    /** The player on this server whose active profile is {@code profile}, if there is one. */
+    private Optional<Player> onlinePlayerOf(ProfileId profile) {
+        PlayerSessionCoordinator sessions = this.sessionCoordinator;
+        if (sessions == null) {
+            return Optional.empty();
+        }
+        for (Player online : org.bukkit.Bukkit.getOnlinePlayers()) {
+            if (sessions.activeProfile(online.getUniqueId())
+                    .filter(profile::equals)
+                    .isPresent()) {
+                return Optional.of(online);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Leaves a notice for a member who may not be here to read it.
      *
      * <p>What is stored is the name of a message and the values it has holes for, never a sentence.
@@ -306,8 +357,15 @@ public final class IslandMembershipCommands {
                         return;
                     }
                     switch (service.invite(actor, optTarget.get())) {
-                        case IslandMembershipService.InviteOutcome.Sent sent ->
+                        case IslandMembershipService.InviteOutcome.Sent sent -> {
                             send(player, "member.invited", Placeholder.unparsed("player", target));
+                            tellOrLeave(
+                                    optTarget.get(),
+                                    "member.invite_received",
+                                    NotificationCategory.INVITE,
+                                    null,
+                                    Map.of("player", player.getName()));
+                        }
                         case IslandMembershipService.InviteOutcome.NotAllowed ignored ->
                             send(player, "member.invite_no_permission");
                         case IslandMembershipService.InviteOutcome.NoIsland ignored -> send(player, "error.no_island");
@@ -385,8 +443,9 @@ public final class IslandMembershipCommands {
                                 ActivityEventType.MEMBER_LEFT,
                                 "activity.member_kicked",
                                 Map.of("player", target, "actor", player.getName()));
-                        leaveNotice(
+                        tellOrLeave(
                                 optTarget.get(),
+                                "member.kicked_you",
                                 NotificationCategory.KICK,
                                 "notification.kicked",
                                 Map.of("player", player.getName()));
@@ -477,8 +536,9 @@ public final class IslandMembershipCommands {
                                                     target,
                                                     "role",
                                                     messages.stored("roles", changed.roleId(), changed.roleId()))));
-                            leaveNotice(
+                            tellOrLeave(
                                     optTarget.get(),
+                                    "member.role_changed_you",
                                     NotificationCategory.ROLE_CHANGED,
                                     "notification.role_changed",
                                     Map.of(
