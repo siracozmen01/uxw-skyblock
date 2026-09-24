@@ -236,6 +236,64 @@ class BackupServiceTest {
                 .isEqualTo(BackupLifecycleState.RECOVERY_REQUIRED);
     }
 
+    @Test
+    @DisplayName(
+            "MirroredBackupPublicationMarkerIsolationTest: a marker one destination fails leaves the other's as it is")
+    void aMarkerFailureOnOneDestinationLeavesTheOther() {
+        Map<String, byte[]> payloads = Map.of("world.bin", worldData, "database.sql", dbData);
+        String prefix = "backups/" + setId;
+
+        destinationB.failOnKeyEndingWith = BackupService.AVAILABILITY_MARKER_FILE_NAME;
+        assertThat(service.publishBackup(bucket, prefix, initialRecord, manifest, payloads))
+                .isFalse();
+
+        assertThat(service.discoverBackupsWithoutDatabase(destinationA, bucket, "backups"))
+                .describedAs("the destination that published its marker offers the backup")
+                .extracting(BackupManifest::backupSetId)
+                .containsExactly(setId);
+        assertThat(service.discoverBackupsWithoutDatabase(destinationB, bucket, "backups"))
+                .describedAs("the one whose marker failed offers nothing, though its files are there")
+                .isEmpty();
+        assertThat(destinationB.exists(bucket, prefix + "/" + BackupService.MANIFEST_FILE_NAME))
+                .isTrue();
+        assertThat(Objects.requireNonNull(catalog.records.get(setId)).state()).isEqualTo(BackupLifecycleState.PARTIAL);
+
+        destinationB.failOnKeyEndingWith = null;
+        destinationA.failOnKeyEndingWith = BackupService.AVAILABILITY_MARKER_FILE_NAME;
+        assertThat(service.deleteBackup(bucket, prefix, setId, manifest)).isFalse();
+
+        assertThat(destinationA.exists(bucket, prefix + "/" + BackupService.AVAILABILITY_MARKER_FILE_NAME))
+                .describedAs("a marker the destination could not remove is still its own")
+                .isTrue();
+        assertThat(destinationB.listObjects(bucket, prefix))
+                .describedAs("the other destination deleted everything regardless")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName(
+            "BackupDeletionRemainsSafeAfterSqlLossTest: a deletion cut short after the marker leaves nothing to restore")
+    void aDeletionCutShortIsNeverACandidate() {
+        Map<String, byte[]> payloads = Map.of("world.bin", worldData, "database.sql", dbData);
+        String prefix = "backups/" + setId;
+        assertThat(service.publishBackup(bucket, prefix, initialRecord, manifest, payloads))
+                .isTrue();
+
+        // The deletion removes each marker, then fails on the artifacts: the files are half there.
+        destinationA.failOnKeyEndingWith = "world.bin";
+        destinationB.failOnKeyEndingWith = "world.bin";
+        assertThat(service.deleteBackup(bucket, prefix, setId, manifest)).isFalse();
+        assertThat(destinationA.exists(bucket, prefix + "/" + BackupService.MANIFEST_FILE_NAME))
+                .isTrue();
+
+        // The database is lost, so only what the destinations hold can say what may be restored.
+        BackupService afterLoss = new BackupService(new FakeBackupCatalog(), List.of(destinationA, destinationB));
+        assertThat(afterLoss.discoverBackupsWithoutDatabase(destinationA, bucket, "backups"))
+                .isEmpty();
+        assertThat(afterLoss.discoverBackupsWithoutDatabase(destinationB, bucket, "backups"))
+                .isEmpty();
+    }
+
     private static class FakeBackupCatalog implements BackupCatalogPort {
         final Map<BackupSetId, BackupCatalogRecord> records = new HashMap<>();
 
@@ -277,13 +335,21 @@ class BackupServiceTest {
         boolean failOnPut = false;
         boolean failOnDelete = false;
 
+        /** Fails only the object whose key ends with this, such as the availability marker. */
+        @org.jspecify.annotations.Nullable String failOnKeyEndingWith = null;
+
         InMemoryStorage(String name) {
             this.name = name;
         }
 
+        private boolean failsOn(String key) {
+            String suffix = failOnKeyEndingWith;
+            return suffix != null && key.endsWith(suffix);
+        }
+
         @Override
         public void putObject(StorageBucket b, String key, byte[] data, StorageObjectMetadata metadata) {
-            if (failOnPut) {
+            if (failOnPut || failsOn(key)) {
                 throw new RuntimeException("Simulated storage write failure on " + name);
             }
             objects.put(key, data);
@@ -302,7 +368,7 @@ class BackupServiceTest {
 
         @Override
         public void deleteObject(StorageBucket b, String key) {
-            if (failOnDelete) {
+            if (failOnDelete || failsOn(key)) {
                 throw new RuntimeException("Simulated storage delete failure on " + name);
             }
             objects.remove(key);
