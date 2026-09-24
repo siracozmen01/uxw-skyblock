@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -198,7 +199,7 @@ public final class IslandUpgradeCommands {
         Optional<UpgradeTier> next = definition.getTier(tier + 1);
         String cost =
                 next.map(candidate -> MoneyText.of(candidate.costMinorUnits())).orElse("");
-        return definition.id().key()
+        return definition.id().key().toLowerCase(Locale.ROOT)
                 + '\u001f'
                 + definition.displayName()
                 + '\u001f'

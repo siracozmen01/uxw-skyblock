@@ -236,6 +236,25 @@ class IslandUpgradeCommandsTest {
     }
 
     @Test
+    @DisplayName("The list shows each upgrade's key the way the buy command takes it")
+    void theListShowsTheKeyToType() throws Exception {
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(new IslandUpgradeCommands(
+                        () -> upgrades, locations, inlineScheduler(), NODE, Messages.bundled(), sessions)
+                .build());
+
+        run("upgrades", player);
+
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            lines.add(line);
+        }
+        assertThat(lines)
+                .anyMatch(line -> line.contains("(island_size)"))
+                .noneMatch(line -> line.contains("ISLAND_SIZE"));
+    }
+
+    @Test
     @DisplayName("The bare verb lists every upgrade the operator's file defines")
     void theBareVerbListsEveryUpgrade() throws Exception {
         run("upgrades", player);
