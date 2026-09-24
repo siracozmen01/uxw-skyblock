@@ -458,6 +458,18 @@ class PlayerInventoryMutationJournalIntegrationTest {
                 .isEqualTo(ParticipantApplyState.REVERTED);
         assertThat(invAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
 
+        // The aborted operation is tried again over an inventory that has changed since
+        InventoryMutationJournalOutcome retry = journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 1L, abortOp, "TRADE", "fp3", "fp4", "{}", Duration.ofMinutes(1));
+        assertThat(retry.isSuccess()).isTrue();
+        assertThat(journalAdapter.loadJournal(abortOp).get().state()).isEqualTo(InventoryMutationJournalState.INTENT);
+        assertThat(journalAdapter.loadParticipant(abortOp, 0).get().beforeFingerprint())
+                .isEqualTo("fp3");
+        assertThat(journalAdapter
+                        .abortIntent(player, profile, NODE_A, 1L, abortOp)
+                        .isSuccess())
+                .isTrue();
+
         // Idempotent commit replay
         InventoryMutationOperationId commitOp = InventoryMutationOperationId.random();
         journalAdapter.recordIntent(

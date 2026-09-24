@@ -28,6 +28,8 @@ final class InventoryMutationJournalSql {
     private final String updateSessionLastDurableVersion;
     private final String updateJournalState;
     private final String updateParticipantState;
+    private final String deleteAbortedParticipants;
+    private final String deleteAbortedJournal;
 
     private InventoryMutationJournalSql(Dialect dialect) {
         this.selectSessionAuthority = selectSessionAuthority(dialect);
@@ -68,6 +70,12 @@ final class InventoryMutationJournalSql {
         this.updateParticipantState = "UPDATE inventory_mutation_participants "
                 + "SET durable_apply_state = ?, updated_at = CURRENT_TIMESTAMP "
                 + "WHERE operation_id = ? AND participant_index = ?";
+
+        this.deleteAbortedParticipants = "DELETE FROM inventory_mutation_participants WHERE operation_id = ? "
+                + "AND EXISTS (SELECT 1 FROM inventory_mutation_journals j "
+                + "WHERE j.operation_id = ? AND j.state = 'ABORTED')";
+        this.deleteAbortedJournal =
+                "DELETE FROM inventory_mutation_journals WHERE operation_id = ? AND state = 'ABORTED'";
     }
 
     /** Builds the statement set for {@code dialect}, refusing a dialect this journal cannot serve. */
@@ -157,5 +165,13 @@ final class InventoryMutationJournalSql {
 
     String updateParticipantState() {
         return updateParticipantState;
+    }
+
+    String deleteAbortedParticipants() {
+        return deleteAbortedParticipants;
+    }
+
+    String deleteAbortedJournal() {
+        return deleteAbortedJournal;
     }
 }

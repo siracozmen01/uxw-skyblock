@@ -77,6 +77,12 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
         Objects.requireNonNull(expiryDuration, "expiryDuration");
 
         return transaction.run("recordIntent", conn -> {
+            // 0. An aborted attempt left nothing behind it, so the operation may be tried again. Nothing
+            // else ever could: the operation id is the reward's own, and a delivery aborted once, by a
+            // refused commit or by recovery after a crash, stayed in the inbox for good. A refusal
+            // further down rolls this back with everything else.
+            forgetAborted(conn, operationId);
+
             // 1. Check existing journal header for idempotency / conflict
             try (PreparedStatement ps = conn.prepareStatement(sql.selectJournalForUpdate())) {
                 ps.setString(1, operationId.value().toString());
@@ -110,8 +116,6 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
                                             return InventoryMutationJournalOutcome.success(expectedVersion);
                                         } else if ("COMMITTED".equals(existingState)) {
                                             return InventoryMutationJournalOutcome.success(expectedVersion + 1);
-                                        } else if ("ABORTED".equals(existingState)) {
-                                            return InventoryMutationJournalOutcome.rejected("OPERATION_ABORTED");
                                         }
                                     }
                                 }
@@ -173,6 +177,19 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
 
             return InventoryMutationJournalOutcome.success(expectedVersion);
         });
+    }
+
+    private void forgetAborted(Connection conn, InventoryMutationOperationId operationId) throws SQLException {
+        String id = operationId.value().toString();
+        try (PreparedStatement ps = conn.prepareStatement(sql.deleteAbortedParticipants())) {
+            ps.setString(1, id);
+            ps.setString(2, id);
+            ps.executeUpdate();
+        }
+        try (PreparedStatement ps = conn.prepareStatement(sql.deleteAbortedJournal())) {
+            ps.setString(1, id);
+            ps.executeUpdate();
+        }
     }
 
     @Override
