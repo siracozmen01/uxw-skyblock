@@ -73,7 +73,8 @@ public final class IslandFlagCommands {
                 flags.forEach((name, enabled) -> send(
                         player,
                         enabled ? "flag.entry_on" : "flag.entry_off",
-                        Placeholder.unparsed("flag", name.toLowerCase(Locale.ROOT))));
+                        Placeholder.unparsed("flag", nameOf(player, name)),
+                        Placeholder.unparsed("key", name.toLowerCase(Locale.ROOT))));
                 send(player, "flag.toggle_hint");
             });
         });
@@ -93,7 +94,7 @@ public final class IslandFlagCommands {
                 send(
                         player,
                         changed.enabled() ? "flag.turned_on" : "flag.turned_off",
-                        Placeholder.unparsed("flag", changed.flag()));
+                        Placeholder.unparsed("flag", nameOf(player, changed.flag())));
             case IslandFlagService.FlagChange.UnknownFlag unknown ->
                 send(
                         player,
@@ -103,6 +104,15 @@ public final class IslandFlagCommands {
             case IslandFlagService.FlagChange.NotAllowed ignored -> send(player, "flag.no_permission");
             case IslandFlagService.FlagChange.IslandMissing ignored -> send(player, "error.no_island");
         }
+    }
+
+    /**
+     * A flag as the reader's language names it. The list and the toggle said {@code pvp} and
+     * {@code monster_spawn}, the keys the code keeps; the key is still what a player types, so the
+     * list shows it beside the name.
+     */
+    private String nameOf(Player player, String flag) {
+        return messages.named(player, "flag.names", flag, flag.toLowerCase(Locale.ROOT));
     }
 
     @FunctionalInterface

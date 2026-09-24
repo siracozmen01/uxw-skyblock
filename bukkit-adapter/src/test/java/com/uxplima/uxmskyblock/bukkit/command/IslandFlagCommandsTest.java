@@ -123,6 +123,46 @@ class IslandFlagCommandsTest {
     }
 
     @Test
+    @DisplayName("A Turkish reader sees a flag by its name, and the list keeps the key to type")
+    void aFlagIsNamedForTheReader() throws Exception {
+        player.setLocale(java.util.Locale.forLanguageTag("tr"));
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        when(locations.findIsland(ISLAND)).thenReturn(Optional.of(island()));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(
+                new IslandFlagCommands(flagService, locations, inlineScheduler(), Messages.bundled(), sessions)
+                        .build());
+        when(flagService.toggle(any(), eq(PROFILE), eq("pvp")))
+                .thenReturn(new IslandFlagService.FlagChange.Changed("pvp", true));
+
+        run("flag pvp", player);
+        assertThat(player.nextMessage()).contains("PvP Savaşı").doesNotContain("pvp");
+
+        run("flag", player);
+        java.util.List<String> listed = new java.util.ArrayList<>();
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            listed.add(line);
+        }
+        assertThat(listed).anyMatch(line -> line.contains("PvP Savaşı") && line.contains("(pvp)"));
+    }
+
+    @Test
+    @DisplayName("Every flag an island has is named in English and in Turkish")
+    void everyFlagIsNamed() {
+        MessageProvider provider = Messages.bundled().provider();
+        for (String flag : com.uxplima.uxmskyblock.core.domain.island.IslandFlags.defaults()
+                .values()
+                .keySet()) {
+            String key = "flag.names." + flag.toLowerCase(java.util.Locale.ROOT);
+            assertThat(provider.getKeys("en")).describedAs("en").contains(key);
+            assertThat(provider.getKeys("tr")).describedAs("tr").contains(key);
+        }
+    }
+
+    @Test
     @DisplayName("Naming a flag turns it the other way")
     void namingAFlagTogglesIt() throws Exception {
         when(flagService.toggle(any(), eq(PROFILE), eq("pvp")))
