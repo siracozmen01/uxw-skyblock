@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -478,6 +477,25 @@ public final class PlayerSessionCoordinator {
     }
 
     /**
+     * The inventory {@code playerUuid} holds, read on this thread if this thread owns the player.
+     *
+     * <p>Shutdown used to hand the read to the player's own thread and take the answer at once. The
+     * plugin is already disabled when shutdown runs, so the scheduler dropped the task, the answer was
+     * always empty, and every player online at a restart had an empty inventory written over theirs.
+     * By now the server has stopped ticking: Paper disables plugins on its main thread and Folia on its
+     * shutdown thread, and each of those owns every player. A thread that does not own the player
+     * reads nothing, and nothing is written.
+     */
+    private Optional<byte[]> heldInventory(PlayerUuid playerUuid) {
+        Player player = Bukkit.getPlayer(playerUuid.value());
+        if (player == null || !player.isOnline() || !schedulerPort.ownsEntity(playerUuid)) {
+            return Optional.empty();
+        }
+        return Optional.of(BukkitInventorySerializer.serializeItemStacks(
+                player.getInventory().getContents()));
+    }
+
+    /**
      * Gracefully shuts down all active player sessions during plugin disable.
      */
     public void shutdown() {
@@ -487,20 +505,7 @@ public final class PlayerSessionCoordinator {
             }
             session.closeTasks();
             try {
-                AtomicReference<byte[]> invBytesRef = new AtomicReference<>(new byte[0]);
-                Player player = Bukkit.getPlayer(session.playerUuid().value());
-                if (player != null && player.isOnline()) {
-                    schedulerPort.onEntity(session.playerUuid(), () -> {
-                        if (player.isOnline()) {
-                            invBytesRef.set(BukkitInventorySerializer.serializeItemStacks(
-                                    player.getInventory().getContents()));
-                        }
-                    });
-                }
-                byte[] invBytes = invBytesRef.get();
-                if (invBytes == null) {
-                    invBytes = new byte[0];
-                }
+                Optional<byte[]> held = heldInventory(session.playerUuid());
 
                 SessionAuthorityOutcome drainOutcome =
                         sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
@@ -511,13 +516,23 @@ public final class PlayerSessionCoordinator {
                     continue;
                 }
 
+                if (held.isEmpty()) {
+                    // Nothing was read, so nothing is written over what the last checkpoint kept.
+                    LOGGER.log(
+                            Level.WARNING,
+                            "The inventory of {0} could not be read at shutdown; the last checkpoint stands.",
+                            session.playerUuid());
+                    sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
+                    continue;
+                }
+
                 ProfileInventoryMutationOutcome outcome = handoffFinalizationPort.finalizeHandoffFlush(
                         session.playerUuid(),
                         session.activeProfileId(),
                         nodeId,
                         session.sessionEpoch(),
                         session.lastDurableVersion(),
-                        invBytes);
+                        held.get());
 
                 if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
                     session.setLastDurableVersion(succ.newVersion());
