@@ -29,6 +29,10 @@ public final class ActiveSession {
     private final AtomicReference<@Nullable AutoCloseable> heartbeatTask = new AtomicReference<>(null);
     private final AtomicReference<@Nullable AutoCloseable> checkpointTask = new AtomicReference<>(null);
     private volatile boolean inPlay;
+    /** A lease this node has not been granted yet; the clock can take any value, so this is a marker. */
+    private static final long NEVER_HELD = Long.MIN_VALUE;
+
+    private final AtomicLong heldUntilNanos = new AtomicLong(NEVER_HELD);
 
     public ActiveSession(PlayerUuid playerUuid, ProfileId activeProfileId, long sessionEpoch, long lastDurableVersion) {
         this(playerUuid, activeProfileId, sessionEpoch, lastDurableVersion, SessionState.ACTIVE);
@@ -76,10 +80,28 @@ public final class ActiveSession {
      *
      * <p>From the join until the durable state is put on the player, and while a profile switch
      * swaps one state for another, what the player holds is about to be replaced. An item dropped
-     * then stayed on the ground and came back with the state as well.
+     * then stayed on the ground and came back with the state as well. Past the local deadline of the
+     * lease the session may already be someone else's, and nothing is done with it either.
      */
-    public boolean inPlay() {
-        return inPlay && !isFenced();
+    public boolean inPlay(long nowNanos) {
+        long heldUntil = heldUntilNanos.get();
+        return inPlay && !isFenced() && heldUntil != NEVER_HELD && nowNanos - heldUntil < 0;
+    }
+
+    /**
+     * Records that the lease may be acted on until {@code untilNanos} on the monotonic clock.
+     *
+     * <p>A later deadline never gives way to an earlier one: renewals that answer out of order must
+     * not shorten what a newer one granted, and one that granted nothing new changes nothing.
+     */
+    public void holdUntil(long untilNanos) {
+        heldUntilNanos.accumulateAndGet(
+                untilNanos, (held, offered) -> held == NEVER_HELD || offered - held > 0 ? offered : held);
+    }
+
+    /** When, on the monotonic clock, this node stops acting on the lease. */
+    public long heldUntilNanos() {
+        return heldUntilNanos.get();
     }
 
     /** The player now holds this session's state. */

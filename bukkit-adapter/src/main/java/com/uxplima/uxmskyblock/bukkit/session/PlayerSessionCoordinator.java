@@ -31,6 +31,7 @@ import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
+import com.uxplima.uxmskyblock.core.domain.session.SessionLease;
 import com.uxplima.uxmskyblock.core.domain.session.SessionState;
 import org.jspecify.annotations.Nullable;
 
@@ -55,6 +56,7 @@ public final class PlayerSessionCoordinator {
 
     private final ConcurrentMap<UUID, ActiveSession> activeSessions = new ConcurrentHashMap<>();
     private final Messages messages;
+    private final java.util.function.LongSupplier nanoClock;
 
     public PlayerSessionCoordinator(
             ServerNodeId nodeId,
@@ -68,6 +70,39 @@ public final class PlayerSessionCoordinator {
             Duration heartbeatInterval,
             Duration checkpointInterval,
             Messages messages) {
+        this(
+                nodeId,
+                sessionAuthorityPort,
+                inventoryCheckpointPort,
+                handoffFinalizationPort,
+                switchProfileUseCase,
+                journalRecovery,
+                schedulerPort,
+                protectionListener,
+                heartbeatInterval,
+                checkpointInterval,
+                messages,
+                System::nanoTime);
+    }
+
+    /**
+     * The same, counting the lease on {@code nanoClock}, a monotonic clock in nanoseconds: a test
+     * moves it, a server uses {@link System#nanoTime}.
+     */
+    public PlayerSessionCoordinator(
+            ServerNodeId nodeId,
+            PlayerSessionAuthorityPort sessionAuthorityPort,
+            ProfileInventoryCheckpointPort inventoryCheckpointPort,
+            ProfileHandoffFinalizationPort handoffFinalizationPort,
+            SwitchProfileUseCase switchProfileUseCase,
+            com.uxplima.uxmskyblock.core.application.inventory.InventoryJournalRecovery journalRecovery,
+            SchedulerPort schedulerPort,
+            IslandProtectionListener protectionListener,
+            Duration heartbeatInterval,
+            Duration checkpointInterval,
+            Messages messages,
+            java.util.function.LongSupplier nanoClock) {
+        this.nanoClock = Objects.requireNonNull(nanoClock, "nanoClock");
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId");
         this.sessionAuthorityPort = Objects.requireNonNull(sessionAuthorityPort, "sessionAuthorityPort");
         this.inventoryCheckpointPort = Objects.requireNonNull(inventoryCheckpointPort, "inventoryCheckpointPort");
@@ -88,7 +123,7 @@ public final class PlayerSessionCoordinator {
     /** Whether {@code playerUuid} holds their session's state here and may use it. */
     public boolean inPlay(UUID playerUuid) {
         ActiveSession session = activeSessions.get(playerUuid);
-        return session != null && session.inPlay();
+        return session != null && session.inPlay(nanoClock.getAsLong());
     }
 
     /**
@@ -194,6 +229,7 @@ public final class PlayerSessionCoordinator {
 
         schedulerPort.async(() -> {
             try {
+                long asked = nanoClock.getAsLong();
                 SessionAuthorityOutcome outcome =
                         sessionAuthorityPort.ensureSession(playerUuid, defaultProfileId, nodeId);
 
@@ -228,6 +264,7 @@ public final class PlayerSessionCoordinator {
 
                 ActiveSession session =
                         new ActiveSession(playerUuid, activeProfile, epoch, initialVersion, SessionState.ACTIVE);
+                session.holdUntil(asked + SessionLease.locallyHeld().toNanos());
                 activeSessions.put(rawUuid, session);
 
                 // Apply inventory and bind protection profile on entity thread
@@ -249,10 +286,21 @@ public final class PlayerSessionCoordinator {
                             if (session.isFenced()) {
                                 return;
                             }
+                            // The deadline counts from the moment the renewal was asked for, not from
+                            // its answer: the database extended the lease no earlier than that.
+                            long renewAsked = nanoClock.getAsLong();
                             SessionAuthorityOutcome renewOutcome =
                                     sessionAuthorityPort.renew(playerUuid, nodeId, session.sessionEpoch());
+                            long deadline =
+                                    renewAsked + SessionLease.locallyHeld().toNanos();
                             if (!renewOutcome.isSuccess()) {
                                 selfFencePlayer(playerUuid, "Lease renewal failed or rejected: " + renewOutcome);
+                            } else if (nanoClock.getAsLong() - deadline >= 0) {
+                                // An answer later than the deadline it would set: this node stopped
+                                // acting on the lease while it waited, and the player is safer moved on.
+                                selfFencePlayer(playerUuid, "Lease renewal answered after the local deadline");
+                            } else {
+                                session.holdUntil(deadline);
                             }
                         },
                         heartbeatInterval,

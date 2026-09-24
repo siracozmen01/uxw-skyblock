@@ -19,6 +19,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
+import com.uxplima.uxmskyblock.core.domain.session.SessionLease;
 import com.uxplima.uxmskyblock.core.domain.session.SessionState;
 
 /**
@@ -34,10 +35,10 @@ import com.uxplima.uxmskyblock.core.domain.session.SessionState;
 public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthorityPort {
 
     /** Standard active heartbeat lease window duration in seconds. */
-    public static final int ACTIVE_LEASE_SECONDS = 15;
+    public static final int ACTIVE_LEASE_SECONDS = (int) SessionLease.ACTIVE.toSeconds();
 
     /** Bounded handoff readiness and transfer window duration in seconds. */
-    public static final int HANDOFF_LEASE_SECONDS = 30;
+    public static final int HANDOFF_LEASE_SECONDS = (int) SessionLease.HANDOFF.toSeconds();
 
     private final Database database;
     private final Dialect dialect;
