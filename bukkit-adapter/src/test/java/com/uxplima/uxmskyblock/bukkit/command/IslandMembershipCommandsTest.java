@@ -152,6 +152,28 @@ class IslandMembershipCommandsTest {
                 .notify(any(), any(), anyString(), any(), any());
     }
 
+    @org.junit.jupiter.api.Test
+    @DisplayName("The island's members on the server hear that someone joined, and the one who joined does not")
+    void theMembersHearAJoin() throws Exception {
+        when(membership.members(ISLAND))
+                .thenReturn(List.of(
+                        new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                                new PlayerUuid(owner.getUniqueId()),
+                                OWNER,
+                                com.uxplima.uxmskyblock.core.domain.island.IslandRole.OWNER,
+                                Instant.now()),
+                        new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                                new PlayerUuid(mate.getUniqueId()),
+                                MATE,
+                                com.uxplima.uxmskyblock.core.domain.island.IslandRole.MEMBER,
+                                Instant.now())));
+
+        run("accept", mate);
+
+        assertThat(heardBy(owner)).contains("member.joined_your_island");
+        assertThat(heardBy(mate)).contains("member.joined").doesNotContain("member.joined_your_island");
+    }
+
     /** Everything {@code player} was told since last asked, one line each. */
     private static java.util.List<String> heardBy(org.mockbukkit.mockbukkit.entity.PlayerMock player) {
         java.util.List<String> heard = new java.util.ArrayList<>();

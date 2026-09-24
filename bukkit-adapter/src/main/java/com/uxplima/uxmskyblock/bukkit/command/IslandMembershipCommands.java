@@ -401,6 +401,18 @@ public final class IslandMembershipCommands {
                                     Map.of("player", player.getName()));
                             send(player, "member.joined");
                             fireMilestone("member-joined", player);
+                            // The island's other members on this server hear it at once; the ones
+                            // who are not read it in the feed written above.
+                            for (IslandMember member : service.members(joined.islandId())) {
+                                if (!member.profileId().equals(actor)) {
+                                    tellOrLeave(
+                                            member.profileId(),
+                                            "member.joined_your_island",
+                                            NotificationCategory.INVITE,
+                                            null,
+                                            Map.of("player", player.getName()));
+                                }
+                            }
                         }
                         case IslandMembershipService.JoinOutcome.NoInvite ignored -> send(player, "member.no_invite");
                         case IslandMembershipService.JoinOutcome.AlreadyOnAnIsland ignored ->
