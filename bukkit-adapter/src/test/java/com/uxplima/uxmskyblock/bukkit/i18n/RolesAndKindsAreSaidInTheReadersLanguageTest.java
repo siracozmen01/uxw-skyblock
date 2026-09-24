@@ -35,8 +35,13 @@ import org.mockbukkit.mockbukkit.entity.PlayerMock;
  */
 class RolesAndKindsAreSaidInTheReadersLanguageTest extends MockBukkitHarness {
 
+    private static final Enum<?>[] SEASON_STATES = com.uxplima.uxmskyblock.core.domain.season.SeasonState.values();
+    private static final Enum<?>[] LIFECYCLES = com.uxplima.uxmskyblock.core.domain.island.IslandLifecycle.values();
+    private static final Enum<?>[] ECONOMIC_STATES = com.uxplima.uxmskyblock.core.domain.island.EconomicState.values();
+
     @Test
-    @DisplayName("Every built in role and every warp and booster category has words in English and Turkish")
+    @DisplayName(
+            "Every built in role, every warp and booster category and every state shown has words in English and Turkish")
     void everyKindHasWords() {
         MessageProvider provider = Messages.bundled().provider();
         List<String> keys = new ArrayList<>();
@@ -49,6 +54,17 @@ class RolesAndKindsAreSaidInTheReadersLanguageTest extends MockBukkitHarness {
         }
         for (BoosterCategory category : BoosterCategory.values()) {
             keys.add("booster.categories." + category.name().toLowerCase(Locale.ROOT));
+        }
+        keys.add("warp.states.open");
+        keys.add("warp.states.locked");
+        for (Enum<?> state : SEASON_STATES) {
+            keys.add("season.states." + state.name().toLowerCase(Locale.ROOT));
+        }
+        for (Enum<?> state : LIFECYCLES) {
+            keys.add("admin.lifecycles." + state.name().toLowerCase(Locale.ROOT));
+        }
+        for (Enum<?> state : ECONOMIC_STATES) {
+            keys.add("admin.economic_states." + state.name().toLowerCase(Locale.ROOT));
         }
         List<String> missing = new ArrayList<>();
         for (String locale : List.of("en", "tr")) {
@@ -73,6 +89,7 @@ class RolesAndKindsAreSaidInTheReadersLanguageTest extends MockBukkitHarness {
         assertThat(messages.named(turkish, "roles", "BUILDER", "Builder")).isEqualTo("Builder");
         assertThat(messages.stored("roles", "OWNER", "OWNER")).isEqualTo("@roles.owner");
         assertThat(messages.stored("roles", "BUILDER", "BUILDER")).isEqualTo("BUILDER");
+        assertThat(messages.named(turkish, "warp.states", "open", "open")).isEqualTo("açık");
     }
 
     @Test

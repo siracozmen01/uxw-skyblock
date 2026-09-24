@@ -47,6 +47,21 @@ class TheLibrarysWindowsSpeakWordsTest {
     }
 
     @Test
+    @DisplayName("A library line's theme tokens are painted, never printed as they were written")
+    void theLibrarysTokensArePainted() {
+        MessageProvider provider = bundled();
+        for (String locale : List.of("en", "tr")) {
+            String said = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                    .serialize(provider.getComponentWithoutPrefix(TextInput.CANCELLED_KEY, locale));
+            assertThat(said)
+                    .describedAs(locale)
+                    .doesNotContain("<")
+                    .doesNotContain("tag:")
+                    .isNotBlank();
+        }
+    }
+
+    @Test
     @DisplayName("An operator's line for a library key wins over the library's")
     void theOperatorsLineWins() throws Exception {
         MessageProvider provider = bundled();

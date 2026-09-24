@@ -101,7 +101,13 @@ public final class IslandSeasonCommands {
                         Placeholder.unparsed(
                                 "number", Integer.toString(season.id().number())),
                         Placeholder.unparsed("name", season.name()),
-                        Placeholder.unparsed("state", season.state().name().toLowerCase(Locale.ROOT)));
+                        Placeholder.unparsed(
+                                "state",
+                                messages.named(
+                                        sender,
+                                        "season.states",
+                                        season.state().name(),
+                                        season.state().name().toLowerCase(Locale.ROOT))));
             }
         });
     }

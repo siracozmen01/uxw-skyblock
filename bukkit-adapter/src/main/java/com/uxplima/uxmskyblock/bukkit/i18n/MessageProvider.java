@@ -134,6 +134,10 @@ public final class MessageProvider {
         underlayLibraryWords();
     }
 
+    /** Paints the library's theme tokens in the shipped colours. */
+    private static final com.uxplima.uxmlib.text.style.Styler LIBRARY_STYLE =
+            new com.uxplima.uxmlib.text.style.Styler(com.uxplima.uxmlib.text.style.Theme.defaults());
+
     /**
      * Puts the words uxmLib ships for its own windows under every language this plugin speaks.
      *
@@ -155,7 +159,10 @@ public final class MessageProvider {
                 continue;
             }
             Map<String, String> catalog = new HashMap<>(localeCatalogs.get(locale));
-            words.forEach(catalog::putIfAbsent);
+            // The library writes its lines with theme tokens, such as <tag:'INPUT'>, which this
+            // catalogue's plain MiniMessage does not know and printed as they stood.
+            Locale reader = Locale.forLanguageTag(locale);
+            words.forEach((key, line) -> catalog.putIfAbsent(key, LIBRARY_STYLE.tokens(line, reader)));
             localeCatalogs.put(locale, Collections.unmodifiableMap(catalog));
         }
     }

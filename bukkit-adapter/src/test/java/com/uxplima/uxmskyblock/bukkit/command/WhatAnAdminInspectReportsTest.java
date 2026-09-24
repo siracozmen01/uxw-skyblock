@@ -172,8 +172,8 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
         assertThat(String.join("\n", lines))
                 .contains(islandId.value().toString())
                 .contains(ownerUuid.value().toString())
-                .contains("Lifecycle: ACTIVE")
-                .contains("Economic state: NORMAL")
+                .contains("Lifecycle: active")
+                .contains("Economic state: normal")
                 .contains("Members: 2, roles: 5");
     }
 

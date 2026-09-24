@@ -181,7 +181,13 @@ public final class IslandWarpCommands {
                                             "warp.categories",
                                             warp.category().name(),
                                             warp.category().name())),
-                            Placeholder.unparsed("state", warp.isLocked() ? "locked" : "open"));
+                            Placeholder.unparsed(
+                                    "state",
+                                    messages.named(
+                                            player,
+                                            "warp.states",
+                                            warp.isLocked() ? "locked" : "open",
+                                            warp.isLocked() ? "locked" : "open")));
                 }
             });
         });

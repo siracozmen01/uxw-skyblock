@@ -328,11 +328,23 @@ public final class IslandAdminCommands {
             send(
                     audience,
                     "admin.inspect_lifecycle",
-                    Placeholder.unparsed("state", island.lifecycle().name()));
+                    Placeholder.unparsed(
+                            "state",
+                            messages.named(
+                                    audience,
+                                    "admin.lifecycles",
+                                    island.lifecycle().name(),
+                                    island.lifecycle().name())));
             send(
                     audience,
                     "admin.inspect_economic",
-                    Placeholder.unparsed("state", island.economicState().name()));
+                    Placeholder.unparsed(
+                            "state",
+                            messages.named(
+                                    audience,
+                                    "admin.economic_states",
+                                    island.economicState().name(),
+                                    island.economicState().name())));
             Component administrative = messages.renderPlain(
                     audience, island.isFrozen() ? "admin.inspect_state_frozen" : "admin.inspect_state_normal");
             send(audience, "admin.inspect_administrative", Placeholder.component("state", administrative));
