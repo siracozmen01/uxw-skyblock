@@ -27,8 +27,9 @@ import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
  *   <li>It holds what the mutation found: the mutation never reached durable storage, whether or not
  *       it ran before the crash. The intent is aborted, nothing is refunded, and the operation may be
  *       tried again.</li>
- *   <li>It holds what the mutation expected: a checkpoint wrote the mutated inventory before the
- *       commit could. The operation is done, so it is committed as it stands and never runs again.
+ *   <li>It holds what the mutation expected: the player left in the middle, and the final write of
+ *       their inventory kept the change the commit then could not make. The operation is done, so it
+ *       is committed as it stands and never runs again.
  *       The testing standard reverts this case instead. The journal keeps fingerprints, not the
  *       inventory they came from, so there is nothing to revert to, and an inventory that already
  *       holds the outcome is the outcome.</li>

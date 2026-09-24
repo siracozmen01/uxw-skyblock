@@ -84,6 +84,19 @@ final class JournalCrashScene implements AutoCloseable {
                 .isTrue();
     }
 
+    /**
+     * The player leaves node A with {@code contents} in hand: node A drains the session and writes the
+     * last inventory, and stops before the session is released. The final write is not an ambient
+     * checkpoint and does not wait for an open intent, so what the player held is what is kept.
+     */
+    void leavesWith(String contents) {
+        assertThat(sessions.drain(player, NODE_A, epochOnA).isSuccess()).isTrue();
+        assertThat(new PlayerProfileHandoffFinalizationAdapter(database)
+                        .finalizeHandoffFlush(player, profile, NODE_A, epochOnA, version(), bytes(contents))
+                        .isSuccess())
+                .isTrue();
+    }
+
     /** Node A is gone; node B takes the player once its lease runs out, and is ready to play. */
     long nodeBTakesOver() throws Exception {
         try (Connection conn = database.connection();

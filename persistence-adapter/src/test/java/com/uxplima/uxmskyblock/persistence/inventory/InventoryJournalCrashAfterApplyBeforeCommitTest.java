@@ -26,8 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>The testing standard names this test. Node A writes the intent, changes the inventory in memory
  * and stops before the commit. What node B finds decides the rest. If the change died with node A, the
- * inventory is as the intent found it and the intent is aborted. If an ambient checkpoint wrote the
- * change first, the inventory already holds the outcome: the operation is committed as it stands and
+ * inventory is as the intent found it and the intent is aborted. If the player left and the final
+ * write kept the change, the inventory already holds the outcome: the operation is committed as it stands and
  * never delivered again. If the inventory holds neither, the operation is quarantined and nothing is
  * refunded. The standard reverts the second case; the journal keeps fingerprints, not inventories, so
  * there is nothing to revert to, and {@link InventoryJournalRecovery} says why the outcome is kept.
@@ -64,10 +64,10 @@ class InventoryJournalCrashAfterApplyBeforeCommitTest {
     }
 
     @Test
-    @DisplayName("A change a checkpoint wrote down is committed as it stands and never delivered again")
+    @DisplayName("A change the player left with is committed as it stands and never delivered again")
     void aChangeThatWasWrittenIsKept() throws Exception {
         scene.intentOnA();
-        scene.write(NODE_A, scene.epochOnA, AFTER);
+        scene.leavesWith(AFTER);
         long versionAtCrash = scene.version();
         long epoch = scene.nodeBTakesOver();
 
@@ -93,7 +93,7 @@ class InventoryJournalCrashAfterApplyBeforeCommitTest {
     @DisplayName("An inventory that matches neither side is quarantined, kept, and nothing is refunded")
     void anUnexplainedInventoryIsQuarantined() throws Exception {
         scene.intentOnA();
-        scene.write(NODE_A, scene.epochOnA, "something else entirely");
+        scene.leavesWith("something else entirely");
         long epoch = scene.nodeBTakesOver();
 
         assertThat(scene.recoverOn(NODE_B, epoch))
@@ -122,10 +122,10 @@ class InventoryJournalCrashAfterApplyBeforeCommitTest {
     }
 
     @Test
-    @DisplayName("A node that lost the player cannot commit a change a checkpoint wrote down either")
+    @DisplayName("A node that lost the player cannot commit a change the player left with either")
     void aStaleNodeCannotRollForward() throws Exception {
         scene.intentOnA();
-        scene.write(NODE_A, scene.epochOnA, AFTER);
+        scene.leavesWith(AFTER);
         scene.nodeBTakesOver();
 
         assertThat(scene.recoverOn(NODE_A, scene.epochOnA))

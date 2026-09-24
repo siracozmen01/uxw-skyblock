@@ -127,7 +127,8 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                 stmt.execute("BEGIN IMMEDIATE");
             }
             try {
-                boolean authorityValid = validateAuthority(conn, playerUuid, profileId, currentNode, expectedEpoch);
+                boolean authorityValid = validateAuthority(conn, playerUuid, profileId, currentNode, expectedEpoch)
+                        && !journalOwns(conn, profileId);
                 if (!authorityValid) {
                     rollbackSqlite(conn);
                     return ProfileInventoryMutationOutcome.rejected();
@@ -162,7 +163,8 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
         try (Connection conn = database.connection()) {
             conn.setAutoCommit(false);
             try {
-                boolean authorityValid = validateAuthority(conn, playerUuid, profileId, currentNode, expectedEpoch);
+                boolean authorityValid = validateAuthority(conn, playerUuid, profileId, currentNode, expectedEpoch)
+                        && !journalOwns(conn, profileId);
                 if (!authorityValid) {
                     conn.rollback();
                     return ProfileInventoryMutationOutcome.rejected();
@@ -209,6 +211,28 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
                         && epoch == expectedEpoch
                         && "ACTIVE".equals(state)
                         && leaseValid == 1;
+            }
+        }
+    }
+
+    /**
+     * Whether a journaled mutation has an intent open on this inventory.
+     *
+     * <p>While it does, the inventory in memory may hold an item the journal has not committed. A
+     * checkpoint that wrote it moved the version under the commit, the commit was refused, the item
+     * was taken back in memory and the journal aborted, and the durable inventory kept the item: a
+     * crash before the next checkpoint gave the player the item and left the reward to be delivered
+     * again. The journal owns the inventory until its intent settles; the checkpoint waits for the
+     * next interval. It reads under the session row lock the intent also takes, so the two cannot
+     * pass each other.
+     */
+    private static boolean journalOwns(Connection conn, ProfileId profileId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM inventory_mutation_journals j "
+                + "JOIN inventory_mutation_participants p ON p.operation_id = j.operation_id "
+                + "WHERE p.owner_root_id = ? AND j.state = 'INTENT'")) {
+            ps.setString(1, profileId.value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
             }
         }
     }
