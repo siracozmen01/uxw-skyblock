@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
  */
 class EveryFlagAMenuTogglesExistsTest {
 
-    private static final Pattern FLAG = Pattern.compile("command:is flag ([A-Za-z_]+)");
+    private static final Pattern FLAG = Pattern.compile("skyblock:island:flag ([A-Za-z_]+)");
 
     @Test
     @DisplayName("No shipped menu toggles a flag that no island has")

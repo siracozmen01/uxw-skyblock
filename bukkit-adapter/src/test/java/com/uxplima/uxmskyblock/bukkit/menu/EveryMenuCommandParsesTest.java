@@ -59,8 +59,11 @@ class EveryMenuCommandParsesTest {
 
     private static final Path MENUS = Path.of("src/main/resources/menus");
 
-    /** A whole command line a menu file runs, for example {@code command:is warp create %input%}. */
-    private static final Pattern MENU_COMMAND = Pattern.compile("\"command:(is [a-z_0-9 %]+)\"");
+    /**
+     * An island command a menu file runs, for example {@code skyblock:island:warp create %input%}, which
+     * is read here under the shipped root, {@code is}.
+     */
+    private static final Pattern MENU_COMMAND = Pattern.compile("\"skyblock:island:([a-z_0-9 %]+)\"");
 
     /**
      * What a typed line looks like when the guard asks Brigadier.
@@ -113,7 +116,7 @@ class EveryMenuCommandParsesTest {
                     .toList()) {
                 Matcher matcher = MENU_COMMAND.matcher(Files.readString(file, StandardCharsets.UTF_8));
                 while (matcher.find()) {
-                    lines.add(file.getFileName() + " :: " + matcher.group(1).strip());
+                    lines.add(file.getFileName() + " :: is " + matcher.group(1).strip());
                 }
             }
         }

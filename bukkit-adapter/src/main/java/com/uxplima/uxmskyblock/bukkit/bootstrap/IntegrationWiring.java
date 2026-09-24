@@ -171,7 +171,6 @@ public final class IntegrationWiring implements AutoCloseable {
         // one, so an operator who moved a slot and restarted saw no change.
         this.menuEngine = new SkyblockMenuEngine(plugin, this.messages, config.dataDir(), config.rootNode());
         this.menuEngine.loadSpecs();
-        registerMenuVerbs(this.menuEngine, this.messages);
         this.menuEngine.install();
         this.controlMenu.useMenuEngine(this.menuEngine);
         this.controlMenu.useVaultPages(gameplay.vaultService()::getMaxAllowedPages);
@@ -292,6 +291,8 @@ public final class IntegrationWiring implements AutoCloseable {
                                         ? gameplay.temporaryAccessService()
                                         : null)
                         .build());
+        // A button runs an island command under the operator's names for it, so the verbs need the tree.
+        registerMenuVerbs(this.menuEngine, this.messages, this.commandTree::typed);
         this.commandTree.useTemporaryAccess(
                 config.temporaryAccessConfig(), authority.nodeProcessIdentity(), authority.profileTypes());
         // The inbox, its table, its ten categories and the delivery on join were all here and
@@ -624,10 +625,11 @@ public final class IntegrationWiring implements AutoCloseable {
      * <p>Each one is what the window used to do in Java when its slot was clicked. The file decides
      * which slot runs which verb; this decides what each verb means.
      */
-    private static void registerMenuVerbs(SkyblockMenuEngine engine, Messages messages) {
+    private static void registerMenuVerbs(
+            SkyblockMenuEngine engine, Messages messages, java.util.function.UnaryOperator<String> typed) {
         engine.action("skyblock:teleport-home", ctx -> {
             ctx.player().closeInventory();
-            ctx.player().performCommand("is home");
+            ctx.player().performCommand(typed.apply("home"));
         });
         engine.action("skyblock:bank", ctx -> {
             ctx.player().closeInventory();
@@ -635,15 +637,15 @@ public final class IntegrationWiring implements AutoCloseable {
         });
         engine.action("skyblock:upgrades", ctx -> {
             ctx.player().closeInventory();
-            ctx.player().performCommand("is upgrades");
+            ctx.player().performCommand(typed.apply("upgrades"));
         });
         engine.action("skyblock:members", ctx -> {
             ctx.player().closeInventory();
-            ctx.player().performCommand("is members");
+            ctx.player().performCommand(typed.apply("members"));
         });
         engine.action("skyblock:settings", ctx -> {
             ctx.player().closeInventory();
-            ctx.player().performCommand("is settings");
+            ctx.player().performCommand(typed.apply("settings"));
         });
         // The invite button sent a hint message, because there was no command behind it. The name
         // the player types is the verb's argument, so one slot serves every invite.
@@ -654,18 +656,26 @@ public final class IntegrationWiring implements AutoCloseable {
                 messages.send(ctx.player(), "menu.control.members_hint");
                 return;
             }
-            ctx.player().performCommand("is invite " + name);
+            ctx.player().performCommand(typed.apply("invite " + name));
         });
         engine.action("skyblock:shop", ctx -> {
             ctx.player().closeInventory();
-            ctx.player().performCommand("is shop");
+            ctx.player().performCommand(typed.apply("shop"));
         });
         engine.action("skyblock:permissions", ctx -> {
             ctx.player().closeInventory();
-            ctx.player().performCommand("is permissions");
+            ctx.player().performCommand(typed.apply("permissions"));
         });
         // The upgrade key is the verb's argument, so one verb serves every upgrade a file names and
         // an operator can add a slot for a new one without a line of Java.
+        // skyblock:island:<branch> <arguments> runs an island command under the operator's names for it,
+        // so a menu file keeps working when commands.conf renames the root or the branch.
+        engine.action("skyblock:island", ctx -> {
+            String line = ctx.arg().strip();
+            if (!line.isEmpty()) {
+                ctx.player().performCommand(typed.apply(line));
+            }
+        });
         engine.action("skyblock:buy-upgrade", ctx -> {
             String upgradeKey = ctx.arg().strip();
             ctx.player().closeInventory();
@@ -673,7 +683,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 messages.send(ctx.player(), "menu.control.upgrade_unnamed");
                 return;
             }
-            ctx.player().performCommand("is upgrades buy " + upgradeKey);
+            ctx.player().performCommand(typed.apply("upgrades buy " + upgradeKey));
         });
     }
 

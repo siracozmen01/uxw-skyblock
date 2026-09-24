@@ -85,6 +85,48 @@ class ASentenceNamesTheCommandAsRegisteredTest extends MockBukkitHarness {
         assertThat(plain(messages, turkish, "bank.status_locked_hint")).contains("/ada kasa paydebt");
     }
 
+    @Test
+    @DisplayName("A button's command runs under the operator's names for the root and the branch")
+    void aButtonRunsUnderTheOperatorsNames() throws Exception {
+        Path file = dir.resolve("commands.conf");
+        Files.writeString(file, """
+                commands { island { name = "ada", aliases = [], subcommands {
+                  warp { name = "isinlanma" }
+                } } }
+                """);
+        IslandCommandTree renamed = tree(ConfiguredCommands.load(file), Messages.bundled());
+        renamed.buildRoot();
+
+        assertThat(renamed.typed("warp create Pazar")).isEqualTo("ada isinlanma create Pazar");
+        assertThat(renamed.typed("home")).isEqualTo("ada home");
+
+        IslandCommandTree shipped = tree(null, Messages.bundled());
+        shipped.buildRoot();
+        assertThat(shipped.typed("shop")).isEqualTo("is shop");
+    }
+
+    @Test
+    @DisplayName("No shipped menu and no button in the code runs the island command under a fixed word")
+    void noButtonRunsAFixedWord() throws Exception {
+        try (java.util.stream.Stream<Path> menus = Files.list(Path.of("src/main/resources/menus"))) {
+            for (Path menu : menus.toList()) {
+                assertThat(Files.readString(menu))
+                        .describedAs(menu.getFileName().toString())
+                        .doesNotContain("\"command:is ")
+                        .doesNotContain("\"command:island ");
+            }
+        }
+        try (java.util.stream.Stream<Path> sources = Files.walk(Path.of("src/main/java"))) {
+            for (Path source :
+                    sources.filter(path -> path.toString().endsWith(".java")).toList()) {
+                assertThat(Files.readString(source))
+                        .describedAs(source.getFileName().toString())
+                        .doesNotContain("performCommand(\"is ")
+                        .doesNotContain("performCommand(\"island ");
+            }
+        }
+    }
+
     private static String plain(Messages messages, PlayerMock player, String key) {
         return PlainTextComponentSerializer.plainText().serialize(messages.renderPlain(player, key));
     }

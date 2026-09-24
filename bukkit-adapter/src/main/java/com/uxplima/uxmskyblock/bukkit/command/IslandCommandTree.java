@@ -473,14 +473,31 @@ public final class IslandCommandTree {
             typed.put(branch.key(), branch.name());
         }
         String rootTyped = this.rootWord;
-        // A catalogue line names a command as <cmd:sethome>, and reads it under the operator's words.
-        messages.provider().useCommandLines(line -> {
+        this.commandLines = line -> {
             int space = line.indexOf(' ');
             String first = space < 0 ? line : line.substring(0, space);
             String rest = space < 0 ? "" : line.substring(space);
-            return "/" + rootTyped + " " + typed.getOrDefault(first, first) + rest;
-        });
+            return rootTyped + " " + typed.getOrDefault(first, first) + rest;
+        };
+        // A catalogue line names a command as <cmd:sethome>, and reads it under the operator's words.
+        messages.provider().useCommandLines(line -> "/" + typed(line));
         return root;
+    }
+
+    /** How a command line written with the code's own keys is typed under the operator's words. */
+    private java.util.function.UnaryOperator<String> commandLines = line -> ConfiguredCommandTree.ROOT + " " + line;
+
+    /**
+     * {@code keyedLine}, a branch key and its arguments such as {@code warp create Market}, as a player
+     * types it on this server, without the slash: the root and the branch under whatever names
+     * {@code commands.conf} gives them.
+     *
+     * <p>Buttons ran {@code is shop} and {@code is warp create}, and an operator who renamed the root or
+     * a branch, as every command may be, found every one of them answered as an unknown command.
+     */
+    public String typed(String keyedLine) {
+        return commandLines.apply(
+                java.util.Objects.requireNonNull(keyedLine, "keyedLine").strip());
     }
 
     /** The word the root answers to, as {@code /is help} names it. */
