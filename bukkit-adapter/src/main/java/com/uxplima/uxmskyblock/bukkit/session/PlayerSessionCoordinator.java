@@ -391,13 +391,26 @@ public final class PlayerSessionCoordinator {
                 if (session.isFenced()) {
                     return;
                 }
-                ProfileInventoryMutationOutcome outcome = inventoryCheckpointPort.checkpointInventory(
-                        playerUuid,
-                        session.activeProfileId(),
-                        nodeId,
-                        session.sessionEpoch(),
-                        session.lastDurableVersion(),
-                        snapshot);
+                ProfileInventoryMutationOutcome outcome;
+                try {
+                    outcome = inventoryCheckpointPort.checkpointInventory(
+                            playerUuid,
+                            session.activeProfileId(),
+                            nodeId,
+                            session.sessionEpoch(),
+                            session.lastDurableVersion(),
+                            snapshot);
+                } catch (RuntimeException e) {
+                    // A database that did not answer loses nothing: the session keeps the version it
+                    // last wrote and the next checkpoint writes the whole state again. Thrown out of
+                    // the repeating task, this could stop every checkpoint after it.
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Ambient checkpoint failed for " + playerUuid.value()
+                                    + "; the next one writes the same state",
+                            e);
+                    return;
+                }
 
                 if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
                     session.setLastDurableVersion(succ.newVersion());
