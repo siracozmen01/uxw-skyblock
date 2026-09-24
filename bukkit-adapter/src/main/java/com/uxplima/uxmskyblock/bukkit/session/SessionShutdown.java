@@ -29,16 +29,19 @@ final class SessionShutdown {
     private final PlayerSessionAuthorityPort sessionAuthorityPort;
     private final ProfileHandoffFinalizationPort handoffFinalizationPort;
     private final SchedulerPort schedulerPort;
+    private final SessionHooks hooks;
 
     SessionShutdown(
             ServerNodeId nodeId,
             PlayerSessionAuthorityPort sessionAuthorityPort,
             ProfileHandoffFinalizationPort handoffFinalizationPort,
-            SchedulerPort schedulerPort) {
+            SchedulerPort schedulerPort,
+            SessionHooks hooks) {
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId");
         this.sessionAuthorityPort = Objects.requireNonNull(sessionAuthorityPort, "sessionAuthorityPort");
         this.handoffFinalizationPort = Objects.requireNonNull(handoffFinalizationPort, "handoffFinalizationPort");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort");
+        this.hooks = Objects.requireNonNull(hooks, "hooks");
     }
 
     /**
@@ -68,6 +71,12 @@ final class SessionShutdown {
             }
             session.closeTasks();
             try {
+                // What writes the player's state itself writes it first, such as an open vault
+                // window, whose close event never reaches a plugin that is already disabled.
+                Player online = Bukkit.getPlayer(session.playerUuid().value());
+                if (online != null && online.isOnline() && schedulerPort.ownsEntity(session.playerUuid())) {
+                    hooks.runStopping(online);
+                }
                 Optional<ProfileInventoryRecord> held = heldState(session);
 
                 SessionAuthorityOutcome drainOutcome =

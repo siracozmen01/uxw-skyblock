@@ -143,6 +143,7 @@ public final class SocialWiring {
                     config.messages(),
                     authority.sessionCoordinator());
             this.vaultListener = new IslandVaultListener(this.vaultWindow);
+            authority.sessionCoordinator().whenStopping(this.vaultWindow::writeBeforeStop);
         } else {
             this.vaultWindow = null;
             this.vaultListener = null;

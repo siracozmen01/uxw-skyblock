@@ -324,12 +324,7 @@ public final class IslandVaultWindow {
         PlayerStateWrite playerState = stateOf(player, holder);
         schedulerPort.async(() -> {
             try {
-                vaultService.commitVaultPage(
-                        com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId.fromString(holder.sessionId()),
-                        serialized,
-                        holder.profileId().toString(),
-                        playerState,
-                        auditTrail);
+                commitPage(holder, serialized, playerState, auditTrail);
                 settled(player, playerState);
             } catch (RuntimeException e) {
                 // The window is already closed and what it held is nowhere: not in the page, because
@@ -341,6 +336,52 @@ public final class IslandVaultWindow {
                 });
             }
         });
+    }
+
+    /**
+     * Writes a window the player still has open when the server stops, on the stopping thread.
+     *
+     * <p>The plugin is disabled before players are disconnected, so the close event of a window open
+     * at a stop never reached the listener: the page kept what it held, and the stop wrote the player
+     * holding what they had taken out of it. The page and the player are now written together here,
+     * before the stop writes the player; a refused write puts the player back where the page says
+     * they are. The window stays open, so nothing is written twice.
+     */
+    public void writeBeforeStop(Player player) {
+        org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+        if (top == null || !(top.getHolder() instanceof VaultHolder holder)) {
+            return;
+        }
+        ItemStack[] contents = top.getContents();
+        PlayerStateWrite playerState = stateOf(player, holder);
+        try {
+            commitPage(
+                    holder,
+                    BukkitInventorySerializer.serializeItemStacks(contents),
+                    playerState,
+                    auditTrailOf(holder, contents));
+            settled(player, playerState);
+        } catch (RuntimeException e) {
+            LOGGER.log(
+                    java.util.logging.Level.WARNING,
+                    "The vault page open for " + player.getName()
+                            + " could not be written at a stop; the player is put back as the page stands",
+                    e);
+            settleTheRefusedCommit(player, holder, contents);
+        }
+    }
+
+    private void commitPage(
+            VaultHolder holder,
+            byte[] serialized,
+            @Nullable PlayerStateWrite playerState,
+            List<VaultAuditLogEntry> auditTrail) {
+        vaultService.commitVaultPage(
+                com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId.fromString(holder.sessionId()),
+                serialized,
+                holder.profileId().toString(),
+                playerState,
+                auditTrail);
     }
 
     /**

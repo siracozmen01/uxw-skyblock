@@ -126,7 +126,7 @@ public final class PlayerSessionCoordinator {
                 this::runLeftHooks,
                 this::runActiveHooks);
         this.shutdownFlow = new SessionShutdown(
-                this.nodeId, this.sessionAuthorityPort, this.handoffFinalizationPort, this.schedulerPort);
+                this.nodeId, this.sessionAuthorityPort, this.handoffFinalizationPort, this.schedulerPort, hooks);
         this.loginQueue = new LoginQueue(this.schedulerPort, this.messages, this.nanoClock, this::attemptJoin);
         this.serverHandoff = new ServerHandoff(
                 this.nodeId,
@@ -216,6 +216,14 @@ public final class PlayerSessionCoordinator {
      */
     public void whenProfileLeft(java.util.function.BiConsumer<Player, ProfileId> hook) {
         hooks.whenLeft(hook);
+    }
+
+    /**
+     * Runs {@code hook} for each player still online when the server stops, on the stopping thread and
+     * before their state is written, for a feature that writes that state itself.
+     */
+    public void whenStopping(java.util.function.Consumer<Player> hook) {
+        hooks.whenStopping(hook);
     }
 
     private void runActiveHooks(Player player) {

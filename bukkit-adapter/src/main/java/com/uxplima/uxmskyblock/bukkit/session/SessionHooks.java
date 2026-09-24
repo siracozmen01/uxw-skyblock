@@ -64,4 +64,21 @@ final class SessionHooks {
             }
         }
     }
+
+    /** What runs, on the stopping thread, for each player still online before their state is written. */
+    private final List<Consumer<Player>> whenStopping = new CopyOnWriteArrayList<>();
+
+    void whenStopping(Consumer<Player> hook) {
+        whenStopping.add(Objects.requireNonNull(hook, "hook"));
+    }
+
+    void runStopping(Player player) {
+        for (Consumer<Player> hook : whenStopping) {
+            try {
+                hook.accept(player);
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING, "A hook on a stop failed for " + player.getName(), e);
+            }
+        }
+    }
 }
