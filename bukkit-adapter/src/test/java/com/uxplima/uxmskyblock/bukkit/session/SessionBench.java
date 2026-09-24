@@ -3,7 +3,6 @@ package com.uxplima.uxmskyblock.bukkit.session;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
@@ -36,6 +35,7 @@ final class SessionBench implements AutoCloseable {
     final PersistenceBootstrap persistence;
     final PlayerSessionCoordinator coordinator;
     private final ServerMock server;
+    private final boolean ownsPersistence;
 
     SessionBench(ServerMock server) throws Exception {
         this(server, UnaryOperator.identity());
@@ -43,9 +43,27 @@ final class SessionBench implements AutoCloseable {
 
     /** The same, with the checkpoint port the coordinator writes through passed through {@code checkpoints}. */
     SessionBench(ServerMock server, UnaryOperator<ProfileInventoryCheckpointPort> checkpoints) throws Exception {
+        this(
+                server,
+                PersistenceBootstrap.createSqlite(
+                        Files.createTempDirectory("bench_").resolve("bench.db")),
+                checkpoints,
+                true);
+    }
+
+    /** A second server on the same database, as a restart after a crash finds it; it leaves the database open. */
+    SessionBench(ServerMock server, PersistenceBootstrap shared) {
+        this(server, shared, UnaryOperator.identity(), false);
+    }
+
+    private SessionBench(
+            ServerMock server,
+            PersistenceBootstrap persistence,
+            UnaryOperator<ProfileInventoryCheckpointPort> checkpoints,
+            boolean ownsPersistence) {
         this.server = server;
-        Path dir = Files.createTempDirectory("bench_");
-        persistence = PersistenceBootstrap.createSqlite(dir.resolve("bench.db"));
+        this.persistence = persistence;
+        this.ownsPersistence = ownsPersistence;
         coordinator = new PlayerSessionCoordinator(
                 ServerNodeId.of("bench-node"),
                 persistence.sessionAuthorityPort(),
@@ -102,6 +120,8 @@ final class SessionBench implements AutoCloseable {
     @Override
     public void close() {
         coordinator.shutdown();
-        persistence.close();
+        if (ownsPersistence) {
+            persistence.close();
+        }
     }
 }
