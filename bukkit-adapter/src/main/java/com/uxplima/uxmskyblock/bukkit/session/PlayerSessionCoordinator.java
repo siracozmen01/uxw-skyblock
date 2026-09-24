@@ -12,8 +12,6 @@ import java.util.logging.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
@@ -26,8 +24,6 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryMutationOutcome;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
-import com.uxplima.uxmskyblock.core.domain.result.Result;
-import com.uxplima.uxmskyblock.core.domain.result.Unit;
 import com.uxplima.uxmskyblock.core.domain.session.PlayerSessionRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
@@ -57,6 +53,8 @@ public final class PlayerSessionCoordinator {
     private final ConcurrentMap<UUID, ActiveSession> activeSessions = new ConcurrentHashMap<>();
     private final Messages messages;
     private final java.util.function.LongSupplier nanoClock;
+    private final ProfileSwitchFlow switchFlow;
+    private final SessionShutdown shutdownFlow;
 
     public PlayerSessionCoordinator(
             ServerNodeId nodeId,
@@ -114,6 +112,18 @@ public final class PlayerSessionCoordinator {
         this.heartbeatInterval = Objects.requireNonNull(heartbeatInterval, "heartbeatInterval");
         this.checkpointInterval = Objects.requireNonNull(checkpointInterval, "checkpointInterval");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.switchFlow = new ProfileSwitchFlow(
+                this.nodeId,
+                this.switchProfileUseCase,
+                this.cutShort,
+                this.schedulerPort,
+                this.protectionListener,
+                this.messages,
+                activeSessions::get,
+                this::runLeftHooks,
+                this::runActiveHooks);
+        this.shutdownFlow = new SessionShutdown(
+                this.nodeId, this.sessionAuthorityPort, this.handoffFinalizationPort, this.schedulerPort);
     }
 
     public @Nullable ActiveSession getActiveSession(UUID playerUuid) {
@@ -422,184 +432,14 @@ public final class PlayerSessionCoordinator {
      * Executes the crash-consistent 2-phase profile switch protocol.
      */
     public void switchProfile(Player player, ProfileId targetProfileId) {
-        Objects.requireNonNull(player, "player");
-        Objects.requireNonNull(targetProfileId, "targetProfileId");
-
-        UUID rawUuid = player.getUniqueId();
-        ActiveSession session = activeSessions.get(rawUuid);
-        if (session == null || session.isFenced()) {
-            messages.send(player, "session.none_active");
-            return;
-        }
-
-        if (session.activeProfileId().equals(targetProfileId)) {
-            messages.send(player, "session.already_on_profile");
-            return;
-        }
-
-        PlayerUuid playerUuid = session.playerUuid();
-        ProfileId currentProfile = session.activeProfileId();
-
-        // 1. Snapshot source inventory on entity thread
-        schedulerPort.onEntity(playerUuid, () -> {
-            if (!player.isOnline() || session.isFenced()) {
-                return;
-            }
-
-            // Nothing is done with what the player holds until the other profile's state replaces it.
-            session.leavePlay();
-            ProfileInventoryRecord srcSnapshot =
-                    BukkitInventorySerializer.snapshotPlayer(player, currentProfile, session.lastDurableVersion());
-
-            // 2. Prepare switch asynchronously
-            schedulerPort.async(() -> {
-                if (session.isFenced()) {
-                    return;
-                }
-                UUID opId = UUID.randomUUID();
-                Result<SwitchProfileUseCase.PreparedSwitch, String> prepRes = switchProfileUseCase.prepareSwitch(
-                        opId, playerUuid, currentProfile, targetProfileId, nodeId, session.sessionEpoch(), srcSnapshot);
-
-                if (prepRes.isErr()) {
-                    LOGGER.log(Level.WARNING, "Failed to prepare profile switch: {0}", prepRes.errorOrThrow());
-                    schedulerPort.onEntity(playerUuid, () -> {
-                        session.enterPlay();
-                        if (player.isOnline()) {
-                            // The reason is a code for the log, and it used to be shown as it was.
-                            messages.send(player, "session.switch_failed");
-                        }
-                    });
-                    return;
-                }
-
-                SwitchProfileUseCase.PreparedSwitch prepared = prepRes.orElseThrow();
-
-                // 3. Apply target state on entity thread (restores full inventory, enderchest, stats, potion effects,
-                // gamemode, flight)
-                schedulerPort.onEntity(playerUuid, () -> {
-                    if (!player.isOnline() || session.isFenced()) {
-                        return;
-                    }
-
-                    if (prepared.targetRecord() != null) {
-                        BukkitInventorySerializer.applyToPlayer(player, prepared.targetRecord());
-                    } else if (prepared.targetInventoryNbt().length > 0) {
-                        var items = BukkitInventorySerializer.deserializeItemStacks(prepared.targetInventoryNbt());
-                        player.getInventory().setContents(items);
-                    } else {
-                        player.getInventory().clear();
-                        player.getEnderChest().clear();
-                    }
-
-                    protectionListener.setActiveProfile(playerUuid, targetProfileId);
-                    session.enterPlay();
-
-                    // 4. Complete switch asynchronously
-                    schedulerPort.async(() -> {
-                        if (session.isFenced()) {
-                            return;
-                        }
-                        Result<Unit, String> compRes = switchProfileUseCase.completeSwitch(prepared);
-                        if (compRes.isOk()) {
-                            session.setActiveProfileId(targetProfileId);
-                            cutShort.settle(playerUuid, targetProfileId, session.sessionEpoch());
-                            long newVersion = prepared.targetRecord() != null
-                                    ? prepared.targetRecord().version()
-                                    : 1L;
-                            session.setLastDurableVersion(newVersion);
-                            schedulerPort.onEntity(playerUuid, () -> {
-                                if (player.isOnline()) {
-                                    messages.send(
-                                            player,
-                                            "session.switched",
-                                            Placeholder.unparsed(
-                                                    "profile",
-                                                    targetProfileId.value().toString()));
-                                    // The old profile has left and the new one has arrived.
-                                    runLeftHooks(player, currentProfile);
-                                    runActiveHooks(player);
-                                }
-                            });
-                        } else {
-                            LOGGER.log(Level.SEVERE, "Failed to complete profile switch: {0}", compRes.errorOrThrow());
-                        }
-                    });
-                });
-            });
-        });
-    }
-
-    /**
-     * What the player of {@code session} holds, read on this thread if this thread owns the player.
-     *
-     * <p>Shutdown used to hand the read to the player's own thread and take the answer at once. The
-     * plugin is already disabled when shutdown runs, so the scheduler dropped the task, the answer was
-     * always empty, and every player online at a restart had an empty inventory written over theirs.
-     * By now the server has stopped ticking: Paper disables plugins on its main thread and Folia on its
-     * shutdown thread, and each of those owns every player. A thread that does not own the player
-     * reads nothing, and nothing is written.
-     */
-    private Optional<ProfileInventoryRecord> heldState(ActiveSession session) {
-        Player player = Bukkit.getPlayer(session.playerUuid().value());
-        if (player == null || !player.isOnline() || !schedulerPort.ownsEntity(session.playerUuid())) {
-            return Optional.empty();
-        }
-        return Optional.of(BukkitInventorySerializer.snapshotPlayer(
-                player, session.activeProfileId(), session.lastDurableVersion()));
+        switchFlow.switchProfile(player, targetProfileId);
     }
 
     /**
      * Gracefully shuts down all active player sessions during plugin disable.
      */
     public void shutdown() {
-        for (ActiveSession session : activeSessions.values()) {
-            if (session.isFenced()) {
-                continue;
-            }
-            session.closeTasks();
-            try {
-                Optional<ProfileInventoryRecord> held = heldState(session);
-
-                SessionAuthorityOutcome drainOutcome =
-                        sessionAuthorityPort.drain(session.playerUuid(), nodeId, session.sessionEpoch());
-                if (!drainOutcome.isSuccess()) {
-                    LOGGER.log(Level.SEVERE, "Failed to drain session during shutdown for {0}: {1}", new Object[] {
-                        session.playerUuid(), drainOutcome
-                    });
-                    continue;
-                }
-
-                if (held.isEmpty()) {
-                    // Nothing was read, so nothing is written over what the last checkpoint kept.
-                    LOGGER.log(
-                            Level.WARNING,
-                            "The inventory of {0} could not be read at shutdown; the last checkpoint stands.",
-                            session.playerUuid());
-                    sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
-                    continue;
-                }
-
-                ProfileInventoryMutationOutcome outcome = handoffFinalizationPort.finalizeHandoffFlush(
-                        session.playerUuid(),
-                        session.activeProfileId(),
-                        nodeId,
-                        session.sessionEpoch(),
-                        session.lastDurableVersion(),
-                        held.get());
-
-                if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
-                    session.setLastDurableVersion(succ.newVersion());
-                    sessionAuthorityPort.releaseToOffline(session.playerUuid(), nodeId, session.sessionEpoch());
-                } else {
-                    LOGGER.log(
-                            Level.SEVERE,
-                            "Handoff finalization flush failed during shutdown for {0}: {1}",
-                            new Object[] {session.playerUuid(), outcome});
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Error draining session during shutdown for " + session.playerUuid(), e);
-            }
-        }
+        shutdownFlow.drain(activeSessions.values());
         activeSessions.clear();
     }
 }
