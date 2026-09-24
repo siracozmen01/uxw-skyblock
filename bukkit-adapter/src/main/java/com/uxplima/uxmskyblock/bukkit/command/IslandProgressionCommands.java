@@ -145,7 +145,23 @@ public final class IslandProgressionCommands {
 
     public LiteralArgumentBuilder<CommandSourceStack> buildBiome() {
         return Cmd.literal("biome")
+                .executes(this::executeBiomeOffer)
                 .then(Cmd.argument("type", StringArgumentType.word()).executes(this::executeBiomeChange));
+    }
+
+    /**
+     * The biomes this server offers, and how to ask for one. The bare word answered with the game's
+     * own error for an incomplete command, which names nothing a player could type next.
+     */
+    private int executeBiomeOffer(CommandContext<CommandSourceStack> ctx) {
+        org.bukkit.command.CommandSender sender = ctx.getSource().getSender();
+        BiomeConfiguration rules = this.biomeRules;
+        if (!rules.enabled()) {
+            send(sender, "biome.disabled");
+            return Cmd.OK;
+        }
+        send(sender, "biome.offered", Placeholder.unparsed("offered", rules.offeredNames()));
+        return Cmd.OK;
     }
 
     private Optional<ProfileId> activeProfile(Player player) {

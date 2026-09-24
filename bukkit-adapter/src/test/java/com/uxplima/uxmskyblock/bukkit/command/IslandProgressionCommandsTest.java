@@ -171,6 +171,27 @@ class IslandProgressionCommandsTest {
     }
 
     @Test
+    @DisplayName("A bare /is biome names the biomes on offer and how to choose one")
+    void aBareBiomeNamesTheOffer() throws Exception {
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(new IslandProgressionCommands(
+                        locations,
+                        mock(IslandBankService.class),
+                        leaderboard,
+                        biomes,
+                        mock(PlayerSessionCoordinator.class),
+                        inlineScheduler(),
+                        () -> worth,
+                        () -> mock(IslandMissionService.class),
+                        Messages.bundled())
+                .buildBiome());
+
+        run("biome", player);
+
+        assertThat(player.nextMessage()).contains("Biomes this server offers").contains("plains");
+    }
+
+    @Test
     @DisplayName("The level a player is shown counts the missions they finished")
     void theLevelCountsFinishedMissions() throws Exception {
         run("level", player);
@@ -385,10 +406,11 @@ class IslandProgressionCommandsTest {
     }
 
     @Test
-    @DisplayName("/is biome with nothing after it is refused rather than guessing a biome")
-    void biomeNeedsAName() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> run("biome", player))
-                .isInstanceOf(Exception.class);
+    @DisplayName("/is biome with nothing after it names no biome and changes none, rather than guessing one")
+    void biomeNeedsAName() throws Exception {
+        run("biome", player);
+
+        verify(biomes, never()).applyBiome(any(), any());
     }
 
     @Test
