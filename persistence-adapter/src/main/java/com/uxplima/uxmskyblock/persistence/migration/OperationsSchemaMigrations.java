@@ -7,7 +7,7 @@ import com.uxplima.uxmlib.storage.migration.Migration;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 
 /**
- * Operations schema migrations (V21 - V30).
+ * Operations schema migrations (V21 - V31).
  * Covers spiral slot pool coordinate recycling, player anti-abuse records,
  * island quarantines, island boosters, island bankruptcies, game mode instances,
  * primary gameplay root references, enterprise activity events, notifications,
@@ -23,6 +23,7 @@ final class OperationsSchemaMigrations {
         list.addAll(OperationsSchemaMigrationsV25ToV28.migrations(dialect));
         list.add(OperationsSchemaMigrationsV29.migration(dialect));
         list.add(OperationsSchemaMigrationsV30.migration(dialect));
+        list.add(OperationsSchemaMigrationsV31.migration(dialect));
         return List.copyOf(list);
     }
 }

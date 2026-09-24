@@ -204,6 +204,10 @@ class PersistenceArchitectureTest {
                 .resideInAPackage("com.uxplima.uxmskyblock.persistence..")
                 .and()
                 .doNotHaveFullyQualifiedName("com.uxplima.uxmskyblock.persistence.backup.SqlDatabaseBackupAdapter")
+                // The dump the disaster backup reads and writes every table through; its table names
+                // come from the database's own catalogue, never from a player or an operator.
+                .and()
+                .doNotHaveFullyQualifiedName("com.uxplima.uxmskyblock.persistence.backup.DatabaseDump")
                 .should(callMethodWhere(com.tngtech.archunit.base.DescribedPredicate.describe(
                         "call raw Statement.executeQuery/executeUpdate",
                         call -> "java.sql.Statement"

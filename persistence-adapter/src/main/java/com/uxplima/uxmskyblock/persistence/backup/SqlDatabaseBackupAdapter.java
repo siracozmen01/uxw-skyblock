@@ -2,14 +2,8 @@ package com.uxplima.uxmskyblock.persistence.backup;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
 import com.uxplima.uxmlib.storage.sql.Database;
@@ -23,7 +17,11 @@ import com.uxplima.uxmskyblock.core.domain.backup.DatabaseBackupDialect;
  */
 public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
 
-    private static final String BACKUP_HEADER_PREFIX = "-- SKYBLOCK_DISASTER_BACKUP_V1:";
+    /**
+     * The second format, which keeps values as data. The first wrote SQL text that could not carry a
+     * binary column; a backup in it is refused rather than restored into empty inventories.
+     */
+    private static final String BACKUP_HEADER_PREFIX = "-- SKYBLOCK_DISASTER_BACKUP_V2:";
 
     private final Database database;
 
@@ -42,23 +40,12 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
         try (Connection conn = database.connection()) {
             conn.setAutoCommit(false);
             try {
-                // Dialect-appropriate consistency mechanism
-                setConsistencyIsolation(conn, dialect);
-
-                DatabaseMetaData meta = conn.getMetaData();
-                List<String> tableNames = new ArrayList<>();
-                try (ResultSet tablesRs = meta.getTables(null, null, "%", new String[] {"TABLE"})) {
-                    while (tablesRs.next()) {
-                        String name = tablesRs.getString("TABLE_NAME");
-                        if (!name.equalsIgnoreCase("sqlite_sequence")) {
-                            tableNames.add(name);
-                        }
-                    }
-                }
-
-                for (String table : tableNames) {
-                    dumpTableData(conn, table, dump);
-                }
+                // One consistent read of every table.
+                conn.setTransactionIsolation(
+                        database.dialect() == Dialect.SQLITE
+                                ? Connection.TRANSACTION_SERIALIZABLE
+                                : Connection.TRANSACTION_REPEATABLE_READ);
+                DatabaseDump.write(conn, database.dialect(), dump);
 
                 conn.commit();
             } catch (Exception e) {
@@ -106,41 +93,8 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
                     stmt.execute("SET FOREIGN_KEY_CHECKS = 0;");
                 }
 
-                // In whole-database disaster recovery, clear existing table rows before restoring snapshot
-                DatabaseMetaData meta = conn.getMetaData();
-                List<String> tablesToClear = new ArrayList<>();
-                try (ResultSet tablesRs = meta.getTables(null, null, "%", new String[] {"TABLE"})) {
-                    while (tablesRs.next()) {
-                        String name = tablesRs.getString("TABLE_NAME");
-                        if (!name.equalsIgnoreCase("sqlite_sequence")
-                                && !name.toLowerCase(Locale.ROOT).startsWith("sqlite_")) {
-                            tablesToClear.add(name);
-                        }
-                    }
-                }
-                for (String tbl : tablesToClear) {
-                    stmt.executeUpdate("DELETE FROM " + tbl);
-                }
-
-                int start = headerEnd + 1;
-                int len = sqlDump.length();
-                while (start < len) {
-                    int next = sqlDump.indexOf(";\n", start);
-                    if (next == -1) {
-                        next = sqlDump.indexOf(";\r\n", start);
-                    }
-                    String rawSql;
-                    if (next == -1) {
-                        rawSql = sqlDump.substring(start).trim();
-                        start = len;
-                    } else {
-                        rawSql = sqlDump.substring(start, next).trim();
-                        start = next + (sqlDump.charAt(next + 1) == '\r' ? 3 : 2);
-                    }
-                    if (!rawSql.isEmpty() && !rawSql.startsWith("--")) {
-                        stmt.execute(rawSql);
-                    }
-                }
+                // Every row goes, children first, and the backup's rows come back, parents first.
+                DatabaseDump.restore(conn, database.dialect(), sqlDump.substring(headerEnd + 1));
 
                 if (database.dialect() == Dialect.SQLITE) {
                     stmt.execute("PRAGMA foreign_keys = ON;");
@@ -190,53 +144,6 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
         if (!matches) {
             throw new IllegalArgumentException(
                     "Requested backup dialect " + requestedDialect + " does not match database dialect " + dbDialect);
-        }
-    }
-
-    private static void setConsistencyIsolation(Connection conn, DatabaseBackupDialect dialect) throws SQLException {
-        try (Statement stmt = conn.createStatement()) {
-            switch (dialect) {
-                case SQLITE -> stmt.execute("PRAGMA read_uncommitted = 0;");
-                case MARIADB -> stmt.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;");
-                case POSTGRESQL -> stmt.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;");
-            }
-        }
-    }
-
-    private static void dumpTableData(Connection conn, String tableName, StringBuilder dump) throws SQLException {
-        String query = "SELECT * FROM " + tableName;
-        try (Statement stmt = conn.createStatement();
-                ResultSet rs = stmt.executeQuery(query)) {
-            ResultSetMetaData rsMeta = rs.getMetaData();
-            int colCount = rsMeta.getColumnCount();
-
-            while (rs.next()) {
-                dump.append("INSERT INTO ").append(tableName).append(" (");
-                for (int i = 1; i <= colCount; i++) {
-                    dump.append(rsMeta.getColumnName(i));
-                    if (i < colCount) {
-                        dump.append(", ");
-                    }
-                }
-                dump.append(") VALUES (");
-                for (int i = 1; i <= colCount; i++) {
-                    Object val = rs.getObject(i);
-                    if (val == null) {
-                        dump.append("NULL");
-                    } else if (val instanceof Number) {
-                        dump.append(val);
-                    } else if (val instanceof Boolean b) {
-                        dump.append(b ? "1" : "0");
-                    } else {
-                        String str = val.toString().replace("'", "''");
-                        dump.append("'").append(str).append("'");
-                    }
-                    if (i < colCount) {
-                        dump.append(", ");
-                    }
-                }
-                dump.append(");\n");
-            }
         }
     }
 }

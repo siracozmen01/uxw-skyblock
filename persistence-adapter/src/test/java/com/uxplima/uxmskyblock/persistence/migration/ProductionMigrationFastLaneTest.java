@@ -2918,7 +2918,7 @@ class ProductionMigrationFastLaneTest {
                         + "VALUES ('00000000-0000-0000-0000-00000000cccc', 'GRACE', 60000)");
             }
 
-            assertThat(runner.apply(allMigrations)).isEqualTo(1);
+            assertThat(runner.apply(allMigrations.subList(0, 30))).isEqualTo(1);
             assertThat(runner.currentVersion()).isEqualTo(30);
 
             try (java.sql.Connection conn = db.connection();
