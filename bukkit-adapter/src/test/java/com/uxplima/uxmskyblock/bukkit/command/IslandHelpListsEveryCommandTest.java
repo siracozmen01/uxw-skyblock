@@ -99,15 +99,13 @@ class IslandHelpListsEveryCommandTest extends MockBukkitHarness {
         List<String> said = allPages(tree(null), player, "island");
 
         assertThat(said)
-                .anyMatch(line -> line.startsWith("/island invite <player>"))
-                .anyMatch(line -> line.startsWith("/island members"))
-                .anyMatch(line -> line.startsWith("/island warp"))
-                .anyMatch(line -> line.startsWith("/island shop"))
-                .anyMatch(line -> line.startsWith("/island menu"))
-                .noneMatch(line -> line.startsWith("/island chest"));
-        assertThat(said.stream()
-                        .filter(line -> line.startsWith("/island vault"))
-                        .count())
+                .anyMatch(line -> line.startsWith("/is invite <player>"))
+                .anyMatch(line -> line.startsWith("/is members"))
+                .anyMatch(line -> line.startsWith("/is warp"))
+                .anyMatch(line -> line.startsWith("/is shop"))
+                .anyMatch(line -> line.startsWith("/is menu"))
+                .noneMatch(line -> line.startsWith("/is chest"));
+        assertThat(said.stream().filter(line -> line.startsWith("/is vault")).count())
                 .isEqualTo(1);
     }
 
@@ -139,8 +137,8 @@ class IslandHelpListsEveryCommandTest extends MockBukkitHarness {
 
         List<String> said = allPages(tree(null), player, "island");
 
-        assertThat(said).noneMatch(line -> line.startsWith("/island invite"));
-        assertThat(said).anyMatch(line -> line.startsWith("/island members"));
+        assertThat(said).noneMatch(line -> line.startsWith("/is invite"));
+        assertThat(said).anyMatch(line -> line.startsWith("/is members"));
     }
 
     private PlayerMock allowedEverything(String name) {

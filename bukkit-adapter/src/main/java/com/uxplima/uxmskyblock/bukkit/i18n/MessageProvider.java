@@ -23,6 +23,7 @@ import java.util.regex.Pattern;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.text.language.LibraryWords;
@@ -319,10 +320,7 @@ public final class MessageProvider {
         String prefix = prefixes.getOrDefault(targetLocale, prefixes.getOrDefault(defaultLocale, ""));
         String fullMessage = template.equals(key) ? template : prefix + template;
 
-        if (resolvers.length == 0) {
-            return MINI_MESSAGE.deserialize(fullMessage);
-        }
-        return MINI_MESSAGE.deserialize(fullMessage, TagResolver.resolver(resolvers));
+        return deserialize(fullMessage, resolvers);
     }
 
     /**
@@ -330,10 +328,7 @@ public final class MessageProvider {
      */
     public Component getComponentWithoutPrefix(String key, String locale, TagResolver... resolvers) {
         String template = getRaw(key, locale);
-        if (resolvers.length == 0) {
-            return MINI_MESSAGE.deserialize(template);
-        }
-        return MINI_MESSAGE.deserialize(template, TagResolver.resolver(resolvers));
+        return deserialize(template, resolvers);
     }
 
     /**
@@ -369,10 +364,32 @@ public final class MessageProvider {
      */
     public Component renderTemplate(String template, TagResolver... resolvers) {
         Objects.requireNonNull(template, "template must not be null");
-        if (resolvers.length == 0) {
-            return MINI_MESSAGE.deserialize(template);
-        }
-        return MINI_MESSAGE.deserialize(template, TagResolver.resolver(resolvers));
+        return deserialize(template, resolvers);
+    }
+
+    /**
+     * How a line names one of the island command's words: {@code <cmd:sethome>} becomes the line a
+     * player types, under the names the operator gave the command. Until the command is registered it
+     * is the shipped {@code /is sethome}.
+     */
+    private volatile java.util.function.UnaryOperator<String> commandLine = word -> "/is " + word;
+
+    /** Names the command's words the way the server registered them. */
+    public void useCommandLines(java.util.function.UnaryOperator<String> commandLine) {
+        this.commandLine = Objects.requireNonNull(commandLine, "commandLine must not be null");
+    }
+
+    /** The line a player types for the branch the code knows as {@code word}. */
+    public String commandLine(String word) {
+        return commandLine.apply(word);
+    }
+
+    private Component deserialize(String template, TagResolver... resolvers) {
+        TagResolver commands = TagResolver.resolver(
+                "cmd",
+                (arguments, context) -> Tag.selfClosingInserting(Component.text(
+                        commandLine.apply(arguments.popOr("cmd needs a word").value()))));
+        return MINI_MESSAGE.deserialize(template, TagResolver.resolver(TagResolver.resolver(resolvers), commands));
     }
 
     public Set<String> getAvailableLocales() {

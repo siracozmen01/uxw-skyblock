@@ -462,8 +462,24 @@ public final class IslandCommandTree {
         ConfiguredCommandTree<CommandSourceStack> names = new ConfiguredCommandTree<>(commandNames);
         LiteralArgumentBuilder<CommandSourceStack> root =
                 names.apply(assembleRoot(new CommandGroupBuilder(this).build()));
-        this.rootWord = names.root().name();
+        com.uxplima.uxmlib.command.annotation.ConfiguredCommands.Entry rootEntry = names.root();
+        // The word a player types: the first alias when there is one, which is how /is is written.
+        this.rootWord = rootEntry.aliases().isEmpty()
+                ? rootEntry.name()
+                : rootEntry.aliases().get(0);
         this.helpBranches = names.branches();
+        java.util.Map<String, String> typed = new java.util.HashMap<>();
+        for (ConfiguredCommandTree.Branch<CommandSourceStack> branch : helpBranches) {
+            typed.put(branch.key(), branch.name());
+        }
+        String rootTyped = this.rootWord;
+        // A catalogue line names a command as <cmd:sethome>, and reads it under the operator's words.
+        messages.provider().useCommandLines(line -> {
+            int space = line.indexOf(' ');
+            String first = space < 0 ? line : line.substring(0, space);
+            String rest = space < 0 ? "" : line.substring(space);
+            return "/" + rootTyped + " " + typed.getOrDefault(first, first) + rest;
+        });
         return root;
     }
 
