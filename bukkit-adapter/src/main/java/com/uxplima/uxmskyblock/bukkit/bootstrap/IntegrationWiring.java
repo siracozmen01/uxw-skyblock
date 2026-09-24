@@ -71,6 +71,9 @@ public final class IntegrationWiring implements AutoCloseable {
     private final TransactionalOutboxDispatcher outboxDispatcher;
     private final IslandAuthorityService authorityService;
     private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
+    private final com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService restoreService;
+    private final com.uxplima.uxmskyblock.core.application.backup.BackupService backupService;
+    private final com.uxplima.uxmskyblock.core.domain.storage.StorageBucket backupBucket;
     private final NotificationService notificationService;
     private final com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService activityFeedService;
     private final com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort economySagaPort;
@@ -193,6 +196,9 @@ public final class IntegrationWiring implements AutoCloseable {
         // able to use its own bank one lease after it was created. This is the missing heartbeat.
         this.scheduler = gameplay.scheduler();
         this.recycleService = gameplay.recycleService();
+        this.restoreService = gameplay.islandRestoreService();
+        this.backupService = gameplay.backupService();
+        this.backupBucket = gameplay.backupBucket();
         this.notificationService = gameplay.notificationService();
         this.activityFeedService = gameplay.activityFeedService();
         this.economySagaPort = persistence.economySagaPort();
@@ -496,6 +502,27 @@ public final class IntegrationWiring implements AutoCloseable {
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
         economyBridge.recoverPendingSagas(serverNodeId);
         recoverIncompleteRecycles();
+        resumeInterruptedRestores();
+    }
+
+    /**
+     * Finishes the restores a stop left half done, once the worlds they write into are loaded.
+     *
+     * <p>A restore writes each unit down before it puts it back and again after. A node that stopped
+     * between the two left an island half put back and frozen; this puts the rest back and opens it.
+     */
+    private void resumeInterruptedRestores() {
+        scheduler.async(() -> {
+            try {
+                restoreService.resumeUnfinished(backupBucket, backupService::loadManifest);
+            } catch (RuntimeException e) {
+                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
+                        .log(
+                                java.util.logging.Level.WARNING,
+                                "Finishing the restores a stop left half done failed. The islands stay frozen.",
+                                e);
+            }
+        });
     }
 
     /**

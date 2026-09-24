@@ -128,6 +128,7 @@ public final class AdminWiring {
                 persistence.rootRelationalSnapshotPort(),
                 this.worldDimensionSnapshotPort);
         this.islandRestoreService.quarantineWith(this.freezeService);
+        this.islandRestoreService.recordProgressIn(persistence.restoreProgressPort());
         this.islandBackupService = new IslandBackupService(
                 this.backupService,
                 persistence.rootRelationalSnapshotPort(),

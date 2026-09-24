@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.core.application.snapshot;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -8,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -36,6 +39,7 @@ public final class IslandRestoreService {
     private final RootRelationalSnapshotPort relationalSnapshotPort;
     private final WorldDimensionSnapshotPort worldDimensionSnapshotPort;
     private @Nullable IslandAdminFreezeService quarantine;
+    private @Nullable RestoreProgressPort progress;
 
     /** The catalogue line a visitor sees as the reason the island was closed to them. */
     public static final String QUARANTINE_REASON = "protection.quarantine_restoring";
@@ -104,7 +108,69 @@ public final class IslandRestoreService {
 
         String normalizedPrefix =
                 rootPrefix.endsWith("/") ? rootPrefix.substring(0, rootPrefix.length() - 1) : rootPrefix;
+        return restore(manifest, bucket, normalizedPrefix, mode, UUID.randomUUID(), Set.of(), false);
+    }
 
+    /**
+     * Finishes every restore a stop interrupted, putting back only the units that were not yet back.
+     *
+     * <p>The persistence specification's crash replay. A unit written down as about to be put back and
+     * never as back is put back again: putting a unit back replaces what is in the world with what the
+     * backup holds, so doing it twice leaves the same island as doing it once. The island stays closed
+     * from the interrupted run until this one commits, because the freeze is durable and its reason is
+     * the restore's own.
+     *
+     * @param manifests finds a backup set's manifest by bucket and prefix
+     */
+    public List<RestoreOutcome> resumeUnfinished(
+            StorageBucket bucket,
+            java.util.function.BiFunction<StorageBucket, String, Optional<BackupManifest>> manifests) {
+        Objects.requireNonNull(bucket, "bucket must not be null");
+        Objects.requireNonNull(manifests, "manifests must not be null");
+        RestoreProgressPort port = this.progress;
+        if (port == null) {
+            return List.of();
+        }
+        List<RestoreOutcome> outcomes = new ArrayList<>();
+        for (RestoreProgressPort.RestoreOperation operation : port.unfinished()) {
+            Optional<BackupManifest> manifest = manifests.apply(bucket, operation.sourcePrefix());
+            if (manifest.isEmpty()) {
+                // Half an island, and nothing left to finish it from. It stays closed for an
+                // administrator to look at, rather than opening half put back.
+                port.finish(
+                        operation.restoreId(),
+                        RestoreProgressPort.OperationState.FAILED,
+                        "The backup set it was reading is gone");
+                LOGGER.severe(() -> "Restore " + operation.restoreId() + " of island " + operation.islandId()
+                        + " was interrupted and its backup set is gone. The island stays frozen.");
+                outcomes.add(new RestoreOutcome.Failure("The backup set an interrupted restore was reading is gone"));
+                continue;
+            }
+            outcomes.add(restore(
+                    manifest.get(),
+                    bucket,
+                    operation.sourcePrefix(),
+                    operation.mode(),
+                    operation.restoreId(),
+                    port.verifiedUnits(operation.restoreId()),
+                    true));
+        }
+        return outcomes;
+    }
+
+    /** Writes each unit down before and after it is put back, so a stop between the two is resumed. */
+    public void recordProgressIn(@Nullable RestoreProgressPort progressPort) {
+        this.progress = progressPort;
+    }
+
+    private RestoreOutcome restore(
+            BackupManifest manifest,
+            StorageBucket bucket,
+            String normalizedPrefix,
+            RestoreMode mode,
+            UUID restoreId,
+            Set<String> alreadyBack,
+            boolean resuming) {
         // 2. Discoverability & availability check
         String markerKey = normalizedPrefix + "/" + BackupService.AVAILABILITY_MARKER_FILE_NAME;
         if (!objectStoragePort.exists(bucket, markerKey)) {
@@ -128,7 +194,8 @@ public final class IslandRestoreService {
         // was applied meant a bad second file stopped the restore with the first already written:
         // half an island put back, and an answer that said the restore had failed.
         List<Map.Entry<String, byte[]>> verified = new ArrayList<>();
-        for (Map.Entry<String, BackupArtifact> entry : manifest.artifacts().entrySet()) {
+        // In the order of their names, so a resumed restore walks the units the way the first run did.
+        for (Map.Entry<String, BackupArtifact> entry : new java.util.TreeMap<>(manifest.artifacts()).entrySet()) {
             String filename = entry.getKey();
             BackupArtifact expected = entry.getValue();
             String artifactKey = normalizedPrefix + "/" + filename;
@@ -147,26 +214,55 @@ public final class IslandRestoreService {
             verified.add(Map.entry(filename, data));
         }
 
-        @Nullable IslandId quarantined = enterQuarantine(rootRef.rootId());
+        @Nullable IslandId quarantined = enterQuarantine(rootRef.rootId(), resuming);
+        RestoreProgressPort port = this.progress;
+        if (port != null && !resuming) {
+            port.begin(new RestoreProgressPort.RestoreOperation(
+                    restoreId, rootRef.rootId(), manifest.backupSetId(), normalizedPrefix, mode));
+        }
         try {
             for (Map.Entry<String, byte[]> entry : verified) {
                 String filename = entry.getKey();
                 byte[] data = entry.getValue();
                 // 4. Dispatch restoration based on artifact role
-                if (filename.contains("relational") || filename.endsWith(".sql") || filename.endsWith(".json")) {
-                    if (!mode.restoresRelationalState()) {
-                        continue;
-                    }
-                    relationalSnapshotPort.restoreRelationalSnapshot(rootRef, data, mode);
+                boolean relational =
+                        filename.contains("relational") || filename.endsWith(".sql") || filename.endsWith(".json");
+                boolean worldUnit = !relational
+                        && (filename.contains("world") || filename.endsWith(".dat") || filename.endsWith(".zst"));
+                if ((relational && !mode.restoresRelationalState()) || (!relational && !worldUnit)) {
+                    continue;
+                }
+                String unit = unitIdOf(filename);
+                if (alreadyBack.contains(unit)) {
                     restoredCount++;
-                } else if (filename.contains("world") || filename.endsWith(".dat") || filename.endsWith(".zst")) {
+                    continue;
+                }
+                if (port != null) {
+                    port.intend(restoreId, unit, computeSha256(data));
+                }
+                if (relational) {
+                    relationalSnapshotPort.restoreRelationalSnapshot(rootRef, data, mode);
+                } else {
                     DimensionId dimId = filename.contains("nether")
                             ? DimensionId.THE_NETHER
                             : (filename.contains("end") ? DimensionId.THE_END : DimensionId.OVERWORLD);
                     worldDimensionSnapshotPort.restoreWorldDimension(rootRef, dimId, data);
-                    restoredCount++;
                 }
+                if (port != null) {
+                    port.verified(restoreId, unit);
+                }
+                restoredCount++;
             }
+            if (port != null) {
+                port.finish(restoreId, RestoreProgressPort.OperationState.COMMITTED, null);
+            }
+        } catch (RuntimeException failed) {
+            // A unit that threw, rather than a node that stopped: there is nothing to resume, so the
+            // restore is written down as failed and the island opens, as it did before.
+            if (port != null) {
+                port.finish(restoreId, RestoreProgressPort.OperationState.FAILED, reasonOf(failed));
+            }
+            throw failed;
         } finally {
             leaveQuarantine(quarantined);
         }
@@ -190,7 +286,7 @@ public final class IslandRestoreService {
      * Freezes the island, unless there is no island to freeze or an administrator already froze it.
      * A freeze an administrator made is theirs to lift, so a restore that did not make it leaves it.
      */
-    private @Nullable IslandId enterQuarantine(String rootKey) {
+    private @Nullable IslandId enterQuarantine(String rootKey, boolean resuming) {
         IslandAdminFreezeService freezeService = this.quarantine;
         if (freezeService == null) {
             return null;
@@ -202,7 +298,14 @@ public final class IslandRestoreService {
             return null;
         }
         if (freezeService.isFrozen(islandId)) {
-            return null;
+            // A restore picked up after a stop finds the island still closed by the run it interrupted.
+            // That freeze is the restore's own, so it lifts it when it commits; any other is left.
+            boolean ours = resuming
+                    && freezeService
+                            .getFreezeRecord(islandId)
+                            .map(record -> QUARANTINE_REASON.equals(record.freezeReason()))
+                            .orElse(false);
+            return ours ? islandId : null;
         }
         try {
             freezeService.freezeIsland(islandId, QUARANTINE_REASON, QUARANTINE_ACTOR);
@@ -224,6 +327,16 @@ public final class IslandRestoreService {
             LOGGER.log(
                     Level.WARNING, "Island " + islandId + " was restored and is still frozen. Unfreeze it by hand.", e);
         }
+    }
+
+    /** A unit's name in the progress table, which holds 64 characters. */
+    private static String unitIdOf(String filename) {
+        return filename.length() <= 64 ? filename : computeSha256(filename.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String reasonOf(RuntimeException failed) {
+        String reason = String.valueOf(failed.getMessage());
+        return reason.length() <= 255 ? reason : reason.substring(0, 255);
     }
 
     public BackupCatalogPort catalogPort() {

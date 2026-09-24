@@ -125,6 +125,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final SqlGameModeHierarchyAdapter gameModeHierarchyAdapter;
     private final SqlDatabaseBackupAdapter databaseBackupAdapter;
     private final SqlRootRelationalSnapshotAdapter rootRelationalSnapshotAdapter;
+    private final com.uxplima.uxmskyblock.persistence.snapshot.SqlRestoreProgressAdapter restoreProgressAdapter;
     private final SqlHomeStorageAdapter homeStorageAdapter;
     private final SqlActivityFeedAdapter activityFeedAdapter;
     private final SqlNotificationAdapter notificationAdapter;
@@ -180,6 +181,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.gameModeHierarchyAdapter = new SqlGameModeHierarchyAdapter(database.dataSource());
         this.databaseBackupAdapter = new SqlDatabaseBackupAdapter(database);
         this.rootRelationalSnapshotAdapter = new SqlRootRelationalSnapshotAdapter(database.dataSource());
+        this.restoreProgressAdapter =
+                new com.uxplima.uxmskyblock.persistence.snapshot.SqlRestoreProgressAdapter(database.dataSource());
         this.homeStorageAdapter = new SqlHomeStorageAdapter(database.dataSource());
         this.activityFeedAdapter = new SqlActivityFeedAdapter(database.dataSource());
         this.notificationAdapter = new SqlNotificationAdapter(database.dataSource());
@@ -402,6 +405,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public com.uxplima.uxmskyblock.core.application.cosmetic.ProfileCosmeticStoragePort profileCosmeticStoragePort() {
         return profileCosmeticStorageAdapter;
+    }
+
+    /** Where a restore writes down each unit before and after it puts it back. */
+    public com.uxplima.uxmskyblock.core.application.snapshot.RestoreProgressPort restoreProgressPort() {
+        return restoreProgressAdapter;
     }
 
     public com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleOperationPort islandRecycleOperationPort() {
