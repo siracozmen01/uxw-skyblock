@@ -106,6 +106,40 @@ class BackupRestoreWiringTest {
     }
 
     @Test
+    @DisplayName("A mirrored storage type writes to the local folder and the bucket both, and publishes to each")
+    void persistenceWiringResolvesAMirror(@TempDir Path tempDir) throws Exception {
+        String hocon = """
+                database {
+                  type = "sqlite"
+                }
+                storage {
+                  type = "mirrored"
+                  local-path = "mirror-backups"
+                  s3 {
+                    endpoint = "https://s3.us-east-1.amazonaws.com"
+                    region = "us-east-1"
+                    bucket = "my-skyblock-backups"
+                    access-key = "test-access-key"
+                    secret-key = "test-secret-key"
+                  }
+                }
+                """;
+        ConfigurationNode root = HoconConfigurationLoader.builder().buildAndLoadString(hocon);
+        PersistenceWiring wiring = PersistenceWiring.resolve(root, tempDir);
+        try {
+            assertThat(wiring.objectStoragePort())
+                    .isInstanceOf(com.uxplima.uxmskyblock.core.application.storage.MirroredObjectStorage.class);
+            assertThat(com.uxplima.uxmskyblock.core.application.storage.MirroredObjectStorage.destinationsOf(
+                            wiring.objectStoragePort()))
+                    .hasSize(2)
+                    .hasAtLeastOneElementOfType(LocalFilesystemStorageAdapter.class)
+                    .hasAtLeastOneElementOfType(S3ObjectStorageAdapter.class);
+        } finally {
+            wiring.close();
+        }
+    }
+
+    @Test
     @DisplayName("GameplayWiring wires ObjectStoragePort, BackupService, and IslandRestoreService")
     void gameplayWiringWiresBackupAndRestoreServices(@TempDir Path tempDir) throws Exception {
         JavaPlugin plugin = mock(JavaPlugin.class);

@@ -116,7 +116,12 @@ public final class AdminWiring {
                 config.messages());
 
         this.objectStoragePort = Objects.requireNonNull(objectStorage, "objectStorage must not be null");
-        this.backupService = new BackupService(persistence.backupCatalogPort(), this.objectStoragePort);
+        // A mirror is published to destination by destination, so a backup one of them refused is
+        // recorded as partial rather than as done or as lost.
+        this.backupService = new BackupService(
+                persistence.backupCatalogPort(),
+                com.uxplima.uxmskyblock.core.application.storage.MirroredObjectStorage.destinationsOf(
+                        this.objectStoragePort));
         this.islandRestoreService = new IslandRestoreService(
                 persistence.backupCatalogPort(),
                 this.objectStoragePort,

@@ -101,7 +101,7 @@ public final class PersistenceWiring implements AutoCloseable {
         }
         StorageBucket backupBucket = new StorageBucket(configuredBucket);
 
-        // Resolve ObjectStoragePort (S3 or local filesystem)
+        // Resolve ObjectStoragePort: the local folder, S3 or R2, or both mirrored
         ObjectStoragePort objectStorage;
         String storageType = null;
         if (rootNode != null) {
@@ -112,99 +112,109 @@ public final class PersistenceWiring implements AutoCloseable {
         }
 
         if ("s3".equalsIgnoreCase(storageType) || "r2".equalsIgnoreCase(storageType)) {
-            String endpointStr = rootNode != null
-                    ? rootNode.node("storage", "s3", "endpoint").getString()
-                    : null;
-            if (endpointStr == null || endpointStr.isBlank()) {
-                endpointStr = System.getProperty("skyblock.s3.endpoint", System.getenv("SKYBLOCK_S3_ENDPOINT"));
-            }
-            if (endpointStr == null || endpointStr.isBlank()) {
-                endpointStr = "https://s3.amazonaws.com";
-            }
-
-            String region =
-                    rootNode != null ? rootNode.node("storage", "s3", "region").getString() : null;
-            if (region == null || region.isBlank()) {
-                region = System.getProperty("skyblock.s3.region", System.getenv("SKYBLOCK_S3_REGION"));
-            }
-            if (region == null || region.isBlank()) {
-                region = "us-east-1";
-            }
-
-            String accessKey = rootNode != null
-                    ? rootNode.node("storage", "s3", "access-key").getString()
-                    : null;
-            if (accessKey == null || accessKey.isBlank()) {
-                accessKey = System.getProperty("skyblock.s3.access.key", System.getenv("SKYBLOCK_S3_ACCESS_KEY"));
-            }
-            if (accessKey == null || accessKey.isBlank()) {
-                accessKey = "anonymous";
-            }
-
-            String secretKey = rootNode != null
-                    ? rootNode.node("storage", "s3", "secret-key").getString()
-                    : null;
-            if (secretKey == null || secretKey.isBlank()) {
-                secretKey = System.getProperty("skyblock.s3.secret.key", System.getenv("SKYBLOCK_S3_SECRET_KEY"));
-            }
-            if (secretKey == null || secretKey.isBlank()) {
-                secretKey = "anonymous";
-            }
-
-            String sessionToken = rootNode != null
-                    ? rootNode.node("storage", "s3", "session-token").getString()
-                    : null;
-            if (sessionToken == null || sessionToken.isBlank()) {
-                sessionToken =
-                        System.getProperty("skyblock.s3.session.token", System.getenv("SKYBLOCK_S3_SESSION_TOKEN"));
-            }
-            if (sessionToken != null && sessionToken.isBlank()) {
-                sessionToken = null;
-            }
-
-            S3Credentials credentials = S3Credentials.of(accessKey, secretKey, sessionToken);
-
-            String rawAddressing = rootNode != null
-                    ? rootNode.node("storage", "s3", "addressing-mode").getString("PATH_STYLE")
-                    : "PATH_STYLE";
-            S3AddressingMode addressingMode = "VIRTUAL_HOSTED".equalsIgnoreCase(rawAddressing)
-                    ? S3AddressingMode.VIRTUAL_HOSTED
-                    : S3AddressingMode.PATH_STYLE;
-
-            String rawTarget = rootNode != null
-                    ? rootNode.node("storage", "s3", "provider-target").getString("GENERIC_S3")
-                    : "GENERIC_S3";
-            S3ProviderTarget providerTarget = "AWS".equalsIgnoreCase(rawTarget) || "AWS_S3".equalsIgnoreCase(rawTarget)
-                    ? S3ProviderTarget.AWS_S3
-                    : ("CLOUDFLARE_R2".equalsIgnoreCase(rawTarget) || "R2".equalsIgnoreCase(rawTarget)
-                            ? S3ProviderTarget.CLOUDFLARE_R2
-                            : S3ProviderTarget.GENERIC_S3);
-
-            S3StorageConfiguration s3Config = new S3StorageConfiguration(
-                    URI.create(endpointStr),
-                    region,
-                    backupBucket,
-                    credentials,
-                    addressingMode,
-                    providerTarget,
-                    null,
-                    S3StorageConfiguration.DEFAULT_MULTIPART_THRESHOLD,
-                    S3StorageConfiguration.DEFAULT_PART_SIZE,
-                    S3StorageConfiguration.DEFAULT_MAX_RETRIES,
-                    false,
-                    ProviderVerificationStatus.EMULATOR_VERIFIED);
-
-            objectStorage = new S3ObjectStorageAdapter(s3Config);
+            objectStorage = s3Storage(rootNode, backupBucket);
+        } else if ("mirrored".equalsIgnoreCase(storageType)) {
+            // Both copies, so a lost bucket or a lost disk leaves the other with every backup.
+            objectStorage = new com.uxplima.uxmskyblock.core.application.storage.MirroredObjectStorage(
+                    java.util.List.of(localStorage(rootNode, dataDir), s3Storage(rootNode, backupBucket)));
         } else {
-            String localPathStr =
-                    rootNode != null ? rootNode.node("storage", "local-path").getString() : null;
-            Path backupDir = (localPathStr != null && !localPathStr.isBlank())
-                    ? dataDir.resolve(localPathStr.trim())
-                    : dataDir.resolve("backups");
-            objectStorage = new LocalFilesystemStorageAdapter(backupDir);
+            objectStorage = localStorage(rootNode, dataDir);
         }
 
         return new PersistenceWiring(persistenceBootstrap, objectStorage, backupBucket);
+    }
+
+    /** The remote destination the {@code storage.s3} block describes. */
+    private static ObjectStoragePort s3Storage(@Nullable ConfigurationNode rootNode, StorageBucket backupBucket) {
+        String endpointStr =
+                rootNode != null ? rootNode.node("storage", "s3", "endpoint").getString() : null;
+        if (endpointStr == null || endpointStr.isBlank()) {
+            endpointStr = System.getProperty("skyblock.s3.endpoint", System.getenv("SKYBLOCK_S3_ENDPOINT"));
+        }
+        if (endpointStr == null || endpointStr.isBlank()) {
+            endpointStr = "https://s3.amazonaws.com";
+        }
+
+        String region =
+                rootNode != null ? rootNode.node("storage", "s3", "region").getString() : null;
+        if (region == null || region.isBlank()) {
+            region = System.getProperty("skyblock.s3.region", System.getenv("SKYBLOCK_S3_REGION"));
+        }
+        if (region == null || region.isBlank()) {
+            region = "us-east-1";
+        }
+
+        String accessKey =
+                rootNode != null ? rootNode.node("storage", "s3", "access-key").getString() : null;
+        if (accessKey == null || accessKey.isBlank()) {
+            accessKey = System.getProperty("skyblock.s3.access.key", System.getenv("SKYBLOCK_S3_ACCESS_KEY"));
+        }
+        if (accessKey == null || accessKey.isBlank()) {
+            accessKey = "anonymous";
+        }
+
+        String secretKey =
+                rootNode != null ? rootNode.node("storage", "s3", "secret-key").getString() : null;
+        if (secretKey == null || secretKey.isBlank()) {
+            secretKey = System.getProperty("skyblock.s3.secret.key", System.getenv("SKYBLOCK_S3_SECRET_KEY"));
+        }
+        if (secretKey == null || secretKey.isBlank()) {
+            secretKey = "anonymous";
+        }
+
+        String sessionToken = rootNode != null
+                ? rootNode.node("storage", "s3", "session-token").getString()
+                : null;
+        if (sessionToken == null || sessionToken.isBlank()) {
+            sessionToken = System.getProperty("skyblock.s3.session.token", System.getenv("SKYBLOCK_S3_SESSION_TOKEN"));
+        }
+        if (sessionToken != null && sessionToken.isBlank()) {
+            sessionToken = null;
+        }
+
+        S3Credentials credentials = S3Credentials.of(accessKey, secretKey, sessionToken);
+
+        String rawAddressing = rootNode != null
+                ? rootNode.node("storage", "s3", "addressing-mode").getString("PATH_STYLE")
+                : "PATH_STYLE";
+        S3AddressingMode addressingMode = "VIRTUAL_HOSTED".equalsIgnoreCase(rawAddressing)
+                ? S3AddressingMode.VIRTUAL_HOSTED
+                : S3AddressingMode.PATH_STYLE;
+
+        String rawTarget = rootNode != null
+                ? rootNode.node("storage", "s3", "provider-target").getString("GENERIC_S3")
+                : "GENERIC_S3";
+        S3ProviderTarget providerTarget = "AWS".equalsIgnoreCase(rawTarget) || "AWS_S3".equalsIgnoreCase(rawTarget)
+                ? S3ProviderTarget.AWS_S3
+                : ("CLOUDFLARE_R2".equalsIgnoreCase(rawTarget) || "R2".equalsIgnoreCase(rawTarget)
+                        ? S3ProviderTarget.CLOUDFLARE_R2
+                        : S3ProviderTarget.GENERIC_S3);
+
+        S3StorageConfiguration s3Config = new S3StorageConfiguration(
+                URI.create(endpointStr),
+                region,
+                backupBucket,
+                credentials,
+                addressingMode,
+                providerTarget,
+                null,
+                S3StorageConfiguration.DEFAULT_MULTIPART_THRESHOLD,
+                S3StorageConfiguration.DEFAULT_PART_SIZE,
+                S3StorageConfiguration.DEFAULT_MAX_RETRIES,
+                false,
+                ProviderVerificationStatus.EMULATOR_VERIFIED);
+
+        return new S3ObjectStorageAdapter(s3Config);
+    }
+
+    /** The local destination, the folder {@code storage.local-path} names under the data folder. */
+    private static ObjectStoragePort localStorage(@Nullable ConfigurationNode rootNode, Path dataDir) {
+        String localPathStr =
+                rootNode != null ? rootNode.node("storage", "local-path").getString() : null;
+        Path backupDir = (localPathStr != null && !localPathStr.isBlank())
+                ? dataDir.resolve(localPathStr.trim())
+                : dataDir.resolve("backups");
+        return new LocalFilesystemStorageAdapter(backupDir);
     }
 
     private static boolean isRemoteConfigured(ConfigurationNode rootNode) {
