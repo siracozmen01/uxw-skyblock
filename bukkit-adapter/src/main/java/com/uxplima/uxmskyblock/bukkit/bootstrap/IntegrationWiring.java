@@ -174,6 +174,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.menuEngine.install();
         this.controlMenu.useMenuEngine(this.menuEngine);
         this.controlMenu.useVaultPages(gameplay.vaultService()::getMaxAllowedPages);
+        this.controlMenu.useUpgradeStanding(gameplay.upgradeService()::standing);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistence.islandStoragePort(),
@@ -182,6 +183,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 persistence.islandLeaderboardPort(),
                 gameplay.scheduler(),
                 authority.sessionCoordinator());
+        this.placeholderExpansion.useUpgradeStanding(gameplay.upgradeService()::standing);
 
         this.outboxDispatcher = new TransactionalOutboxDispatcher(
                 persistence.outboxPort(), gameplay.scheduler(), serverNodeId.value() + "-outbox");

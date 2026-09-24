@@ -164,6 +164,27 @@ class IslandUpgradeServiceTest {
                 .isInstanceOf(UpgradePurchaseOutcome.MaxTierReached.class);
     }
 
+    @Test
+    @DisplayName("An island stands on a free first tier it never bought, and on whatever tier it did buy")
+    void standingReadsTheFreeBaseTier() {
+        UpgradeDefinition members = new UpgradeDefinition(
+                UpgradeId.MEMBERS,
+                "Members",
+                List.of(
+                        new UpgradeTier(1, 0L, "PRIMARY", Map.of("max_members", 4.0)),
+                        new UpgradeTier(2, 20_000L, "PRIMARY", Map.of("max_members", 8.0))));
+        IslandUpgradeService both = new IslandUpgradeService(
+                storage, Map.of(UpgradeId.SIZE, service.definitions().get(UpgradeId.SIZE), UpgradeId.MEMBERS, members));
+
+        assertThat(both.standing(Map.of()))
+                .describedAs("nothing bought: the free first tier is held, a priced one is not")
+                .containsEntry(UpgradeId.MEMBERS, 1)
+                .containsEntry(UpgradeId.SIZE, 0);
+        assertThat(both.standing(Map.of(UpgradeId.MEMBERS, 2, UpgradeId.SIZE, 1)))
+                .containsEntry(UpgradeId.MEMBERS, 2)
+                .containsEntry(UpgradeId.SIZE, 1);
+    }
+
     private static class FakeUpgradeStorage implements IslandUpgradeStoragePort {
         private final Map<UpgradeId, Integer> tiers = new HashMap<>();
 

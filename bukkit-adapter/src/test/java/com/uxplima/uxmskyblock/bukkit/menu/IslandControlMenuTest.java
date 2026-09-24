@@ -129,6 +129,30 @@ class IslandControlMenuTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("An island on its free base size tier reads that tier on the panel, as the upgrade list does")
+    void theFreeBaseTierReadsAsHeld() {
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+        when(mockBank.findBankByIslandId(eq(islandId))).thenReturn(Optional.empty());
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+        when(mockLocations.resolveHome(eq(profileId))).thenReturn(Optional.empty());
+        menu.useUpgradeStanding(new com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService(
+                mockUpgrades,
+                com.uxplima.uxmskyblock.bukkit.config.UpgradesConfiguration.defaultConfiguration()
+                        .definitions())::standing);
+
+        menu.open(player);
+
+        org.bukkit.inventory.ItemStack upgrades = java.util.Objects.requireNonNull(
+                player.getOpenInventory().getTopInventory().getItem(12));
+        String lore = java.util.Objects.requireNonNull(upgrades.lore()).stream()
+                .map(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        assertThat(lore).contains("Size tier: 1");
+    }
+
+    @Test
     @DisplayName("open delegates to BedrockFormService when player is on Bedrock")
     void openDelegatesToBedrockFormServiceWhenBedrockPlayer() {
         com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService mockBedrock =

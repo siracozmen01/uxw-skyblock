@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
+import java.util.function.UnaryOperator;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -57,6 +58,7 @@ public final class IslandControlMenu {
     private volatile @Nullable SkyblockMenuEngine menuEngine;
 
     private volatile @Nullable ToIntFunction<IslandId> vaultPages;
+    private volatile @Nullable UnaryOperator<Map<UpgradeId, Integer>> upgradeStanding;
     private final Messages messages;
 
     public IslandControlMenu(
@@ -187,6 +189,14 @@ public final class IslandControlMenu {
     }
 
     /**
+     * The tier each upgrade stands on, given what the island bought, so a free base tier reads as
+     * held here the way the upgrade list reads it.
+     */
+    public void useUpgradeStanding(@Nullable UnaryOperator<Map<UpgradeId, Integer>> standing) {
+        this.upgradeStanding = standing;
+    }
+
+    /**
      * The live values {@code island-main.conf} may spell as {@code %argument_<name>%}.
      *
      * <p>Every token here is one the server can actually answer. The file that shipped before spelled
@@ -250,7 +260,9 @@ public final class IslandControlMenu {
 
             Island island = optIsland.get();
             IslandBank bank = islandBankPort.findBankByIslandId(islandId).orElse(null);
-            Map<UpgradeId, Integer> upgrades = upgradeStoragePort.getUpgrades(islandId);
+            Map<UpgradeId, Integer> bought = upgradeStoragePort.getUpgrades(islandId);
+            UnaryOperator<Map<UpgradeId, Integer>> standingOf = this.upgradeStanding;
+            Map<UpgradeId, Integer> upgrades = standingOf == null ? bought : standingOf.apply(bought);
             ToIntFunction<IslandId> pagesOf = this.vaultPages;
             int pages = pagesOf == null ? 1 : pagesOf.applyAsInt(islandId);
             Optional<IslandLocation> optLoc = locationService.resolveHome(profileId);

@@ -124,6 +124,28 @@ class SkyblockPlaceholderExpansionTest {
     }
 
     @Test
+    @DisplayName("An island on its free base tier reads that tier in a placeholder, as the upgrade list does")
+    void aFreeBaseTierReadsAsHeld() {
+        IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 50);
+        Island island = Island.create(islandId, bounds, new PlayerUuid(playerUuid), profileId, Instant.now());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(island));
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+        expansion.useUpgradeStanding(new com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService(
+                mockUpgrades,
+                com.uxplima.uxmskyblock.bukkit.config.UpgradesConfiguration.defaultConfiguration()
+                        .definitions())::standing);
+
+        expansion.refreshPlayerDataSync(playerUuid);
+
+        assertThat(expansion.onRequest(mockPlayer, "island_upgrade_tier_island_size"))
+                .isEqualTo("1");
+        assertThat(expansion.onRequest(mockPlayer, "island_upgrade_tier_ore_generator"))
+                .describedAs("a first tier with a price is not held until it is bought")
+                .isEqualTo("0");
+    }
+
+    @Test
     @DisplayName("An island that falls off the level board no longer reads its old place")
     void anIslandOffTheBoardLosesItsPlace() {
         IslandBounds bounds = IslandBounds.fromCenterAndRadius(0, 0, 50);

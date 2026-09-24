@@ -76,6 +76,7 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     private final Map<UUID, CachedPlayerIsland> playerCache = new ConcurrentHashMap<>();
     private final Set<UUID> refreshingPlayers = ConcurrentHashMap.newKeySet();
     private volatile boolean published;
+    private volatile java.util.function.@Nullable UnaryOperator<Map<UpgradeId, Integer>> upgradeStanding;
 
     private final Map<LeaderboardCategory, List<LeaderboardEntry>> cachedLeaderboards = new ConcurrentHashMap<>();
     /**
@@ -137,6 +138,14 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
                 leaderboardPort,
                 schedulerPort,
                 uuid -> Optional.empty());
+    }
+
+    /**
+     * The tier each upgrade stands on, given what the island bought, so a free base tier reads as held
+     * in a placeholder the way the upgrade list reads it.
+     */
+    public void useUpgradeStanding(java.util.function.@Nullable UnaryOperator<Map<UpgradeId, Integer>> standing) {
+        this.upgradeStanding = standing;
     }
 
     public PlaceholderRegistry registry() {
@@ -204,7 +213,9 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
         long bankBal = (bank != null) ? bank.primaryBalanceMinorUnits() : 0L;
         long bankCryst = (bank != null) ? bank.crystalsBalance() : 0L;
 
-        Map<UpgradeId, Integer> rawUpgrades = upgradeStoragePort.getUpgrades(islandId);
+        Map<UpgradeId, Integer> bought = upgradeStoragePort.getUpgrades(islandId);
+        java.util.function.UnaryOperator<Map<UpgradeId, Integer>> standingOf = this.upgradeStanding;
+        Map<UpgradeId, Integer> rawUpgrades = bought == null || standingOf == null ? bought : standingOf.apply(bought);
         Map<String, Integer> tiers = new HashMap<>();
         if (rawUpgrades != null) {
             for (Map.Entry<UpgradeId, Integer> entry : rawUpgrades.entrySet()) {

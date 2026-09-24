@@ -191,6 +191,20 @@ public final class IslandUpgradeService {
         return tier;
     }
 
+    /**
+     * The tier each upgrade stands on for an island that bought {@code bought}: what it bought, and
+     * the first tier where that one costs nothing and nothing was bought.
+     *
+     * <p>A screen that showed the stored number read an island on its free base tier as tier 0, beside
+     * an upgrade list that read the same island as tier 1.
+     */
+    public Map<UpgradeId, Integer> standing(Map<UpgradeId, Integer> bought) {
+        Objects.requireNonNull(bought, "bought");
+        Map<UpgradeId, Integer> standing = new java.util.HashMap<>(bought);
+        definitions.forEach((id, definition) -> standing.put(id, definition.effectiveTier(bought.getOrDefault(id, 0))));
+        return Map.copyOf(standing);
+    }
+
     public Map<UpgradeId, Integer> getAllUpgrades(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId");
         return storagePort.getUpgrades(islandId);
