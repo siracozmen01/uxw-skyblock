@@ -87,7 +87,7 @@ public final class AdminWiring {
                 // The same lock the other island writers hold, or it locks nothing.
                 persistence.islandMutationLock());
 
-        this.worldDimensionSnapshotPort = new WorldDimensionSnapshotAdapter(
+        WorldDimensionSnapshotAdapter snapshots = new WorldDimensionSnapshotAdapter(
                 plugin,
                 persistence.islandStoragePort(),
                 scheduler,
@@ -95,6 +95,8 @@ public final class AdminWiring {
                 // Putting an island back writes as many blocks as clearing one, so it is paced by
                 // the same number the operator set for clearing.
                 backpressureController);
+        snapshots.captureWithin(captureTimeoutOf(config.rootNode()));
+        this.worldDimensionSnapshotPort = snapshots;
         this.islandBackupAdapter = new NbtIslandBackupAdapter(
                 plugin.getDataFolder(), this.worldDimensionSnapshotPort, persistence.gameModeHierarchyStoragePort());
         this.recycleService = new IslandRecycleService(
@@ -242,5 +244,31 @@ public final class AdminWiring {
 
     public @Nullable IslandAntiAbuseListener antiAbuseListener() {
         return antiAbuseListener;
+    }
+
+    /**
+     * {@code storage.capture-timeout}: how long a backup waits for every region to hand its chunks
+     * over. A value that does not read as a positive duration keeps the default, and says so.
+     */
+    static java.time.Duration captureTimeoutOf(
+            org.spongepowered.configurate.@org.jspecify.annotations.Nullable ConfigurationNode rootNode) {
+        String raw = rootNode == null
+                ? null
+                : rootNode.node("storage", "capture-timeout").getString();
+        if (raw == null || raw.isBlank()) {
+            return WorldDimensionSnapshotAdapter.DEFAULT_CAPTURE_TIMEOUT;
+        }
+        try {
+            java.time.Duration parsed = com.uxplima.uxmlib.common.Durations.parse(raw.strip());
+            if (!parsed.isNegative() && !parsed.isZero()) {
+                return parsed;
+            }
+        } catch (IllegalArgumentException unreadable) {
+            // Reported below with the value that was written.
+        }
+        java.util.logging.Logger.getLogger(AdminWiring.class.getName())
+                .warning(() -> "storage.capture-timeout '" + raw + "' is not a positive duration, so "
+                        + WorldDimensionSnapshotAdapter.DEFAULT_CAPTURE_TIMEOUT + " is used.");
+        return WorldDimensionSnapshotAdapter.DEFAULT_CAPTURE_TIMEOUT;
     }
 }

@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -77,6 +78,26 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
         this.schedulerPort = schedulerPort;
         this.dimensionConfiguration = dimensionConfiguration;
         this.backpressureController = backpressureController;
+    }
+
+    /** How long a capture waits for its regions when the operator's file says nothing. */
+    public static final Duration DEFAULT_CAPTURE_TIMEOUT = Duration.ofSeconds(30);
+
+    private volatile Duration captureTimeout = DEFAULT_CAPTURE_TIMEOUT;
+
+    /**
+     * How long a capture waits for every region to hand its chunks over before it gives up whole.
+     *
+     * <p>A capture asks each owning region for its chunks and waited for all of them with no limit.
+     * A region that never ran the task, one whose chunks had unloaded or whose thread was stuck, held
+     * the backup open for ever, and the command that asked for it never answered.
+     */
+    public void captureWithin(Duration timeout) {
+        Objects.requireNonNull(timeout, "timeout must not be null");
+        if (timeout.isNegative() || timeout.isZero()) {
+            throw new IllegalArgumentException("A capture timeout must be positive: " + timeout);
+        }
+        this.captureTimeout = timeout;
     }
 
     /** How many blocks one tick may put back, or every one of them on a node with no controller. */
@@ -180,8 +201,7 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                     }
                 }
 
-                CompletableFuture.allOf(chunkFutures.toArray(CompletableFuture<?>[]::new))
-                        .join();
+                awaitRegions(chunkFutures);
 
                 dos.writeInt(nonAirBlocks.size());
                 for (CapturedBlock cb : nonAirBlocks) {
@@ -393,6 +413,28 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
             }
         } catch (Exception expected) {
             // Ignored if block state is not an accessible container
+        }
+    }
+
+    /**
+     * Waits for every region's chunks, or gives the capture up whole once the timeout has passed.
+     *
+     * <p>Nothing is written for a capture given up: the archive stream is thrown away with the error,
+     * and a region that answers afterwards adds its chunks to a list nobody reads again.
+     */
+    private void awaitRegions(List<CompletableFuture<Void>> chunkFutures) {
+        Duration timeout = this.captureTimeout;
+        try {
+            CompletableFuture.allOf(chunkFutures.toArray(CompletableFuture<?>[]::new))
+                    .get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException late) {
+            throw new IllegalStateException(
+                    "A region did not hand its chunks over within " + timeout + ", so nothing was captured", late);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("The capture was interrupted, so nothing was captured", interrupted);
+        } catch (java.util.concurrent.ExecutionException failed) {
+            throw new IllegalStateException("A region failed its part of the capture", failed.getCause());
         }
     }
 
