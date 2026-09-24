@@ -287,6 +287,22 @@ class IslandAdminRestoreCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("A backup that reached only some destinations is said to be partial, not said never to have been made")
+    void apartialBackupIsSaidToBePartial() throws Exception {
+        var service = mock(com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.class);
+        when(service.backupDatabase(any()))
+                .thenReturn(
+                        new com.uxplima.uxmskyblock.core.application.backup.DatabaseDisasterBackupService.Outcome
+                                .Partial(BackupSetId.random()));
+        commands.useDatabaseBackup(() -> service);
+
+        run("backup database", admin);
+
+        assertThat(admin.nextMessage()).describedAs("it says it started").isNotNull();
+        assertThat(admin.nextMessage()).contains("partial").doesNotContain("not made");
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("A node with nothing to take a database backup with says so rather than nothing")
     void nodatabaseBackupIsAnAnswer() throws Exception {
         run("backup database", admin);

@@ -96,6 +96,22 @@ class AMirroredBackupSurvivesALostDestinationTest {
     }
 
     @Test
+    @DisplayName("A database backup one destination refused is reported as partial, not as never made")
+    void aRefusedDestinationIsReportedPartial() {
+        remote.refusing = true;
+        DatabaseBackupPort port = org.mockito.Mockito.mock(DatabaseBackupPort.class);
+        org.mockito.Mockito.when(port.liveDialect())
+                .thenReturn(com.uxplima.uxmskyblock.core.domain.backup.DatabaseBackupDialect.SQLITE);
+        org.mockito.Mockito.when(port.captureDatabaseBackup(org.mockito.ArgumentMatchers.any()))
+                .thenReturn("-- dump".getBytes(StandardCharsets.UTF_8));
+        BackupService service = new BackupService(catalog, MirroredObjectStorage.destinationsOf(mirror));
+
+        assertThat(new DatabaseDisasterBackupService(service, port, "0.1.0").backupDatabase(BUCKET))
+                .isInstanceOf(DatabaseDisasterBackupService.Outcome.Partial.class);
+        assertThat(local.objects.keySet()).anyMatch(key -> key.endsWith(BackupService.AVAILABILITY_MARKER_FILE_NAME));
+    }
+
+    @Test
     @DisplayName("A write one destination refuses still reaches the others, and is reported as refused")
     void aRefusedWriteReachesTheRest() {
         local.refusing = true;

@@ -48,6 +48,9 @@ public final class DatabaseDisasterBackupService {
         /** It was captured, published and verified everywhere it was sent. */
         record Success(BackupSetId backupSetId, DatabaseBackupDialect dialect, long bytes) implements Outcome {}
 
+        /** It reached some destinations and not the others, and is recorded as partial. */
+        record Partial(BackupSetId backupSetId) implements Outcome {}
+
         /** It was not, and this is why. */
         record Failure(String reason) implements Outcome {
             public Failure {
@@ -147,8 +150,11 @@ public final class DatabaseDisasterBackupService {
                 now);
 
         boolean published = backupService.publishBackup(bucket, prefixFor(backupSetId), record, manifest, payloads);
-        return published
-                ? new Outcome.Success(backupSetId, dialect, dump.length)
+        if (published) {
+            return new Outcome.Success(backupSetId, dialect, dump.length);
+        }
+        return backupService.isPartial(backupSetId)
+                ? new Outcome.Partial(backupSetId)
                 : new Outcome.Failure("Publication failed; the catalog record says why");
     }
 

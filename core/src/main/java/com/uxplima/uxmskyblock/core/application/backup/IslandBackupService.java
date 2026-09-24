@@ -50,6 +50,9 @@ public final class IslandBackupService {
         /** The backup is published and the catalog has it as AVAILABLE. */
         record Success(BackupSetId backupSetId, int artifacts) implements BackupOutcome {}
 
+        /** It reached some destinations and not the others, and is recorded as partial. */
+        record Partial(BackupSetId backupSetId) implements BackupOutcome {}
+
         /** Nothing was published, and {@code reason} says why. */
         record Failure(String reason) implements BackupOutcome {}
     }
@@ -151,8 +154,11 @@ public final class IslandBackupService {
                 now);
 
         boolean published = backupService.publishBackup(bucket, prefixFor(backupSetId), record, manifest, payloads);
-        return published
-                ? new BackupOutcome.Success(backupSetId, artifacts.size())
+        if (published) {
+            return new BackupOutcome.Success(backupSetId, artifacts.size());
+        }
+        return backupService.isPartial(backupSetId)
+                ? new BackupOutcome.Partial(backupSetId)
                 : new BackupOutcome.Failure("Publication failed; the catalog record says why");
     }
 }

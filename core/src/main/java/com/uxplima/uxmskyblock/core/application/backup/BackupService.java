@@ -45,6 +45,18 @@ public final class BackupService {
         this(catalogPort, List.of(singleDestination));
     }
 
+    /**
+     * Whether the backup reached some destinations and not others, which a mirror leaves when one of
+     * its destinations refused: the copies that were written are there, the backup is not whole.
+     */
+    public boolean isPartial(BackupSetId backupSetId) {
+        Objects.requireNonNull(backupSetId, "backupSetId");
+        return catalogPort
+                .findById(backupSetId)
+                .map(record -> record.state() == BackupLifecycleState.PARTIAL)
+                .orElse(false);
+    }
+
     public static String computeSha256(byte[] data) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

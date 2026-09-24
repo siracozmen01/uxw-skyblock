@@ -226,6 +226,11 @@ public final class IslandAdminRestoreCommands {
                             Placeholder.unparsed("backup", success.backupSetId().toString()),
                             Placeholder.unparsed("dialect", success.dialect().name()),
                             Placeholder.unparsed("bytes", Long.toString(success.bytes())));
+                case DatabaseDisasterBackupService.Outcome.Partial partial ->
+                    send(
+                            sender,
+                            "admin.backup_partial",
+                            Placeholder.unparsed("backup", partial.backupSetId().toString()));
                 case DatabaseDisasterBackupService.Outcome.Failure failure ->
                     send(sender, "admin.backup_failed", Placeholder.unparsed("reason", failure.reason()));
             }
@@ -274,6 +279,11 @@ public final class IslandAdminRestoreCommands {
                             Placeholder.unparsed("island", islandId.value().toString()),
                             Placeholder.unparsed("backup", success.backupSetId().toString()),
                             Placeholder.unparsed("artifacts", Integer.toString(success.artifacts())));
+                case IslandBackupService.BackupOutcome.Partial partial ->
+                    send(
+                            sender,
+                            "admin.backup_partial",
+                            Placeholder.unparsed("backup", partial.backupSetId().toString()));
                 case IslandBackupService.BackupOutcome.Failure failure ->
                     send(sender, "admin.backup_failed", Placeholder.unparsed("reason", failure.reason()));
             }
