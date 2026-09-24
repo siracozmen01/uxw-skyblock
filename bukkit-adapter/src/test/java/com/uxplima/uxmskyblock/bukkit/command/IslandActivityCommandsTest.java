@@ -256,11 +256,11 @@ class IslandActivityCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
-    @DisplayName("How long ago is said in the coarsest unit that is still true")
+    @DisplayName("How long ago is said in the coarsest unit that is still true, seconds under a minute")
     void howlongAgoIsTheCoarsestTrueUnit() throws Exception {
         record Case(java.time.Duration since, String reads) {}
         List<Case> cases = List.of(
-                new Case(java.time.Duration.ofSeconds(30), "0m"),
+                new Case(java.time.Duration.ofSeconds(30), "3[0-9]s ago"),
                 new Case(java.time.Duration.ofMinutes(5), "5m"),
                 new Case(java.time.Duration.ofMinutes(59), "59m"),
                 new Case(java.time.Duration.ofHours(3), "3h"),
@@ -277,7 +277,7 @@ class IslandActivityCommandsTest {
 
             runOn(overTheRealCatalogue(), "activity");
 
-            assertThat(lastLine()).describedAs("%s ago", one.since()).contains(one.reads());
+            assertThat(lastLine()).describedAs("%s ago", one.since()).containsPattern(one.reads());
         }
     }
 
@@ -294,7 +294,7 @@ class IslandActivityCommandsTest {
 
         assertThat(lastLine())
                 .describedAs("two nodes whose clocks disagree must not make a player read -1h ago")
-                .contains("0m");
+                .contains("0s ago");
     }
 
     @org.junit.jupiter.api.Test

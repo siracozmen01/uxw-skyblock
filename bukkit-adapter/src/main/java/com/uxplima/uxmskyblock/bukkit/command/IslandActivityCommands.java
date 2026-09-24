@@ -19,6 +19,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService;
@@ -100,7 +101,10 @@ public final class IslandActivityCommands {
                     return;
                 }
                 for (ActivityEvent event : events) {
-                    sendOne(player, event, ago(event.createdAt(), now));
+                    sendOne(
+                            player,
+                            event,
+                            DurationText.coarse(messages, player, Duration.between(event.createdAt(), now)));
                 }
             });
         });
@@ -157,23 +161,6 @@ public final class IslandActivityCommands {
                 Placeholder.unparsed("type", event.eventType().name()),
                 Placeholder.unparsed("body", values.getOrDefault("body", event.payloadData())),
                 Placeholder.unparsed("ago", ago));
-    }
-
-    /** How long ago, in the coarsest unit that is still true. */
-    private static String ago(Instant then, Instant now) {
-        Duration since = Duration.between(then, now);
-        if (since.isNegative()) {
-            return "0m";
-        }
-        long days = since.toDays();
-        if (days > 0) {
-            return days + "d";
-        }
-        long hours = since.toHours();
-        if (hours > 0) {
-            return hours + "h";
-        }
-        return Math.max(0, since.toMinutes()) + "m";
     }
 
     private Optional<ProfileId> activeProfile(Player player) {

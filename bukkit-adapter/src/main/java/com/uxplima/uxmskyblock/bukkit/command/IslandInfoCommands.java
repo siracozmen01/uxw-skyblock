@@ -21,6 +21,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.booster.IslandBoosterService;
@@ -134,7 +135,10 @@ public final class IslandInfoCommands {
                                     booster.category().name(),
                                     lowerCase(booster.category().key()))),
                     Placeholder.unparsed("multiplier", String.format(Locale.ROOT, "%.2f", booster.multiplier())),
-                    Placeholder.unparsed("remaining", remainingOf(booster)));
+                    Placeholder.unparsed(
+                            "remaining",
+                            DurationText.coarse(
+                                    messages, player, Duration.ofSeconds(Math.max(0L, booster.remainingSeconds())))));
         }
     }
 
@@ -153,17 +157,6 @@ public final class IslandInfoCommands {
             return "info.access_closed";
         }
         return "info.access_open";
-    }
-
-    /** How long a booster has left, in the coarsest unit that is still true. */
-    private static String remainingOf(IslandBooster booster) {
-        Duration left = Duration.ofSeconds(Math.max(0L, booster.remainingSeconds()));
-        long hours = left.toHours();
-        if (hours > 0) {
-            return hours + "h";
-        }
-        long minutes = left.toMinutes();
-        return minutes > 0 ? minutes + "m" : left.toSeconds() + "s";
     }
 
     /** The island's own name, or its id when nobody has named it. */

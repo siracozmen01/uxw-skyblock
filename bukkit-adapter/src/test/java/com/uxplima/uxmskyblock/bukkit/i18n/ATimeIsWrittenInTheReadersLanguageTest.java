@@ -43,4 +43,22 @@ class ATimeIsWrittenInTheReadersLanguageTest extends MockBukkitHarness {
                 .isEqualTo("none");
         assertThat(DurationText.of(messages, turkish, Duration.ofMillis(400))).isEqualTo("1sn");
     }
+
+    @Test
+    @DisplayName("A rough span reads in its coarsest true unit, in the reader's language")
+    void aRoughSpanIsTheCoarsestUnit() {
+        PlayerMock turkish = createPlayer("Okur");
+        turkish.setLocale(Locale.forLanguageTag("tr"));
+
+        assertThat(DurationText.coarse(messages, turkish, Duration.ofDays(3).plusHours(5)))
+                .isEqualTo("3g");
+        assertThat(DurationText.coarse(messages, turkish, Duration.ofSeconds(90)))
+                .isEqualTo("1dk");
+        assertThat(DurationText.coarse(messages, turkish, Duration.ofSeconds(20)))
+                .isEqualTo("20sn");
+        assertThat(DurationText.coarse(messages, turkish, Duration.ofSeconds(-5)))
+                .isEqualTo("0sn");
+        assertThat(DurationText.coarse(messages, createPlayer("Reader"), Duration.ofHours(2)))
+                .isEqualTo("2h");
+    }
 }

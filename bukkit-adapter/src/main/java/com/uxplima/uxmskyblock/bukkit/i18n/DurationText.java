@@ -45,6 +45,28 @@ public final class DurationText {
         return String.join(" ", parts);
     }
 
+    /**
+     * {@code duration} in its coarsest unit that is still true, for a line that only needs to say
+     * roughly how long: "3 days ago" rather than every part of it. Under a minute it is seconds, and
+     * nothing at all reads as no seconds.
+     */
+    public static String coarse(Messages messages, Audience viewer, Duration duration) {
+        Objects.requireNonNull(messages, "messages");
+        Objects.requireNonNull(viewer, "viewer");
+        Objects.requireNonNull(duration, "duration");
+        long total = Math.max(0L, duration.toSeconds());
+        if (total >= 86_400) {
+            return plain(messages, viewer, "time.days", total / 86_400);
+        }
+        if (total >= 3600) {
+            return plain(messages, viewer, "time.hours", total / 3600);
+        }
+        if (total >= 60) {
+            return plain(messages, viewer, "time.minutes", total / 60);
+        }
+        return plain(messages, viewer, "time.seconds", total);
+    }
+
     private static String plain(Messages messages, Audience viewer, String key, long amount) {
         return PlainTextComponentSerializer.plainText()
                 .serialize(messages.renderPlain(viewer, key, Placeholder.unparsed("n", Long.toString(amount))));
