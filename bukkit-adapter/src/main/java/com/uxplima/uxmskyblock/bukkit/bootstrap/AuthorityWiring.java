@@ -81,6 +81,8 @@ public final class AuthorityWiring implements AutoCloseable {
                 persistenceBootstrap.inventoryPort(),
                 persistenceBootstrap.handoffFinalizationPort(),
                 switchProfile,
+                new com.uxplima.uxmskyblock.core.application.inventory.InventoryJournalRecovery(
+                        persistenceBootstrap.mutationJournalPort(), persistenceBootstrap.inventoryPort()),
                 scheduler,
                 protectionListener,
                 Duration.ofSeconds(5),

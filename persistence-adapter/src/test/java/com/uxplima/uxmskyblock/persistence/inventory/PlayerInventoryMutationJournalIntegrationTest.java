@@ -470,6 +470,35 @@ class PlayerInventoryMutationJournalIntegrationTest {
                         .isSuccess())
                 .isTrue();
 
+        // Intents a crash left open are found, and settled either way
+        InventoryMutationOperationId keptOp = InventoryMutationOperationId.random();
+        InventoryMutationOperationId quarantinedOp = InventoryMutationOperationId.random();
+        journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 1L, keptOp, "TRADE", "fp5", "fp6", "{}", Duration.ofMinutes(1));
+        journalAdapter.recordIntent(
+                player, profile, NODE_A, 1L, 1L, quarantinedOp, "TRADE", "fp7", "fp8", "{}", Duration.ofMinutes(1));
+        assertThat(journalAdapter.findOpenIntents(profile)).containsExactlyInAnyOrder(keptOp, quarantinedOp);
+        assertThat(journalAdapter
+                        .settleOpenIntent(player, profile, NODE_A, 1L, keptOp, InventoryMutationJournalState.COMMITTED)
+                        .isSuccess())
+                .isTrue();
+        assertThat(journalAdapter
+                        .settleOpenIntent(
+                                player,
+                                profile,
+                                NODE_A,
+                                1L,
+                                quarantinedOp,
+                                InventoryMutationJournalState.RECOVERY_REQUIRED)
+                        .isSuccess())
+                .isTrue();
+        assertThat(journalAdapter.loadParticipant(keptOp, 0).get().durableApplyState())
+                .isEqualTo(ParticipantApplyState.APPLIED);
+        assertThat(journalAdapter.loadJournal(quarantinedOp).get().state())
+                .isEqualTo(InventoryMutationJournalState.RECOVERY_REQUIRED);
+        assertThat(journalAdapter.findOpenIntents(profile)).isEmpty();
+        assertThat(invAdapter.loadInventory(profile).get().version()).isEqualTo(1L);
+
         // Idempotent commit replay
         InventoryMutationOperationId commitOp = InventoryMutationOperationId.random();
         journalAdapter.recordIntent(

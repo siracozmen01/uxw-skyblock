@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -20,7 +21,6 @@ import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalRec
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationParticipantRecord;
-import com.uxplima.uxmskyblock.core.domain.inventory.ParticipantApplyState;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 
 /**
@@ -44,6 +44,8 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
     private final InventoryMutationJournalSql sql;
     private final JournalTransaction transaction;
     private final SessionAuthorityGate authority;
+    private final OpenIntentSettlement settlement;
+    private final JournalRecords records;
 
     public PlayerInventoryMutationJournalAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -51,6 +53,8 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
         this.sql = InventoryMutationJournalSql.forDialect(this.dialect);
         this.authority = new SessionAuthorityGate(sql.selectSessionAuthority());
         this.transaction = new JournalTransaction(database);
+        this.settlement = new OpenIntentSettlement(database, sql, transaction, authority);
+        this.records = new JournalRecords(database, sql);
     }
 
     @Override
@@ -394,86 +398,30 @@ public final class PlayerInventoryMutationJournalAdapter implements InventoryMut
     }
 
     @Override
-    public Optional<InventoryMutationJournalRecord> loadJournal(InventoryMutationOperationId operationId) {
-        Objects.requireNonNull(operationId, "operationId");
-        try (Connection conn = database.connection();
-                PreparedStatement ps = conn.prepareStatement(sql.selectJournalRead())) {
-            ps.setString(1, operationId.value().toString());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                String opId = rs.getString("operation_id");
-                String opType = rs.getString("operation_type");
-                String state = rs.getString("state");
-                int participantCount = rs.getInt("participant_count");
-                String payload = rs.getString("payload");
-                Instant expiresAt = rs.getTimestamp("expires_at").toInstant();
-                Instant createdAt = rs.getTimestamp("created_at").toInstant();
-                Instant updatedAt = rs.getTimestamp("updated_at").toInstant();
+    public List<InventoryMutationOperationId> findOpenIntents(ProfileId profileId) {
+        return settlement.findOpenIntents(profileId);
+    }
 
-                return Optional.of(new InventoryMutationJournalRecord(
-                        InventoryMutationOperationId.fromString(opId),
-                        opType,
-                        InventoryMutationJournalState.valueOf(state),
-                        participantCount,
-                        payload,
-                        expiresAt,
-                        createdAt,
-                        updatedAt));
-            }
-        } catch (SQLException e) {
-            throw new InventoryPersistenceException("Failed to load journal for " + operationId, e);
-        }
+    @Override
+    public InventoryMutationJournalOutcome settleOpenIntent(
+            PlayerUuid playerUuid,
+            ProfileId profileId,
+            ServerNodeId nodeId,
+            long sessionEpoch,
+            InventoryMutationOperationId operationId,
+            InventoryMutationJournalState settledAs) {
+        return settlement.settle(playerUuid, profileId, nodeId, sessionEpoch, operationId, settledAs);
+    }
+
+    @Override
+    public Optional<InventoryMutationJournalRecord> loadJournal(InventoryMutationOperationId operationId) {
+        return records.journal(operationId);
     }
 
     @Override
     public Optional<InventoryMutationParticipantRecord> loadParticipant(
             InventoryMutationOperationId operationId, int participantIndex) {
-        Objects.requireNonNull(operationId, "operationId");
-        try (Connection conn = database.connection();
-                PreparedStatement ps = conn.prepareStatement(sql.selectParticipantRead())) {
-            ps.setString(1, operationId.value().toString());
-            ps.setInt(2, participantIndex);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                String opId = rs.getString("operation_id");
-                int partIndex = rs.getInt("participant_index");
-                String invType = rs.getString("inventory_type");
-                String ownerRootType = rs.getString("owner_root_type");
-                String ownerRootId = rs.getString("owner_root_id");
-                long expVer = rs.getLong("expected_version");
-                String authType = rs.getString("authority_type");
-                String authId = rs.getString("authority_id");
-                long authEpoch = rs.getLong("authority_epoch");
-                String beforeFp = rs.getString("before_fingerprint");
-                String afterFp = rs.getString("after_fingerprint");
-                String applyState = rs.getString("durable_apply_state");
-                String deltaPayload = rs.getString("mutation_delta_payload");
-                Instant updatedAt = rs.getTimestamp("updated_at").toInstant();
-
-                return Optional.of(new InventoryMutationParticipantRecord(
-                        InventoryMutationOperationId.fromString(opId),
-                        partIndex,
-                        invType,
-                        ownerRootType,
-                        ownerRootId,
-                        expVer,
-                        authType,
-                        authId,
-                        authEpoch,
-                        beforeFp,
-                        afterFp,
-                        ParticipantApplyState.valueOf(applyState),
-                        deltaPayload,
-                        updatedAt));
-            }
-        } catch (SQLException e) {
-            throw new InventoryPersistenceException(
-                    "Failed to load participant for " + operationId + " index " + participantIndex, e);
-        }
+        return records.participant(operationId, participantIndex);
     }
 
     @Override

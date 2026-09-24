@@ -115,6 +115,31 @@ public interface InventoryMutationJournalPort {
             InventoryMutationOperationId operationId, int participantIndex);
 
     /**
+     * The operations still at {@code INTENT} on {@code profileId}'s inventory, oldest first.
+     *
+     * <p>An intent is open only while its attempt runs. One that is still open when the player's
+     * session is taken again was cut short, by a crash or by a node that lost the player, and is what
+     * {@link InventoryJournalRecovery} settles.
+     */
+    java.util.List<InventoryMutationOperationId> findOpenIntents(ProfileId profileId);
+
+    /**
+     * Settles an open intent a crash left behind, as {@code COMMITTED} or {@code RECOVERY_REQUIRED}.
+     *
+     * <p>Committing here writes no inventory: it records that the inventory already holds what the
+     * mutation expected, so the operation is done and must not run again. {@code RECOVERY_REQUIRED}
+     * quarantines the operation for staff and is never purged. Both need the same session authority
+     * as a commit, and settling an operation already in {@code settledAs} succeeds again.
+     */
+    InventoryMutationJournalOutcome settleOpenIntent(
+            PlayerUuid playerUuid,
+            ProfileId profileId,
+            ServerNodeId nodeId,
+            long sessionEpoch,
+            InventoryMutationOperationId operationId,
+            com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState settledAs);
+
+    /**
      * Deletes the journals that have nothing left to recover.
      *
      * <p>A journal is a write-ahead record of an inventory mutation, kept so a crash in the middle

@@ -1,7 +1,5 @@
 package com.uxplima.uxmskyblock.bukkit.reward;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
@@ -29,6 +27,7 @@ import com.uxplima.uxmskyblock.core.application.reward.RewardDeliveryHandler;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryFingerprint;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalRecord;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
@@ -154,8 +153,8 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             byte[] beforeInventoryNbt = BukkitInventorySerializer.serializeItemStacks(contents);
             byte[] simulatedAfterNbt =
                     BukkitInventorySerializer.serializeItemStacks(simulateAddItem(contents, itemToDeliver));
-            return Result.ok(
-                    Optional.of(new Fingerprints(computeSha256(beforeInventoryNbt), computeSha256(simulatedAfterNbt))));
+            return Result.ok(Optional.of(new Fingerprints(
+                    InventoryFingerprint.of(beforeInventoryNbt), InventoryFingerprint.of(simulatedAfterNbt))));
         });
         if (read.isErr()) {
             return DeliveryResult.failure(read.errorOrThrow());
@@ -326,23 +325,6 @@ public final class ItemRewardDeliveryHandler implements RewardDeliveryHandler {
             }
         }
         return null;
-    }
-
-    private static String computeSha256(byte[] data) {
-        if (data == null || data.length == 0) {
-            return "0000000000000000000000000000000000000000000000000000000000000000";
-        }
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(data);
-            StringBuilder sb = new StringBuilder(64);
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm missing", e);
-        }
     }
 
     private static ItemStack[] cloneContents(ItemStack[] contents) {

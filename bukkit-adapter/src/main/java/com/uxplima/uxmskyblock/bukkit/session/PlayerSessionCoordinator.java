@@ -48,6 +48,7 @@ public final class PlayerSessionCoordinator {
     private final ProfileInventoryCheckpointPort inventoryCheckpointPort;
     private final ProfileHandoffFinalizationPort handoffFinalizationPort;
     private final SwitchProfileUseCase switchProfileUseCase;
+    private final CutShortOperations cutShort;
     private final SchedulerPort schedulerPort;
     private final IslandProtectionListener protectionListener;
     private final Duration heartbeatInterval;
@@ -62,6 +63,7 @@ public final class PlayerSessionCoordinator {
             ProfileInventoryCheckpointPort inventoryCheckpointPort,
             ProfileHandoffFinalizationPort handoffFinalizationPort,
             SwitchProfileUseCase switchProfileUseCase,
+            com.uxplima.uxmskyblock.core.application.inventory.InventoryJournalRecovery journalRecovery,
             SchedulerPort schedulerPort,
             IslandProtectionListener protectionListener,
             Duration heartbeatInterval,
@@ -72,6 +74,7 @@ public final class PlayerSessionCoordinator {
         this.inventoryCheckpointPort = Objects.requireNonNull(inventoryCheckpointPort, "inventoryCheckpointPort");
         this.handoffFinalizationPort = Objects.requireNonNull(handoffFinalizationPort, "handoffFinalizationPort");
         this.switchProfileUseCase = Objects.requireNonNull(switchProfileUseCase, "switchProfileUseCase");
+        this.cutShort = new CutShortOperations(journalRecovery, nodeId);
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort");
         this.protectionListener = Objects.requireNonNull(protectionListener, "protectionListener");
         this.heartbeatInterval = Objects.requireNonNull(heartbeatInterval, "heartbeatInterval");
@@ -211,6 +214,8 @@ public final class PlayerSessionCoordinator {
                 Optional<PlayerSessionRecord> sessionOpt = sessionAuthorityPort.findSession(playerUuid);
                 ProfileId activeProfile =
                         sessionOpt.map(PlayerSessionRecord::activeProfileId).orElse(defaultProfileId);
+
+                cutShort.settle(playerUuid, activeProfile, epoch);
 
                 Optional<ProfileInventoryRecord> invOpt = inventoryCheckpointPort.loadInventory(activeProfile);
                 long initialVersion =
@@ -445,6 +450,7 @@ public final class PlayerSessionCoordinator {
                         Result<Unit, String> compRes = switchProfileUseCase.completeSwitch(prepared);
                         if (compRes.isOk()) {
                             session.setActiveProfileId(targetProfileId);
+                            cutShort.settle(playerUuid, targetProfileId, session.sessionEpoch());
                             long newVersion = prepared.targetRecord() != null
                                     ? prepared.targetRecord().version()
                                     : 1L;

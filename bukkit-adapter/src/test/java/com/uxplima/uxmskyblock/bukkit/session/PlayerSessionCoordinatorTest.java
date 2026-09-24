@@ -18,12 +18,17 @@ import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.scheduler.FoliaSchedulerAdapter;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
+import com.uxplima.uxmskyblock.core.application.inventory.InventoryJournalRecovery;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.profile.SwitchProfileUseCase;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryFingerprint;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
 import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.core.domain.session.SessionAuthorityOutcome;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +67,8 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
                 persistenceBootstrap.inventoryPort(),
                 persistenceBootstrap.handoffFinalizationPort(),
                 switchProfileUseCase,
+                new InventoryJournalRecovery(
+                        persistenceBootstrap.mutationJournalPort(), persistenceBootstrap.inventoryPort()),
                 scheduler,
                 protectionListener,
                 Duration.ofSeconds(1),
@@ -91,6 +98,58 @@ class PlayerSessionCoordinatorTest extends MockBukkitHarness {
             assertThat(Objects.requireNonNull(session).sessionEpoch()).isEqualTo(1L);
             assertThat(session.lastDurableVersion()).isGreaterThanOrEqualTo(1L);
         });
+    }
+
+    @Test
+    @DisplayName("A join settles the inventory operation a crashed node left open")
+    void aJoinSettlesWhatACrashLeftOpen() throws Exception {
+        PlayerMock player = createPlayer("CrashPlayer");
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        ProfileId profile = new ProfileId(player.getUniqueId());
+        ServerNodeId deadNode = new ServerNodeId("dead-node");
+        var sessions = persistenceBootstrap.sessionAuthorityPort();
+        var journal = persistenceBootstrap.mutationJournalPort();
+        long deadEpoch =
+                ((SessionAuthorityOutcome.Success) sessions.ensureSession(playerUuid, profile, deadNode)).epoch();
+        String durable = InventoryFingerprint.of(persistenceBootstrap
+                .inventoryPort()
+                .loadInventory(profile)
+                .orElseThrow()
+                .inventoryNbt());
+        InventoryMutationOperationId delivery = InventoryMutationOperationId.random();
+        assertThat(journal.recordIntent(
+                                playerUuid,
+                                profile,
+                                deadNode,
+                                deadEpoch,
+                                persistenceBootstrap
+                                        .inventoryPort()
+                                        .loadInventory(profile)
+                                        .orElseThrow()
+                                        .version(),
+                                delivery,
+                                "REWARD_DELIVERY",
+                                durable,
+                                InventoryFingerprint.of(new byte[] {1, 2, 3}),
+                                "{}",
+                                Duration.ofMinutes(1))
+                        .isSuccess())
+                .isTrue();
+        // The dead node stops renewing, and its lease runs out.
+        try (var conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + tempDir.resolve("test.db"));
+                var ps = conn.prepareStatement("UPDATE player_sessions SET lease_expires_at = DATETIME('now', '-30"
+                        + " seconds') WHERE player_uuid = ?")) {
+            ps.setString(1, player.getUniqueId().toString());
+            assertThat(ps.executeUpdate()).isEqualTo(1);
+        }
+
+        coordinator.handlePlayerJoin(player);
+
+        eventually(() ->
+                assertThat(coordinator.getActiveSession(player.getUniqueId())).isNotNull());
+        assertThat(journal.loadJournal(delivery).orElseThrow().state())
+                .isEqualTo(InventoryMutationJournalState.ABORTED);
+        assertThat(journal.findOpenIntents(profile)).isEmpty();
     }
 
     @Test

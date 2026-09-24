@@ -242,6 +242,22 @@ class JournaledInventoryMutationServiceTest {
         }
 
         @Override
+        public java.util.List<InventoryMutationOperationId> findOpenIntents(ProfileId profileId) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public InventoryMutationJournalOutcome settleOpenIntent(
+                PlayerUuid playerUuid,
+                ProfileId profileId,
+                ServerNodeId nodeId,
+                long sessionEpoch,
+                InventoryMutationOperationId operationId,
+                com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState settledAs) {
+            return InventoryMutationJournalOutcome.rejected("NOT_USED");
+        }
+
+        @Override
         public int purgeSettledBefore(java.time.Instant before) {
             return 0;
         }
