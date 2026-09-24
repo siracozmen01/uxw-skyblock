@@ -233,6 +233,55 @@ public final class PlayerSessionCoordinator {
      */
     public void handlePlayerJoin(Player player) {
         Objects.requireNonNull(player, "player");
+        attemptJoin(player, nanoClock.getAsLong(), false);
+    }
+
+    /**
+     * How long a player may wait for their session to leave another server: the longest a lease
+     * another node holds can outlive that node, and the margin a renewal may still be in flight.
+     */
+    static final Duration LOGIN_WAIT = SessionLease.HANDOFF.plus(SessionLease.SAFETY_MARGIN);
+
+    /** How often a waiting player's session is asked for again. */
+    static final Duration LOGIN_RETRY = Duration.ofSeconds(1);
+
+    /**
+     * A player whose session another server still holds waits for it, and is not turned away.
+     *
+     * <p>A proxy connects the player to the next server before the last one has let the session go,
+     * so a move between servers arrived while the old server was still writing the player's state,
+     * and the player was kicked as though two servers wanted them. The session is asked for again
+     * every {@link #LOGIN_RETRY} until the other server releases it or its lease runs out; the player
+     * is told once, and turned away only when {@link #LOGIN_WAIT} has passed.
+     */
+    private void waitOrRefuse(Player player, long queuedAt, boolean told) {
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        if (!player.isOnline()) {
+            return;
+        }
+        if (nanoClock.getAsLong() - queuedAt >= LOGIN_WAIT.toNanos()) {
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (player.isOnline()) {
+                    player.kick(messages.render(player, "session.authority_refused"));
+                }
+            });
+            return;
+        }
+        if (!told) {
+            schedulerPort.onEntity(playerUuid, () -> {
+                if (player.isOnline()) {
+                    messages.send(player, "session.waiting_elsewhere");
+                }
+            });
+        }
+        schedulerPort.asyncAfter(LOGIN_RETRY, () -> {
+            if (player.isOnline()) {
+                attemptJoin(player, queuedAt, true);
+            }
+        });
+    }
+
+    private void attemptJoin(Player player, long queuedAt, boolean told) {
         UUID rawUuid = player.getUniqueId();
         PlayerUuid playerUuid = new PlayerUuid(rawUuid);
         ProfileId defaultProfileId = new ProfileId(rawUuid);
@@ -244,11 +293,7 @@ public final class PlayerSessionCoordinator {
                         sessionAuthorityPort.ensureSession(playerUuid, defaultProfileId, nodeId);
 
                 if (!outcome.isSuccess()) {
-                    schedulerPort.onEntity(playerUuid, () -> {
-                        if (player.isOnline()) {
-                            player.kick(messages.render(player, "session.authority_refused"));
-                        }
-                    });
+                    waitOrRefuse(player, queuedAt, told);
                     return;
                 }
 
