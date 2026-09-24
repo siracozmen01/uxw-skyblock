@@ -247,7 +247,23 @@ public final class IslandMembershipCommands {
     public LiteralArgumentBuilder<CommandSourceStack> buildRole() {
         return Cmd.literal("role")
                 .then(Cmd.argument("player", StringArgumentType.word())
+                        .executes(this::executeRoleChoice)
                         .then(Cmd.argument("role", StringArgumentType.word()).executes(this::executeRole)));
+    }
+
+    /** {@code /is role <player>}: the roles the player could be given, rather than an unknown command. */
+    private int executeRoleChoice(CommandContext<CommandSourceStack> ctx) {
+        String target = StringArgumentType.getString(ctx, "player");
+        return withService(
+                ctx,
+                (player, service, actor) -> schedulerPort.async(() -> service.assignableRoles(actor)
+                        .ifPresentOrElse(
+                                roles -> send(
+                                        player,
+                                        "member.role_choose",
+                                        Placeholder.unparsed("player", target),
+                                        Placeholder.unparsed("roles", roles)),
+                                () -> send(player, "error.no_island"))));
     }
 
     /**
@@ -327,6 +343,8 @@ public final class IslandMembershipCommands {
                                     Placeholder.unparsed("permission", changed.permission()));
                         case IslandMembershipService.PermissionOutcome.NotAllowed ignored ->
                             send(player, "member.role_no_permission");
+                        case IslandMembershipService.PermissionOutcome.OutOfReach ignored ->
+                            send(player, "member.permission_out_of_reach");
                         case IslandMembershipService.PermissionOutcome.NoIsland ignored ->
                             send(player, "error.no_island");
                         case IslandMembershipService.PermissionOutcome.UnknownRole unknown ->
@@ -494,6 +512,7 @@ public final class IslandMembershipCommands {
             case IslandMembershipService.RemovalOutcome.NotAMember ignored ->
                 send(player, "member.not_a_member", Placeholder.unparsed("player", target));
             case IslandMembershipService.RemovalOutcome.CannotRemoveOwner ignored -> send(player, "member.owner_stays");
+            case IslandMembershipService.RemovalOutcome.OutOfReach ignored -> send(player, "member.kick_out_of_reach");
         }
     }
 
@@ -580,6 +599,14 @@ public final class IslandMembershipCommands {
                                     Placeholder.unparsed("roles", unknown.available()));
                         case IslandMembershipService.RoleOutcome.CannotChangeOwner ignored ->
                             send(player, "member.owner_stays");
+                        case IslandMembershipService.RoleOutcome.NotAssignable anchor ->
+                            send(
+                                    player,
+                                    "member.role_not_assignable",
+                                    Placeholder.unparsed("role", anchor.roleId()),
+                                    Placeholder.unparsed("roles", anchor.available()));
+                        case IslandMembershipService.RoleOutcome.OutOfReach ignored ->
+                            send(player, "member.role_out_of_reach");
                     }
                 }));
     }

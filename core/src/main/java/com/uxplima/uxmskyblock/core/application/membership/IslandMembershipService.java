@@ -117,6 +117,9 @@ public final class IslandMembershipService {
 
         /** The owner cannot be removed from their own island, by anybody including themselves. */
         record CannotRemoveOwner() implements RemovalOutcome {}
+
+        /** The target's role is not below the caller's, so the caller may not remove them. */
+        record OutOfReach() implements RemovalOutcome {}
     }
 
     /** What a request to change somebody's role came back with. */
@@ -139,6 +142,12 @@ public final class IslandMembershipService {
 
         /** The owner's own role is not something a role command moves. */
         record CannotChangeOwner() implements RoleOutcome {}
+
+        /** An anchor role, owner or visitor, is no role to give a member. {@code available} are. */
+        record NotAssignable(String roleId, String available) implements RoleOutcome {}
+
+        /** The target, or the role, is not below the caller's own role. */
+        record OutOfReach() implements RoleOutcome {}
     }
 
     private final IslandStoragePort islandStoragePort;
@@ -290,6 +299,12 @@ public final class IslandMembershipService {
         if (!may(island, actor, IslandPermission.MEMBER_KICK)) {
             return new RemovalOutcome.NotAllowed();
         }
+        IslandMember removing = island.members().get(target);
+        if (removing != null
+                && !island.ownerProfileId().equals(target)
+                && !outranks(island, actor, removing.role().weight())) {
+            return new RemovalOutcome.OutOfReach();
+        }
         return remove(island, target);
     }
 
@@ -332,7 +347,10 @@ public final class IslandMembershipService {
         String roleId = rawRoleId.toUpperCase(Locale.ROOT);
         IslandRole role = island.roles().get(roleId);
         if (role == null) {
-            return new RoleOutcome.UnknownRole(rawRoleId.toLowerCase(Locale.ROOT), roleNames(island));
+            return new RoleOutcome.UnknownRole(rawRoleId.toLowerCase(Locale.ROOT), assignableRoleNames(island));
+        }
+        if (role.isSystem()) {
+            return new RoleOutcome.NotAssignable(rawRoleId.toLowerCase(Locale.ROOT), assignableRoleNames(island));
         }
 
         // Moving somebody up and moving them down are two permissions, and which one this is is
@@ -344,6 +362,12 @@ public final class IslandMembershipService {
                 : IslandPermission.MEMBER_DEMOTE;
         if (!may(island, actor, needed)) {
             return new RoleOutcome.NotAllowed();
+        }
+        // The permission says whether the caller moves people at all; the ranks say whom and where to.
+        // Without them a co-owner could hand out the owner's role, and a moderator allowed to demote
+        // could demote the co-owner above them.
+        if (!outranks(island, actor, member.role().weight()) || !outranks(island, actor, role.weight())) {
+            return new RoleOutcome.OutOfReach();
         }
 
         return mutationLock.inside(island.id(), () -> {
@@ -383,6 +407,9 @@ public final class IslandMembershipService {
 
         /** The owner's role is not something a permission command moves. */
         record CannotChangeOwnerRole() implements PermissionOutcome {}
+
+        /** The role is not below the caller's own, so the caller may not edit it. */
+        record OutOfReach() implements PermissionOutcome {}
     }
 
     /**
@@ -417,6 +444,10 @@ public final class IslandMembershipService {
         }
         if (roleId.equals(IslandRole.OWNER.id())) {
             return new PermissionOutcome.CannotChangeOwnerRole();
+        }
+        if (!outranks(island, actor, role.weight())) {
+            // A caller who could edit their own role, or one above it, could grant themselves anything.
+            return new PermissionOutcome.OutOfReach();
         }
 
         IslandPermission permission;
@@ -491,6 +522,26 @@ public final class IslandMembershipService {
                 .orElseGet(List::of);
     }
 
+    /**
+     * The roles a member may be given on the island the caller belongs to, or nothing when they have
+     * no island.
+     */
+    public Optional<String> assignableRoles(ProfileId actor) {
+        Objects.requireNonNull(actor, "actor must not be null");
+        return islandOf(actor).map(IslandMembershipService::assignableRoleNames);
+    }
+
+    /** Every role on the island but the anchors, owner and visitor, which no member is given. */
+    public static String assignableRoleNames(Island island) {
+        Objects.requireNonNull(island, "island must not be null");
+        return island.roles().values().stream()
+                .filter(role -> !role.isSystem())
+                .map(role -> role.id().toLowerCase(Locale.ROOT))
+                .sorted()
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
+    }
+
     /** The role names this island has, lower case and comma separated, for telling a caller. */
     public static String roleNames(Island island) {
         Objects.requireNonNull(island, "island must not be null");
@@ -526,6 +577,15 @@ public final class IslandMembershipService {
 
     private Optional<Island> islandOf(ProfileId profileId) {
         return islandStoragePort.findIslandIdByProfileId(profileId).flatMap(islandStoragePort::findIslandById);
+    }
+
+    /** Whether {@code actor} stands above {@code weight}: the owner above all, anybody else strictly. */
+    private static boolean outranks(Island island, ProfileId actor, int weight) {
+        if (island.ownerProfileId().equals(actor)) {
+            return true;
+        }
+        IslandMember member = island.members().get(actor);
+        return member != null && member.role().weight() > weight;
     }
 
     private static boolean may(Island island, ProfileId profileId, IslandPermission permission) {

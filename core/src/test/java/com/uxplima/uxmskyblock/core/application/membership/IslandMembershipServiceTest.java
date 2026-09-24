@@ -272,6 +272,59 @@ class IslandMembershipServiceTest {
     }
 
     @Test
+    @DisplayName("A moderator allowed to remove members cannot remove the co-owner above them")
+    void aModeratorCannotRemoveTheCoOwner() {
+        ProfileId deputy = new ProfileId(UUID.randomUUID());
+        island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.MODERATOR, NOW))
+                .addMember(new IslandMember(PlayerUuid.of(UUID.randomUUID()), deputy, IslandRole.CO_OWNER, NOW));
+        when(storage.findIslandIdByProfileId(MATE)).thenReturn(Optional.of(ISLAND));
+
+        assertThat(service.kick(MATE, deputy)).isInstanceOf(IslandMembershipService.RemovalOutcome.OutOfReach.class);
+        verify(storage, never()).saveIsland(any(), any());
+    }
+
+    @Test
+    @DisplayName("Neither the owner's role nor the visitor's is given to a member, and the list offers neither")
+    void theAnchorRolesAreNotGiven() {
+        island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.MEMBER, NOW));
+
+        for (String anchor : java.util.List.of("owner", "visitor")) {
+            IslandMembershipService.RoleOutcome outcome = service.setRole(OWNER, MATE, anchor);
+            assertThat(outcome).isInstanceOf(IslandMembershipService.RoleOutcome.NotAssignable.class);
+            assertThat(((IslandMembershipService.RoleOutcome.NotAssignable) outcome)
+                            .available()
+                            .split(", "))
+                    .contains("moderator", "co_owner")
+                    .doesNotContain("owner", "visitor");
+        }
+        verify(storage, never()).saveIsland(any(), any());
+    }
+
+    @Test
+    @DisplayName("A co-owner allowed to promote moves members only below their own role, and edits only roles below it")
+    void aCoOwnerReachesOnlyBelowThemselves() {
+        ProfileId deputy = new ProfileId(UUID.randomUUID());
+        island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.MEMBER, NOW))
+                .addMember(new IslandMember(PlayerUuid.of(UUID.randomUUID()), deputy, IslandRole.CO_OWNER, NOW));
+        assertThat(service.setRolePermission(OWNER, "co_owner", "member_promote", true))
+                .isInstanceOf(IslandMembershipService.PermissionOutcome.Changed.class);
+        island = savedIsland();
+        org.mockito.Mockito.clearInvocations(storage);
+        when(storage.findIslandIdByProfileId(deputy)).thenReturn(Optional.of(ISLAND));
+
+        assertThat(service.setRole(deputy, MATE, "co_owner"))
+                .describedAs("a role level with their own")
+                .isInstanceOf(IslandMembershipService.RoleOutcome.OutOfReach.class);
+        assertThat(service.setRolePermission(deputy, "co_owner", "warp_delete", true))
+                .describedAs("their own role, which would grant them anything")
+                .isInstanceOf(IslandMembershipService.PermissionOutcome.OutOfReach.class);
+        verify(storage, never()).saveIsland(any(), any());
+
+        assertThat(service.setRole(deputy, MATE, "moderator"))
+                .isInstanceOf(IslandMembershipService.RoleOutcome.Changed.class);
+    }
+
+    @Test
     @DisplayName("The member list puts the owner first")
     void theOwnerIsListedFirst() {
         island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.MEMBER, NOW.minusSeconds(86_400)));

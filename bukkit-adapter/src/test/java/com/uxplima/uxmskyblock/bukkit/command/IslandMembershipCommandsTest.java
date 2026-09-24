@@ -137,6 +137,30 @@ class IslandMembershipCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("A role command that names a player and no role lists the roles that player could be given")
+    void aRoleWithoutARoleListsTheChoice() throws Exception {
+        when(membership.assignableRoles(OWNER)).thenReturn(Optional.of("co_owner, member, moderator"));
+
+        run("role Mate", owner);
+
+        assertThat(heardBy(owner)).contains("member.role_choose");
+        verify(membership, never()).setRole(any(), any(), anyString());
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A move out of the caller's reach is refused in words, not reported as done")
+    void anOutOfReachMoveIsRefused() throws Exception {
+        when(membership.setRole(any(), any(), anyString()))
+                .thenReturn(new IslandMembershipService.RoleOutcome.OutOfReach());
+        when(membership.kick(any(), any())).thenReturn(new IslandMembershipService.RemovalOutcome.OutOfReach());
+
+        run("role Mate co_owner", owner);
+        run("kick Mate", owner);
+
+        assertThat(heardBy(owner)).contains("member.role_out_of_reach").contains("member.kick_out_of_reach");
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("A member on the server is told at once that they were invited, promoted or removed")
     void aMemberOnTheServerIsToldAtOnce() throws Exception {
         run("invite Mate", owner);
@@ -446,13 +470,15 @@ class IslandMembershipCommandsTest {
     }
 
     @Test
-    @DisplayName("Every verb that names a player is refused without one")
-    void everyTargetedVerbNeedsAName() {
-        for (String line : new String[] {"invite", "kick", "role", "role Mate"}) {
+    @DisplayName("Every verb that names a player is refused without one, and a role without a role moves nobody")
+    void everyTargetedVerbNeedsAName() throws Exception {
+        for (String line : new String[] {"invite", "kick", "role"}) {
             assertThatThrownBy(() -> run(line, owner))
                     .describedAs("%s must be refused", line)
                     .isInstanceOf(Exception.class);
         }
+        // Named but given no role, it answers with the roles on offer rather than an unknown command.
+        run("role Mate", owner);
         verify(membership, never()).invite(any(), any());
         verify(membership, never()).kick(any(), any());
         verify(membership, never()).setRole(any(), any(), anyString());
