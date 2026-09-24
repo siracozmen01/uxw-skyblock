@@ -15,17 +15,18 @@ import com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord;
  * empty ender chest and no experience. Every write of a player's state writes all of it, through
  * this.
  */
-final class PlayerStateColumns {
+public final class PlayerStateColumns {
 
     /** The assignments, in the order {@link #bind} fills them. */
-    static final String ASSIGNMENTS = "inventory_nbt = ?, enderchest_nbt = ?, experience_points = ?, health = ?, "
-            + "food_level = ?, saturation = ?, active_potion_effects_nbt = ?, logout_world = ?, logout_x = ?, "
-            + "logout_y = ?, logout_z = ?, gamemode = ?, flight_allowed = ?";
+    public static final String ASSIGNMENTS =
+            "inventory_nbt = ?, enderchest_nbt = ?, experience_points = ?, health = ?, "
+                    + "food_level = ?, saturation = ?, active_potion_effects_nbt = ?, logout_world = ?, logout_x = ?, "
+                    + "logout_y = ?, logout_z = ?, gamemode = ?, flight_allowed = ?";
 
     private PlayerStateColumns() {}
 
     /** Binds {@code state} from parameter {@code first} on, and answers the index after the last. */
-    static int bind(PreparedStatement ps, int first, ProfileInventoryRecord state) throws SQLException {
+    public static int bind(PreparedStatement ps, int first, ProfileInventoryRecord state) throws SQLException {
         int i = first;
         ps.setBytes(i++, state.inventoryNbt());
         ps.setBytes(i++, state.enderchestNbt());

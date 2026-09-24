@@ -174,7 +174,7 @@ class SqlIslandVaultStorageAdapterSqliteTest {
         adapter.recordEscrowTransfer(transfer);
 
         byte[] newContents = new byte[] {2, 3, 4};
-        boolean committed = adapter.commitEditSession(sessionId, newContents, OWNER_PROFILE.toString(), null, null);
+        boolean committed = adapter.commitEditSession(sessionId, newContents, OWNER_PROFILE.toString(), null);
         assertThat(committed).isTrue();
 
         Optional<VaultPage> updatedPage = adapter.findPage(ISLAND_ID, 1);
@@ -192,7 +192,7 @@ class SqlIslandVaultStorageAdapterSqliteTest {
         assertThat(transfers.get(0).state()).isEqualTo(EscrowTransferState.COMMITTED);
 
         // Subsequent commit with same session fails
-        boolean repeatCommit = adapter.commitEditSession(sessionId, newContents, OWNER_PROFILE.toString(), null, null);
+        boolean repeatCommit = adapter.commitEditSession(sessionId, newContents, OWNER_PROFILE.toString(), null);
         assertThat(repeatCommit).isFalse();
     }
 

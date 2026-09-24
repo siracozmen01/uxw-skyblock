@@ -196,7 +196,7 @@ class TheVaultRecordsWhoMovedWhatTest {
         window.commit(player, holder, atClose);
 
         ArgumentCaptor<List<VaultAuditLogEntry>> captor = ArgumentCaptor.forClass(List.class);
-        verify(vaultService).commitVaultPage(any(), any(), any(), any(), any(), captor.capture());
+        verify(vaultService).commitVaultPage(any(), any(), any(), any(), captor.capture());
         return captor.getValue();
     }
 }

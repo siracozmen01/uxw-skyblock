@@ -143,7 +143,7 @@ class AVaultPageCannotBeTakenTwiceTest extends MockBukkitHarness {
     private void refuseEverySave() {
         doThrow(new StaleVaultSessionException("the lease expired"))
                 .when(vaultService)
-                .commitVaultPage(any(), any(), any(), any(), any(), any());
+                .commitVaultPage(any(), any(), any(), any(), any());
     }
 
     private static IslandVaultWindow.VaultHolder holderOpenedWith(List<ItemStack> openedWith) {

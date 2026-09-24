@@ -272,8 +272,8 @@ class TheExpiredVaultSessionIsClosedTest {
                 VaultSessionId sessionId,
                 byte[] newContentsNbt,
                 String modifiedBy,
-                byte @org.jspecify.annotations.Nullable [] playerInventoryNbt,
-                @org.jspecify.annotations.Nullable ProfileId playerProfileId) {
+                com.uxplima.uxmskyblock.core.domain.inventory.@org.jspecify.annotations.Nullable PlayerStateWrite
+                        playerState) {
             return false;
         }
 

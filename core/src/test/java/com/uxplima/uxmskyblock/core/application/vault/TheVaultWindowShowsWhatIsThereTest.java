@@ -123,8 +123,7 @@ class TheVaultWindowShowsWhatIsThereTest {
                 VaultSessionId sessionId,
                 byte[] newContentsNbt,
                 String modifiedBy,
-                byte @Nullable [] playerInventoryNbt,
-                @Nullable ProfileId playerProfileId) {
+                com.uxplima.uxmskyblock.core.domain.inventory.@Nullable PlayerStateWrite playerState) {
             return true;
         }
 

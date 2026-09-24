@@ -15,10 +15,11 @@ import java.util.UUID;
 
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.PlayerStateWrite;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultEditSession;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultSessionState;
+import com.uxplima.uxmskyblock.persistence.inventory.PlayerStateColumns;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -206,8 +207,7 @@ public final class SqlVaultSessionStore {
             VaultSessionId sessionId,
             byte[] newContentsNbt,
             String modifiedBy,
-            byte @Nullable [] playerInventoryNbt,
-            @Nullable ProfileId playerProfileId) {
+            @Nullable PlayerStateWrite playerState) {
         Objects.requireNonNull(sessionId, "sessionId must not be null");
         Objects.requireNonNull(newContentsNbt, "newContentsNbt must not be null");
         Objects.requireNonNull(modifiedBy, "modifiedBy must not be null");
@@ -232,13 +232,9 @@ public final class SqlVaultSessionStore {
                   AND active_session_id = ?
                 """;
 
-        String updateProfileInvSql = """
-                UPDATE profile_inventories
-                SET inventory_nbt = ?,
-                    profile_inventory_version = profile_inventory_version + 1,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE profile_id = ?
-                """;
+        String updateProfileInvSql = "UPDATE profile_inventories SET profile_inventory_version = "
+                + "profile_inventory_version + 1, " + PlayerStateColumns.ASSIGNMENTS
+                + ", updated_at = CURRENT_TIMESTAMP WHERE profile_id = ? AND profile_inventory_version = ?";
 
         String commitSessionSql = """
                 UPDATE vault_edit_sessions
@@ -286,6 +282,13 @@ public final class SqlVaultSessionStore {
                     return false;
                 }
 
+                // 0. The player's session, locked first as every write of player state locks it, and
+                // still this node's, at this epoch, active and leased.
+                if (playerState != null && !playerSessionHolds(conn, playerState)) {
+                    conn.rollback();
+                    return false;
+                }
+
                 // 1. Atomic CAS update on island_vault_pages
                 int updatedPageRows;
                 try (PreparedStatement updatePageStmt = conn.prepareStatement(updatePageSql)) {
@@ -304,16 +307,26 @@ public final class SqlVaultSessionStore {
                     return false;
                 }
 
-                // 2. Coordinated update of player inventory if supplied
-                if (playerProfileId != null && playerInventoryNbt != null) {
+                // 2. The player's whole state, in the same transaction as the page: what left the page
+                // is in their inventory and what entered it is not, and neither is written alone.
+                if (playerState != null) {
                     try (PreparedStatement invStmt = conn.prepareStatement(updateProfileInvSql)) {
-                        invStmt.setBytes(1, playerInventoryNbt);
-                        invStmt.setString(2, playerProfileId.value().toString());
-                        int invRows = invStmt.executeUpdate();
-                        if (invRows == 0) {
+                        int next = PlayerStateColumns.bind(invStmt, 1, playerState.state());
+                        invStmt.setString(
+                                next, playerState.state().profileId().value().toString());
+                        invStmt.setLong(next + 1, playerState.expectedVersion());
+                        if (invStmt.executeUpdate() == 0) {
                             conn.rollback();
                             return false;
                         }
+                    }
+                    try (PreparedStatement versionStmt = conn.prepareStatement(
+                            "UPDATE player_sessions SET last_durable_inventory_version = ?, updated_at = "
+                                    + "CURRENT_TIMESTAMP WHERE player_uuid = ?")) {
+                        versionStmt.setLong(1, playerState.writtenVersion());
+                        versionStmt.setString(
+                                2, playerState.playerUuid().value().toString());
+                        versionStmt.executeUpdate();
                     }
                 }
 
@@ -345,6 +358,25 @@ public final class SqlVaultSessionStore {
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to commit vault edit session " + sessionId, e);
+        }
+    }
+
+    /** Whether the session behind {@code write} is still the writer's, read under its row lock. */
+    private boolean playerSessionHolds(Connection conn, PlayerStateWrite write) throws SQLException {
+        String select = "SELECT active_profile_id, authoritative_node, session_epoch, state, "
+                + "(CASE WHEN lease_expires_at >= CURRENT_TIMESTAMP THEN 1 ELSE 0 END) AS lease_valid "
+                + "FROM player_sessions WHERE player_uuid = ?"
+                + (database.dialect() == com.uxplima.uxmlib.storage.sql.Dialect.SQLITE ? "" : " FOR UPDATE");
+        try (PreparedStatement ps = conn.prepareStatement(select)) {
+            ps.setString(1, write.playerUuid().value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next()
+                        && write.state().profileId().value().toString().equals(rs.getString("active_profile_id"))
+                        && write.node().value().equals(rs.getString("authoritative_node"))
+                        && rs.getLong("session_epoch") == write.sessionEpoch()
+                        && "ACTIVE".equals(rs.getString("state"))
+                        && rs.getInt("lease_valid") == 1;
+            }
         }
     }
 

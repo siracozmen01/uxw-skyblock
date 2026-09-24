@@ -19,6 +19,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
+import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -26,6 +27,7 @@ import com.uxplima.uxmskyblock.core.application.vault.IslandVaultService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.PlayerStateWrite;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
@@ -319,15 +321,16 @@ public final class IslandVaultWindow {
         Objects.requireNonNull(holder, "holder must not be null");
         byte[] serialized = BukkitInventorySerializer.serializeItemStacks(contents);
         List<VaultAuditLogEntry> auditTrail = auditTrailOf(holder, contents);
+        PlayerStateWrite playerState = stateOf(player, holder);
         schedulerPort.async(() -> {
             try {
                 vaultService.commitVaultPage(
                         com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId.fromString(holder.sessionId()),
                         serialized,
                         holder.profileId().toString(),
-                        null,
-                        holder.profileId(),
+                        playerState,
                         auditTrail);
+                settled(player, playerState);
             } catch (RuntimeException e) {
                 // The window is already closed and what it held is nowhere: not in the page, because
                 // the commit was refused, and not with the player, because they put it in the vault.
@@ -338,6 +341,44 @@ public final class IslandVaultWindow {
                 });
             }
         });
+    }
+
+    /**
+     * What the player holds as the window closes, to be written with the page.
+     *
+     * <p>The page was written alone and the player's inventory at the next checkpoint, up to a minute
+     * later. A crash in between kept what the player had put in the vault in both places, or lost what
+     * they had taken out. Both are now written in one transaction, under the player's session. A
+     * player with no session here has nothing to write, and the page is written alone as before.
+     */
+    private @Nullable PlayerStateWrite stateOf(Player player, VaultHolder holder) {
+        PlayerSessionCoordinator sessions = this.sessionCoordinator;
+        if (sessions == null) {
+            return null;
+        }
+        ActiveSession session = sessions.getActiveSession(player.getUniqueId());
+        if (session == null || !session.activeProfileId().equals(holder.profileId())) {
+            return null;
+        }
+        return new PlayerStateWrite(
+                session.playerUuid(),
+                sessions.nodeId(),
+                session.sessionEpoch(),
+                session.lastDurableVersion(),
+                BukkitInventorySerializer.snapshotPlayer(
+                        player, session.activeProfileId(), session.lastDurableVersion()));
+    }
+
+    /** The session now stands at the version the commit wrote, so the next checkpoint builds on it. */
+    private void settled(Player player, @Nullable PlayerStateWrite playerState) {
+        PlayerSessionCoordinator sessions = this.sessionCoordinator;
+        if (playerState == null || sessions == null) {
+            return;
+        }
+        ActiveSession session = sessions.getActiveSession(player.getUniqueId());
+        if (session != null && session.sessionEpoch() == playerState.sessionEpoch()) {
+            session.setLastDurableVersion(playerState.writtenVersion());
+        }
     }
 
     private IslandRole roleOf(Island island, ProfileId profileId) {

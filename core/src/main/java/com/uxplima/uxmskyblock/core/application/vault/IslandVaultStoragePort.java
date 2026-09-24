@@ -6,7 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.PlayerStateWrite;
 import com.uxplima.uxmskyblock.core.domain.vault.EscrowTransferRecord;
 import com.uxplima.uxmskyblock.core.domain.vault.EscrowTransferState;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry;
@@ -43,11 +43,7 @@ public interface IslandVaultStoragePort {
      * 4. Updates associated escrow transfers to COMMITTED
      */
     boolean commitEditSession(
-            VaultSessionId sessionId,
-            byte[] newContentsNbt,
-            String modifiedBy,
-            byte @Nullable [] playerInventoryNbt,
-            @Nullable ProfileId playerProfileId);
+            VaultSessionId sessionId, byte[] newContentsNbt, String modifiedBy, @Nullable PlayerStateWrite playerState);
 
     /**
      * Aborts an active vault edit session, clearing the active lock on the vault page.

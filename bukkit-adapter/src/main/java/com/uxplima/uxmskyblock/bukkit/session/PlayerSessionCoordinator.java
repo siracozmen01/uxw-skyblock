@@ -140,6 +140,11 @@ public final class PlayerSessionCoordinator {
                 player -> attemptJoin(player, this.nanoClock.getAsLong(), true));
     }
 
+    /** The node this coordinator holds sessions for. */
+    public ServerNodeId nodeId() {
+        return nodeId;
+    }
+
     public @Nullable ActiveSession getActiveSession(UUID playerUuid) {
         return activeSessions.get(playerUuid);
     }

@@ -11,6 +11,7 @@ import java.util.logging.Level;
 import com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.PlayerStateWrite;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
@@ -273,15 +274,13 @@ public final class IslandVaultService {
             VaultSessionId sessionId,
             byte[] newContentsNbt,
             String modifiedBy,
-            byte @Nullable [] playerInventoryNbt,
-            @Nullable ProfileId playerProfileId,
+            @Nullable PlayerStateWrite playerState,
             List<VaultAuditLogEntry> auditLogs) {
         Objects.requireNonNull(sessionId, "sessionId must not be null");
         Objects.requireNonNull(newContentsNbt, "newContentsNbt must not be null");
         Objects.requireNonNull(modifiedBy, "modifiedBy must not be null");
 
-        boolean committed = storagePort.commitEditSession(
-                sessionId, newContentsNbt, modifiedBy, playerInventoryNbt, playerProfileId);
+        boolean committed = storagePort.commitEditSession(sessionId, newContentsNbt, modifiedBy, playerState);
         if (!committed) {
             throw new StaleVaultSessionException("Vault edit session " + sessionId
                     + " expired or was concurrently modified. Transaction rolled back.");

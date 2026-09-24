@@ -144,12 +144,7 @@ class IslandVaultServiceTest {
                 ISLAND_ID, 1, OWNER_PROFILE.toString(), VaultActionType.DEPOSIT, 0, "DIAMOND x64", 64);
 
         vaultService.commitVaultPage(
-                openResult.session().sessionId(),
-                new byte[] {9, 9, 9},
-                OWNER_PROFILE.toString(),
-                null,
-                null,
-                List.of(entry));
+                openResult.session().sessionId(), new byte[] {9, 9, 9}, OWNER_PROFILE.toString(), null, List.of(entry));
 
         VaultPage updatedPage = Objects.requireNonNull(storage.pages.get(1));
         assertThat(updatedPage.contentsNbt()).isEqualTo(new byte[] {9, 9, 9});
@@ -222,7 +217,7 @@ class IslandVaultServiceTest {
         VaultSessionId sessionId = VaultSessionId.random();
 
         assertThatThrownBy(() -> vaultService.commitVaultPage(
-                        sessionId, new byte[] {1}, OWNER_PROFILE.toString(), null, null, List.of()))
+                        sessionId, new byte[] {1}, OWNER_PROFILE.toString(), null, List.of()))
                 .isInstanceOf(StaleVaultSessionException.class);
     }
 
@@ -352,8 +347,7 @@ class IslandVaultServiceTest {
                 VaultSessionId sessionId,
                 byte[] newContentsNbt,
                 String modifiedBy,
-                byte @Nullable [] playerInventoryNbt,
-                @Nullable ProfileId playerProfileId) {
+                com.uxplima.uxmskyblock.core.domain.inventory.@Nullable PlayerStateWrite playerState) {
             if (failNextCommit) {
                 return false;
             }

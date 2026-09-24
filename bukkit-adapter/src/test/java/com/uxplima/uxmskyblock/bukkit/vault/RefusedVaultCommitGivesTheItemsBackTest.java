@@ -107,7 +107,7 @@ class RefusedVaultCommitGivesTheItemsBackTest {
     private void refuseEveryCommit() {
         doThrow(new IllegalStateException("the lease expired"))
                 .when(vaultService)
-                .commitVaultPage(any(), any(), any(), any(), any(), any());
+                .commitVaultPage(any(), any(), any(), any(), any());
     }
 
     @Test

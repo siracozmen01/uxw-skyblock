@@ -15,7 +15,7 @@ import java.util.UUID;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.application.vault.IslandVaultStoragePort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
-import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.PlayerStateWrite;
 import com.uxplima.uxmskyblock.core.domain.vault.EscrowTransferRecord;
 import com.uxplima.uxmskyblock.core.domain.vault.EscrowTransferState;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry;
@@ -132,9 +132,8 @@ public final class SqlIslandVaultStorageAdapter implements IslandVaultStoragePor
             VaultSessionId sessionId,
             byte[] newContentsNbt,
             String modifiedBy,
-            byte @Nullable [] playerInventoryNbt,
-            @Nullable ProfileId playerProfileId) {
-        return sessions.commitEditSession(sessionId, newContentsNbt, modifiedBy, playerInventoryNbt, playerProfileId);
+            @Nullable PlayerStateWrite playerState) {
+        return sessions.commitEditSession(sessionId, newContentsNbt, modifiedBy, playerState);
     }
 
     @Override
