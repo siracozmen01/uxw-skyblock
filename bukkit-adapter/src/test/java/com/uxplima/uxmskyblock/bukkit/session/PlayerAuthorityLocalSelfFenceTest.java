@@ -120,6 +120,22 @@ class PlayerAuthorityLocalSelfFenceTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A renewal the database never answers fences the session, rather than leaving it to its deadline")
+    void anUnreachableDatabaseFences() {
+        PlayerSessionAuthorityPort unreachable = renewing(persistence.sessionAuthorityPort(), outcome -> {
+            throw new IllegalStateException("Connection is not available, request timed out");
+        });
+        start(unreachable, Duration.ofMillis(50));
+        PlayerMock player = inPlay("Unreachable");
+
+        eventually(() -> {
+            server.getScheduler().performOneTick();
+            assertThat(coordinator.getActiveSession(player.getUniqueId())).isNull();
+        });
+        assertThat(dropped(player)).isFalse();
+    }
+
+    @Test
     @DisplayName("A renewal answered in time moves the deadline on from when it was asked")
     void aTimelyRenewalHolds() {
         start(persistence.sessionAuthorityPort(), Duration.ofMillis(50));

@@ -308,8 +308,16 @@ public final class PlayerSessionCoordinator {
                             // The deadline counts from the moment the renewal was asked for, not from
                             // its answer: the database extended the lease no earlier than that.
                             long renewAsked = nanoClock.getAsLong();
-                            SessionAuthorityOutcome renewOutcome =
-                                    sessionAuthorityPort.renew(playerUuid, nodeId, session.sessionEpoch());
+                            SessionAuthorityOutcome renewOutcome;
+                            try {
+                                renewOutcome = sessionAuthorityPort.renew(playerUuid, nodeId, session.sessionEpoch());
+                            } catch (RuntimeException unreachable) {
+                                // A renewal the database never answered is a failed one. Thrown out of
+                                // the task, it left the session standing until its deadline ran out.
+                                LOGGER.log(Level.WARNING, "Lease renewal for " + playerUuid + " failed", unreachable);
+                                selfFencePlayer(playerUuid, "Lease renewal could not reach the database");
+                                return;
+                            }
                             long deadline =
                                     renewAsked + SessionLease.locallyHeld().toNanos();
                             if (!renewOutcome.isSuccess()) {
