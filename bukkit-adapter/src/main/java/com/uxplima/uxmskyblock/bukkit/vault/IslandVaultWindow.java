@@ -80,7 +80,7 @@ public final class IslandVaultWindow {
             List<ItemStack> openedWith,
             boolean mayDeposit,
             boolean mayWithdraw)
-            implements InventoryHolder {
+            implements InventoryHolder, com.uxplima.uxmskyblock.bukkit.session.WritesPlayerStateItself {
 
         public VaultHolder {
             Objects.requireNonNull(islandId, "islandId must not be null");

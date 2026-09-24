@@ -343,6 +343,11 @@ public final class PlayerSessionCoordinator {
             if (player == null || !player.isOnline() || session.isFenced()) {
                 return;
             }
+            org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+            if (top != null && top.getHolder() instanceof WritesPlayerStateItself) {
+                // The window writes what the player holds when it closes; see WritesPlayerStateItself.
+                return;
+            }
 
             ProfileInventoryRecord snapshot = BukkitInventorySerializer.snapshotPlayer(
                     player, session.activeProfileId(), session.lastDurableVersion());
