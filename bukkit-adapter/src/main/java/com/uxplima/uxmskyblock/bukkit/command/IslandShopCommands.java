@@ -20,6 +20,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
+import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.menu.IslandShopMenu;
@@ -150,7 +151,7 @@ public final class IslandShopCommands {
             send(
                     player,
                     "shop.entry",
-                    Placeholder.unparsed("item", price.itemKey()),
+                    ItemNames.placeholder("item", price.itemKey()),
                     Placeholder.unparsed("price", money(price.currentPrice())));
         }
         return Cmd.OK;
@@ -214,7 +215,7 @@ public final class IslandShopCommands {
             send(
                     player,
                     "shop.not_enough",
-                    Placeholder.unparsed("item", material.name()),
+                    ItemNames.placeholder("item", material.name()),
                     Placeholder.unparsed("held", Integer.toString(held)),
                     Placeholder.unparsed("amount", Integer.toString(amount)));
             return Cmd.OK;
@@ -337,7 +338,7 @@ public final class IslandShopCommands {
         send(
                 player,
                 key,
-                Placeholder.unparsed("item", traded.itemKey()),
+                ItemNames.placeholder("item", traded.itemKey()),
                 Placeholder.unparsed("amount", Long.toString(traded.quantity())),
                 Placeholder.unparsed("price", money(traded.unitPrice())),
                 Placeholder.unparsed("total", money(traded.total())),
@@ -355,7 +356,7 @@ public final class IslandShopCommands {
                 send(
                         player,
                         "shop.cannot_afford",
-                        Placeholder.unparsed("item", poor.itemKey()),
+                        ItemNames.placeholder("item", poor.itemKey()),
                         Placeholder.unparsed("total", money(poor.total())),
                         Placeholder.unparsed("balance", money(poor.balance())));
             case IslandShopService.TradeResult.Refused refused -> {

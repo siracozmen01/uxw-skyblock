@@ -25,6 +25,7 @@ import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
+import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -278,7 +279,7 @@ public final class IslandMissionsMenu {
         int count = TradableStacks.countOf(player, requiredMat);
 
         if (count <= 0) {
-            messages.send(player, "menu.missions.nothing_to_submit", Placeholder.unparsed("item", requiredMat.name()));
+            messages.send(player, "menu.missions.nothing_to_submit", ItemNames.placeholder("item", requiredMat.name()));
             return;
         }
 
@@ -323,14 +324,14 @@ public final class IslandMissionsMenu {
                 }
                 if (creditedFinal <= 0) {
                     messages.send(
-                            player, "menu.missions.submit_failed", Placeholder.unparsed("item", requiredMat.name()));
+                            player, "menu.missions.submit_failed", ItemNames.placeholder("item", requiredMat.name()));
                     return;
                 }
                 messages.send(
                         player,
                         "menu.missions.submitted",
                         Placeholder.unparsed("amount", Long.toString(creditedFinal)),
-                        Placeholder.unparsed("item", requiredMat.name()));
+                        ItemNames.placeholder("item", requiredMat.name()));
                 open(player);
             });
         });

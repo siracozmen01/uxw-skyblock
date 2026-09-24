@@ -22,6 +22,7 @@ import com.uxplima.uxmlib.gui.item.GuiItem;
 import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.command.BankRefusalLines;
+import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.TradableStacks;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -154,7 +155,7 @@ public final class IslandShopMenu {
                 .serialize(messages.renderPlain(
                         player,
                         key,
-                        Placeholder.unparsed("item", price.itemKey()),
+                        ItemNames.placeholder("item", price.itemKey()),
                         Placeholder.unparsed("price", money(price.currentPrice()))));
     }
 
@@ -190,7 +191,7 @@ public final class IslandShopMenu {
 
             ItemStack icon = ItemBuilder.of(material)
                     .name(messages.renderPlain(
-                                    player, "menu.shop.tile_name", Placeholder.unparsed("item", price.itemKey()))
+                                    player, "menu.shop.tile_name", ItemNames.placeholder("item", price.itemKey()))
                             .decoration(TextDecoration.ITALIC, false))
                     .lore(lore)
                     .build();
@@ -232,7 +233,7 @@ public final class IslandShopMenu {
                 messages.send(
                         player,
                         "shop.not_enough",
-                        Placeholder.unparsed("item", material.name()),
+                        ItemNames.placeholder("item", material.name()),
                         Placeholder.unparsed("held", Integer.toString(held)),
                         Placeholder.unparsed("amount", Integer.toString(amount)));
                 return;
@@ -270,7 +271,7 @@ public final class IslandShopMenu {
             messages.send(
                     player,
                     buying ? "shop.bought" : "shop.sold",
-                    Placeholder.unparsed("item", traded.itemKey()),
+                    ItemNames.placeholder("item", traded.itemKey()),
                     Placeholder.unparsed("amount", Long.toString(traded.quantity())),
                     Placeholder.unparsed("price", money(traded.unitPrice())),
                     Placeholder.unparsed("total", money(traded.total())),
@@ -292,7 +293,7 @@ public final class IslandShopMenu {
                 messages.send(
                         player,
                         "shop.cannot_afford",
-                        Placeholder.unparsed("item", poor.itemKey()),
+                        ItemNames.placeholder("item", poor.itemKey()),
                         Placeholder.unparsed("total", money(poor.total())),
                         Placeholder.unparsed("balance", money(poor.balance())));
             case IslandShopService.TradeResult.Refused refused -> {

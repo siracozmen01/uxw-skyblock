@@ -304,7 +304,7 @@ public final class IslandUpgradeCommands {
                                 "player",
                                 player.getName(),
                                 "key",
-                                upgradeId.key(),
+                                messages.stored("upgrades.names", upgradeId.key(), upgradeId.key()),
                                 "tier",
                                 Integer.toString(bought.newTier())));
             }

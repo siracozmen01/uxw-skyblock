@@ -176,6 +176,31 @@ class IslandUpgradeCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("The activity feed keeps the upgrade's catalogue name, so each reader reads their own")
+    void theFeedKeepsTheName() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+        com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService feed =
+                mock(com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService.class);
+        IslandUpgradeCommands commands = new IslandUpgradeCommands(
+                () -> upgrades, locations, inlineScheduler(), NODE, Messages.bundled(), sessions);
+        commands.useActivityFeed(feed);
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.build());
+
+        run("upgrades buy island_size", player);
+
+        verify(feed)
+                .record(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.eq("activity.upgrade_purchased"),
+                        org.mockito.ArgumentMatchers.argThat(
+                                values -> "@upgrades.names.island_size".equals(values.get("key"))));
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("A role that may spend the island bank buys an upgrade that asks for nothing more")
     void arolethatCanSpendBuys() throws Exception {
         callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);

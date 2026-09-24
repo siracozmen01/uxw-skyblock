@@ -126,6 +126,19 @@ class WhatAShopRefusalTellsAPlayerTest extends MockBukkitHarness {
                 .noneMatch(line -> line.contains("StaleVersion"));
     }
 
+    @Test
+    @DisplayName("A buy the bank cannot cover names the item as the reader's game does, not by its key")
+    void anItemIsNamedByTheGame() throws Exception {
+        player.setLocale(Locale.forLanguageTag("tr"));
+        when(shop.buy(any(), any(), anyString(), anyLong(), any()))
+                .thenReturn(new IslandShopService.TradeResult.CannotAfford("DIAMOND", 80_000L, 0L));
+
+        // The game's own name for the item, which a client shows in its language.
+        assertThat(run("shop buy diamond 4"))
+                .anyMatch(line -> line.contains("Diamond") && line.contains("800.00"))
+                .noneMatch(line -> line.contains("DIAMOND"));
+    }
+
     private void refuseWith(BankTransactionOutcome bank) {
         when(shop.sell(any(), any(), anyString(), anyLong(), any()))
                 .thenReturn(new IslandShopService.TradeResult.Refused("DIAMOND", String.valueOf(bank), bank));
