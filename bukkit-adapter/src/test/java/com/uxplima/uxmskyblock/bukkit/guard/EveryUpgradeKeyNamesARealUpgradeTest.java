@@ -33,7 +33,7 @@ class EveryUpgradeKeyNamesARealUpgradeTest {
     private static final Path MENUS = Path.of("src/main/resources/menus");
 
     /** Only a quoted click argument counts, so the file's own prose about the verb is not a key. */
-    private static final Pattern BUY = Pattern.compile("\"skyblock:buy-upgrade\\s+([A-Za-z0-9_]+)\"");
+    private static final Pattern BUY = Pattern.compile("\"skyblock:buy-upgrade:([A-Za-z0-9_]+)\"");
 
     private static Set<String> definedKeys() {
         return UpgradesConfiguration.defaultConfiguration().definitions().keySet().stream()
