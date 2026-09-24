@@ -62,6 +62,15 @@ class TheLibrarysWindowsSpeakWordsTest {
     }
 
     @Test
+    @DisplayName("A Turkish reader's cancelled prompt reads Turkish throughout, with no English badge in it")
+    void aCancelledPromptReadsTheReadersLanguage() {
+        String said = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(bundled().getComponentWithoutPrefix(TextInput.CANCELLED_KEY, "tr"));
+
+        assertThat(said).doesNotContain("INPUT").doesNotContain("  ").contains("iptal");
+    }
+
+    @Test
     @DisplayName("An operator's line for a library key wins over the library's")
     void theOperatorsLineWins() throws Exception {
         MessageProvider provider = bundled();
