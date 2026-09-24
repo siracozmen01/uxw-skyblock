@@ -135,11 +135,14 @@ class SnapshotRegionThreadIsolationTest {
                         heldTasks.add(task);
                         return null;
                     }
-                    regions.execute(() -> {
-                        Thread.currentThread().setName("region " + region);
-                        regionThreads.put(region, Thread.currentThread().getName());
-                        task.run();
-                    });
+                    // On a thread of the region's own, one region at a time: the mock world under
+                    // this test is not safe to read from two threads at once, a real region is.
+                    regions.submit(() -> {
+                                Thread.currentThread().setName("region " + region);
+                                regionThreads.put(region, Thread.currentThread().getName());
+                                task.run();
+                            })
+                            .get();
                     return null;
                 })
                 .when(scheduler)

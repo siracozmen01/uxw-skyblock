@@ -47,7 +47,9 @@ import org.jspecify.annotations.Nullable;
 public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapshotPort {
 
     private static final int SNAPSHOT_FORMAT_VERSION_LEGACY = 1;
-    private static final int SNAPSHOT_FORMAT_VERSION = 2;
+    private static final int SNAPSHOT_FORMAT_VERSION_BLOCKS = 2;
+    /** Blocks, then the island's creatures that carry nothing. */
+    private static final int SNAPSHOT_FORMAT_VERSION = 3;
 
     private record CapturedBlock(int x, int y, int z, String blockData) {}
 
@@ -88,16 +90,10 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
     /**
      * How long a capture waits for every region to hand its chunks over before it gives up whole.
      *
-     * <p>A capture asks each owning region for its chunks and waited for all of them with no limit.
-     * A region that never ran the task, one whose chunks had unloaded or whose thread was stuck, held
-     * the backup open for ever, and the command that asked for it never answered.
+     * @see CaptureDeadline
      */
     public void captureWithin(Duration timeout) {
-        Objects.requireNonNull(timeout, "timeout must not be null");
-        if (timeout.isNegative() || timeout.isZero()) {
-            throw new IllegalArgumentException("A capture timeout must be positive: " + timeout);
-        }
-        this.captureTimeout = timeout;
+        this.captureTimeout = CaptureDeadline.checked(timeout);
     }
 
     /** How many blocks one tick may put back, or every one of them on a node with no controller. */
@@ -154,6 +150,8 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                 int maxY = targetWorld.getMaxHeight();
 
                 List<CapturedBlock> nonAirBlocks = Collections.synchronizedList(new ArrayList<>());
+                Map<java.util.UUID, SnapshotEntities.Captured> entities =
+                        new java.util.concurrent.ConcurrentHashMap<>();
                 List<CompletableFuture<Void>> chunkFutures = new ArrayList<>();
 
                 for (int cx = minChunkX; cx <= maxChunkX; cx++) {
@@ -186,6 +184,7 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                                     }
                                 }
                                 nonAirBlocks.addAll(chunkBlocks);
+                                SnapshotEntities.captureFrom(chunk, bounds, entities);
                                 chunkFuture.complete(null);
                             } catch (Throwable t) {
                                 chunkFuture.completeExceptionally(t);
@@ -201,7 +200,7 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                     }
                 }
 
-                awaitRegions(chunkFutures);
+                CaptureDeadline.await(chunkFutures, captureTimeout);
 
                 dos.writeInt(nonAirBlocks.size());
                 for (CapturedBlock cb : nonAirBlocks) {
@@ -210,6 +209,7 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                     dos.writeInt(cb.z);
                     dos.writeUTF(cb.blockData);
                 }
+                SnapshotEntities.write(dos, entities.values());
             } else {
                 dos.writeBoolean(false);
             }
@@ -234,7 +234,9 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
                 DataInputStream dis = new DataInputStream(gzis)) {
 
             int formatVersion = dis.readInt();
-            if (formatVersion != SNAPSHOT_FORMAT_VERSION && formatVersion != SNAPSHOT_FORMAT_VERSION_LEGACY) {
+            if (formatVersion != SNAPSHOT_FORMAT_VERSION
+                    && formatVersion != SNAPSHOT_FORMAT_VERSION_BLOCKS
+                    && formatVersion != SNAPSHOT_FORMAT_VERSION_LEGACY) {
                 throw new IllegalArgumentException("Unsupported snapshot format version: " + formatVersion);
             }
 
@@ -417,24 +419,25 @@ public final class WorldDimensionSnapshotAdapter implements WorldDimensionSnapsh
     }
 
     /**
-     * Waits for every region's chunks, or gives the capture up whole once the timeout has passed.
-     *
-     * <p>Nothing is written for a capture given up: the archive stream is thrown away with the error,
-     * and a region that answers afterwards adds its chunks to a list nobody reads again.
+     * Brings back the creatures the payload holds, after its blocks. A payload written before
+     * creatures were captured holds none, and brings none back.
      */
-    private void awaitRegions(List<CompletableFuture<Void>> chunkFutures) {
-        Duration timeout = this.captureTimeout;
-        try {
-            CompletableFuture.allOf(chunkFutures.toArray(CompletableFuture<?>[]::new))
-                    .get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
-        } catch (java.util.concurrent.TimeoutException late) {
-            throw new IllegalStateException(
-                    "A region did not hand its chunks over within " + timeout + ", so nothing was captured", late);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("The capture was interrupted, so nothing was captured", interrupted);
-        } catch (java.util.concurrent.ExecutionException failed) {
-            throw new IllegalStateException("A region failed its part of the capture", failed.getCause());
+    @Override
+    public void restoreEntities(PrimaryGameplayRootRef rootRef, DimensionId dimensionId, byte[] dimensionPayload) {
+        Objects.requireNonNull(rootRef, "rootRef must not be null");
+        Objects.requireNonNull(dimensionId, "dimensionId must not be null");
+        Objects.requireNonNull(dimensionPayload, "dimensionPayload must not be null");
+        Optional<SnapshotEntities.Payload> read = SnapshotEntities.readPayload(
+                dimensionPayload, SNAPSHOT_FORMAT_VERSION, rootRef.rootId(), dimensionId.value());
+        if (read.isEmpty()) {
+            return;
+        }
+        World world = findWorldForDimension(dimensionId);
+        if (world == null && Bukkit.getServer() != null) {
+            world = Bukkit.getWorld(read.get().worldName());
+        }
+        if (world != null) {
+            SnapshotEntities.spawnMissing(world, read.get().bounds(), read.get().captured(), schedulerPort);
         }
     }
 

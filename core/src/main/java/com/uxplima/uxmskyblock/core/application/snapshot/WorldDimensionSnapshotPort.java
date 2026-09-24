@@ -27,4 +27,17 @@ public interface WorldDimensionSnapshotPort {
      * @param dimensionPayload serialized dimension payload
      */
     void restoreWorldDimension(PrimaryGameplayRootRef rootRef, DimensionId dimensionId, byte[] dimensionPayload);
+
+    /**
+     * Brings back the non-economic entities a dimension payload holds, once its blocks are back.
+     *
+     * <p>Each entity comes back once however often this runs: one still alive, or one an earlier run
+     * already brought back, is not brought back again, so a restore unit replayed after a stop leaves
+     * the same creatures as one that ran once. A payload that holds no entities brings back none.
+     *
+     * @param rootRef target root reference
+     * @param dimensionId dimension identifier
+     * @param dimensionPayload serialized dimension payload
+     */
+    default void restoreEntities(PrimaryGameplayRootRef rootRef, DimensionId dimensionId, byte[] dimensionPayload) {}
 }

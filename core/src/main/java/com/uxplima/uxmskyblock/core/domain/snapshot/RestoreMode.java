@@ -30,6 +30,15 @@ public enum RestoreMode {
         return this == FULL_ISLAND;
     }
 
+    /**
+     * Whether this mode brings back the island's non-economic creatures, the animals and mobs that
+     * carry nothing. The specification's geometry only mode restores blocks and biomes alone; the
+     * other two restore geometry and the entities that hold no item.
+     */
+    public boolean restoresEntities() {
+        return this != GEOMETRY_ONLY;
+    }
+
     /** The mode a caller gets when they name none: the one that changes least. */
     public static RestoreMode safeDefault() {
         return WORLD_CONTENT_SAFE;

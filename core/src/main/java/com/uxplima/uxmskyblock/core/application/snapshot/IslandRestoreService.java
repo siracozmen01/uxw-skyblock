@@ -251,6 +251,9 @@ public final class IslandRestoreService {
                             ? DimensionId.THE_NETHER
                             : (filename.contains("end") ? DimensionId.THE_END : DimensionId.OVERWORLD);
                     worldDimensionSnapshotPort.restoreWorldDimension(rootRef, dimId, data);
+                    if (mode.restoresEntities()) {
+                        worldDimensionSnapshotPort.restoreEntities(rootRef, dimId, data);
+                    }
                 }
                 if (port != null) {
                     port.verified(restoreId, unit);
