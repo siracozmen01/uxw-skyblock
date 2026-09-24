@@ -226,12 +226,15 @@ public final class IslandUpgradeService {
             return new UpgradePurchaseOutcome.UpgradeNotFound(upgradeId);
         }
 
+        // The row holds what was bought; the island stands on at least the tiers it starts with, so
+        // the next one sold is the first after those, and the row moves from what it holds.
         int currentTier = storagePort.getUpgradeTier(islandId, upgradeId);
-        if (currentTier >= definition.maxTier()) {
-            return new UpgradePurchaseOutcome.MaxTierReached(upgradeId, currentTier);
+        int standingOn = definition.effectiveTier(currentTier);
+        if (standingOn >= definition.maxTier()) {
+            return new UpgradePurchaseOutcome.MaxTierReached(upgradeId, standingOn);
         }
 
-        int nextTierNum = currentTier + 1;
+        int nextTierNum = standingOn + 1;
         UpgradeTier nextTier = definition.getTier(nextTierNum).orElseThrow();
 
         boolean charged = false;

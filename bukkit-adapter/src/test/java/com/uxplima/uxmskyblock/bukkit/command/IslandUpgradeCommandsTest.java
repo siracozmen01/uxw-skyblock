@@ -21,6 +21,7 @@ import com.uxplima.uxmskyblock.bukkit.config.LanguageConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.UpgradesConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.i18n.MoneyText;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -252,6 +253,28 @@ class IslandUpgradeCommandsTest {
         assertThat(lines)
                 .anyMatch(line -> line.contains("(island_size)"))
                 .noneMatch(line -> line.contains("ISLAND_SIZE"));
+    }
+
+    @Test
+    @DisplayName("A first tier that costs nothing is listed as held, and the next one is the first with a price")
+    void theFreeBaseTierIsListedAsHeld() throws Exception {
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(new IslandUpgradeCommands(
+                        () -> upgrades, locations, inlineScheduler(), NODE, Messages.bundled(), sessions)
+                .build());
+
+        run("upgrades", player);
+
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
+            lines.add(line);
+        }
+        String size = lines.stream()
+                .map(line -> line.replaceAll("\u00a7.", ""))
+                .filter(line -> line.contains("(island_size)"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(size).contains("1/5").contains(MoneyText.of(50_000L)).doesNotContain("0/5");
     }
 
     @Test

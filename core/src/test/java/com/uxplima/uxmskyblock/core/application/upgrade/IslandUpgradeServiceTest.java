@@ -138,6 +138,32 @@ class IslandUpgradeServiceTest {
         assertThat(outcome).isInstanceOf(UpgradePurchaseOutcome.MaxTierReached.class);
     }
 
+    @Test
+    @DisplayName(
+            "A first tier that costs nothing is held from the start, so a purchase sells the first one with a price")
+    void aFreeBaseTierIsNotSold() {
+        bankPort.balance = 50_000L;
+        UpgradeDefinition members = new UpgradeDefinition(
+                UpgradeId.MEMBERS,
+                "Members",
+                List.of(
+                        new UpgradeTier(1, 0L, "PRIMARY", Map.of("max_members", 4.0)),
+                        new UpgradeTier(2, 20_000L, "PRIMARY", Map.of("max_members", 8.0))));
+        IslandUpgradeService withBase = new IslandUpgradeService(storage, Map.of(UpgradeId.MEMBERS, members));
+
+        UpgradePurchaseOutcome outcome =
+                withBase.purchaseUpgrade(islandId, UpgradeId.MEMBERS, actorUuid, bankPort, "node-1", 1L);
+
+        assertThat(outcome).isInstanceOf(UpgradePurchaseOutcome.Success.class);
+        UpgradePurchaseOutcome.Success bought = (UpgradePurchaseOutcome.Success) outcome;
+        assertThat(bought.newTier()).isEqualTo(2);
+        assertThat(bought.costPaid()).isEqualTo(20_000L);
+        assertThat(storage.getUpgradeTier(islandId, UpgradeId.MEMBERS)).isEqualTo(2);
+        assertThat(bankPort.balance).isEqualTo(30_000L);
+        assertThat(withBase.purchaseUpgrade(islandId, UpgradeId.MEMBERS, actorUuid, bankPort, "node-1", 1L))
+                .isInstanceOf(UpgradePurchaseOutcome.MaxTierReached.class);
+    }
+
     private static class FakeUpgradeStorage implements IslandUpgradeStoragePort {
         private final Map<UpgradeId, Integer> tiers = new HashMap<>();
 

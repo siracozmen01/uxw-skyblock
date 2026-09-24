@@ -195,7 +195,7 @@ public final class IslandUpgradeCommands {
     }
 
     private String describeOne(IslandUpgradeService service, IslandId islandId, UpgradeDefinition definition) {
-        int tier = service.getCurrentTier(islandId, definition.id());
+        int tier = definition.effectiveTier(service.getCurrentTier(islandId, definition.id()));
         Optional<UpgradeTier> next = definition.getTier(tier + 1);
         String cost =
                 next.map(candidate -> MoneyText.of(candidate.costMinorUnits())).orElse("");
