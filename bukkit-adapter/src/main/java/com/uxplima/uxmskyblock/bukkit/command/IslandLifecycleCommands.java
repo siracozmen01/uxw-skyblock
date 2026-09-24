@@ -293,7 +293,8 @@ public final class IslandLifecycleCommands {
                     if (resolvedWorld != null) {
                         int centerX = success.location().bounds().centerX();
                         int centerZ = success.location().bounds().centerZ();
-                        int spawnY = 100;
+                        int platformY = StarterSchematicEngine.platformBelow(
+                                success.location().spawnY());
                         int chunkX = centerX >> 4;
                         int chunkZ = centerZ >> 4;
                         String targetWorld = resolvedWorld.getName();
@@ -301,7 +302,7 @@ public final class IslandLifecycleCommands {
                         schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
                             World w = Bukkit.getWorld(targetWorld);
                             if (w != null) {
-                                schematicEngine.pastePreset(w, centerX, spawnY, centerZ, success.preset());
+                                schematicEngine.pastePreset(w, centerX, platformY, centerZ, success.preset());
                             }
                             schedulerPort.onEntity(playerUuid, () -> {
                                 if (!player.isOnline()) {

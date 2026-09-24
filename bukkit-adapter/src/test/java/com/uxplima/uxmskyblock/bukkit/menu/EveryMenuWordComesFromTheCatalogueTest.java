@@ -44,7 +44,7 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
     private static final Pattern WORD = Pattern.compile("[\\p{L}]{2,}");
 
     @Test
-    @DisplayName("Every title, name, lore and message line in a shipped menu is a catalogue key, blank or wordless")
+    @DisplayName("Every title, name, lore, message and prompt in a shipped menu is a catalogue key, blank or wordless")
     void everyWordIsAKey() throws IOException {
         List<String> written = new ArrayList<>();
         try (Stream<Path> files = Files.list(MENUS)) {
@@ -63,6 +63,8 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
                     for (ConfigurationNode gesture :
                             item.getValue().node("click").childrenMap().values()) {
                         for (ConfigurationNode verb : gesture.childrenList()) {
+                            // A step written as a map, such as an input, shows its prompt to the player.
+                            check(file, item.getKey() + ".prompt", verb.node("prompt"), written);
                             String line = verb.getString("");
                             if (line.startsWith("message:")) {
                                 checkText(file, item.getKey() + ".click", line.substring("message:".length()), written);

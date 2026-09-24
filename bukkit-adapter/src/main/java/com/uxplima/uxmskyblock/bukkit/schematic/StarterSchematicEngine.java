@@ -30,6 +30,25 @@ public final class StarterSchematicEngine {
         return backpressureController;
     }
 
+    /**
+     * Where the island's feature stands: a corner of the platform, away from where a player arrives.
+     *
+     * <p>It stood on the centre, which is the island's spawn and home: a player arrived inside the
+     * nether's glowstone, on the desert's cactus, and inside the trunk once the classic sapling had
+     * grown, and suffocated. From a corner a grown oak reaches neither the trunk's column nor the two
+     * blocks a player stands in at the centre.
+     */
+    static final int FEATURE_OFFSET = -2;
+
+    /**
+     * The height of the platform's top for an island whose players arrive at {@code spawnY}: the block
+     * they stand on. The platform was laid at the spawn height itself, so a player arrived with their
+     * feet in the grass and was pushed up into whatever stood above it.
+     */
+    public static int platformBelow(double spawnY) {
+        return (int) Math.floor(spawnY) - 1;
+    }
+
     public void pastePreset(World world, int centerX, int y, int centerZ, StarterPreset preset) {
         Objects.requireNonNull(world, "world");
         Objects.requireNonNull(preset, "preset");
@@ -60,7 +79,7 @@ public final class StarterSchematicEngine {
         }
 
         // Center feature and starter chest
-        Block featureBlock = world.getBlockAt(centerX, y + 1, centerZ);
+        Block featureBlock = world.getBlockAt(centerX + FEATURE_OFFSET, y + 1, centerZ + FEATURE_OFFSET);
         switch (preset.id()) {
             case "desert" -> {
                 featureBlock.setType(Material.CACTUS);
@@ -114,7 +133,7 @@ public final class StarterSchematicEngine {
         }
 
         // Add dimension specific center marker / chest
-        Block featureBlock = world.getBlockAt(centerX, y + 1, centerZ);
+        Block featureBlock = world.getBlockAt(centerX + FEATURE_OFFSET, y + 1, centerZ + FEATURE_OFFSET);
         switch (dimensionType) {
             case NETHER -> {
                 featureBlock.setType(Material.GLOWSTONE);
