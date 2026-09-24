@@ -96,6 +96,34 @@ class PlannedPlayerHandoffFencingTest {
                 .isEqualTo("final-on-a");
     }
 
+    @Test
+    @DisplayName("The named node takes the handoff when the player logs in there, active at the next epoch")
+    void theNamedNodeTakesItAtLogin() {
+        long epoch = handoffReady();
+
+        assertThat(scene.login(NODE_C).isSuccess())
+                .describedAs("a login on a node the handoff does not name")
+                .isFalse();
+        assertThat(scene.login(NODE_B)).isEqualTo(new SessionAuthorityOutcome.Success(epoch + 1, false));
+
+        PlayerSessionRecord moved = scene.session();
+        assertThat(moved.state()).isEqualTo(SessionState.ACTIVE);
+        assertThat(moved.authoritativeNode()).isEqualTo(NODE_B);
+        assertThat(moved.handoffId()).isNull();
+        assertThat(scene.inventory()).isEqualTo("final-on-a");
+        scene.flushed(NODE_B, epoch + 1, "first-on-b");
+    }
+
+    @Test
+    @DisplayName("A login on the named node after the handoff lapsed waits for the lease, then recovers")
+    void aLapsedHandoffAtLogin() throws Exception {
+        long epoch = handoffReady();
+        scene.leaseRunsOut();
+
+        assertThat(scene.login(NODE_B)).isEqualTo(new SessionAuthorityOutcome.Success(epoch + 1, true));
+        assertThat(scene.session().state()).isEqualTo(SessionState.RECOVERING);
+    }
+
     /** Node A holds the player, writes the last inventory, drains and readies the handoff to node B. */
     private long handoffReady() {
         long epoch = scene.loggedIn(NODE_A);

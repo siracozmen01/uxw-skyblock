@@ -120,12 +120,15 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
 
                 // 4. Ensure or acquire player_sessions row with FOR UPDATE on server dialects
                 String checkSessionSql =
-                        "SELECT authoritative_node, session_epoch, state, lease_expires_at FROM player_sessions WHERE player_uuid = ?"
+                        "SELECT authoritative_node, session_epoch, state, lease_expires_at, handoff_id, handoff_target_node"
+                                + " FROM player_sessions WHERE player_uuid = ?"
                                 + (dialect != Dialect.SQLITE ? " FOR UPDATE" : "");
                 boolean sessionExists = false;
                 String existingNode = null;
                 long existingEpoch = 1L;
                 String existingState = null;
+                String existingHandoffId = null;
+                String existingHandoffTarget = null;
 
                 try (PreparedStatement ps = conn.prepareStatement(checkSessionSql)) {
                     ps.setString(1, playerUuid.value().toString());
@@ -135,6 +138,8 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                             existingNode = rs.getString("authoritative_node");
                             existingEpoch = rs.getLong("session_epoch");
                             existingState = rs.getString("state");
+                            existingHandoffId = rs.getString("handoff_id");
+                            existingHandoffTarget = rs.getString("handoff_target_node");
                         }
                     }
                 }
@@ -177,6 +182,29 @@ public final class PlayerSessionAuthorityAdapter implements PlayerSessionAuthori
                     return affected == 1
                             ? SessionAuthorityOutcome.success(newEpoch, false)
                             : SessionAuthorityOutcome.rejected();
+                }
+
+                // A2. A handoff readied for this node: the player arrives as planned and the session is taken
+                // at the next epoch, active at once. The statement checks the handoff has not lapsed; a
+                // lapsed one is taken over below once its lease has run out, like any node that stopped.
+                if ("HANDOFF_READY".equalsIgnoreCase(existingState)
+                        && existingHandoffId != null
+                        && currentNode.value().equals(existingHandoffTarget)
+                        && existingNode != null) {
+                    int taken;
+                    try (PreparedStatement ps = conn.prepareStatement(sql.plannedAcquire())) {
+                        ps.setString(1, currentNode.value());
+                        ps.setString(2, playerUuid.value().toString());
+                        ps.setString(3, existingHandoffId);
+                        ps.setString(4, currentNode.value());
+                        ps.setString(5, existingNode);
+                        ps.setLong(6, existingEpoch);
+                        taken = ps.executeUpdate();
+                    }
+                    if (taken == 1) {
+                        commitTx(conn);
+                        return SessionAuthorityOutcome.success(existingEpoch + 1, false);
+                    }
                 }
 
                 // B. Same node continuing or reconnecting
