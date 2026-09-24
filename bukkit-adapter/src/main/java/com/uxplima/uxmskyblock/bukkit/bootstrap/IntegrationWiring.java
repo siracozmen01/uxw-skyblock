@@ -223,7 +223,8 @@ public final class IntegrationWiring implements AutoCloseable {
         // thing being fixed.
         this.domainEvents = subscribeToDomainEvents(gameplay, persistence);
 
-        this.velocityBridge = new BukkitVelocityBridge(plugin, gameplay.scheduler());
+        this.velocityBridge =
+                new BukkitVelocityBridge(plugin, gameplay.scheduler(), authority.sessionCoordinator()::handOff);
         this.clusterRoutingDirectory = this.clusterTransport.clusterRoutingDirectory();
         this.networkRouter = new IslandNetworkRouter(
                 serverNodeId,

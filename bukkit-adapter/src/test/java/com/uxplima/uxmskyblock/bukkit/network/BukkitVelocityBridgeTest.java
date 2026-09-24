@@ -21,7 +21,9 @@ class BukkitVelocityBridgeTest extends MockBukkitHarness {
     @BeforeEach
     void setUp() {
         velocityBridge = new BukkitVelocityBridge(
-                MockBukkit.createMockPlugin(), new com.uxplima.uxmskyblock.bukkit.test.InlineSchedulerPort());
+                MockBukkit.createMockPlugin(),
+                new com.uxplima.uxmskyblock.bukkit.test.InlineSchedulerPort(),
+                (player, target) -> java.util.concurrent.CompletableFuture.completedFuture(true));
     }
 
     @Test
@@ -47,6 +49,24 @@ class BukkitVelocityBridgeTest extends MockBukkitHarness {
 
         boolean result =
                 velocityBridge.routePlayer(playerUuid, targetNode, islandId).join();
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    @DisplayName("routePlayer asks nothing of the proxy when the session could not be handed on")
+    void routePlayerWithoutHandoffFails() {
+        PlayerMock player = createPlayer("Held");
+        BukkitVelocityBridge refusing = new BukkitVelocityBridge(
+                MockBukkit.createMockPlugin(),
+                new com.uxplima.uxmskyblock.bukkit.test.InlineSchedulerPort(),
+                (who, target) -> java.util.concurrent.CompletableFuture.completedFuture(false));
+
+        boolean result = refusing.routePlayer(
+                        new PlayerUuid(player.getUniqueId()),
+                        ServerNodeId.of("skyblock-02"),
+                        IslandId.of(UUID.randomUUID()))
+                .join();
 
         assertThat(result).isFalse();
     }

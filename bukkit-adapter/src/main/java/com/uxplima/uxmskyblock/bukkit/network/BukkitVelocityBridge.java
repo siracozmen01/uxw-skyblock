@@ -29,10 +29,21 @@ public final class BukkitVelocityBridge implements VelocityBridgePort {
 
     private final Plugin plugin;
     private final SchedulerPort schedulerPort;
+    private final Handoff handoff;
 
-    public BukkitVelocityBridge(Plugin plugin, SchedulerPort schedulerPort) {
+    /**
+     * What gives a player's session to the server they are about to be moved to, answering whether
+     * it did. A move is only asked of the proxy once the session is on its way.
+     */
+    @FunctionalInterface
+    public interface Handoff {
+        CompletableFuture<Boolean> handOff(Player player, ServerNodeId target);
+    }
+
+    public BukkitVelocityBridge(Plugin plugin, SchedulerPort schedulerPort, Handoff handoff) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
+        this.handoff = Objects.requireNonNull(handoff, "handoff must not be null");
         try {
             if (!Bukkit.getMessenger().isOutgoingChannelRegistered(plugin, BUNGEE_CHANNEL)) {
                 Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, BUNGEE_CHANNEL);
@@ -49,14 +60,19 @@ public final class BukkitVelocityBridge implements VelocityBridgePort {
         Objects.requireNonNull(targetNode, "targetNode must not be null");
         Objects.requireNonNull(targetIslandId, "targetIslandId must not be null");
 
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
-
         Player player = Bukkit.getPlayer(playerUuid.value());
         if (player == null || !player.isOnline()) {
             LOGGER.warning(() -> "Cannot route player " + playerUuid.value() + " cross-server: player is offline.");
-            future.complete(false);
-            return future;
+            return CompletableFuture.completedFuture(false);
         }
+        return handoff.handOff(player, targetNode)
+                .thenCompose(handed -> Boolean.TRUE.equals(handed)
+                        ? connect(player, playerUuid, targetNode)
+                        : CompletableFuture.completedFuture(false));
+    }
+
+    private CompletableFuture<Boolean> connect(Player player, PlayerUuid playerUuid, ServerNodeId targetNode) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
 
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
