@@ -55,6 +55,8 @@ public final class PlayerSessionCoordinator {
     private final java.util.function.LongSupplier nanoClock;
     private final ProfileSwitchFlow switchFlow;
     private final SessionShutdown shutdownFlow;
+    private final ServerHandoff serverHandoff;
+    private final SessionHooks hooks = new SessionHooks();
 
     public PlayerSessionCoordinator(
             ServerNodeId nodeId,
@@ -124,6 +126,16 @@ public final class PlayerSessionCoordinator {
                 this::runActiveHooks);
         this.shutdownFlow = new SessionShutdown(
                 this.nodeId, this.sessionAuthorityPort, this.handoffFinalizationPort, this.schedulerPort);
+        this.serverHandoff = new ServerHandoff(
+                this.nodeId,
+                this.sessionAuthorityPort,
+                this.handoffFinalizationPort,
+                this.schedulerPort,
+                this.protectionListener,
+                this.nanoClock,
+                activeSessions,
+                this::selfFencePlayer,
+                player -> attemptJoin(player, this.nanoClock.getAsLong(), true));
     }
 
     public @Nullable ActiveSession getActiveSession(UUID playerUuid) {
@@ -181,10 +193,6 @@ public final class PlayerSessionCoordinator {
         });
     }
 
-    /** What runs on the player's thread once their session is made and their inventory applied. */
-    private final java.util.List<java.util.function.Consumer<Player>> whenActive =
-            new java.util.concurrent.CopyOnWriteArrayList<>();
-
     /**
      * Runs {@code hook} for each player whose session is made, on the player's own thread.
      *
@@ -192,40 +200,23 @@ public final class PlayerSessionCoordinator {
      * player's profile cannot ask for it at join.
      */
     public void whenSessionActive(java.util.function.Consumer<Player> hook) {
-        whenActive.add(java.util.Objects.requireNonNull(hook, "hook"));
+        hooks.whenActive(hook);
     }
-
-    /** What runs on the player's thread when they switch away from a profile, with that profile. */
-    private final java.util.List<java.util.function.BiConsumer<Player, ProfileId>> whenLeft =
-            new java.util.concurrent.CopyOnWriteArrayList<>();
 
     /**
      * Runs {@code hook} when a player switches away from a profile, before the session hooks run for
-     * the one they switched to. A switch is a leave and an arrival: anything that tracks who is
-     * playing by profile has to hear both, or it keeps the old profile and misses the new one.
+     * the one they switched to.
      */
     public void whenProfileLeft(java.util.function.BiConsumer<Player, ProfileId> hook) {
-        whenLeft.add(java.util.Objects.requireNonNull(hook, "hook"));
+        hooks.whenLeft(hook);
     }
 
     private void runActiveHooks(Player player) {
-        for (java.util.function.Consumer<Player> hook : whenActive) {
-            try {
-                hook.accept(player);
-            } catch (RuntimeException e) {
-                LOGGER.log(Level.WARNING, "A hook on a new session failed for " + player.getName(), e);
-            }
-        }
+        hooks.runActive(player);
     }
 
     private void runLeftHooks(Player player, ProfileId left) {
-        for (java.util.function.BiConsumer<Player, ProfileId> hook : whenLeft) {
-            try {
-                hook.accept(player, left);
-            } catch (RuntimeException e) {
-                LOGGER.log(Level.WARNING, "A hook on a profile switch failed for " + player.getName(), e);
-            }
-        }
+        hooks.runLeft(player, left);
     }
 
     /**
@@ -474,95 +465,16 @@ public final class PlayerSessionCoordinator {
     }
 
     /**
-     * Hands the player's session to {@code target} before the proxy moves them there.
-     *
-     * <p>A move between servers used to leave the session where it was: the next server found it
-     * still held, and the player's last state was written by the quit on this one whenever that came.
-     * The state is now written here, whole, before the move, and the session is readied for the
-     * target, which takes it at the next epoch as the player arrives. Nothing the player does between
-     * this and the move goes through.
-     *
-     * <p>A session that cannot be drained is left as it was and the player stays; the answer is false
-     * and nobody is moved. Once drained, a session whose state cannot be written, or whose handoff
-     * cannot be readied, is fenced and the player disconnected: writing it later could overwrite what
-     * the target writes. A player the proxy never moves gets the session back here once the handoff
-     * has lapsed.
+     * Hands the player's session to {@code target} before the proxy moves them there; see
+     * {@link ServerHandoff}.
      */
     public java.util.concurrent.CompletableFuture<Boolean> handOff(Player player, ServerNodeId target) {
-        Objects.requireNonNull(player, "player");
-        Objects.requireNonNull(target, "target");
-        java.util.concurrent.CompletableFuture<Boolean> done = new java.util.concurrent.CompletableFuture<>();
-        ActiveSession session = activeSessions.get(player.getUniqueId());
-        if (session == null || target.equals(nodeId)) {
-            done.complete(false);
-            return done;
-        }
-        schedulerPort.onEntity(session.playerUuid(), () -> {
-            if (!player.isOnline() || !session.inPlay(nanoClock.getAsLong())) {
-                done.complete(false);
-                return;
-            }
-            session.leavePlay();
-            ProfileInventoryRecord state = BukkitInventorySerializer.snapshotPlayer(
-                    player, session.activeProfileId(), session.lastDurableVersion());
-            schedulerPort.async(() -> done.complete(handOffDurably(player, session, state, target)));
-        });
-        return done;
+        return serverHandoff.handOff(player, target);
     }
 
-    private boolean handOffDurably(
-            Player player, ActiveSession session, ProfileInventoryRecord state, ServerNodeId target) {
-        PlayerUuid playerUuid = session.playerUuid();
-        try {
-            if (!sessionAuthorityPort
-                    .drain(playerUuid, nodeId, session.sessionEpoch())
-                    .isSuccess()) {
-                session.enterPlay();
-                return false;
-            }
-            session.closeTasks();
-            ProfileInventoryMutationOutcome written = handoffFinalizationPort.finalizeHandoffFlush(
-                    playerUuid,
-                    session.activeProfileId(),
-                    nodeId,
-                    session.sessionEpoch(),
-                    session.lastDurableVersion(),
-                    state);
-            if (!(written instanceof ProfileInventoryMutationOutcome.Success succ)) {
-                selfFencePlayer(playerUuid, "The state could not be written before a move: " + written);
-                return false;
-            }
-            session.setLastDurableVersion(succ.newVersion());
-            SessionAuthorityOutcome readied = sessionAuthorityPort.prepareHandoff(
-                    playerUuid,
-                    nodeId,
-                    session.sessionEpoch(),
-                    UUID.randomUUID().toString(),
-                    target);
-            if (!readied.isSuccess()) {
-                selfFencePlayer(playerUuid, "The handoff to " + target.value() + " could not be readied: " + readied);
-                return false;
-            }
-        } catch (RuntimeException e) {
-            LOGGER.log(Level.SEVERE, "Handing " + playerUuid.value() + " to " + target.value() + " failed", e);
-            selfFencePlayer(playerUuid, "The handoff failed: " + e.getMessage());
-            return false;
-        }
-        activeSessions.remove(playerUuid.value(), session);
-        protectionListener.removeActiveProfile(playerUuid);
-        schedulerPort.asyncAfter(
-                SessionLease.HANDOFF.plus(SessionLease.SAFETY_MARGIN), () -> reclaimIfStillHere(player));
-        return true;
-    }
-
-    /**
-     * Takes the session back for a player the proxy did not move, once the handoff has lapsed: the
-     * target never took it, and the state it would have loaded is the one written here.
-     */
+    /** Takes the session back for a player the proxy did not move, once the handoff has lapsed. */
     void reclaimIfStillHere(Player player) {
-        if (player.isOnline() && !activeSessions.containsKey(player.getUniqueId())) {
-            attemptJoin(player, nanoClock.getAsLong(), true);
-        }
+        serverHandoff.reclaimIfStillHere(player);
     }
 
     /**
