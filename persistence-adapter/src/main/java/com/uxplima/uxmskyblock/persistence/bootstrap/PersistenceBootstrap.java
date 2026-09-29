@@ -42,6 +42,7 @@ import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.access.SqlTemporaryAccessAdapter;
 import com.uxplima.uxmskyblock.persistence.activity.SqlActivityFeedAdapter;
 import com.uxplima.uxmskyblock.persistence.alliance.PlayerIslandAllianceAdapter;
@@ -106,7 +107,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerProfileSwitchAdapter profileSwitchAdapter;
     private final com.uxplima.uxmskyblock.persistence.profile.SqlProfileTypeAdapter profileTypeAdapter;
     private final SqlSpiralSlotPoolAdapter spiralSlotPoolAdapter;
-    private final PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
+    private PlayerWorldGridAllocationAdapter worldGridAllocationAdapter;
     private final PlayerEconomySagaAdapter economySagaAdapter;
     private final PlayerIslandSeasonAdapter islandSeasonAdapter;
     private final PlayerIslandSocialAdapter islandSocialAdapter;
@@ -312,6 +313,25 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public WorldGridAllocationPort worldGridAllocationPort() {
         return worldGridAllocationAdapter;
+    }
+
+    /**
+     * Places islands {@code configured} blocks apart, unless islands already stand at another spacing.
+     *
+     * <p>Called once, before any port is handed out. A world whose islands stand at one spacing keeps
+     * it whatever the file says now: a new island placed by another spacing lands inside an old one.
+     * The answer is the spacing in force, and a caller that asked for another says so.
+     */
+    public int useGridSpacing(int configured) {
+        int spacing = worldGridAllocationAdapter.spacingInUse().orElse(configured);
+        this.worldGridAllocationAdapter = new PlayerWorldGridAllocationAdapter(
+                database, new SpiralGridCoordinateAllocator(spacing), spiralSlotPoolAdapter);
+        return spacing;
+    }
+
+    /** The arithmetic islands are placed by, the one {@link #worldGridAllocationPort()} uses. */
+    public SpiralGridCoordinateAllocator gridAllocator() {
+        return worldGridAllocationAdapter.allocator();
     }
 
     public EconomySagaPort economySagaPort() {

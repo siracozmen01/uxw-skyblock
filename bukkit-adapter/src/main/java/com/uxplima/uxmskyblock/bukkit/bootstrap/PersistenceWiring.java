@@ -11,6 +11,7 @@ import com.uxplima.uxmskyblock.core.domain.storage.S3Credentials;
 import com.uxplima.uxmskyblock.core.domain.storage.S3ProviderTarget;
 import com.uxplima.uxmskyblock.core.domain.storage.S3StorageConfiguration;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
+import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.storage.s3.S3ObjectStorageAdapter;
@@ -25,6 +26,9 @@ public final class PersistenceWiring implements AutoCloseable {
 
     /** The bucket a backup is written to when the operator names none. */
     public static final String DEFAULT_BACKUP_BUCKET = "uxmskyblock-backups";
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(PersistenceWiring.class.getName());
 
     private final PersistenceBootstrap persistenceBootstrap;
     private final ObjectStoragePort objectStoragePort;
@@ -60,6 +64,32 @@ public final class PersistenceWiring implements AutoCloseable {
     }
 
     /**
+     * Places islands at the spacing the operator wrote, or at the one the placed islands stand on.
+     *
+     * <p>The spacing was a constant in the code. A value that is not a positive number keeps the default,
+     * and a spacing the world can no longer take keeps the one it has: both are said at the start.
+     */
+    static int useGridSpacing(PersistenceBootstrap persistence, @Nullable ConfigurationNode rootNode) {
+        int configured = SpiralGridCoordinateAllocator.DEFAULT_GRID_SPACING;
+        if (rootNode != null) {
+            int written = rootNode.node("grid", "spacing").getInt(configured);
+            if (written > 0) {
+                configured = written;
+            } else {
+                LOGGER.warning("grid.spacing must be a positive number of blocks, not " + written
+                        + ". Islands are placed " + configured + " blocks apart.");
+            }
+        }
+        int inForce = persistence.useGridSpacing(configured);
+        if (inForce != configured) {
+            LOGGER.warning("grid.spacing is " + configured + ", but the islands already placed stand "
+                    + inForce + " blocks apart. New islands are placed " + inForce
+                    + " blocks apart too, because at any other spacing one would land inside an old one.");
+        }
+        return inForce;
+    }
+
+    /**
      * Resolves the database backend and object storage engine from configuration or environment overrides.
      */
     public static PersistenceWiring resolve(@Nullable ConfigurationNode rootNode, Path dataDir) {
@@ -88,6 +118,8 @@ public final class PersistenceWiring implements AutoCloseable {
                 rootNode != null
                         ? rootNode.node("database", "durability-profile").getString()
                         : null));
+
+        useGridSpacing(persistenceBootstrap, rootNode);
 
         // The bucket is named once, whichever storage backend is chosen, because a backup written
         // under one name has to be read back under the same one.

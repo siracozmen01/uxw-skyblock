@@ -63,7 +63,7 @@ public final class GameplayCreationWiring {
 
         this.presetCatalog = config.presetConfig().catalogue();
         this.schematicEngine = new StarterSchematicEngine(backpressureController);
-        this.coordinateAllocator = new SpiralGridCoordinateAllocator();
+        this.coordinateAllocator = persistence.gridAllocator();
         this.gridService = new SpiralWorldGridService(coordinateAllocator);
 
         // Every island belongs to one game mode instance, and the instance is what a backup names

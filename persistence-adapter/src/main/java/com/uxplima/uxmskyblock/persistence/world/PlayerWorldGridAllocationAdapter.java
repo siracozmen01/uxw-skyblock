@@ -142,6 +142,42 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
                 "Exhausted " + MAX_RESERVATION_ATTEMPTS + " attempts to allocate world grid slot");
     }
 
+    /**
+     * The spacing the islands already placed stand on, or nothing when no island stands off the centre.
+     *
+     * <p>The first slot out from the centre says it: its coordinates are its spiral step times the
+     * spacing that was in force when it was placed. A spacing is only safe to change before that slot
+     * exists, because every later island is placed by the same arithmetic, and one placed at a new
+     * spacing lands inside one placed at the old.
+     */
+    public java.util.OptionalInt spacingInUse() {
+        String sql = """
+                SELECT sequence_index, center_x, center_z
+                FROM world_grid_allocations
+                WHERE sequence_index > 0
+                ORDER BY sequence_index
+                """;
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setMaxRows(1);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return java.util.OptionalInt.empty();
+                }
+                IslandCoordinates step = new SpiralGridCoordinateAllocator(1).coordinatesForIndex(rs.getLong(1));
+                int spacing = step.x() != 0 ? rs.getInt(2) / step.x() : rs.getInt(3) / step.z();
+                return spacing > 0 ? java.util.OptionalInt.of(spacing) : java.util.OptionalInt.empty();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to read the grid spacing the placed islands stand on", e);
+        }
+    }
+
+    /** The arithmetic this adapter places islands by. */
+    public SpiralGridCoordinateAllocator allocator() {
+        return allocator;
+    }
+
     @Override
     public Optional<WorldGridAllocation> findBySequenceIndex(long sequenceIndex) {
         String sql = """
