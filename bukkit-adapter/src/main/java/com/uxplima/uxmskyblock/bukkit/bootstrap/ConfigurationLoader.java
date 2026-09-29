@@ -287,6 +287,12 @@ public final class ConfigurationLoader {
                 "lifecycle.conf",
                 com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration chunkBlockConfig = loadConfig(
+                plugin,
+                dataDir,
+                "chunkblock.conf",
+                com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -323,6 +329,7 @@ public final class ConfigurationLoader {
                 generatorsConfig,
                 oneBlockConfig,
                 lifecycleConfig,
+                chunkBlockConfig,
                 presetConfig);
 
         wiring.validate();

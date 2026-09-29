@@ -109,6 +109,7 @@ public final class GameplayWiring {
     private final StorageBucket backupBucket;
     private final IslandCacheEviction cacheEviction;
     private final OneBlockWiring oneBlockWiring;
+    private final ChunkBlockWiring chunkBlockWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -186,6 +187,7 @@ public final class GameplayWiring {
         // Before creation, because a game mode brings the actions that build its islands.
         this.oneBlockWiring = new OneBlockWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
+        this.chunkBlockWiring = new ChunkBlockWiring(config, persistence, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -195,7 +197,10 @@ public final class GameplayWiring {
                 accessService,
                 this.economicWiring.rewardInboxService(),
                 this.economicWiring.upgradeService(),
-                this.oneBlockWiring.startActions());
+                java.util.stream.Stream.concat(
+                                this.oneBlockWiring.startActions().stream(),
+                                this.chunkBlockWiring.startActions().stream())
+                        .toList());
 
         // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
         this.playerLifecycle = new com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle(
@@ -305,6 +310,11 @@ public final class GameplayWiring {
         // The rest of the caches register as they are built, after the wiring that owns them.
         this.cacheEviction.whenForgotten(this.environmentWiring.limitService()::clearIsland);
         this.cacheEviction.whenForgotten(this.environmentWiring.dimensionService()::resetIslandDimensions);
+        // The level is what a ChunkBlock island holds its chunks with, so each score is checked against it.
+        this.economicWiring
+                .worthService()
+                .whenScored((islandId, score) ->
+                        this.chunkBlockWiring.service().onLevel(islandId, score.calculatedLevel()));
         this.cacheEviction.whenForgotten(this.economicWiring.worthService()::forgetIsland);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
@@ -335,6 +345,10 @@ public final class GameplayWiring {
     }
 
     /** The OneBlock game mode's service and the schedule that writes its counts. */
+    public ChunkBlockWiring chunkBlockWiring() {
+        return chunkBlockWiring;
+    }
+
     public OneBlockWiring oneBlockWiring() {
         return oneBlockWiring;
     }

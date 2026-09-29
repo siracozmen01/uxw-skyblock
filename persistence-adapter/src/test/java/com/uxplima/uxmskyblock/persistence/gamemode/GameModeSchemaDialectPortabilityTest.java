@@ -253,6 +253,8 @@ class GameModeSchemaDialectPortabilityTest {
                     .describedAs("the first chunk is never closed")
                     .isEqualTo(new ChunkPos(0, 0));
             assertThat(chunks.open(islandId, new ChunkPos(-1, 0), 2)).isTrue();
+            assertThat(chunks.findAll().get(islandId).opened())
+                    .containsExactly(new ChunkPos(1, 0), new ChunkPos(-1, 0));
 
             // Deleting the island takes its OneBlock row and its chunks with it.
             islands.deleteIsland(islandId);

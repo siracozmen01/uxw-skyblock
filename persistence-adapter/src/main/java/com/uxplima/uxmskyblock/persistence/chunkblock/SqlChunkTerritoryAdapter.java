@@ -5,7 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -23,6 +25,32 @@ public final class SqlChunkTerritoryAdapter implements ChunkTerritoryPort {
 
     public SqlChunkTerritoryAdapter(DataSource dataSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
+    }
+
+    @Override
+    public Map<IslandId, ChunkTerritory> findAll() {
+        Map<IslandId, ChunkPos> origins = new HashMap<>();
+        Map<IslandId, List<ChunkPos>> opened = new HashMap<>();
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement ps = conn.prepareStatement("SELECT island_id, chunk_x, chunk_z, unlock_order "
+                        + "FROM chunkblock_territory_claims ORDER BY island_id, unlock_order");
+                ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                IslandId islandId = IslandId.of(java.util.UUID.fromString(rs.getString(1)));
+                ChunkPos chunk = new ChunkPos(rs.getInt(2), rs.getInt(3));
+                if (rs.getInt(4) == 0) {
+                    origins.put(islandId, chunk);
+                } else {
+                    opened.computeIfAbsent(islandId, id -> new ArrayList<>()).add(chunk);
+                }
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read the ChunkBlock islands", e);
+        }
+        Map<IslandId, ChunkTerritory> all = new HashMap<>();
+        origins.forEach((islandId, origin) ->
+                all.put(islandId, new ChunkTerritory(origin, opened.getOrDefault(islandId, List.of()))));
+        return all;
     }
 
     @Override

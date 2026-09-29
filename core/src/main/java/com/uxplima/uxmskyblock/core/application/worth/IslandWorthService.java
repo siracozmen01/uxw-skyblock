@@ -24,6 +24,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandWorthService {
 
+    private final java.util.List<java.util.function.BiConsumer<IslandId, IslandScoreBreakdown>> scoredListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
     private final MaterialValuationIndex valuationIndex;
     private final Map<String, Long> spawnerWeights;
     private final long defaultSpawnerWeight;
@@ -199,8 +202,20 @@ public final class IslandWorthService {
 
         leaderboardPort.updateIslandScore(islandId, totalScore, dampedWorth);
 
-        return new IslandScoreBreakdown(
+        IslandScoreBreakdown score = new IslandScoreBreakdown(
                 blockScore, spawnerScore, qScore, bScore, totalScore, level, rawWorth, dampedWorth);
+        for (java.util.function.BiConsumer<IslandId, IslandScoreBreakdown> listener : scoredListeners) {
+            listener.accept(islandId, score);
+        }
+        return score;
+    }
+
+    /**
+     * Told each island's score as it is worked out, so a rule that rides on the level follows it: a
+     * ChunkBlock island closes the chunks a fallen level no longer holds.
+     */
+    public void whenScored(java.util.function.BiConsumer<IslandId, IslandScoreBreakdown> listener) {
+        scoredListeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     }
 
     public IslandScoreBreakdown recalculateIsland(

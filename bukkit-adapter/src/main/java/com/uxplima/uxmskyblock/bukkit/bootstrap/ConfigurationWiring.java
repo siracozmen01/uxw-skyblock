@@ -103,6 +103,7 @@ public final class ConfigurationWiring {
     private final GeneratorsConfiguration generatorsConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration lifecycleConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration chunkBlockConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -176,6 +177,7 @@ public final class ConfigurationWiring {
             GeneratorsConfiguration generatorsConfig,
             com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig,
             com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration lifecycleConfig,
+            com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration chunkBlockConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -212,6 +214,7 @@ public final class ConfigurationWiring {
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
         this.oneBlockConfig = Objects.requireNonNull(oneBlockConfig, "oneBlockConfig must not be null");
         this.lifecycleConfig = Objects.requireNonNull(lifecycleConfig, "lifecycleConfig must not be null");
+        this.chunkBlockConfig = Objects.requireNonNull(chunkBlockConfig, "chunkBlockConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -290,6 +293,7 @@ public final class ConfigurationWiring {
                 generatorsConfig,
                 com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -482,6 +486,11 @@ public final class ConfigurationWiring {
 
     public GeneratorsConfiguration generatorsConfig() {
         return generatorsConfig;
+    }
+
+    /** Whether islands can be ChunkBlock islands, and what each chunk costs in level. */
+    public com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration chunkBlockConfig() {
+        return chunkBlockConfig;
     }
 
     /** What a leave, a kick, a death and a reset do, as {@code modules/lifecycle.conf} writes it. */

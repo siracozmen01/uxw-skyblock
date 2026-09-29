@@ -234,4 +234,20 @@ class IslandWorthServiceTest {
                         valuationIndex, Map.of(), 25L, 50L, 100L, 10000L, 1.5, mockLeaderboardPort, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("Every score worked out is told to the rules that follow the level")
+    void aScoreIsTold() {
+        com.uxplima.uxmskyblock.core.domain.identity.IslandId island =
+                com.uxplima.uxmskyblock.core.domain.identity.IslandId.of(java.util.UUID.randomUUID());
+        java.util.List<Long> levels = new java.util.ArrayList<>();
+        service.whenScored((scored, score) -> {
+            assertThat(scored).isEqualTo(island);
+            levels.add(score.calculatedLevel());
+        });
+
+        service.calculateScore(island, 4, 0L);
+
+        assertThat(levels).containsExactly(2L);
+    }
 }

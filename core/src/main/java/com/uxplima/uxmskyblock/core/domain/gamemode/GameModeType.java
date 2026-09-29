@@ -6,5 +6,6 @@ package com.uxplima.uxmskyblock.core.domain.gamemode;
 public enum GameModeType {
     SKYBLOCK,
     SURVIVAL,
-    ONEBLOCK
+    ONEBLOCK,
+    CHUNKBLOCK
 }
