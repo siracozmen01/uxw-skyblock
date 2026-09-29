@@ -20,6 +20,21 @@ final class IslandCommandWiring {
 
     private IslandCommandWiring() {}
 
+    /** The island's level as the level command works it out: blocks, finished missions and the bank. */
+    private static long levelOf(
+            GameplayWiring gameplay,
+            com.uxplima.uxmskyblock.core.domain.identity.IslandId islandId,
+            com.uxplima.uxmskyblock.core.domain.identity.ProfileId profile) {
+        var worth = gameplay.worthService();
+        if (worth == null) {
+            return 0;
+        }
+        var missions = gameplay.missionService();
+        int finished = missions == null ? 0 : missions.countCompleted(islandId, profile);
+        long bank = gameplay.bankService().getBalanceMinorUnits(profile).orElse(0L);
+        return worth.calculateScore(islandId, finished, bank).calculatedLevel();
+    }
+
     static IslandCommandTree build(
             IntegrationWiring integration,
             JavaPlugin plugin,
@@ -93,6 +108,17 @@ final class IslandCommandWiring {
         tree.useLeaderboards(gameplay.leaderboardMetrics());
         // A OneBlock island's standing, as the operator's menu file draws it and as placeholders.
         var oneBlockPanel = gameplay.oneBlockWiring().panel(integration.menuEngine());
+        // A ChunkBlock island's chunks, as the operator's menu file draws them, the unlock and placeholders.
+        var chunkBlockPanel = gameplay.chunkBlockWiring()
+                .panel(
+                        integration.menuEngine(),
+                        persistence.islandStoragePort(),
+                        gameplay.scheduler(),
+                        integration.messages(),
+                        authority.sessionCoordinator()::activeProfile,
+                        (islandId, profile) -> levelOf(gameplay, islandId, profile));
+        tree.useChunkBlock(chunkBlockPanel);
+        integration.placeholderExpansion().useChunkBlock(chunkBlockPanel);
         tree.useOneBlock(oneBlockPanel);
         integration.placeholderExpansion().useOneBlock(oneBlockPanel);
         tree.setActivityFeedService(gameplay.activityFeedService());

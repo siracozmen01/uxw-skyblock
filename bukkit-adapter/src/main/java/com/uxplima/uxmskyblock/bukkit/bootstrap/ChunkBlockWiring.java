@@ -53,6 +53,32 @@ public final class ChunkBlockWiring {
         return service;
     }
 
+    /**
+     * The panel behind the chunks command and the ChunkBlock placeholders, drawn from the operator's
+     * menu file, or nothing while the operator does not let islands be ChunkBlock islands.
+     */
+    public com.uxplima.uxmskyblock.bukkit.chunkblock.@org.jspecify.annotations.Nullable ChunkBlockPanel panel(
+            com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SkyblockMenuEngine engine,
+            com.uxplima.uxmskyblock.core.application.island.IslandStoragePort islands,
+            SchedulerPort scheduler,
+            com.uxplima.uxmskyblock.bukkit.i18n.Messages messages,
+            java.util.function.Function<
+                            java.util.UUID, java.util.Optional<com.uxplima.uxmskyblock.core.domain.identity.ProfileId>>
+                    activeProfile,
+            java.util.function.BiFunction<
+                            com.uxplima.uxmskyblock.core.domain.identity.IslandId,
+                            com.uxplima.uxmskyblock.core.domain.identity.ProfileId,
+                            Long>
+                    levelOf) {
+        if (!config.enabled()) {
+            return null;
+        }
+        var panel = new com.uxplima.uxmskyblock.bukkit.chunkblock.ChunkBlockPanel(
+                service, islands, scheduler, messages, activeProfile, levelOf);
+        panel.useMenuEngine(engine);
+        return panel;
+    }
+
     /** The edge of every territory, registered while the operator lets islands be ChunkBlock islands. */
     public com.uxplima.uxmskyblock.bukkit.chunkblock.ChunkBlockListener listener() {
         return listener;

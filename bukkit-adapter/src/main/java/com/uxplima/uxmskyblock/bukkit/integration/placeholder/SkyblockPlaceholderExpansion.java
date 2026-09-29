@@ -44,6 +44,7 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     public static final String IDENTIFIER = "skyblock";
 
     private static final String ONEBLOCK = "oneblock_";
+    private static final String CHUNKBLOCK = "chunkblock_";
     public static final long CACHE_TTL_MS = 5000L;
     public static final long LEADERBOARD_CACHE_TTL_MS = 15_000L;
 
@@ -151,6 +152,12 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
     }
 
     private com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlock;
+    private com.uxplima.uxmskyblock.bukkit.chunkblock.@Nullable ChunkBlockPanel chunkBlock;
+
+    /** Answers {@code chunkblock_<name>} for the island a player belongs to, while ChunkBlock is on. */
+    public void useChunkBlock(com.uxplima.uxmskyblock.bukkit.chunkblock.@Nullable ChunkBlockPanel chunkBlock) {
+        this.chunkBlock = chunkBlock;
+    }
 
     /** Answers {@code oneblock_<name>} for the island a player belongs to, while OneBlock is on. */
     public void useOneBlock(com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlock) {
@@ -310,6 +317,15 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
                         yield name.equals("is_oneblock") ? "false" : "";
                     }
                     yield panel.placeholder(player, islandId, name);
+                }
+                com.uxplima.uxmskyblock.bukkit.chunkblock.ChunkBlockPanel chunks = this.chunkBlock;
+                if (normalized.startsWith(CHUNKBLOCK) && chunks != null) {
+                    UUID islandId = cached.islandId();
+                    String name = normalized.substring(CHUNKBLOCK.length());
+                    if (islandId == null) {
+                        yield name.equals("is_chunkblock") ? "false" : "";
+                    }
+                    yield chunks.placeholder(islandId, name);
                 }
                 if (normalized.startsWith("upgrade_tier_")) {
                     String upgradeKey = normalized.substring("upgrade_tier_".length());

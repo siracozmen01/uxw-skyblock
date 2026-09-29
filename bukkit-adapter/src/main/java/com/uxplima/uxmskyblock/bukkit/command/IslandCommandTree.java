@@ -287,6 +287,7 @@ public final class IslandCommandTree {
     }
 
     private com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlockPanel;
+    private com.uxplima.uxmskyblock.bukkit.chunkblock.@Nullable ChunkBlockPanel chunkBlockPanel;
     com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics leaderboards;
 
     com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle playerLifecycle;
@@ -309,6 +310,11 @@ public final class IslandCommandTree {
     /** The boards {@code /is top} can show beyond level, worth and bank. */
     public void useLeaderboards(com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics leaderboards) {
         this.leaderboards = leaderboards;
+    }
+
+    /** What the chunks command opens and unlocks, while the operator lets islands be ChunkBlock islands. */
+    public void useChunkBlock(com.uxplima.uxmskyblock.bukkit.chunkblock.@Nullable ChunkBlockPanel panel) {
+        this.chunkBlockPanel = panel;
     }
 
     /** What {@code /is oneblock} opens, while the operator lets islands be OneBlock islands. */
@@ -581,6 +587,9 @@ public final class IslandCommandTree {
                 .then(groups.mechanicsCommands().buildMissions())
                 .then(groups.mechanicsCommands().buildChallenges())
                 .then(Cmd.literal("oneblock").executes(this::executeOneBlock))
+                .then(Cmd.literal("chunks")
+                        .executes(ctx -> executeChunks(ctx, false))
+                        .then(Cmd.literal("unlock").executes(ctx -> executeChunks(ctx, true))))
                 .then(groups.mechanicsCommands().buildBorder())
                 .then(groups.mechanicsCommands().buildBounds())
                 .then(groups.progressionCommands().buildLevel())
@@ -708,6 +717,22 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         panel.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeChunks(CommandContext<CommandSourceStack> ctx, boolean unlock) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.chunkblock.ChunkBlockPanel panel = this.chunkBlockPanel;
+        if (panel == null) {
+            send(player, "chunkblock.not_chunkblock");
+        } else if (unlock) {
+            panel.unlockFaced(player);
+        } else {
+            panel.open(player);
+        }
         return Cmd.OK;
     }
 
