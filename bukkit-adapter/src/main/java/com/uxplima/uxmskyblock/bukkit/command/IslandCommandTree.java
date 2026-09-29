@@ -286,6 +286,13 @@ public final class IslandCommandTree {
         this.notificationService = service;
     }
 
+    private com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlockPanel;
+
+    /** What {@code /is oneblock} opens, while the operator lets islands be OneBlock islands. */
+    public void useOneBlock(com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel panel) {
+        this.oneBlockPanel = panel;
+    }
+
     public void setVaultWindow(@Nullable IslandVaultWindow vaultWindow) {
         this.vaultWindow = vaultWindow;
     }
@@ -550,6 +557,7 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("menu").executes(this::executeMenu))
                 .then(groups.mechanicsCommands().buildMissions())
                 .then(groups.mechanicsCommands().buildChallenges())
+                .then(Cmd.literal("oneblock").executes(this::executeOneBlock))
                 .then(groups.mechanicsCommands().buildBorder())
                 .then(groups.mechanicsCommands().buildBounds())
                 .then(groups.progressionCommands().buildLevel())
@@ -664,6 +672,20 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         return executeHelp(ctx, 1);
+    }
+
+    private int executeOneBlock(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockPanel panel = this.oneBlockPanel;
+        if (panel == null) {
+            send(player, "oneblock.not_oneblock");
+            return Cmd.OK;
+        }
+        panel.open(player);
+        return Cmd.OK;
     }
 
     private int executeMenu(CommandContext<CommandSourceStack> ctx) {

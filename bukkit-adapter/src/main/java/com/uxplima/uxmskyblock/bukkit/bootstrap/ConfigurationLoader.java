@@ -92,7 +92,8 @@ public final class ConfigurationLoader {
             "island-biome.conf",
             "island-homes.conf",
             "island-social.conf",
-            "island-top.conf");
+            "island-top.conf",
+            "island-oneblock.conf");
 
     private ConfigurationLoader() {
         throw new UnsupportedOperationException("ConfigurationLoader is a set of loading steps, not a thing to hold.");

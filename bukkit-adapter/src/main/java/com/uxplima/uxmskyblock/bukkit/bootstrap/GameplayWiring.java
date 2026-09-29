@@ -182,7 +182,8 @@ public final class GameplayWiring {
                 plugin, config, persistence, authority, protectionListener, scheduler, economyBridgeSupplier);
 
         // Before creation, because a game mode brings the actions that build its islands.
-        this.oneBlockWiring = new OneBlockWiring(config, persistence, scheduler, protectionListener);
+        this.oneBlockWiring = new OneBlockWiring(
+                config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,

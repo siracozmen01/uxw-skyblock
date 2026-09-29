@@ -22,12 +22,16 @@ public final class OneBlockWiring implements AutoCloseable {
     private final OneBlockService service;
     private final AutoCloseable saving;
     private final com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockListener listener;
+    private final com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockPanel panel;
 
     public OneBlockWiring(
             ConfigurationWiring configuration,
             PersistenceBootstrap persistence,
             SchedulerPort scheduler,
-            com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener islands) {
+            com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener islands,
+            java.util.function.Function<
+                            java.util.UUID, java.util.Optional<com.uxplima.uxmskyblock.core.domain.identity.ProfileId>>
+                    activeProfile) {
         this.config = Objects.requireNonNull(configuration.oneBlockConfig(), "oneBlockConfig must not be null");
         this.service = new OneBlockService(persistence.oneBlockProgressPort(), config.phases(), new SplittableRandom());
         this.saving = scheduler.repeatAsync(service::flush, config.saveInterval(), config.saveInterval());
@@ -38,6 +42,8 @@ public final class OneBlockWiring implements AutoCloseable {
                 configuration.messages(),
                 configuration.effectsConfig(),
                 new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler, configuration.messages()));
+        this.panel = new com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockPanel(
+                service, persistence.islandStoragePort(), scheduler, configuration.messages(), activeProfile);
         // Every OneBlock island into memory before players break anything, so no break is a query on
         // the region's thread. A break before it finishes reads its island once.
         scheduler.async(() -> {
@@ -71,6 +77,19 @@ public final class OneBlockWiring implements AutoCloseable {
             return java.util.List.of();
         }
         return java.util.List.of(new com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockStart(service));
+    }
+
+    /**
+     * The panel behind {@code /is oneblock} and the OneBlock placeholders, drawn from the operator's menu
+     * file, or nothing while the operator does not let islands be OneBlock islands.
+     */
+    public com.uxplima.uxmskyblock.bukkit.oneblock.@org.jspecify.annotations.Nullable OneBlockPanel panel(
+            com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SkyblockMenuEngine engine) {
+        if (!config.enabled()) {
+            return null;
+        }
+        panel.useMenuEngine(engine);
+        return panel;
     }
 
     public com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockListener listener() {

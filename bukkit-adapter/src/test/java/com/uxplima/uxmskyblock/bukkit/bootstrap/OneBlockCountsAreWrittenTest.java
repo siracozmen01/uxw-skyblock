@@ -53,7 +53,8 @@ class OneBlockCountsAreWrittenTest {
                     configuration,
                     persistence,
                     scheduler,
-                    mock(com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener.class));
+                    mock(com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener.class),
+                    uuid -> java.util.Optional.empty());
             wiring.service().start(island, 0, 100, 0);
 
             wiring.service().onBreak(island);

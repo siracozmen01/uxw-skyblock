@@ -42,6 +42,8 @@ import org.jspecify.annotations.Nullable;
 public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
 
     public static final String IDENTIFIER = "skyblock";
+
+    private static final String ONEBLOCK = "oneblock_";
     public static final long CACHE_TTL_MS = 5000L;
     public static final long LEADERBOARD_CACHE_TTL_MS = 15_000L;
 
@@ -146,6 +148,13 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
      */
     public void useUpgradeStanding(java.util.function.@Nullable UnaryOperator<Map<UpgradeId, Integer>> standing) {
         this.upgradeStanding = standing;
+    }
+
+    private com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlock;
+
+    /** Answers {@code oneblock_<name>} for the island a player belongs to, while OneBlock is on. */
+    public void useOneBlock(com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlock) {
+        this.oneBlock = oneBlock;
     }
 
     public PlaceholderRegistry registry() {
@@ -292,6 +301,15 @@ public final class SkyblockPlaceholderExpansion implements PlaceholderProvider {
                 if (normalized.startsWith("island_upgrade_tier_")) {
                     String upgradeKey = normalized.substring("island_upgrade_tier_".length());
                     yield String.valueOf(cached.upgradeTiers().getOrDefault(upgradeKey, 0));
+                }
+                com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockPanel panel = this.oneBlock;
+                if (normalized.startsWith(ONEBLOCK) && panel != null) {
+                    UUID islandId = cached.islandId();
+                    String name = normalized.substring(ONEBLOCK.length());
+                    if (islandId == null) {
+                        yield name.equals("is_oneblock") ? "false" : "";
+                    }
+                    yield panel.placeholder(player, islandId, name);
                 }
                 if (normalized.startsWith("upgrade_tier_")) {
                     String upgradeKey = normalized.substring("upgrade_tier_".length());

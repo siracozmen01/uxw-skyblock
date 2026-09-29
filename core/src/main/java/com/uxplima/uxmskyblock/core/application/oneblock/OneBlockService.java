@@ -77,6 +77,28 @@ public final class OneBlockService {
                 islandId, stored.x(), stored.y(), stored.z(), held.total.get()));
     }
 
+    /**
+     * The island as a OneBlock island if it is already in memory, without reading storage for it.
+     *
+     * <p>For a placeholder, which a scoreboard asks for on the thread that draws it: a query there
+     * would stall the region. An island that is not in memory yet answers nothing until a break or a
+     * panel has read it.
+     */
+    public Optional<OneBlockProgressPort.OneBlockIsland> inMemory(IslandId islandId) {
+        Counted held = counted.get(islandId);
+        if (held == null) {
+            return Optional.empty();
+        }
+        OneBlockProgressPort.OneBlockIsland stored = held.stored;
+        return Optional.of(new OneBlockProgressPort.OneBlockIsland(
+                islandId, stored.x(), stored.y(), stored.z(), held.total.get()));
+    }
+
+    /** The phases every OneBlock island goes through, as the operator wrote them. */
+    public OneBlockPhases phases() {
+        return phases;
+    }
+
     /** Where the island stands in its phases now, if it is a OneBlock island. */
     public Optional<OneBlockPhases.Position> position(IslandId islandId) {
         Counted held = held(islandId);
