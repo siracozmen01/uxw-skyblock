@@ -279,7 +279,7 @@ public final class CreateIslandUseCase {
             islandStoragePort.saveIsland(island, location, outboxEvent);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, authorityLeaseSeconds);
             islandBankPort.createBank(islandId);
-            bindIntoGameModeHierarchy(profileId, islandId, preset.id());
+            bindIntoGameModeHierarchy(profileId, islandId, preset);
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
@@ -368,12 +368,12 @@ public final class CreateIslandUseCase {
      * write would be a worse answer than a backup that falls back to a synthesised reference, which
      * is exactly what every backup did before this ran at all.
      */
-    private void bindIntoGameModeHierarchy(ProfileId profileId, IslandId islandId, String rulesetConfig) {
+    private void bindIntoGameModeHierarchy(ProfileId profileId, IslandId islandId, StarterPreset preset) {
         if (gameModeHierarchy == null) {
             return;
         }
         try {
-            GameModeInstance instance = gameModeHierarchy.getOrCreateSkyblockInstance(profileId, rulesetConfig);
+            GameModeInstance instance = gameModeHierarchy.getOrCreateInstance(profileId, preset.mode(), preset.id());
             gameModeHierarchy.bindIsland(instance.id(), islandId);
         } catch (RuntimeException e) {
             LOGGER.log(

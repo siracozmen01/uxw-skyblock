@@ -51,7 +51,11 @@ public final class GameplayCreationWiring {
             AdaptiveBackpressureController backpressureController,
             IslandAccessService accessService,
             RewardInboxService rewardInboxService,
-            IslandUpgradeService upgradeService) {
+            IslandUpgradeService upgradeService,
+            java.util.List<
+                            com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
+                                    com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
+                    gameModeStarts) {
         Objects.requireNonNull(config, "config must not be null");
         Objects.requireNonNull(persistence, "persistence must not be null");
         Objects.requireNonNull(authority, "authority must not be null");
@@ -61,8 +65,12 @@ public final class GameplayCreationWiring {
         Objects.requireNonNull(rewardInboxService, "rewardInboxService must not be null");
         Objects.requireNonNull(upgradeService, "upgradeService must not be null");
 
-        this.presetCatalog = config.presetConfig().catalogue();
         this.schematicEngine = new StarterSchematicEngine(backpressureController);
+        gameModeStarts.forEach(schematicEngine.actions()::register);
+        // A preset a switched-off game mode builds names an action nobody provides here, and is not offered.
+        this.presetCatalog = config.presetConfig()
+                .startableWith(schematicEngine.actions()::knowsAll)
+                .catalogue();
         this.coordinateAllocator = persistence.gridAllocator();
         this.gridService = new SpiralWorldGridService(coordinateAllocator);
 

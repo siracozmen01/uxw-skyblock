@@ -301,7 +301,9 @@ public final class IslandLifecycleCommands {
                         schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
                             World w = Bukkit.getWorld(targetWorld);
                             if (w != null) {
-                                schematicEngine.pastePreset(w, centerX, platformY, centerZ, success.preset());
+                                // The preset's own creation actions: a platform, a OneBlock island's block.
+                                schematicEngine.start(new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
+                                        w, success.island().id(), centerX, platformY, centerZ, success.preset()));
                             }
                             schedulerPort.onEntity(playerUuid, () -> {
                                 if (!player.isOnline()) {

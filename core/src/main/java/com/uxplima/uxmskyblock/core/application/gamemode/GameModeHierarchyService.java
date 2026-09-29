@@ -23,16 +23,35 @@ public final class GameModeHierarchyService {
     }
 
     public GameModeInstance getOrCreateSkyblockInstance(ProfileId profileId, String rulesetConfig) {
+        return getOrCreateInstance(profileId, GameModeType.SKYBLOCK, rulesetConfig);
+    }
+
+    /**
+     * The profile's game mode instance, playing {@code mode}.
+     *
+     * <p>A profile keeps one instance. One that deleted a skyblock island and started a OneBlock island
+     * plays OneBlock now, so an instance found playing another mode is recorded as playing this one.
+     */
+    public GameModeInstance getOrCreateInstance(ProfileId profileId, GameModeType mode, String rulesetConfig) {
         Objects.requireNonNull(profileId, "profileId must not be null");
+        Objects.requireNonNull(mode, "mode must not be null");
         Objects.requireNonNull(rulesetConfig, "rulesetConfig must not be null");
 
-        return storagePort.findInstanceByProfileId(profileId).orElseGet(() -> {
-            Instant now = Instant.now();
-            GameModeInstance instance = GameModeInstance.create(
-                    GameModeInstanceId.random(), profileId, GameModeType.SKYBLOCK, rulesetConfig, now);
-            storagePort.saveGameModeInstance(instance);
-            return instance;
-        });
+        Optional<GameModeInstance> existing = storagePort.findInstanceByProfileId(profileId);
+        if (existing.isPresent()) {
+            GameModeInstance found = existing.get();
+            if (found.gameModeType() == mode) {
+                return found;
+            }
+            GameModeInstance moved =
+                    new GameModeInstance(found.id(), profileId, mode, rulesetConfig, found.createdAt(), Instant.now());
+            storagePort.saveGameModeInstance(moved);
+            return moved;
+        }
+        GameModeInstance instance =
+                GameModeInstance.create(GameModeInstanceId.random(), profileId, mode, rulesetConfig, Instant.now());
+        storagePort.saveGameModeInstance(instance);
+        return instance;
     }
 
     public void bindIsland(GameModeInstanceId instanceId, IslandId islandId) {

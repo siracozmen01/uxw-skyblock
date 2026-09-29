@@ -4,7 +4,6 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.World;
@@ -95,8 +94,7 @@ public final class OneBlockListener implements Listener {
     }
 
     private static void comeBack(World world, int x, int y, int z, OneBlockService.Broken next) {
-        Material material = Material.matchMaterial(next.nextBlock());
-        world.getBlockAt(x, y, z).setType(material != null && material.isBlock() ? material : Material.DIRT);
+        world.getBlockAt(x, y, z).setType(OneBlockStart.blockOf(next.nextBlock()));
         next.creature().ifPresent(creature -> {
             NamespacedKey key = NamespacedKey.fromString(creature.toLowerCase(java.util.Locale.ROOT));
             EntityType type = key == null ? null : Registry.ENTITY_TYPE.get(key);

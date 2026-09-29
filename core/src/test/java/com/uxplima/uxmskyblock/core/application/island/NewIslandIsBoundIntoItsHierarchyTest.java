@@ -16,11 +16,14 @@ import com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyStorag
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridAllocationPort;
 import com.uxplima.uxmskyblock.core.application.world.WorldGridPort;
+import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstance;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.core.domain.world.WorldGridAllocation;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +44,13 @@ class NewIslandIsBoundIntoItsHierarchyTest {
 
     private static CreateIslandUseCase useCaseWith(
             @org.jspecify.annotations.Nullable GameModeHierarchyService hierarchy, IslandStoragePort storage) {
+        return useCaseWith(hierarchy, storage, new StarterPresetCatalog());
+    }
+
+    private static CreateIslandUseCase useCaseWith(
+            @org.jspecify.annotations.Nullable GameModeHierarchyService hierarchy,
+            IslandStoragePort storage,
+            StarterPresetCatalog presets) {
         WorldGridAllocationPort allocations = mock(WorldGridAllocationPort.class);
         when(allocations.allocateNext(any(), any(), any()))
                 .thenReturn(
@@ -52,7 +62,7 @@ class NewIslandIsBoundIntoItsHierarchyTest {
                 storage,
                 mock(com.uxplima.uxmskyblock.core.application.island.IslandAuthorityPort.class),
                 mock(IslandBankPort.class),
-                new StarterPresetCatalog(),
+                presets,
                 grid,
                 allocations,
                 null,
@@ -73,6 +83,35 @@ class NewIslandIsBoundIntoItsHierarchyTest {
         assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.Success.class);
         verify(hierarchyStorage).saveGameModeInstance(any(GameModeInstance.class));
         verify(hierarchyStorage).savePrimaryGameplayRootRef(any());
+    }
+
+    @Test
+    @DisplayName("The instance records the game mode the chosen preset plays")
+    void theInstancePlaysThePresetsMode() {
+        GameModeHierarchyStoragePort hierarchyStorage = mock(GameModeHierarchyStoragePort.class);
+        when(hierarchyStorage.findInstanceByProfileId(PROFILE)).thenReturn(Optional.empty());
+        IslandStoragePort storage = mock(IslandStoragePort.class);
+        when(storage.findIslandIdByProfileId(PROFILE)).thenReturn(Optional.empty());
+        StarterPreset oneBlock = new StarterPreset(
+                "oneblock",
+                "@presets.oneblock.name",
+                "@presets.oneblock.description",
+                "schematics/oneblock.schem",
+                IslandBiome.PLAINS,
+                GameModeType.ONEBLOCK,
+                java.util.List.of("uxm:oneblock"));
+        CreateIslandUseCase useCase = useCaseWith(
+                new GameModeHierarchyService(hierarchyStorage),
+                storage,
+                new StarterPresetCatalog(java.util.List.of(StarterPresetCatalog.CLASSIC, oneBlock), "classic"));
+
+        assertThat(useCase.execute(PLAYER, PROFILE, "oneblock", NODE, "world"))
+                .isInstanceOf(CreateIslandUseCase.CreateIslandResult.Success.class);
+
+        org.mockito.ArgumentCaptor<GameModeInstance> written =
+                org.mockito.ArgumentCaptor.forClass(GameModeInstance.class);
+        verify(hierarchyStorage).saveGameModeInstance(written.capture());
+        assertThat(written.getValue().gameModeType()).isEqualTo(GameModeType.ONEBLOCK);
     }
 
     @Test

@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
 import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import org.spongepowered.configurate.ConfigurationNode;
 
@@ -46,7 +48,8 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
             String displayName = preset.node("display-name").getString("@presets." + id + ".name");
             String description = preset.node("description").getString("@presets." + id + ".description");
             String schematic = preset.node("schematic").getString("schematics/" + id + ".schem");
-            presets.add(new StarterPreset(id, displayName, description, schematic, biomeOf(preset)));
+            presets.add(new StarterPreset(
+                    id, displayName, description, schematic, biomeOf(preset), modeOf(preset), startOf(preset)));
         }
 
         if (presets.isEmpty()) {
@@ -64,6 +67,41 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
         } catch (IllegalArgumentException unknown) {
             return IslandBiome.PLAINS;
         }
+    }
+
+    /** The game mode the island plays. One the plugin does not know is a skyblock island. */
+    private static GameModeType modeOf(ConfigurationNode preset) {
+        String written = preset.node("mode").getString("SKYBLOCK");
+        try {
+            return GameModeType.valueOf(written.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return GameModeType.SKYBLOCK;
+        }
+    }
+
+    /** The creation actions that build the island, in order; the starter platform when none is written. */
+    private static List<String> startOf(ConfigurationNode preset) {
+        List<String> start = new ArrayList<>();
+        for (ConfigurationNode action : preset.node("start").childrenList()) {
+            String written = action.getString("").trim();
+            if (!written.isEmpty()) {
+                start.add(written);
+            }
+        }
+        return start.isEmpty() ? List.of(StarterPreset.PLATFORM) : start;
+    }
+
+    /**
+     * The presets whose every creation action has a provider on this server. A preset of a game mode the
+     * operator switched off names an action nobody provides, and is not offered.
+     */
+    public PresetConfiguration startableWith(Predicate<List<String>> provided) {
+        List<StarterPreset> startable =
+                presets.stream().filter(preset -> provided.test(preset.start())).toList();
+        if (startable.isEmpty()) {
+            return defaultConfiguration();
+        }
+        return new PresetConfiguration(startable, defaultId);
     }
 
     public StarterPresetCatalog catalogue() {

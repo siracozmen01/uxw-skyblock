@@ -181,6 +181,8 @@ public final class GameplayWiring {
         this.economicWiring = new EconomicWiring(
                 plugin, config, persistence, authority, protectionListener, scheduler, economyBridgeSupplier);
 
+        // Before creation, because a game mode brings the actions that build its islands.
+        this.oneBlockWiring = new OneBlockWiring(config, persistence, scheduler, protectionListener);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -189,7 +191,8 @@ public final class GameplayWiring {
                 backpressureController,
                 accessService,
                 this.economicWiring.rewardInboxService(),
-                this.economicWiring.upgradeService());
+                this.economicWiring.upgradeService(),
+                this.oneBlockWiring.startActions());
 
         this.socialWiring = new SocialWiring(
                 config,
@@ -280,7 +283,6 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.adminWiring.antiAbuseService()::forgetIsland);
         this.cacheEviction.whenForgotten(this.economicWiring.bankruptcyService()::forgetIsland);
         this.cacheEviction.whenForgotten(freezeService::forgetIsland);
-        this.oneBlockWiring = new OneBlockWiring(config, persistence, scheduler, protectionListener);
         this.cacheEviction.whenForgotten(this.oneBlockWiring.service()::forgetIsland);
 
         this.protectionWiring = new GameplayProtectionWiring(

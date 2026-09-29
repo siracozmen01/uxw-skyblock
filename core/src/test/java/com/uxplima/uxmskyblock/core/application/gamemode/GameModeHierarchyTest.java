@@ -57,6 +57,29 @@ class GameModeHierarchyTest {
         assertThat(rootRef.get().rootType()).isEqualTo("ISLAND");
     }
 
+    @Test
+    @DisplayName("An instance records the mode its island plays, and follows the profile to a new mode")
+    void theInstanceRecordsItsMode() {
+        ProfileId profileId = new ProfileId(UUID.randomUUID());
+
+        GameModeInstance oneBlock = service.getOrCreateInstance(profileId, GameModeType.ONEBLOCK, "oneblock");
+        assertThat(oneBlock.gameModeType()).isEqualTo(GameModeType.ONEBLOCK);
+        assertThat(storagePort.findInstanceByProfileId(profileId))
+                .get()
+                .extracting(GameModeInstance::gameModeType)
+                .isEqualTo(GameModeType.ONEBLOCK);
+
+        GameModeInstance again = service.getOrCreateInstance(profileId, GameModeType.ONEBLOCK, "oneblock");
+        assertThat(again).isEqualTo(oneBlock);
+
+        GameModeInstance skyblock = service.getOrCreateInstance(profileId, GameModeType.SKYBLOCK, "classic");
+        assertThat(skyblock.id()).describedAs("a profile keeps one instance").isEqualTo(oneBlock.id());
+        assertThat(storagePort.findInstanceByProfileId(profileId))
+                .get()
+                .extracting(GameModeInstance::gameModeType)
+                .isEqualTo(GameModeType.SKYBLOCK);
+    }
+
     private static final class InMemoryGameModeHierarchyStoragePort implements GameModeHierarchyStoragePort {
         private final Map<GameModeInstanceId, GameModeInstance> byId = new HashMap<>();
         private final Map<ProfileId, GameModeInstance> byProfile = new HashMap<>();

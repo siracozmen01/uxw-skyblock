@@ -6,6 +6,8 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 
+import com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider;
+import com.uxplima.uxmskyblock.core.application.gamemode.CreationActions;
 import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 
 /**
@@ -16,10 +18,33 @@ public final class StarterSchematicEngine {
     private final com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
             backpressureController;
 
+    private final CreationActions<IslandStart> actions = new CreationActions<>();
+
     public StarterSchematicEngine(
             com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
                     backpressureController) {
         this.backpressureController = backpressureController;
+        actions.register(new CreationActionProvider<>() {
+            @Override
+            public String actionId() {
+                return StarterPreset.PLATFORM;
+            }
+
+            @Override
+            public void apply(IslandStart start) {
+                pastePreset(start.world(), start.centerX(), start.y(), start.centerZ(), start.preset());
+            }
+        });
+    }
+
+    /** The creation actions this server provides; a game mode adds its own while the server starts. */
+    public CreationActions<IslandStart> actions() {
+        return actions;
+    }
+
+    /** Builds a new island by running the creation actions its preset names, in the region that owns it. */
+    public void start(IslandStart start) {
+        actions.run(start.preset().start(), start);
     }
 
     public StarterSchematicEngine() {

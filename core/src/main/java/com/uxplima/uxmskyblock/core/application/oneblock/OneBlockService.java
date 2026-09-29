@@ -113,11 +113,16 @@ public final class OneBlockService {
         return all.size();
     }
 
-    /** Makes a new island a OneBlock island whose block stands at x, y, z. */
-    public void start(IslandId islandId, int x, int y, int z) {
+    /**
+     * Makes a new island a OneBlock island whose block stands at x, y, z.
+     *
+     * @return what the block is before anything has been broken, drawn from the first phase
+     */
+    public String start(IslandId islandId, int x, int y, int z) {
         progress.start(islandId, x, y, z);
         notOneBlock.remove(islandId);
         counted.put(islandId, new Counted(new OneBlockProgressPort.OneBlockIsland(islandId, x, y, z, 0)));
+        return phases.nextBlock(0, random);
     }
 
     /**

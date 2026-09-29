@@ -59,6 +59,20 @@ public final class OneBlockWiring implements AutoCloseable {
         return config.enabled();
     }
 
+    /**
+     * The creation actions OneBlock adds: the one that sets an island's block, while the operator lets
+     * islands be OneBlock islands, and none otherwise, so a OneBlock preset is not offered.
+     */
+    public java.util.List<
+                    com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
+                            com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
+            startActions() {
+        if (!config.enabled()) {
+            return java.util.List.of();
+        }
+        return java.util.List.of(new com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockStart(service));
+    }
+
     public com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockListener listener() {
         return listener;
     }
