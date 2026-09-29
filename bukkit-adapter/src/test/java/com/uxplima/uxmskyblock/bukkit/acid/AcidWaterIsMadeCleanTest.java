@@ -187,7 +187,7 @@ class AcidWaterIsMadeCleanTest extends MockBukkitHarness {
         player.getInventory().setItemInMainHand(new ItemStack(Material.GLASS_BOTTLE, 2));
 
         CauldronLevelChangeEvent fill = fill(cauldron, 2);
-        listener.onFillFromCauldron(fill);
+        listener.onCauldron(fill);
 
         assertThat(fill.isCancelled()).isTrue();
         assertThat(((Levelled) cauldron.getBlockData()).getLevel()).isEqualTo(2);
@@ -197,7 +197,7 @@ class AcidWaterIsMadeCleanTest extends MockBukkitHarness {
                 .satisfies(bottle -> assertThat(AcidWater.isClean(bottle)).isTrue());
 
         player.getInventory().setItemInMainHand(new ItemStack(Material.GLASS_BOTTLE, 1));
-        listener.onFillFromCauldron(fill(cauldron, 1));
+        listener.onCauldron(fill(cauldron, 1));
         assertThat(AcidWater.isClean(player.getInventory().getItemInMainHand())).isTrue();
     }
 
@@ -210,10 +210,65 @@ class AcidWaterIsMadeCleanTest extends MockBukkitHarness {
         player.getInventory().setItemInMainHand(new ItemStack(Material.GLASS_BOTTLE, 1));
 
         CauldronLevelChangeEvent fill = fill(cauldron, 1);
-        listener.onFillFromCauldron(fill);
+        listener.onCauldron(fill);
 
         assertThat(fill.isCancelled()).isFalse();
         assertThat(player.getInventory().getItemInMainHand().getType()).isEqualTo(Material.GLASS_BOTTLE);
+    }
+
+    @Test
+    @DisplayName("A cauldron sea water was poured into gives acid bottles until it is emptied")
+    void aCauldronOfSeaWaterIsAcid() {
+        Block cauldron = world.getBlockAt(10, Y, 8);
+        cauldron.setType(Material.CAULDRON);
+        player.getInventory().setItemInMainHand(new ItemStack(Material.WATER_BUCKET));
+
+        listener.onCauldron(change(cauldron, CauldronLevelChangeEvent.ChangeReason.BUCKET_EMPTY, 3));
+        cauldron.setType(Material.WATER_CAULDRON);
+        player.getInventory().setItemInMainHand(new ItemStack(Material.GLASS_BOTTLE));
+        CauldronLevelChangeEvent bottle = fill(cauldron, 2);
+        listener.onCauldron(bottle);
+
+        assertThat(AcidWater.isAcidCauldron(cauldron)).isTrue();
+        assertThat(bottle.isCancelled())
+                .describedAs("the server fills a plain bottle, and a plain bottle is acid here")
+                .isFalse();
+
+        listener.onCauldron(change(cauldron, CauldronLevelChangeEvent.ChangeReason.EVAPORATE, 0));
+        assertThat(AcidWater.isAcidCauldron(cauldron)).isFalse();
+    }
+
+    @Test
+    @DisplayName("A bucket made clean in a furnace keeps the cauldron it is poured into clean")
+    void aCleanBucketKeepsTheCauldronClean() {
+        Block cauldron = world.getBlockAt(10, Y, 8);
+        cauldron.setType(Material.CAULDRON);
+        FurnaceRecipe bucket = AcidWater.furnaceBucketRecipe();
+        assertThat(bucket.getInputChoice().test(new ItemStack(Material.WATER_BUCKET)))
+                .isTrue();
+        assertThat(bucket.getInputChoice().test(AcidWater.cleanBucket())).isFalse();
+        player.getInventory().setItemInMainHand(bucket.getResult());
+
+        listener.onCauldron(change(cauldron, CauldronLevelChangeEvent.ChangeReason.BUCKET_EMPTY, 3));
+        cauldron.setType(Material.WATER_CAULDRON);
+        player.getInventory().setItemInMainHand(new ItemStack(Material.GLASS_BOTTLE));
+        listener.onCauldron(fill(cauldron, 2));
+
+        assertThat(AcidWater.isAcidCauldron(cauldron)).isFalse();
+        assertThat(AcidWater.isClean(player.getInventory().getItemInMainHand())).isTrue();
+    }
+
+    private CauldronLevelChangeEvent change(Block cauldron, CauldronLevelChangeEvent.ChangeReason reason, int level) {
+        BlockState next = cauldron.getState();
+        if (level == 0) {
+            next.setType(Material.CAULDRON);
+        } else {
+            next.setType(Material.WATER_CAULDRON);
+            Levelled data = (Levelled) next.getBlockData();
+            data.setLevel(level);
+            next.setBlockData(data);
+        }
+        return new CauldronLevelChangeEvent(cauldron, player, reason, next);
     }
 
     private CauldronLevelChangeEvent fill(Block cauldron, int level) {

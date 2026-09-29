@@ -18,7 +18,8 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 
 /**
  * A bottle of water drunk on an AcidIsland island burns unless it was made clean, and a bottle filled
- * from a cauldron there comes out clean, because a cauldron holds the rain.
+ * from a cauldron there comes out clean, because a cauldron holds the rain. A cauldron a bucket of sea
+ * water was poured into holds the sea instead, until it is emptied.
  *
  * <p>Both handlers run on the thread that owns the player and the block, so nothing here is scheduled.
  */
@@ -43,21 +44,42 @@ public final class AcidWaterListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onFillFromCauldron(CauldronLevelChangeEvent event) {
-        if (event.getReason() != CauldronLevelChangeEvent.ChangeReason.BOTTLE_FILL
-                || !(event.getEntity() instanceof Player player)) {
-            return;
-        }
+    public void onCauldron(CauldronLevelChangeEvent event) {
         Block cauldron = event.getBlock();
         if (!hazard.onAcidIsland(cauldron.getLocation())) {
             return;
         }
+        CauldronLevelChangeEvent.ChangeReason reason = event.getReason();
+        if (reason == CauldronLevelChangeEvent.ChangeReason.BUCKET_EMPTY
+                && event.getEntity() instanceof Player player) {
+            // What is poured in decides what the cauldron holds: the sea, unless the bucket was made clean.
+            PlayerInventory inventory = player.getInventory();
+            ItemStack bucket = inventory.getItemInMainHand().getType() == Material.WATER_BUCKET
+                    ? inventory.getItemInMainHand()
+                    : inventory.getItemInOffHand();
+            AcidWater.markCauldron(cauldron, !AcidWater.isCleanBucket(bucket));
+            return;
+        }
+        if (reason == CauldronLevelChangeEvent.ChangeReason.BOTTLE_FILL
+                && event.getEntity() instanceof Player player
+                && !AcidWater.isAcidCauldron(cauldron)
+                && fillClean(event, player)) {
+            return;
+        }
+        if (event.getNewState().getType() == Material.CAULDRON) {
+            // Emptied: whatever it held is gone, and the rain that fills it next is clean.
+            AcidWater.markCauldron(cauldron, false);
+        }
+    }
+
+    /** Fills the bottle in the server's place, with a clean one. False when there is no bottle in hand. */
+    private boolean fillClean(CauldronLevelChangeEvent event, Player player) {
         PlayerInventory inventory = player.getInventory();
         EquipmentSlot hand = inventory.getItemInMainHand().getType() == Material.GLASS_BOTTLE
                 ? EquipmentSlot.HAND
                 : inventory.getItemInOffHand().getType() == Material.GLASS_BOTTLE ? EquipmentSlot.OFF_HAND : null;
         if (hand == null) {
-            return;
+            return false;
         }
         // The server would hand over a plain bottle, which is acid here. The same fill is done by hand
         // instead, with a clean bottle.
@@ -74,5 +96,6 @@ public final class AcidWaterListener implements Listener {
             }
         }
         hazard.filledClean(player);
+        return true;
     }
 }

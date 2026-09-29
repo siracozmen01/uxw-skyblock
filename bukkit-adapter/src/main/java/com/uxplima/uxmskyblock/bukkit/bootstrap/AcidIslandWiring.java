@@ -88,6 +88,7 @@ public final class AcidIslandWiring implements AutoCloseable {
         recipesAdded = true;
         if (config.purification().furnace()) {
             server.addRecipe(AcidWater.furnaceRecipe());
+            server.addRecipe(AcidWater.furnaceBucketRecipe());
         }
         if (config.purification().brewingWithCoal()) {
             try {
@@ -113,6 +114,7 @@ public final class AcidIslandWiring implements AutoCloseable {
         if (recipesAdded) {
             recipesAdded = false;
             Bukkit.removeRecipe(AcidWater.FURNACE);
+            Bukkit.removeRecipe(AcidWater.FURNACE_BUCKET);
             try {
                 Bukkit.getPotionBrewer().removePotionMix(AcidWater.BREWING);
             } catch (RuntimeException e) {
