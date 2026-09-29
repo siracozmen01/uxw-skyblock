@@ -14,18 +14,37 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 
 /** The Brix game mode, while the operator lets islands be Brix plots. */
-public final class BrixWiring {
+public final class BrixWiring implements AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(BrixWiring.class.getName());
 
     private final BrixConfiguration config;
     private final BrixService service;
     private final SchedulerPort scheduler;
+    private final com.uxplima.uxmskyblock.bukkit.brix.BrixModes modes;
+    private @org.jspecify.annotations.Nullable AutoCloseable beat;
 
-    public BrixWiring(ConfigurationWiring configuration, PersistenceBootstrap persistence, SchedulerPort scheduler) {
+    public BrixWiring(
+            ConfigurationWiring configuration,
+            PersistenceBootstrap persistence,
+            SchedulerPort scheduler,
+            com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener islands) {
         this.config = Objects.requireNonNull(configuration.brixConfig(), "brixConfig must not be null");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.service = new BrixService(persistence.brixPlotsPort());
+        this.modes = new com.uxplima.uxmskyblock.bukkit.brix.BrixModes(
+                service,
+                islands,
+                scheduler,
+                config.modes(),
+                new com.uxplima.uxmskyblock.bukkit.creative.SealedInventory(
+                        new com.uxplima.uxmskyblock.bukkit.creative.ServerInventoryCodec()),
+                configuration.messages(),
+                configuration.effectsConfig(),
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler, configuration.messages()));
+        if (config.enabled()) {
+            this.beat = modes.start();
+        }
         scheduler.async(() -> {
             try {
                 int count = service.prime();
@@ -40,6 +59,11 @@ public final class BrixWiring {
         return service;
     }
 
+    /** Who plays a plot in which mode, and what they brought, kept aside. */
+    public com.uxplima.uxmskyblock.bukkit.brix.BrixModes modes() {
+        return modes;
+    }
+
     public BrixConfiguration config() {
         return config;
     }
@@ -51,5 +75,19 @@ public final class BrixWiring {
     /** The action that makes an island a plot, while Brix is enabled, and none otherwise. */
     public List<CreationActionProvider<IslandStart>> startActions() {
         return config.enabled() ? List.of(new PlotStart(service, scheduler, config.ground())) : List.of();
+    }
+
+    /** Stops setting modes, before the server stops. */
+    @Override
+    public void close() {
+        AutoCloseable running = beat;
+        beat = null;
+        if (running != null) {
+            try {
+                running.close();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Stopping the Brix modes failed.", e);
+            }
+        }
     }
 }

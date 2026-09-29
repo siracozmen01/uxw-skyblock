@@ -17,13 +17,40 @@ import org.spongepowered.configurate.serialize.SerializationException;
  *
  * @param enabled whether islands can be made as Brix plots
  * @param ground the ground a new plot is laid on
+ * @param modes the game modes on a plot
  */
-public record BrixConfiguration(boolean enabled, Ground ground) {
+public record BrixConfiguration(boolean enabled, Ground ground, Modes modes) {
 
     private static final Logger LOGGER = Logger.getLogger(BrixConfiguration.class.getName());
 
     public BrixConfiguration {
         Objects.requireNonNull(ground, "ground must not be null");
+        Objects.requireNonNull(modes, "modes must not be null");
+    }
+
+    /**
+     * The game modes on a plot.
+     *
+     * @param build the mode of the plot's own team while they are on it
+     * @param visit the mode of everybody else on the plot
+     * @param keepPermission the permission that leaves a player's mode and items alone; empty for none
+     */
+    public record Modes(org.bukkit.GameMode build, org.bukkit.GameMode visit, String keepPermission) {
+
+        public static final Modes SHIPPED =
+                new Modes(org.bukkit.GameMode.CREATIVE, org.bukkit.GameMode.ADVENTURE, "uxmskyblock.brix.keepmode");
+
+        public Modes {
+            Objects.requireNonNull(build, "build must not be null");
+            Objects.requireNonNull(visit, "visit must not be null");
+            Objects.requireNonNull(keepPermission, "keepPermission must not be null");
+            if (build == org.bukkit.GameMode.SPECTATOR || visit == org.bukkit.GameMode.SPECTATOR) {
+                throw new IllegalArgumentException("a plot is not built on or looked at in spectator");
+            }
+            if (visit == org.bukkit.GameMode.CREATIVE) {
+                throw new IllegalArgumentException("a visitor does not look at a plot in creative");
+            }
+        }
     }
 
     /**
@@ -60,7 +87,7 @@ public record BrixConfiguration(boolean enabled, Ground ground) {
     }
 
     public static BrixConfiguration defaultConfiguration() {
-        return new BrixConfiguration(true, Ground.SHIPPED);
+        return new BrixConfiguration(true, Ground.SHIPPED, Modes.SHIPPED);
     }
 
     public static BrixConfiguration load(ConfigurationNode root) {
@@ -74,7 +101,27 @@ public record BrixConfiguration(boolean enabled, Ground ground) {
             LOGGER.warning(() -> "modules/brix.conf ground: " + e.getMessage() + ". The shipped ground is used.");
             ground = Ground.SHIPPED;
         }
-        return new BrixConfiguration(root.node("enabled").getBoolean(true), ground);
+        ConfigurationNode mode = root.node("modes");
+        Modes modes;
+        try {
+            modes = new Modes(
+                    gameMode(mode.node("build").getString(""), Modes.SHIPPED.build()),
+                    gameMode(mode.node("visit").getString(""), Modes.SHIPPED.visit()),
+                    mode.node("keep-permission")
+                            .getString(Modes.SHIPPED.keepPermission())
+                            .trim());
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(() -> "modules/brix.conf modes: " + e.getMessage() + ". The shipped modes are used.");
+            modes = Modes.SHIPPED;
+        }
+        return new BrixConfiguration(root.node("enabled").getBoolean(true), ground, modes);
+    }
+
+    private static org.bukkit.GameMode gameMode(String written, org.bukkit.GameMode shipped) {
+        if (written.isBlank()) {
+            return shipped;
+        }
+        return org.bukkit.GameMode.valueOf(written.trim().toUpperCase(Locale.ROOT));
     }
 
     private static List<Material> layers(ConfigurationNode node) throws SerializationException {

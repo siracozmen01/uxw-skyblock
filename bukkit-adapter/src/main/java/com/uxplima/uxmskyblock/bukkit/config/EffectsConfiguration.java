@@ -77,6 +77,9 @@ public final class EffectsConfiguration {
         defaults.put("acid-vent-fumes", parseAll("acid-vent-fumes", List.of("[particle] CAMPFIRE_COSY_SMOKE 4 0.4")));
         defaults.put("boxed-grew", parseAll("boxed-grew", List.of("[sound] entity.player.levelup 0.8 1.6")));
         defaults.put(
+                "brix-plot-entered", parseAll("brix-plot-entered", List.of("[sound] block.beacon.activate 0.6 1.4")));
+        defaults.put("brix-plot-left", parseAll("brix-plot-left", List.of("[sound] block.beacon.deactivate 0.6 1.4")));
+        defaults.put(
                 "parkour-run-started",
                 parseAll("parkour-run-started", List.of("[sound] block.note_block.pling 0.8 1.2")));
         defaults.put(

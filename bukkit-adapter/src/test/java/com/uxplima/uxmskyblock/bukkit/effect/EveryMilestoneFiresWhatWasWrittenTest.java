@@ -95,6 +95,8 @@ class EveryMilestoneFiresWhatWasWrittenTest {
                         "poseidon-dry-air",
                         "poseidon-sun-burns",
                         "poseidon-still-drowns",
+                        "brix-plot-entered",
+                        "brix-plot-left",
                         "parkour-run-started",
                         "parkour-checkpoint",
                         "parkour-finished",

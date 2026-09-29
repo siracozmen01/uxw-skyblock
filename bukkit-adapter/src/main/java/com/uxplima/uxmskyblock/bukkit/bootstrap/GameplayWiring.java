@@ -200,7 +200,7 @@ public final class GameplayWiring {
         this.poseidonWiring = new PoseidonWiring(config, persistence, scheduler, protectionListener);
         this.strangerRealmsWiring = new StrangerRealmsWiring(config, persistence, scheduler, protectionListener);
         this.parkourWiring = new ParkourWiring(config, persistence, scheduler, protectionListener);
-        this.brixWiring = new BrixWiring(config, persistence, scheduler);
+        this.brixWiring = new BrixWiring(config, persistence, scheduler, protectionListener);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,

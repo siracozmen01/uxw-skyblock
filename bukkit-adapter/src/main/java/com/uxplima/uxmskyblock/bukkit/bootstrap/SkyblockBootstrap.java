@@ -376,6 +376,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         gameplayWiring.poseidonWiring().close();
         gameplayWiring.strangerRealmsWiring().close();
         gameplayWiring.parkourWiring().close();
+        gameplayWiring.brixWiring().close();
         gameplayWiring.boxedWiring().close();
         integrationWiring.close();
         authorityWiring.close();
