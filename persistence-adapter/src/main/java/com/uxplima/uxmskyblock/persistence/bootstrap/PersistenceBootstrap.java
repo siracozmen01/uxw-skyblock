@@ -130,6 +130,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final SqlHomeStorageAdapter homeStorageAdapter;
     private final SqlActivityFeedAdapter activityFeedAdapter;
     private final com.uxplima.uxmskyblock.persistence.oneblock.SqlOneBlockProgressAdapter oneBlockProgressAdapter;
+    private final com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter
+            lifecycleOwedEffectsAdapter;
     private final SqlNotificationAdapter notificationAdapter;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
@@ -189,6 +191,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.activityFeedAdapter = new SqlActivityFeedAdapter(database.dataSource());
         this.oneBlockProgressAdapter =
                 new com.uxplima.uxmskyblock.persistence.oneblock.SqlOneBlockProgressAdapter(database.dataSource());
+        this.lifecycleOwedEffectsAdapter =
+                new com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter(database.dataSource());
         this.notificationAdapter = new SqlNotificationAdapter(database.dataSource());
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
@@ -417,6 +421,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ActivityFeedStoragePort activityFeedStoragePort() {
         return activityFeedAdapter;
+    }
+
+    /** What lifecycle events still owe players who were away when they happened. */
+    public com.uxplima.uxmskyblock.core.application.lifecycle.LifecycleOwedEffectsPort lifecycleOwedEffectsPort() {
+        return lifecycleOwedEffectsAdapter;
     }
 
     /** Where each OneBlock island's block stands and how often it has been broken. */

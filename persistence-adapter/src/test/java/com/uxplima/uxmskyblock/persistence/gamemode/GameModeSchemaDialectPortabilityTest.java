@@ -23,6 +23,7 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEffect;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
@@ -51,7 +52,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * refused a boolean compared with a number and every island creation failed there. Here every
  * migration runs on each engine from nothing, and the rows the game mode layer writes are written,
  * changed and read back: a profile's instance, the island it is bound to, a OneBlock island's count,
- * and the island's authority lease with its epoch.
+ * the island's authority lease with its epoch, and what a lifecycle event still owes a player.
  */
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
@@ -178,6 +179,18 @@ class GameModeSchemaDialectPortabilityTest {
                     .isTrue();
             assertThat(islands.findAuthority(islandId).orElseThrow().leaseExpiresAt())
                     .isAfter(Instant.now());
+
+            // What a lifecycle event owes a player who was away: owed once however often, paid in part.
+            com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter owedEffects =
+                    new com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter(
+                            database.dataSource());
+            owedEffects.owe(owner, java.util.Set.of(LifecycleEffect.CLEAR_INVENTORY, LifecycleEffect.SEND_TO_SPAWN));
+            owedEffects.owe(owner, java.util.Set.of(LifecycleEffect.CLEAR_INVENTORY));
+            assertThat(owedEffects.owed(owner))
+                    .containsExactlyInAnyOrder(LifecycleEffect.CLEAR_INVENTORY, LifecycleEffect.SEND_TO_SPAWN);
+            owedEffects.settle(owner, java.util.Set.of(LifecycleEffect.CLEAR_INVENTORY));
+            assertThat(owedEffects.owed(owner)).containsExactly(LifecycleEffect.SEND_TO_SPAWN);
+            assertThat(owedEffects.owed(PlayerUuid.of(UUID.randomUUID()))).isEmpty();
 
             // Deleting the island takes its OneBlock row with it.
             islands.deleteIsland(islandId);
