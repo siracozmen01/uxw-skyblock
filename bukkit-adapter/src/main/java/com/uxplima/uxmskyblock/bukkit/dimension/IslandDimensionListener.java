@@ -263,6 +263,10 @@ public final class IslandDimensionListener implements Listener {
                                 placement.get().template().actions());
                         dimensionService.markDimensionGenerated(islandId, targetDimension);
                     }
+                    // Where the player stands: on the platform the preset laid, or on land a mode brought
+                    // there, such as the Upside Down, which is not at the height the preset names.
+                    double arrivalY =
+                            w == null ? targetY + 1.0 : arrivalHeight(w, centerX, targetY + 1, centerZ, preset);
 
                     schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                         if (!player.isOnline()) {
@@ -277,13 +281,29 @@ public final class IslandDimensionListener implements Listener {
                         float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
                         float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
                         Location targetLoc =
-                                new Location(destWorld, centerX + 0.5, targetY + 1.0, centerZ + 0.5, yaw, pitch);
+                                new Location(destWorld, centerX + 0.5, arrivalY, centerZ + 0.5, yaw, pitch);
                         var unused = player.teleportAsync(targetLoc);
                         send(player, "dimension.arrived", dimensionName(player, targetDimension));
                     });
                 });
             }
         }
+    }
+
+    /**
+     * The height a player arrives standing at in the column, nearest the one the preset names, or that
+     * one with room made for them when nothing near is safe. On the thread that owns the column.
+     */
+    static double arrivalHeight(
+            World world, int x, int planned, int z, com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset) {
+        boolean underwater = preset.mode().playedUnderwater();
+        java.util.OptionalInt safe =
+                com.uxplima.uxmskyblock.bukkit.world.SafeArrival.standingY(world, x, planned, z, underwater);
+        if (safe.isPresent()) {
+            return safe.getAsInt();
+        }
+        com.uxplima.uxmskyblock.bukkit.world.SafeArrival.makeRoom(world, x, planned, z, underwater);
+        return planned;
     }
 
     /**

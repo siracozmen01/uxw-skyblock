@@ -324,6 +324,12 @@ public final class ConfigurationLoader {
                 "poseidon.conf",
                 com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig = loadConfig(
+                plugin,
+                dataDir,
+                "strangerrealms.conf",
+                com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -366,6 +372,7 @@ public final class ConfigurationLoader {
                 skyGridConfig,
                 boxedConfig,
                 poseidonConfig,
+                strangerRealmsConfig,
                 presetConfig);
 
         wiring.validate();

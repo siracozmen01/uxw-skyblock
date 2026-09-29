@@ -12,7 +12,8 @@ public enum GameModeType {
     CAVEBLOCK,
     SKYGRID,
     BOXED,
-    POSEIDON;
+    POSEIDON,
+    STRANGER_REALMS;
 
     /** Whether the mode is played under water, so that water is room to arrive in rather than a danger. */
     public boolean playedUnderwater() {

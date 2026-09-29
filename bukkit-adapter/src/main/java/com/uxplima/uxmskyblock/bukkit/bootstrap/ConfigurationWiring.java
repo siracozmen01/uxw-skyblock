@@ -109,6 +109,7 @@ public final class ConfigurationWiring {
     private final com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration skyGridConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration boxedConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration poseidonConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -188,6 +189,7 @@ public final class ConfigurationWiring {
             com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration skyGridConfig,
             com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration boxedConfig,
             com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration poseidonConfig,
+            com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -230,6 +232,8 @@ public final class ConfigurationWiring {
         this.skyGridConfig = Objects.requireNonNull(skyGridConfig, "skyGridConfig must not be null");
         this.boxedConfig = Objects.requireNonNull(boxedConfig, "boxedConfig must not be null");
         this.poseidonConfig = Objects.requireNonNull(poseidonConfig, "poseidonConfig must not be null");
+        this.strangerRealmsConfig =
+                Objects.requireNonNull(strangerRealmsConfig, "strangerRealmsConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -314,6 +318,7 @@ public final class ConfigurationWiring {
                 com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -514,6 +519,11 @@ public final class ConfigurationWiring {
      */
     public java.util.List<String> islandWorlds() {
         return presetConfig.worlds(nodeConfig.worldName());
+    }
+
+    /** Whether islands can be StrangerRealms islands, and how the Upside Down mirrors them. */
+    public com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig() {
+        return strangerRealmsConfig;
     }
 
     /** Whether islands can be Poseidon islands, and the ocean they lie at the bottom of. */

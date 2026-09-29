@@ -142,6 +142,23 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("Land a mode brought to the dimension, such as the Upside Down, is what the player stands on")
+    void thePlayerStandsOnTheLandThere() {
+        when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
+        listener.usePresets(island -> presetWith(Map.of(
+                com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_NETHER,
+                new com.uxplima.uxmskyblock.core.domain.preset.StartTemplate(
+                        java.util.List.of("uxm:upside-down"), 64))));
+        for (int y = 40; y <= 80; y++) {
+            netherWorld.getBlockAt(100, y, 200).setType(org.bukkit.Material.STONE);
+        }
+
+        listener.executeDimensionTeleport(travelling, IslandDimensionType.NETHER);
+
+        assertThat(sentTo()).get().extracting(Location::getY).isEqualTo(81.0);
+    }
+
+    @Test
     @DisplayName("A preset that names no Nether keeps it closed: nothing is built and nobody is sent into the void")
     void aPresetWithoutANetherBuildsNothing() {
         when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);

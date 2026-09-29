@@ -138,6 +138,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final com.uxplima.uxmskyblock.persistence.acid.SqlAcidIslandsAdapter acidIslandsAdapter;
     private final com.uxplima.uxmskyblock.persistence.boxed.SqlBoxedIslandsAdapter boxedIslandsAdapter;
     private final com.uxplima.uxmskyblock.persistence.poseidon.SqlPoseidonIslandsAdapter poseidonIslandsAdapter;
+    private final com.uxplima.uxmskyblock.persistence.stranger.SqlStrangerRealmsAdapter strangerRealmsAdapter;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
             profileCosmeticStorageAdapter;
@@ -208,6 +209,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
                 new com.uxplima.uxmskyblock.persistence.boxed.SqlBoxedIslandsAdapter(database.dataSource());
         this.poseidonIslandsAdapter =
                 new com.uxplima.uxmskyblock.persistence.poseidon.SqlPoseidonIslandsAdapter(database.dataSource());
+        this.strangerRealmsAdapter =
+                new com.uxplima.uxmskyblock.persistence.stranger.SqlStrangerRealmsAdapter(database.dataSource());
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
         this.islandRecycleStorageAdapter =
@@ -440,6 +443,10 @@ public final class PersistenceBootstrap implements AutoCloseable {
     /** Which islands are Poseidon islands. */
     public com.uxplima.uxmskyblock.core.application.poseidon.PoseidonIslandsPort poseidonIslandsPort() {
         return poseidonIslandsAdapter;
+    }
+
+    public com.uxplima.uxmskyblock.core.application.stranger.StrangerRealmsPort strangerRealmsPort() {
+        return strangerRealmsAdapter;
     }
 
     /** Which islands are Boxed islands, and the advancements each has earned. */

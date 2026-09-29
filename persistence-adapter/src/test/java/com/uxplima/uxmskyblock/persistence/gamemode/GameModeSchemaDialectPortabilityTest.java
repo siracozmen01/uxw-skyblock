@@ -284,12 +284,21 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(poseidon.exists(islandId)).isTrue();
             assertThat(poseidon.findAll()).contains(islandId);
 
+            // A StrangerRealms island: recorded once, found, gone with the island.
+            com.uxplima.uxmskyblock.persistence.stranger.SqlStrangerRealmsAdapter stranger =
+                    new com.uxplima.uxmskyblock.persistence.stranger.SqlStrangerRealmsAdapter(database.dataSource());
+            stranger.add(islandId);
+            stranger.add(islandId);
+            assertThat(stranger.exists(islandId)).isTrue();
+            assertThat(stranger.findAll()).contains(islandId);
+
             // Deleting the island takes its OneBlock row, its chunks and its sea with it.
             islands.deleteIsland(islandId);
             assertThat(acid.findAll()).doesNotContainKey(islandId);
             assertThat(acid.find(islandId)).isEmpty();
             assertThat(boxed.find(islandId)).isEmpty();
             assertThat(poseidon.exists(islandId)).isFalse();
+            assertThat(stranger.exists(islandId)).isFalse();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

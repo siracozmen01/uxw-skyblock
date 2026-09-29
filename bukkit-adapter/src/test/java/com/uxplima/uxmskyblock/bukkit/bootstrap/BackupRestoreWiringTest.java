@@ -288,6 +288,8 @@ class BackupRestoreWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration());
         when(config.chunkBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration());
+        when(config.strangerRealmsConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
         when(config.poseidonConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration.defaultConfiguration());
         when(config.boxedConfig())

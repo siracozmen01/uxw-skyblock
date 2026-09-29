@@ -113,6 +113,7 @@ public final class GameplayWiring {
     private final AcidIslandWiring acidIslandWiring;
     private final BoxedWiring boxedWiring;
     private final PoseidonWiring poseidonWiring;
+    private final StrangerRealmsWiring strangerRealmsWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -195,6 +196,7 @@ public final class GameplayWiring {
         this.boxedWiring = new BoxedWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
         this.poseidonWiring = new PoseidonWiring(config, persistence, scheduler, protectionListener);
+        this.strangerRealmsWiring = new StrangerRealmsWiring(config, persistence, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -335,6 +337,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.acidIslandWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.boxedWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.poseidonWiring.service()::forget);
+        this.cacheEviction.whenForgotten(this.strangerRealmsWiring.service()::forget);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
         // the answer so the path is not a query. An island id is a fresh uuid every time, so an
@@ -398,8 +401,13 @@ public final class GameplayWiring {
         actions.addAll(this.acidIslandWiring.startActions());
         actions.addAll(this.boxedWiring.startActions());
         actions.addAll(this.poseidonWiring.startActions());
+        actions.addAll(this.strangerRealmsWiring.startActions());
         caveBlockStart(config, scheduler).forEach(actions::add);
         return actions;
+    }
+
+    public StrangerRealmsWiring strangerRealmsWiring() {
+        return strangerRealmsWiring;
     }
 
     public PoseidonWiring poseidonWiring() {
