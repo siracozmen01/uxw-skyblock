@@ -142,7 +142,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("A preset that names no Nether builds nothing there, and the player arrives at the old height")
+    @DisplayName("A preset that names no Nether keeps it closed: nothing is built and nobody is sent into the void")
     void aPresetWithoutANetherBuildsNothing() {
         when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
         listener.usePresets(island -> presetWith(Map.of(
@@ -153,7 +153,14 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         listener.executeDimensionTeleport(travelling, IslandDimensionType.NETHER);
 
         verify(schematicEngine, never()).build(any(), any());
-        assertThat(sentTo()).get().extracting(Location::getY).isEqualTo(65.0);
+        assertThat(sentTo()).isEmpty();
+        org.mockito.ArgumentCaptor<net.kyori.adventure.text.Component> said =
+                org.mockito.ArgumentCaptor.forClass(net.kyori.adventure.text.Component.class);
+        verify(travelling, org.mockito.Mockito.atLeastOnce()).sendMessage(said.capture());
+        assertThat(said.getAllValues())
+                .extracting(
+                        net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
+                .anyMatch(line -> line.contains("dimension.closed_to_island"));
     }
 
     private static com.uxplima.uxmskyblock.core.domain.preset.StarterPreset presetWith(

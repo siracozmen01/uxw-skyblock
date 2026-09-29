@@ -238,11 +238,15 @@ public final class IslandDimensionListener implements Listener {
                 int centerX = loc.bounds().centerX();
                 int centerZ = loc.bounds().centerZ();
                 // What the island's preset builds in this dimension and at what height. A dimension
-                // the preset does not name gets nothing built, and the player arrives at the height
-                // the plugin always used.
+                // the preset does not name stays closed to the island: it used to send the player
+                // into an empty world, onto nothing, at height 64.
                 com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset = presets.apply(islandId);
                 Optional<com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.Placement> placement =
                         preset.dimensions().placeIn(targetDimension.id(), loc.bounds());
+                if (placement.isEmpty()) {
+                    send(player, "dimension.closed_to_island", dimensionName(player, targetDimension));
+                    return;
+                }
                 int targetY = placement
                         .map(com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.Placement::height)
                         .orElse(com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.DEFAULT_HEIGHT);
