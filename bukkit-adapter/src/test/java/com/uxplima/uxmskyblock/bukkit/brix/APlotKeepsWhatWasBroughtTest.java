@@ -172,6 +172,22 @@ class APlotKeepsWhatWasBroughtTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A window left open closes on the way in and on the way out, so it carries nothing across")
+    void anOpenWindowCloses() {
+        at(builder, 8);
+        builder.openInventory(server.createInventory(null, 27));
+        modes.check(builder);
+        assertThat(builder.getOpenInventory().getType())
+                .describedAs("the window opened before the seal is shut")
+                .isEqualTo(org.bukkit.event.inventory.InventoryType.CRAFTING);
+
+        at(builder, 1008);
+        builder.openInventory(server.createInventory(null, 54));
+        modes.check(builder);
+        assertThat(builder.getOpenInventory().getType()).isEqualTo(org.bukkit.event.inventory.InventoryType.CRAFTING);
+    }
+
+    @Test
     @DisplayName("A visitor looks on in adventure, and has their own mode and things back off the server")
     void aVisitorLooksOn() {
         visitor.getInventory().setItem(0, new ItemStack(Material.BREAD, 5));

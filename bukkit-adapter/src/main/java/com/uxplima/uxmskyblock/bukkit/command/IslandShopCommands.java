@@ -197,6 +197,10 @@ public final class IslandShopCommands {
             send(player, "shop.unknown_item", Placeholder.unparsed("item", item));
             return Cmd.OK;
         }
+        if (com.uxplima.uxmskyblock.bukkit.creative.SealedInventory.holds(player)) {
+            send(player, "sealed.refused");
+            return Cmd.OK;
+        }
         IslandShopService service = shopServiceProvider.get();
         if (service == null) {
             send(player, "shop.disabled");

@@ -228,6 +228,10 @@ public final class IslandShopMenu {
     void trade(Player player, IslandId islandId, Material material, int amount, boolean buying) {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         if (!buying) {
+            if (com.uxplima.uxmskyblock.bukkit.creative.SealedInventory.holds(player)) {
+                messages.send(player, "sealed.refused");
+                return;
+            }
             int held = TradableStacks.countOf(player, material);
             if (held < amount) {
                 messages.send(

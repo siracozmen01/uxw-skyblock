@@ -43,6 +43,14 @@ public final class SealedInventory {
 
     /** Whether the player has something kept aside. */
     public boolean isSealed(Player player) {
+        return holds(player);
+    }
+
+    /**
+     * Whether the player has something kept aside, so that what they hold now was made in a creative
+     * place and must not be sold, stored or carried out of it.
+     */
+    public static boolean holds(Player player) {
         return player.getPersistentDataContainer().has(ITEMS, PersistentDataType.BYTE_ARRAY);
     }
 
@@ -54,6 +62,8 @@ public final class SealedInventory {
         if (isSealed(player)) {
             return false;
         }
+        // A window left open would keep taking items across the seal: a vault page opened off the plot.
+        player.closeInventory();
         PersistentDataContainer data = player.getPersistentDataContainer();
         data.set(MODE, PersistentDataType.STRING, player.getGameMode().name());
         data.set(LEVEL, PersistentDataType.INTEGER, player.getLevel());
@@ -83,6 +93,8 @@ public final class SealedInventory {
         if (items == null) {
             return false;
         }
+        // A chest on the plot left open would hand its items to the inventory given back.
+        player.closeInventory();
         // The mode first, so the items kept do not arrive in a creative inventory.
         String mode = data.get(MODE, PersistentDataType.STRING);
         player.setGameMode(modeNamed(mode));

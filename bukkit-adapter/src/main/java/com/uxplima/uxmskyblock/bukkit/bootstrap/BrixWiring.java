@@ -22,6 +22,7 @@ public final class BrixWiring implements AutoCloseable {
     private final BrixService service;
     private final SchedulerPort scheduler;
     private final com.uxplima.uxmskyblock.bukkit.brix.BrixModes modes;
+    private final com.uxplima.uxmskyblock.bukkit.brix.BrixRules rules;
     private @org.jspecify.annotations.Nullable AutoCloseable beat;
 
     public BrixWiring(
@@ -42,6 +43,7 @@ public final class BrixWiring implements AutoCloseable {
                 configuration.messages(),
                 configuration.effectsConfig(),
                 new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler, configuration.messages()));
+        this.rules = new com.uxplima.uxmskyblock.bukkit.brix.BrixRules(service, islands, config.rules());
         if (config.enabled()) {
             this.beat = modes.start();
         }
@@ -62,6 +64,11 @@ public final class BrixWiring implements AutoCloseable {
     /** Who plays a plot in which mode, and what they brought, kept aside. */
     public com.uxplima.uxmskyblock.bukkit.brix.BrixModes modes() {
         return modes;
+    }
+
+    /** What cannot happen on a plot. */
+    public com.uxplima.uxmskyblock.bukkit.brix.BrixRules rules() {
+        return rules;
     }
 
     public BrixConfiguration config() {

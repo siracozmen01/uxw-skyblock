@@ -143,6 +143,24 @@ class IslandShopMenuTest {
     }
 
     @Test
+    @DisplayName("A player whose items are kept aside on a creative plot sells nothing from the window")
+    void aSealedPlayerSellsNothing() {
+        player.getInventory().addItem(new ItemStack(Material.DIAMOND, 10));
+        player.getPersistentDataContainer()
+                .set(
+                        java.util.Objects.requireNonNull(
+                                org.bukkit.NamespacedKey.fromString("uxmskyblock:sealed_items")),
+                        org.bukkit.persistence.PersistentDataType.BYTE_ARRAY,
+                        new byte[] {1});
+
+        menu.trade(player, ISLAND, Material.DIAMOND, 4, false);
+
+        verify(shop, never()).sell(any(), any(), anyString(), anyLong(), any());
+        assertThat(countOf(Material.DIAMOND)).isEqualTo(10);
+        assertThat(player.nextMessage()).contains("creative plot");
+    }
+
+    @Test
     @DisplayName("Selling takes the items and keeps them when the bank paid")
     void aPaidSaleKeepsTheItems() {
         player.getInventory().addItem(new ItemStack(Material.DIAMOND, 10));

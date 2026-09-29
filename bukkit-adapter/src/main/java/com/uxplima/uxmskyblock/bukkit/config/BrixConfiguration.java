@@ -18,14 +18,27 @@ import org.spongepowered.configurate.serialize.SerializationException;
  * @param enabled whether islands can be made as Brix plots
  * @param ground the ground a new plot is laid on
  * @param modes the game modes on a plot
+ * @param rules what cannot happen to a player on a plot
  */
-public record BrixConfiguration(boolean enabled, Ground ground, Modes modes) {
+public record BrixConfiguration(boolean enabled, Ground ground, Modes modes, Rules rules) {
 
     private static final Logger LOGGER = Logger.getLogger(BrixConfiguration.class.getName());
 
     public BrixConfiguration {
         Objects.requireNonNull(ground, "ground must not be null");
         Objects.requireNonNull(modes, "modes must not be null");
+        Objects.requireNonNull(rules, "rules must not be null");
+    }
+
+    /**
+     * What cannot happen to a player on a plot.
+     *
+     * @param noDamage whether nothing hurts a player on a plot, but the void below it
+     * @param noHunger whether nobody goes hungry on a plot
+     */
+    public record Rules(boolean noDamage, boolean noHunger) {
+
+        public static final Rules SHIPPED = new Rules(true, true);
     }
 
     /**
@@ -87,7 +100,7 @@ public record BrixConfiguration(boolean enabled, Ground ground, Modes modes) {
     }
 
     public static BrixConfiguration defaultConfiguration() {
-        return new BrixConfiguration(true, Ground.SHIPPED, Modes.SHIPPED);
+        return new BrixConfiguration(true, Ground.SHIPPED, Modes.SHIPPED, Rules.SHIPPED);
     }
 
     public static BrixConfiguration load(ConfigurationNode root) {
@@ -114,7 +127,11 @@ public record BrixConfiguration(boolean enabled, Ground ground, Modes modes) {
             LOGGER.warning(() -> "modules/brix.conf modes: " + e.getMessage() + ". The shipped modes are used.");
             modes = Modes.SHIPPED;
         }
-        return new BrixConfiguration(root.node("enabled").getBoolean(true), ground, modes);
+        ConfigurationNode rule = root.node("rules");
+        Rules rules = new Rules(
+                rule.node("no-damage").getBoolean(Rules.SHIPPED.noDamage()),
+                rule.node("no-hunger").getBoolean(Rules.SHIPPED.noHunger()));
+        return new BrixConfiguration(root.node("enabled").getBoolean(true), ground, modes, rules);
     }
 
     private static org.bukkit.GameMode gameMode(String written, org.bukkit.GameMode shipped) {

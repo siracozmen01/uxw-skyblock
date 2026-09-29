@@ -128,6 +128,10 @@ public final class IslandVaultWindow {
     /** Opens {@code page} of the island's vault for {@code player}, or says why it cannot. */
     public void open(Player player, int page) {
         Objects.requireNonNull(player, "player must not be null");
+        if (com.uxplima.uxmskyblock.bukkit.creative.SealedInventory.holds(player)) {
+            messages.send(player, "sealed.refused");
+            return;
+        }
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {

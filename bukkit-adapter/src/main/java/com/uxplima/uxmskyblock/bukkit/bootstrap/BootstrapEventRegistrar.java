@@ -39,6 +39,7 @@ public final class BootstrapEventRegistrar {
         }
         if (gameplayWiring.brixWiring().enabled()) {
             pm.registerEvents(gameplayWiring.brixWiring().modes(), plugin);
+            pm.registerEvents(gameplayWiring.brixWiring().rules(), plugin);
         }
         if (gameplayWiring.parkourWiring().enabled()) {
             pm.registerEvents(gameplayWiring.parkourWiring().runs(), plugin);
