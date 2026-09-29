@@ -11,6 +11,8 @@ import com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase;
 import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.leaderboard.IslandMetricProviders;
+import com.uxplima.uxmskyblock.core.application.leaderboard.LeaderboardMetricRegistry;
 import com.uxplima.uxmskyblock.core.application.mission.IslandMissionService;
 import com.uxplima.uxmskyblock.core.application.name.IslandNameService;
 import com.uxplima.uxmskyblock.core.application.performance.AdaptiveBackpressureController;
@@ -37,6 +39,7 @@ public final class GameplayCreationWiring {
     private final GameModeHierarchyService gameModeHierarchyService;
     private final IslandLocationService locationService;
     private final IslandLeaderboardService leaderboardService;
+    private final LeaderboardMetricRegistry leaderboardMetrics;
     private final IslandSeasonService seasonService;
     private final IslandMissionService missionService;
     private final @Nullable IslandMissionsMenu missionsMenu;
@@ -98,6 +101,9 @@ public final class GameplayCreationWiring {
                 100,
                 config.levelConfig().leaderboardFreshness(),
                 java.time.Clock.systemUTC());
+        // The level, worth and bank boards, and any a plugin adds, ranked by one registry.
+        this.leaderboardMetrics = new LeaderboardMetricRegistry();
+        IslandMetricProviders.registerInto(leaderboardMetrics, persistence.islandLeaderboardPort());
 
         this.seasonService = new IslandSeasonService(
                 persistence.islandSeasonStoragePort(),
@@ -163,6 +169,10 @@ public final class GameplayCreationWiring {
 
     public IslandLocationService locationService() {
         return locationService;
+    }
+
+    public LeaderboardMetricRegistry leaderboardMetrics() {
+        return leaderboardMetrics;
     }
 
     public IslandLeaderboardService leaderboardService() {

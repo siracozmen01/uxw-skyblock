@@ -180,6 +180,7 @@ final class CommandGroupBuilder {
                 tree.messages);
         progressionCommands.useBiomeRules(tree.biomeConfiguration);
         progressionCommands.useRecalculationCooldown(tree.recalculationCooldown);
+        progressionCommands.useLeaderboards(() -> tree.leaderboards);
 
         IslandMechanicsCommands mechanicsCommands = new IslandMechanicsCommands(
                 tree.islandLocationService,

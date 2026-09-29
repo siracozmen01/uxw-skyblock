@@ -147,6 +147,11 @@ class UxmSkyblockApiTest {
             public UxmSkyblockActions actions() {
                 return mockActions;
             }
+
+            @Override
+            public com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetrics leaderboards() {
+                throw new UnsupportedOperationException("not asked here");
+            }
         };
 
         UxmSkyblockApiProvider.register(mockApi);

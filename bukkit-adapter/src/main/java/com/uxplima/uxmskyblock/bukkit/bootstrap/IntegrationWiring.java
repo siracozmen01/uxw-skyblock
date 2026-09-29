@@ -333,6 +333,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setVaultWindow(gameplay.vaultWindow());
         this.commandTree.useLifecycle(gameplay.playerLifecycle());
         this.commandTree.useGameModes(gameplay.gameModeHierarchyService()::modeOf);
+        this.commandTree.useLeaderboards(gameplay.leaderboardMetrics());
         // A OneBlock island's standing, as the operator's menu file draws it and as placeholders.
         var oneBlockPanel = gameplay.oneBlockWiring().panel(this.menuEngine);
         this.commandTree.useOneBlock(oneBlockPanel);
@@ -386,6 +387,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 gameplay.scheduler(),
                 authority.sessionCoordinator(),
                 worldName);
+        this.apiBridge.useLeaderboards(gameplay.leaderboardMetrics());
     }
 
     public void enable() {

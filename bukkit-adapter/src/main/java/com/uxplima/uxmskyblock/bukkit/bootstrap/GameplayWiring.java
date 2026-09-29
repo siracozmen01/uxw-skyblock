@@ -392,6 +392,11 @@ public final class GameplayWiring {
         return economicWiring.bankService();
     }
 
+    /** Every metric the plugin ranks, its own and those another plugin registered. */
+    public com.uxplima.uxmskyblock.core.application.leaderboard.LeaderboardMetricRegistry leaderboardMetrics() {
+        return creationWiring.leaderboardMetrics();
+    }
+
     public IslandLeaderboardService leaderboardService() {
         return creationWiring.leaderboardService();
     }

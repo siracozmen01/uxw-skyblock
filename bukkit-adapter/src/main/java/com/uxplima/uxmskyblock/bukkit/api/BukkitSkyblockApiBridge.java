@@ -46,6 +46,8 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     private final Function<UUID, Optional<ProfileId>> activeProfileProvider;
     private final String defaultWorldName;
 
+    private com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics leaderboards;
+
     public BukkitSkyblockApiBridge(
             IslandStoragePort islandStoragePort,
             IslandBankPort islandBankPort,
@@ -105,6 +107,20 @@ public final class BukkitSkyblockApiBridge implements UxmSkyblockApi, UxmSkybloc
     @Override
     public UxmSkyblockActions actions() {
         return this;
+    }
+
+    /** The boards this API hands out, which the plugin builds before the API is published. */
+    public void useLeaderboards(com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetrics leaderboards) {
+        this.leaderboards = Objects.requireNonNull(leaderboards, "leaderboards must not be null");
+    }
+
+    @Override
+    public com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetrics leaderboards() {
+        com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetrics held = this.leaderboards;
+        if (held == null) {
+            throw new IllegalStateException("The leaderboards are not wired yet");
+        }
+        return held;
     }
 
     @Override

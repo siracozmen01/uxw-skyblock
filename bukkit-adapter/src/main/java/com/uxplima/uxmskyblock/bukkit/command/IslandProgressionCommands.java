@@ -63,6 +63,8 @@ public final class IslandProgressionCommands {
      * the end sooner had nowhere to say so. The shipped file is the default until the bootstrap
      * hands over the operator's.
      */
+    private Supplier<com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics> leaderboards = () -> null;
+
     private volatile BiomeConfiguration biomeRules = BiomeConfiguration.defaultConfiguration();
 
     private volatile RecalculationGate recalculationGate =
@@ -92,6 +94,12 @@ public final class IslandProgressionCommands {
         this.missionServiceProvider =
                 Objects.requireNonNull(missionServiceProvider, "missionServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+    }
+
+    /** The boards a plugin registered, which {@code /is top} shows by their metric id. */
+    public void useLeaderboards(
+            Supplier<com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics> leaderboards) {
+        this.leaderboards = java.util.Objects.requireNonNull(leaderboards, "leaderboards must not be null");
     }
 
     /** Tells the rescan command how long an island waits between two rescans. */
@@ -139,7 +147,8 @@ public final class IslandProgressionCommands {
     public LiteralArgumentBuilder<CommandSourceStack> buildTop() {
         return Cmd.literal("top")
                 .executes(ctx -> executeTop(ctx, "level"))
-                .then(Cmd.argument("category", StringArgumentType.word())
+                // A registered metric is named namespace:key, and a word stops at the colon.
+                .then(Cmd.argument("category", StringArgumentType.greedyString())
                         .executes(ctx -> executeTop(ctx, StringArgumentType.getString(ctx, "category"))));
     }
 
@@ -336,12 +345,24 @@ public final class IslandProgressionCommands {
 
     private int executeTop(CommandContext<CommandSourceStack> ctx, String category) {
         CommandSourceStack src = ctx.getSource();
-        LeaderboardCategory cat =
-                switch (category.toLowerCase(Locale.ROOT)) {
+        String asked = category.trim().toLowerCase(Locale.ROOT);
+        com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetrics registered = leaderboards.get();
+        com.uxplima.uxmskyblock.api.NamespacedId metricId = com.uxplima.uxmskyblock.api.NamespacedId.of(asked);
+        if (registered != null
+                && com.uxplima.uxmskyblock.core.application.leaderboard.IslandMetricProviders.categoryOf(metricId)
+                        .isEmpty()) {
+            var provider = registered.provider(metricId);
+            if (provider.isPresent()) {
+                return executeMetricTop(src, registered, provider.get());
+            }
+        }
+        LeaderboardCategory cat = com.uxplima.uxmskyblock.core.application.leaderboard.IslandMetricProviders.categoryOf(
+                        metricId)
+                .orElseGet(() -> switch (asked) {
                     case "worth" -> LeaderboardCategory.WORTH;
                     case "bank" -> LeaderboardCategory.BANK;
                     default -> LeaderboardCategory.LEVEL;
-                };
+                });
 
         schedulerPort.async(() -> {
             var entries = islandLeaderboardService.getTop(cat, 10);
@@ -403,6 +424,46 @@ public final class IslandProgressionCommands {
             });
         });
 
+        return Cmd.OK;
+    }
+
+    /**
+     * The board of a metric another plugin registered.
+     *
+     * <p>The owner is read off the main thread, as each shipped board is. The board's name comes from
+     * the reader's language file under {@code leaderboard.metrics}, keyed by the id with its colon
+     * written as an underscore, and otherwise from the owner.
+     */
+    private int executeMetricTop(
+            CommandSourceStack src,
+            com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetrics registered,
+            com.uxplima.uxmskyblock.api.leaderboard.LeaderboardMetricProvider provider) {
+        schedulerPort.async(() -> {
+            var board = registered.ranked(provider.metricId(), 10);
+            schedulerPort.onGlobal(() -> {
+                Audience audience = src.getSender();
+                String key = provider.metricId().asString().replace(':', '_');
+                String title = messages.named(audience, "leaderboard.metrics", key, provider.displayName());
+                send(audience, "leaderboard.header", Placeholder.unparsed("category", title));
+                if (board.isEmpty()) {
+                    send(audience, "leaderboard.empty");
+                    return;
+                }
+                for (var ranked : board) {
+                    send(
+                            audience,
+                            "leaderboard.entry",
+                            Placeholder.unparsed("rank", Integer.toString(ranked.rank())),
+                            Placeholder.unparsed("name", ranked.reading().displayName()),
+                            Placeholder.component(
+                                    "score",
+                                    messages.renderPlain(
+                                            audience,
+                                            "leaderboard.score_value",
+                                            Placeholder.unparsed("value", ranked.formatted()))));
+                }
+            });
+        });
         return Cmd.OK;
     }
 

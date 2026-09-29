@@ -287,6 +287,7 @@ public final class IslandCommandTree {
     }
 
     private com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlockPanel;
+    com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics leaderboards;
 
     com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle playerLifecycle;
 
@@ -303,6 +304,11 @@ public final class IslandCommandTree {
     /** What carries out the operator's lifecycle rules on a leave, a kick and a reset. */
     public void useLifecycle(com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle lifecycle) {
         this.playerLifecycle = lifecycle;
+    }
+
+    /** The boards {@code /is top} can show beyond level, worth and bank. */
+    public void useLeaderboards(com.uxplima.uxmskyblock.api.leaderboard.@Nullable LeaderboardMetrics leaderboards) {
+        this.leaderboards = leaderboards;
     }
 
     /** What {@code /is oneblock} opens, while the operator lets islands be OneBlock islands. */
