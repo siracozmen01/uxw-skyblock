@@ -98,6 +98,11 @@ class ALightGlimmersAcrossTest extends MockBukkitHarness {
             public void add(IslandId islandId) {
                 stranger.add(islandId);
             }
+
+            @Override
+            public int farthestReach() {
+                return 0;
+            }
         });
         service.prime();
         SchedulerPort scheduler = mock(SchedulerPort.class);

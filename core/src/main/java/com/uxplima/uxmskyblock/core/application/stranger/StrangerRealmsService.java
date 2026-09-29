@@ -30,6 +30,11 @@ public final class StrangerRealmsService {
         islands.add(islandId);
     }
 
+    /** How far the furthest StrangerRealms island reaches, across the network. Off the main thread. */
+    public int farthestReach() {
+        return port.farthestReach();
+    }
+
     /** Whether the island is a StrangerRealms island. Memory only. */
     public boolean isStranger(IslandId islandId) {
         return islands.contains(islandId);

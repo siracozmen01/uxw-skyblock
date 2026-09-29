@@ -42,6 +42,11 @@ class StrangerClaimsTest {
         public void add(IslandId islandId) {
             stranger.add(islandId);
         }
+
+        @Override
+        public int farthestReach() {
+            return 0;
+        }
     });
 
     @Test

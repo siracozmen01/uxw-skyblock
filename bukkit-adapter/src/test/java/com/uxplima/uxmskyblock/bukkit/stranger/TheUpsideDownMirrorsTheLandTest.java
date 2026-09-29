@@ -91,6 +91,11 @@ class TheUpsideDownMirrorsTheLandTest extends MockBukkitHarness {
             public void add(IslandId islandId) {
                 recorded.add(islandId);
             }
+
+            @Override
+            public int farthestReach() {
+                return 0;
+            }
         });
         scheduler = mock(SchedulerPort.class);
         doAnswer(call -> {

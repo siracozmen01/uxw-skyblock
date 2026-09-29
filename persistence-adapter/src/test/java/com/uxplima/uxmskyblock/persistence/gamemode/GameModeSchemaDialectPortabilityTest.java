@@ -291,6 +291,9 @@ class GameModeSchemaDialectPortabilityTest {
             stranger.add(islandId);
             assertThat(stranger.exists(islandId)).isTrue();
             assertThat(stranger.findAll()).contains(islandId);
+            assertThat(stranger.farthestReach())
+                    .describedAs("the edge of the island furthest from the centre, on x or z")
+                    .isGreaterThan(0);
 
             // Deleting the island takes its OneBlock row, its chunks and its sea with it.
             islands.deleteIsland(islandId);
@@ -299,6 +302,7 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(boxed.find(islandId)).isEmpty();
             assertThat(poseidon.exists(islandId)).isFalse();
             assertThat(stranger.exists(islandId)).isFalse();
+            assertThat(stranger.farthestReach()).isZero();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

@@ -95,6 +95,11 @@ class TheWarpedCompassPointsAcrossTest extends MockBukkitHarness {
             public void add(IslandId islandId) {
                 stranger.add(islandId);
             }
+
+            @Override
+            public int farthestReach() {
+                return 0;
+            }
         });
         service.prime();
         compass = new WarpedCompass(

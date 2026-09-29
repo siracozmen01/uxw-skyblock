@@ -16,7 +16,8 @@ public record StrangerRealmsConfiguration(
         Mobs mobs,
         Glimmer glimmer,
         Compass compass,
-        com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth claim) {
+        com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth claim,
+        Border border) {
 
     private static final Logger LOGGER = Logger.getLogger(StrangerRealmsConfiguration.class.getName());
 
@@ -149,6 +150,49 @@ public record StrangerRealmsConfiguration(
         Objects.requireNonNull(glimmer, "glimmer must not be null");
         Objects.requireNonNull(compass, "compass must not be null");
         Objects.requireNonNull(claim, "claim must not be null");
+        Objects.requireNonNull(border, "border must not be null");
+    }
+
+    /**
+     * The border of the StrangerRealms land, which grows as islands are made anywhere on the network.
+     *
+     * @param enabled whether the plugin sets the border at all
+     * @param checkEvery how often the furthest island is read and the border moved
+     * @param centerX where the border is centred, which is the centre of the island grid
+     * @param centerZ where the border is centred, which is the centre of the island grid
+     * @param rule how wide the border is for the furthest island
+     * @param transition how long the border takes to move to a new width
+     * @param worlds the worlds the border is set in; empty means every world only StrangerRealms
+     *     presets make islands in
+     */
+    public record Border(
+            boolean enabled,
+            java.time.Duration checkEvery,
+            double centerX,
+            double centerZ,
+            com.uxplima.uxmskyblock.core.domain.stranger.RealmBorder rule,
+            java.time.Duration transition,
+            List<String> worlds) {
+
+        public static final Border SHIPPED = new Border(
+                true,
+                java.time.Duration.ofMinutes(1),
+                0,
+                0,
+                com.uxplima.uxmskyblock.core.domain.stranger.RealmBorder.SHIPPED,
+                java.time.Duration.ofSeconds(30),
+                List.of());
+
+        public Border {
+            Objects.requireNonNull(checkEvery, "checkEvery must not be null");
+            Objects.requireNonNull(rule, "rule must not be null");
+            Objects.requireNonNull(transition, "transition must not be null");
+            worlds = List.copyOf(worlds);
+            if (checkEvery.toMillis() < 50 || transition.isNegative()) {
+                throw new IllegalArgumentException(
+                        "check-every must be at least one tick and the transition must not be negative");
+            }
+        }
     }
 
     public static StrangerRealmsConfiguration defaultConfiguration() {
@@ -158,7 +202,8 @@ public record StrangerRealmsConfiguration(
                 Mobs.SHIPPED,
                 Glimmer.SHIPPED,
                 Compass.SHIPPED,
-                com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth.SHIPPED);
+                com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth.SHIPPED,
+                Border.SHIPPED);
     }
 
     public static StrangerRealmsConfiguration load(ConfigurationNode root) {
@@ -208,7 +253,30 @@ public record StrangerRealmsConfiguration(
                         AcidIslandConfiguration.strings(mobs.node("effects"), Mobs.SHIPPED.effects())),
                 glimmer,
                 compass,
-                claim(root.node("claim")));
+                claim(root.node("claim")),
+                border(root.node("border")));
+    }
+
+    private static Border border(ConfigurationNode node) {
+        Border shipped = Border.SHIPPED;
+        com.uxplima.uxmskyblock.core.domain.stranger.RealmBorder rule = shipped.rule();
+        try {
+            return new Border(
+                    node.node("enabled").getBoolean(shipped.enabled()),
+                    AcidIslandConfiguration.durationOf(node.node("check-every").getString(""), shipped.checkEvery()),
+                    node.node("center-x").getDouble(shipped.centerX()),
+                    node.node("center-z").getDouble(shipped.centerZ()),
+                    new com.uxplima.uxmskyblock.core.domain.stranger.RealmBorder(
+                            node.node("margin").getInt(rule.margin()),
+                            node.node("minimum").getInt(rule.minimum()),
+                            node.node("maximum").getInt(rule.maximum())),
+                    AcidIslandConfiguration.durationOf(node.node("transition").getString(""), shipped.transition()),
+                    AcidIslandConfiguration.strings(node.node("worlds"), shipped.worlds()));
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(
+                    () -> "modules/strangerrealms.conf border: " + e.getMessage() + ". The shipped border is used.");
+            return shipped;
+        }
     }
 
     private static com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth claim(ConfigurationNode node) {

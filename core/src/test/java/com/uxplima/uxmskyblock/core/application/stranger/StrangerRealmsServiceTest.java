@@ -29,6 +29,11 @@ class StrangerRealmsServiceTest {
         public void add(IslandId islandId) {
             table.add(islandId);
         }
+
+        @Override
+        public int farthestReach() {
+            return 0;
+        }
     });
 
     @Test
@@ -73,6 +78,11 @@ class StrangerRealmsServiceTest {
                             @Override
                             public void add(IslandId islandId) {
                                 table.add(islandId);
+                            }
+
+                            @Override
+                            public int farthestReach() {
+                                return 0;
                             }
                         })
                         .prime())

@@ -53,6 +53,25 @@ public final class SqlStrangerRealmsAdapter implements StrangerRealmsPort {
     }
 
     @Override
+    public int farthestReach() {
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement ps = conn.prepareStatement("SELECT MAX(ABS(l.min_x)), MAX(ABS(l.max_x)),"
+                        + " MAX(ABS(l.min_z)), MAX(ABS(l.max_z))"
+                        + " FROM island_locations l JOIN stranger_claims s ON s.island_id = l.island_id");
+                ResultSet rs = ps.executeQuery()) {
+            int reach = 0;
+            if (rs.next()) {
+                for (int column = 1; column <= 4; column++) {
+                    reach = Math.max(reach, rs.getInt(column));
+                }
+            }
+            return reach;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read how far the StrangerRealms islands reach", e);
+        }
+    }
+
+    @Override
     public void add(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         try (Connection conn = dataSource.getConnection();

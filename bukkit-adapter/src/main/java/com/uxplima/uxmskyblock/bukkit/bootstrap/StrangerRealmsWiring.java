@@ -33,6 +33,7 @@ public final class StrangerRealmsWiring implements AutoCloseable {
     private final com.uxplima.uxmskyblock.bukkit.stranger.WarpedCompass compass;
     private boolean recipeAdded;
     private @org.jspecify.annotations.Nullable AutoCloseable beat;
+    private @org.jspecify.annotations.Nullable AutoCloseable borderBeat;
 
     private final com.uxplima.uxmskyblock.core.application.stranger.StrangerClaims claims;
 
@@ -62,6 +63,12 @@ public final class StrangerRealmsWiring implements AutoCloseable {
                 realms, scheduler, configuration.messages(), config.compass());
         if (config.enabled() && config.compass().enabled()) {
             this.beat = compass.start();
+        }
+        if (config.enabled() && config.border().enabled()) {
+            java.util.List<String> bordered = borderedWorlds(configuration);
+            this.borderBeat = new com.uxplima.uxmskyblock.bukkit.stranger.RealmBorders(
+                            service, scheduler, config.border(), () -> bordered, org.bukkit.Bukkit::getWorld)
+                    .start();
         }
         scheduler.async(() -> {
             try {
@@ -107,6 +114,31 @@ public final class StrangerRealmsWiring implements AutoCloseable {
         });
     }
 
+    /**
+     * The worlds the border is set in: those the operator names, or else every world that only
+     * StrangerRealms presets make islands in. A world another preset shares is never bordered.
+     */
+    static java.util.List<String> borderedWorlds(ConfigurationWiring configuration) {
+        StrangerRealmsConfiguration config = configuration.strangerRealmsConfig();
+        if (!config.border().worlds().isEmpty()) {
+            return config.border().worlds();
+        }
+        String islandWorld = configuration.nodeConfig().worldName();
+        java.util.Set<String> stranger = new java.util.LinkedHashSet<>();
+        java.util.Set<String> shared = new java.util.HashSet<>();
+        for (com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset :
+                configuration.presetConfig().presets()) {
+            String world = preset.worldOr(islandWorld);
+            if (preset.mode() == com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.STRANGER_REALMS) {
+                stranger.add(world);
+            } else {
+                shared.add(world);
+            }
+        }
+        stranger.removeAll(shared);
+        return java.util.List.copyOf(stranger);
+    }
+
     /** Takes the recipe away and stops the compass turning, before the server stops. */
     @Override
     public void close() {
@@ -121,6 +153,15 @@ public final class StrangerRealmsWiring implements AutoCloseable {
                 running.close();
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Stopping the warped compass failed.", e);
+            }
+        }
+        AutoCloseable moving = borderBeat;
+        borderBeat = null;
+        if (moving != null) {
+            try {
+                moving.close();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Stopping the StrangerRealms border failed.", e);
             }
         }
     }

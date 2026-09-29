@@ -15,4 +15,10 @@ public interface StrangerRealmsPort {
 
     /** Records an island as a StrangerRealms island. A second record changes nothing. */
     void add(IslandId islandId);
+
+    /**
+     * How far from the grid's centre, along x or z, the edge of the furthest StrangerRealms island lies,
+     * across every server that shares the database. Zero when there is none.
+     */
+    int farthestReach();
 }
