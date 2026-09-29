@@ -7,5 +7,6 @@ public enum GameModeType {
     SKYBLOCK,
     SURVIVAL,
     ONEBLOCK,
-    CHUNKBLOCK
+    CHUNKBLOCK,
+    ACID_ISLAND
 }

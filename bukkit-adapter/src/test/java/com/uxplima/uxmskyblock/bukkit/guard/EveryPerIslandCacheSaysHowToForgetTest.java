@@ -106,6 +106,10 @@ class EveryPerIslandCacheSaysHowToForgetTest {
                 .contains("temporaryAccessService::forgetIsland")
                 .contains("antiAbuseService()::forgetIsland")
                 .contains("bankruptcyService()::forgetIsland");
+        assertThat(wiring)
+                .describedAs("the game modes that answer a step from memory: the chunks and the acid seas")
+                .contains("chunkBlockWiring.service()::forget")
+                .contains("acidIslandWiring.service()::forget");
     }
 
     @Test

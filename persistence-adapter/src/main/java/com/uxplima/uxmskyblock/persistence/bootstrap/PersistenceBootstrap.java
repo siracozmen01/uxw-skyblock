@@ -135,6 +135,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final SqlNotificationAdapter notificationAdapter;
     private final com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter clusterNodesAdapter;
     private final com.uxplima.uxmskyblock.persistence.chunkblock.SqlChunkTerritoryAdapter chunkTerritoryAdapter;
+    private final com.uxplima.uxmskyblock.persistence.acid.SqlAcidIslandsAdapter acidIslandsAdapter;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
             profileCosmeticStorageAdapter;
@@ -199,6 +200,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.clusterNodesAdapter = new com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter(database);
         this.chunkTerritoryAdapter =
                 new com.uxplima.uxmskyblock.persistence.chunkblock.SqlChunkTerritoryAdapter(database.dataSource());
+        this.acidIslandsAdapter =
+                new com.uxplima.uxmskyblock.persistence.acid.SqlAcidIslandsAdapter(database.dataSource());
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
         this.islandRecycleStorageAdapter =
@@ -426,6 +429,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ActivityFeedStoragePort activityFeedStoragePort() {
         return activityFeedAdapter;
+    }
+
+    /** Which islands are AcidIsland islands, and where their seas stand. */
+    public com.uxplima.uxmskyblock.core.application.acid.AcidIslandsPort acidIslandsPort() {
+        return acidIslandsAdapter;
     }
 
     /** The chunks each ChunkBlock island has open. */

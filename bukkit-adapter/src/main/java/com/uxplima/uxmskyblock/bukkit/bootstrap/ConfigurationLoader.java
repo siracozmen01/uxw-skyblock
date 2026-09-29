@@ -294,6 +294,12 @@ public final class ConfigurationLoader {
                 "chunkblock.conf",
                 com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration acidIslandConfig = loadConfig(
+                plugin,
+                dataDir,
+                "acidisland.conf",
+                com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -331,6 +337,7 @@ public final class ConfigurationLoader {
                 oneBlockConfig,
                 lifecycleConfig,
                 chunkBlockConfig,
+                acidIslandConfig,
                 presetConfig);
 
         wiring.validate();

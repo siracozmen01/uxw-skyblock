@@ -32,6 +32,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEffect;
 import com.uxplima.uxmskyblock.core.domain.network.NodeHealth;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.persistence.acid.SqlAcidIslandsAdapter;
 import com.uxplima.uxmskyblock.persistence.chunkblock.SqlChunkTerritoryAdapter;
 import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
@@ -256,8 +257,15 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(chunks.findAll().get(islandId).opened())
                     .containsExactly(new ChunkPos(1, 0), new ChunkPos(-1, 0));
 
-            // Deleting the island takes its OneBlock row and its chunks with it.
+            // An AcidIsland island's sea level: recorded once, a second record keeps the first.
+            SqlAcidIslandsAdapter acid = new SqlAcidIslandsAdapter(database.dataSource());
+            acid.add(islandId, 97);
+            acid.add(islandId, 40);
+            assertThat(acid.findAll()).containsEntry(islandId, 97);
+
+            // Deleting the island takes its OneBlock row, its chunks and its sea with it.
             islands.deleteIsland(islandId);
+            assertThat(acid.findAll()).doesNotContainKey(islandId);
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

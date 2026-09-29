@@ -110,6 +110,7 @@ public final class GameplayWiring {
     private final IslandCacheEviction cacheEviction;
     private final OneBlockWiring oneBlockWiring;
     private final ChunkBlockWiring chunkBlockWiring;
+    private final AcidIslandWiring acidIslandWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -188,6 +189,7 @@ public final class GameplayWiring {
         this.oneBlockWiring = new OneBlockWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
         this.chunkBlockWiring = new ChunkBlockWiring(config, persistence, scheduler, protectionListener);
+        this.acidIslandWiring = new AcidIslandWiring(config, persistence, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -199,7 +201,9 @@ public final class GameplayWiring {
                 this.economicWiring.upgradeService(),
                 java.util.stream.Stream.concat(
                                 this.oneBlockWiring.startActions().stream(),
-                                this.chunkBlockWiring.startActions().stream())
+                                java.util.stream.Stream.concat(
+                                        this.chunkBlockWiring.startActions().stream(),
+                                        this.acidIslandWiring.startActions().stream()))
                         .toList());
 
         // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
@@ -316,6 +320,8 @@ public final class GameplayWiring {
                 .whenScored((islandId, score) ->
                         this.chunkBlockWiring.service().onLevel(islandId, score.calculatedLevel()));
         this.cacheEviction.whenForgotten(this.economicWiring.worthService()::forgetIsland);
+        this.cacheEviction.whenForgotten(this.chunkBlockWiring.service()::forget);
+        this.cacheEviction.whenForgotten(this.acidIslandWiring.service()::forget);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
         // the answer so the path is not a query. An island id is a fresh uuid every time, so an
@@ -345,6 +351,10 @@ public final class GameplayWiring {
     }
 
     /** The OneBlock game mode's service and the schedule that writes its counts. */
+    public AcidIslandWiring acidIslandWiring() {
+        return acidIslandWiring;
+    }
+
     public ChunkBlockWiring chunkBlockWiring() {
         return chunkBlockWiring;
     }
