@@ -1,0 +1,207 @@
+package com.uxplima.uxmskyblock.persistence.gamemode;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
+
+import com.uxplima.uxmlib.storage.migration.MigrationRunner;
+import com.uxplima.uxmlib.storage.sql.Database;
+import com.uxplima.uxmlib.storage.sql.Dialect;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstance;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
+import com.uxplima.uxmskyblock.core.domain.gamemode.PrimaryGameplayRootRef;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
+import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
+import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
+import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
+import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
+import com.uxplima.uxmskyblock.persistence.oneblock.SqlOneBlockProgressAdapter;
+import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
+import com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb;
+import com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMySql;
+import com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.testcontainers.containers.MariaDBContainer;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/**
+ * The game mode schema, and the island authority beside it, does the same on every engine a customer
+ * runs: PostgreSQL, MySQL, MariaDB and SQLite.
+ *
+ * <p>The game mode architecture names this test. Each engine was given its own schema and each was
+ * trusted to read it the same way, and the lab server showed what that trust costs: PostgreSQL
+ * refused a boolean compared with a number and every island creation failed there. Here every
+ * migration runs on each engine from nothing, and the rows the game mode layer writes are written,
+ * changed and read back: a profile's instance, the island it is bound to, a OneBlock island's count,
+ * and the island's authority lease with its epoch.
+ */
+@Tag("database-integration")
+@Execution(ExecutionMode.SAME_THREAD)
+@SuppressWarnings("NullAway")
+class GameModeSchemaDialectPortabilityTest {
+
+    private static final ServerNodeId NODE = ServerNodeId.of("node-alpha");
+
+    private static MariaDBContainer<?> mariaDbContainer;
+    private static MySQLContainer<?> mySqlContainer;
+    private static PostgreSQLContainer<?> postgresContainer;
+
+    @BeforeAll
+    static void startEngines() {
+        mariaDbContainer = DatabaseTestFixture.startMariaDbIfEnabled();
+        mySqlContainer = DatabaseTestFixture.startMySqlIfEnabled();
+        postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
+    }
+
+    @AfterAll
+    static void stopEngines() {
+        if (mariaDbContainer != null) {
+            mariaDbContainer.stop();
+        }
+        if (mySqlContainer != null) {
+            mySqlContainer.stop();
+        }
+        if (postgresContainer != null) {
+            postgresContainer.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("SQLite: the game mode schema migrates, writes, changes and reads back")
+    void sqlite() throws Exception {
+        Database database = DatabaseTestFixture.createSqliteInMemory();
+        try (Connection conn = database.connection();
+                Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys = ON;");
+        }
+        assertTheSchemaIsPortable(database);
+    }
+
+    @Test
+    @EnabledIfMariaDb
+    @DisplayName("MariaDB: the game mode schema migrates, writes, changes and reads back")
+    void mariaDb() throws Exception {
+        assertTheSchemaIsPortable(DatabaseTestFixture.connectToContainer(mariaDbContainer, Dialect.MYSQL));
+    }
+
+    @Test
+    @EnabledIfMySql
+    @DisplayName("MySQL: the game mode schema migrates, writes, changes and reads back")
+    void mySql() throws Exception {
+        assertTheSchemaIsPortable(DatabaseTestFixture.connectToContainer(mySqlContainer, Dialect.MYSQL));
+    }
+
+    @Test
+    @EnabledIfPostgres
+    @DisplayName("PostgreSQL: the game mode schema migrates, writes, changes and reads back")
+    void postgres() throws Exception {
+        assertTheSchemaIsPortable(DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES));
+    }
+
+    private static void assertTheSchemaIsPortable(Database database) throws Exception {
+        try {
+            new MigrationRunner(database).apply(SkyblockMigrations.getMigrations(database.dialect()));
+
+            PlayerIslandStorageAdapter islands = new PlayerIslandStorageAdapter(database);
+            SqlGameModeHierarchyAdapter hierarchy = new SqlGameModeHierarchyAdapter(database.dataSource());
+            SqlOneBlockProgressAdapter oneBlock = new SqlOneBlockProgressAdapter(database.dataSource());
+
+            PlayerUuid owner = PlayerUuid.of(UUID.randomUUID());
+            ProfileId profile = ProfileId.of(UUID.randomUUID());
+            account(database, owner, profile);
+            IslandId islandId = IslandId.of(UUID.randomUUID());
+            islands.saveIsland(
+                    Island.create(islandId, IslandBounds.fromCenterAndRadius(0, 0, 100), owner, profile, Instant.now()),
+                    IslandLocation.fromCenterAndRadius(islandId, "skyblock", 0, 0, 100));
+
+            // A profile's instance, written, moved to another mode and read back.
+            Instant created = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+            GameModeInstance instance = GameModeInstance.create(
+                    GameModeInstanceId.random(), profile, GameModeType.SKYBLOCK, "classic", created);
+            hierarchy.saveGameModeInstance(instance);
+            hierarchy.saveGameModeInstance(new GameModeInstance(
+                    instance.id(), profile, GameModeType.ONEBLOCK, "oneblock", created, created.plusSeconds(60)));
+            assertThat(hierarchy.findInstanceByProfileId(profile)).get().satisfies(read -> {
+                assertThat(read.id()).isEqualTo(instance.id());
+                assertThat(read.gameModeType()).isEqualTo(GameModeType.ONEBLOCK);
+                assertThat(read.rulesetConfig()).isEqualTo("oneblock");
+                assertThat(read.updatedAt()).isAfter(read.createdAt());
+            });
+
+            // The island the instance is bound to, found from either side.
+            hierarchy.savePrimaryGameplayRootRef(PrimaryGameplayRootRef.forIsland(
+                    instance.id(), islandId.value().toString(), created));
+            assertThat(hierarchy.findRootRefByInstanceId(instance.id()))
+                    .get()
+                    .extracting(PrimaryGameplayRootRef::rootId)
+                    .isEqualTo(islandId.value().toString());
+            assertThat(hierarchy.findRootRefByRootId(islandId.value().toString(), "ISLAND"))
+                    .get()
+                    .extracting(PrimaryGameplayRootRef::gameModeInstanceId)
+                    .isEqualTo(instance.id());
+
+            // A OneBlock island's block and count, added to twice.
+            oneBlock.start(islandId, 0, 100, 0);
+            oneBlock.addBreaks(islandId, 3);
+            oneBlock.addBreaks(islandId, 4);
+            assertThat(oneBlock.find(islandId)).get().satisfies(read -> {
+                assertThat(read.y()).isEqualTo(100);
+                assertThat(read.blocksBroken()).isEqualTo(7);
+            });
+            assertThat(oneBlock.findAll()).extracting(read -> read.islandId()).contains(islandId);
+
+            // The island's authority: taken, renewed under its epoch, refused under a stale one.
+            IslandAuthorityOutcome taken = islands.acquireAuthority(islandId, NODE, 60);
+            assertThat(taken.isSuccess()).isTrue();
+            long epoch = islands.findAuthority(islandId).orElseThrow().authorityEpoch();
+            assertThat(islands.renewAuthority(islandId, NODE, epoch, 60).isSuccess())
+                    .isTrue();
+            assertThat(islands.renewAuthority(islandId, NODE, epoch + 5, 60).isRejected())
+                    .isTrue();
+            assertThat(islands.findAuthority(islandId).orElseThrow().leaseExpiresAt())
+                    .isAfter(Instant.now());
+
+            // Deleting the island takes its OneBlock row with it.
+            islands.deleteIsland(islandId);
+            assertThat(oneBlock.find(islandId)).isEmpty();
+        } finally {
+            if (!database.isClosed()) {
+                database.close();
+            }
+        }
+    }
+
+    private static void account(Database database, PlayerUuid owner, ProfileId profile) throws Exception {
+        try (Connection conn = database.connection()) {
+            try (PreparedStatement stmt =
+                    conn.prepareStatement("INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
+                stmt.setString(1, owner.value().toString());
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt =
+                    conn.prepareStatement("INSERT INTO player_profiles (profile_id, player_uuid) VALUES (?, ?)")) {
+                stmt.setString(1, profile.value().toString());
+                stmt.setString(2, owner.value().toString());
+                stmt.executeUpdate();
+            }
+        }
+    }
+}
