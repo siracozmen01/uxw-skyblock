@@ -11,6 +11,15 @@ public enum IslandDimensionType {
     NETHER,
     THE_END;
 
+    /** The id a start template bundle and a backup know this dimension by. */
+    public DimensionId id() {
+        return switch (this) {
+            case OVERWORLD -> DimensionId.OVERWORLD;
+            case NETHER -> DimensionId.THE_NETHER;
+            case THE_END -> DimensionId.THE_END;
+        };
+    }
+
     public boolean isNether() {
         return this == NETHER;
     }

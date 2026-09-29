@@ -12,6 +12,7 @@ import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
  * <p>{@code mode} is the game mode the island plays, which its game mode instance records.
  * {@code start} names the creation actions that build it, in order: a classic island lays a platform,
  * a OneBlock island sets its one block. Creation runs the list and never asks which mode it is making.
+ * {@code dimensions} says the same for the Nether, the End and any other dimension, by dimension id.
  */
 public record StarterPreset(
         String id,
@@ -20,7 +21,8 @@ public record StarterPreset(
         String schematicPath,
         IslandBiome defaultBiome,
         GameModeType mode,
-        List<String> start) {
+        List<String> start,
+        StartTemplateBundle dimensions) {
 
     /** The action that lays the starter platform, which a preset runs when it names none. */
     public static final String PLATFORM = "uxm:platform";
@@ -33,10 +35,23 @@ public record StarterPreset(
         Objects.requireNonNull(defaultBiome, "defaultBiome must not be null");
         Objects.requireNonNull(mode, "mode must not be null");
         Objects.requireNonNull(start, "start must not be null");
+        Objects.requireNonNull(dimensions, "dimensions must not be null");
         start = List.copyOf(start);
         if (start.isEmpty()) {
             throw new IllegalArgumentException("The preset " + id + " builds nothing: its start names no action");
         }
+    }
+
+    /** A preset that starts every other dimension the way the plugin ships. */
+    public StarterPreset(
+            String id,
+            String displayName,
+            String description,
+            String schematicPath,
+            IslandBiome defaultBiome,
+            GameModeType mode,
+            List<String> start) {
+        this(id, displayName, description, schematicPath, defaultBiome, mode, start, StartTemplateBundle.shipped());
     }
 
     /** A skyblock preset that lays the starter platform. */

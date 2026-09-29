@@ -35,6 +35,23 @@ public final class StarterSchematicEngine {
                 pastePreset(start.world(), start.centerX(), start.y(), start.centerZ(), start.preset());
             }
         });
+        actions.register(new CreationActionProvider<>() {
+            @Override
+            public String actionId() {
+                return com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.DIMENSION_PLATFORM;
+            }
+
+            @Override
+            public void apply(IslandStart start) {
+                pasteDimensionPlatform(
+                        start.world(), start.centerX(), start.y(), start.centerZ(), dimensionOf(start.world()));
+            }
+        });
+    }
+
+    /** Runs the named creation actions at the place the start describes, as a dimension's template does. */
+    public void build(IslandStart start, java.util.List<String> actions) {
+        this.actions.run(actions, start);
     }
 
     /** The creation actions this server provides; a game mode adds its own while the server starts. */
@@ -123,6 +140,15 @@ public final class StarterSchematicEngine {
                 world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
             }
         }
+    }
+
+    /** Which dimension a world is, by the environment the server gave it. */
+    private static com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType dimensionOf(World world) {
+        return switch (world.getEnvironment()) {
+            case NETHER -> com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.NETHER;
+            case THE_END -> com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.THE_END;
+            default -> com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.OVERWORLD;
+        };
     }
 
     public void pasteDimensionPlatform(

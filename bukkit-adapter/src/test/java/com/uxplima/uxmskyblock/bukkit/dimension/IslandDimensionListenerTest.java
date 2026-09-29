@@ -2,7 +2,6 @@ package com.uxplima.uxmskyblock.bukkit.dimension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -121,6 +120,71 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
                 .teleportAsync(org.mockito.ArgumentMatchers.any(Location.class));
     }
 
+    @Test
+    @DisplayName("An island's own preset decides what its Nether is built from and the height it stands at")
+    void thePresetsTemplateDecidesTheNether() {
+        when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
+        listener.usePresets(island -> presetWith(Map.of(
+                com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_NETHER,
+                new com.uxplima.uxmskyblock.core.domain.preset.StartTemplate(
+                        java.util.List.of("myserver:outpost", "uxm:dimension-platform"), 90))));
+
+        listener.executeDimensionTeleport(travelling, IslandDimensionType.NETHER);
+
+        verify(schematicEngine)
+                .build(
+                        platformAt(netherWorld, 100, 90, 200),
+                        eq(java.util.List.of("myserver:outpost", "uxm:dimension-platform")));
+        assertThat(sentTo()).get().satisfies(destination -> {
+            assertThat(destination.getWorld()).isEqualTo(netherWorld);
+            assertThat(destination.getY()).isEqualTo(91.0);
+        });
+    }
+
+    @Test
+    @DisplayName("A preset that names no Nether builds nothing there, and the player arrives at the old height")
+    void aPresetWithoutANetherBuildsNothing() {
+        when(upgradeStoragePort.getUpgradeTier(islandId, NETHER_UPGRADE)).thenReturn(1);
+        listener.usePresets(island -> presetWith(Map.of(
+                com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_END,
+                new com.uxplima.uxmskyblock.core.domain.preset.StartTemplate(
+                        java.util.List.of("uxm:dimension-platform"), 40))));
+
+        listener.executeDimensionTeleport(travelling, IslandDimensionType.NETHER);
+
+        verify(schematicEngine, never()).build(any(), any());
+        assertThat(sentTo()).get().extracting(Location::getY).isEqualTo(65.0);
+    }
+
+    private static com.uxplima.uxmskyblock.core.domain.preset.StarterPreset presetWith(
+            Map<
+                            com.uxplima.uxmskyblock.core.domain.dimension.DimensionId,
+                            com.uxplima.uxmskyblock.core.domain.preset.StartTemplate>
+                    dimensions) {
+        return new com.uxplima.uxmskyblock.core.domain.preset.StarterPreset(
+                "realm",
+                "@presets.realm.name",
+                "@presets.realm.description",
+                "schematics/realm.schem",
+                com.uxplima.uxmskyblock.core.domain.biome.IslandBiome.PLAINS,
+                com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.SKYBLOCK,
+                java.util.List.of("uxm:platform"),
+                new com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle(dimensions));
+    }
+
+    /** What the shipped start template builds in the Nether: the plain dimension platform. */
+    private static final java.util.List<String> SHIPPED_PLATFORM =
+            java.util.List.of(com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.DIMENSION_PLATFORM);
+
+    /** A start in exactly this world, at exactly this centre and height, for this test's island. */
+    private com.uxplima.uxmskyblock.bukkit.schematic.IslandStart platformAt(World world, int x, int y, int z) {
+        return org.mockito.ArgumentMatchers.argThat(start -> start.world().equals(world)
+                && start.centerX() == x
+                && start.y() == y
+                && start.centerZ() == z
+                && start.islandId().equals(islandId));
+    }
+
     /** Where the player was sent, or empty when nothing sent them anywhere. */
     private Optional<Location> sentTo() {
         org.mockito.ArgumentCaptor<Location> captor = org.mockito.ArgumentCaptor.forClass(Location.class);
@@ -169,8 +233,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         listener.onPlayerPortal(event);
 
         assertThat(event.isCancelled()).isTrue();
-        verify(schematicEngine)
-                .pasteDimensionPlatform(eq(netherWorld), eq(100), eq(64), eq(200), eq(IslandDimensionType.NETHER));
+        verify(schematicEngine).build(platformAt(netherWorld, 100, 64, 200), eq(SHIPPED_PLATFORM));
         assertThat(dimensionService.hasGeneratedDimension(islandId, IslandDimensionType.NETHER))
                 .isTrue();
         assertThat(sentTo())
@@ -198,7 +261,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         assertThat(destination.getWorld()).isEqualTo(netherWorld);
         assertThat(destination.getBlockX()).isEqualTo(100);
         assertThat(destination.getBlockZ()).isEqualTo(200);
-        verify(schematicEngine, never()).pasteDimensionPlatform(any(), anyInt(), anyInt(), anyInt(), any());
+        verify(schematicEngine, never()).build(any(), any());
     }
 
     @Test
@@ -253,8 +316,7 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         }
 
         assertThat(teleportAttempted).describedAs("the player was put down").isTrue();
-        verify(schematicEngine)
-                .pasteDimensionPlatform(eq(netherWorld), eq(100), eq(64), eq(200), eq(IslandDimensionType.NETHER));
+        verify(schematicEngine).build(platformAt(netherWorld, 100, 64, 200), eq(SHIPPED_PLATFORM));
         assertThat(dimensionService.hasGeneratedDimension(islandId, IslandDimensionType.NETHER))
                 .isTrue();
     }

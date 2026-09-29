@@ -128,6 +128,48 @@ class PresetConfigurationTest {
     }
 
     @Test
+    @DisplayName("A preset's dimensions are read by id, a server's own among them, each with its height")
+    void dimensionsAreReadById() throws Exception {
+        CommentedConfigurationNode root = parse("""
+                presets {
+                    entries {
+                        realm {
+                            dimensions {
+                                the_nether { start = ["uxm:dimension-platform"], height = 70 }
+                                "myserver:mining_realm" { start = ["myserver:shaft"], height = 12 }
+                                the_end { start = [] }
+                            }
+                        }
+                        plain { }
+                    }
+                }
+                """);
+        PresetConfiguration config = PresetConfiguration.load(root);
+        var realm = config.catalogue().findById("realm").orElseThrow().dimensions();
+
+        assertThat(realm.resolve(com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_NETHER))
+                .get()
+                .extracting(com.uxplima.uxmskyblock.core.domain.preset.StartTemplate::height)
+                .isEqualTo(70);
+        assertThat(realm.resolve(com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.of("myserver:mining_realm")))
+                .get()
+                .extracting(com.uxplima.uxmskyblock.core.domain.preset.StartTemplate::actions)
+                .isEqualTo(java.util.List.of("myserver:shaft"));
+        assertThat(realm.resolve(com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_END))
+                .describedAs("a dimension with nothing to build is left out")
+                .isEmpty();
+        assertThat(config.catalogue().findById("plain").orElseThrow().dimensions())
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.shipped());
+
+        var offered = config.startableWith(actions -> !actions.contains("myserver:shaft"))
+                .catalogue();
+        assertThat(offered.findById("realm"))
+                .describedAs("a dimension action nobody provides takes the preset out of the offer")
+                .isEmpty();
+        assertThat(offered.findById("plain")).isPresent();
+    }
+
+    @Test
     @DisplayName("No sentence a player reads about a preset is written in Java")
     void everyShippedPresetNamesACatalogueKey() {
         for (var preset : StarterPresetCatalog.shipped()) {

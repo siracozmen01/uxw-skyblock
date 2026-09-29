@@ -74,6 +74,18 @@ public final class IslandDimensionListener implements Listener {
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
     }
 
+    /** The preset an island was made from, whose templates start its other dimensions. */
+    private Function<IslandId, com.uxplima.uxmskyblock.core.domain.preset.StarterPreset> presets =
+            island -> com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog.CLASSIC;
+
+    /**
+     * Where the preset of an island is read from. Called off the player's thread. Without it every
+     * island starts its other dimensions the way the plugin ships.
+     */
+    public void usePresets(Function<IslandId, com.uxplima.uxmskyblock.core.domain.preset.StarterPreset> presets) {
+        this.presets = Objects.requireNonNull(presets, "presets must not be null");
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerPortal(PlayerPortalEvent event) {
         PlayerTeleportEvent.TeleportCause cause = event.getCause();
@@ -225,15 +237,26 @@ public final class IslandDimensionListener implements Listener {
                 IslandLocation loc = optLocation.get();
                 int centerX = loc.bounds().centerX();
                 int centerZ = loc.bounds().centerZ();
-                int targetY = 64;
+                // What the island's preset builds in this dimension and at what height. A dimension
+                // the preset does not name gets nothing built, and the player arrives at the height
+                // the plugin always used.
+                com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset = presets.apply(islandId);
+                Optional<com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.Placement> placement =
+                        preset.dimensions().placeIn(targetDimension.id(), loc.bounds());
+                int targetY = placement
+                        .map(com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.Placement::height)
+                        .orElse(com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle.DEFAULT_HEIGHT);
                 int chunkX = centerX >> 4;
                 int chunkZ = centerZ >> 4;
                 String worldName = allowed.targetWorld();
 
                 schedulerPort.onRegion(worldName, chunkX, chunkZ, () -> {
                     World w = Bukkit.getWorld(worldName);
-                    if (w != null && allowed.schematicRequired()) {
-                        schematicEngine.pasteDimensionPlatform(w, centerX, targetY, centerZ, targetDimension);
+                    if (w != null && allowed.schematicRequired() && placement.isPresent()) {
+                        schematicEngine.build(
+                                new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
+                                        w, islandId, centerX, targetY, centerZ, preset),
+                                placement.get().template().actions());
                         dimensionService.markDimensionGenerated(islandId, targetDimension);
                     }
 

@@ -1,14 +1,19 @@
 package com.uxplima.uxmskyblock.bukkit.config;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 
 import com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog;
 import com.uxplima.uxmskyblock.core.domain.biome.IslandBiome;
+import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
+import com.uxplima.uxmskyblock.core.domain.preset.StartTemplate;
+import com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle;
 import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
 import org.spongepowered.configurate.ConfigurationNode;
 
@@ -19,6 +24,9 @@ import org.spongepowered.configurate.ConfigurationNode;
  * the fallback now, and {@code modules/presets.conf} is where a server says what it offers.
  */
 public record PresetConfiguration(List<StarterPreset> presets, String defaultId) {
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(PresetConfiguration.class.getName());
 
     public PresetConfiguration {
         Objects.requireNonNull(presets, "presets must not be null");
@@ -49,7 +57,14 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
             String description = preset.node("description").getString("@presets." + id + ".description");
             String schematic = preset.node("schematic").getString("schematics/" + id + ".schem");
             presets.add(new StarterPreset(
-                    id, displayName, description, schematic, biomeOf(preset), modeOf(preset), startOf(preset)));
+                    id,
+                    displayName,
+                    description,
+                    schematic,
+                    biomeOf(preset),
+                    modeOf(preset),
+                    startOf(preset),
+                    dimensionsOf(id, preset)));
         }
 
         if (presets.isEmpty()) {
@@ -92,16 +107,60 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
     }
 
     /**
+     * How the preset starts each other dimension, by dimension id. A preset that writes no
+     * {@code dimensions} block starts them the way the plugin ships; one that writes it starts exactly
+     * the dimensions it names. An entry that names no action is left out with a warning.
+     */
+    private static StartTemplateBundle dimensionsOf(String presetId, ConfigurationNode preset) {
+        ConfigurationNode node = preset.node("dimensions");
+        if (node.virtual() || !node.isMap()) {
+            return StartTemplateBundle.shipped();
+        }
+        Map<DimensionId, StartTemplate> templates = new LinkedHashMap<>();
+        for (var entry : node.childrenMap().entrySet()) {
+            String dimension = String.valueOf(entry.getKey()).trim();
+            List<String> actions = new ArrayList<>();
+            for (ConfigurationNode action : entry.getValue().node("start").childrenList()) {
+                String written = action.getString("").trim();
+                if (!written.isEmpty()) {
+                    actions.add(written);
+                }
+            }
+            if (dimension.isEmpty() || actions.isEmpty()) {
+                LOGGER.warning(() -> "The preset " + presetId + " names the dimension '" + dimension
+                        + "' with nothing to build, so it is left out.");
+                continue;
+            }
+            int height = entry.getValue().node("height").getInt(StartTemplateBundle.DEFAULT_HEIGHT);
+            templates.put(DimensionId.of(dimension), new StartTemplate(actions, height));
+        }
+        return new StartTemplateBundle(templates);
+    }
+
+    /**
      * The presets whose every creation action has a provider on this server. A preset of a game mode the
      * operator switched off names an action nobody provides, and is not offered.
      */
     public PresetConfiguration startableWith(Predicate<List<String>> provided) {
         List<StarterPreset> startable =
-                presets.stream().filter(preset -> provided.test(preset.start())).toList();
+                presets.stream().filter(preset -> startable(preset, provided)).toList();
         if (startable.isEmpty()) {
             return defaultConfiguration();
         }
         return new PresetConfiguration(startable, defaultId);
+    }
+
+    /** Whether the preset's own start and every dimension's start have providers. */
+    private static boolean startable(StarterPreset preset, Predicate<List<String>> provided) {
+        if (!provided.test(preset.start())) {
+            return false;
+        }
+        for (StartTemplate template : preset.dimensions().templates().values()) {
+            if (!provided.test(template.actions())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public StarterPresetCatalog catalogue() {

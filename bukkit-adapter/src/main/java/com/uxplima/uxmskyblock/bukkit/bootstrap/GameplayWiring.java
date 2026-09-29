@@ -266,6 +266,21 @@ public final class GameplayWiring {
                 scheduler,
                 worldName,
                 this.economicWiring.upgradeService());
+        IslandDimensionListener dimensions = this.environmentWiring.dimensionListener();
+        if (dimensions != null) {
+            // The preset an island was made from is the one its owner's game mode instance names, so
+            // each island starts its other dimensions the way its own preset says.
+            com.uxplima.uxmskyblock.core.application.preset.StarterPresetCatalog presets =
+                    this.creationWiring.presetCatalog();
+            com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyService hierarchy =
+                    this.creationWiring.gameModeHierarchyService();
+            dimensions.usePresets(islandId -> persistence
+                    .islandStoragePort()
+                    .findIslandById(islandId)
+                    .flatMap(island -> hierarchy.findInstanceByProfile(island.ownerProfileId()))
+                    .flatMap(instance -> presets.findById(instance.rulesetConfig()))
+                    .orElse(presets.defaultPreset()));
+        }
 
         // The island size upgrade had five tiers, a cost for each and a radius on each, and nothing
         // read the radius: an island that paid for the top tier reached exactly as far as one that
