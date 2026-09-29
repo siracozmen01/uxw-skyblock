@@ -105,6 +105,9 @@ class ZeroFootprintModuleWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.BankConfiguration.defaultConfiguration());
 
         PersistenceBootstrap persistence = mock(PersistenceBootstrap.class);
+
+        when(persistence.oneBlockProgressPort())
+                .thenReturn(mock(com.uxplima.uxmskyblock.core.application.oneblock.OneBlockProgressPort.class));
         GameplayWiring gameplay = mock(GameplayWiring.class);
         when(gameplay.createIslandUseCase())
                 .thenReturn(mock(com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase.class));
@@ -376,6 +379,8 @@ class ZeroFootprintModuleWiringTest {
 
         GeneratorsConfiguration generators = mock(GeneratorsConfiguration.class);
         when(config.generatorsConfig()).thenReturn(generators);
+        when(config.oneBlockConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
 
         return config;
     }

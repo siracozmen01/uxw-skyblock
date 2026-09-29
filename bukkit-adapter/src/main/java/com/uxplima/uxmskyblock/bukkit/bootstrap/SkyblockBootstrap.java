@@ -372,6 +372,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
         }
         featureModuleWiring.close();
         gameplayWiring.missionService().flushDirtyProgress();
+        gameplayWiring.oneBlockWiring().close();
         integrationWiring.close();
         authorityWiring.close();
         // Async work already handed out writes to the pool that is about to close. Waiting for it is

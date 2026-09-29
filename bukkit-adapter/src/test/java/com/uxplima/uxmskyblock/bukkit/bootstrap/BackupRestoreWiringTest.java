@@ -282,6 +282,8 @@ class BackupRestoreWiringTest {
         GeneratorsConfiguration generatorsConfig = mock(GeneratorsConfiguration.class);
         when(generatorsConfig.tierRates()).thenReturn(Map.of());
         when(config.generatorsConfig()).thenReturn(generatorsConfig);
+        when(config.oneBlockConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
 
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();

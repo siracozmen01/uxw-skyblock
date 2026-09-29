@@ -27,13 +27,21 @@ import org.spongepowered.configurate.ConfigurationNode;
  *
  * @param enabled whether islands can be made as OneBlock islands at all
  * @param phases the phases, in order
+ * @param saveInterval how often the breaks counted in memory are added to the stored count
  */
-public record OneBlockConfiguration(boolean enabled, OneBlockPhases phases) {
+public record OneBlockConfiguration(boolean enabled, OneBlockPhases phases, java.time.Duration saveInterval) {
+
+    /** How often counted breaks are written, when the file names no interval. */
+    public static final java.time.Duration DEFAULT_SAVE_INTERVAL = java.time.Duration.ofSeconds(30);
 
     private static final Logger LOGGER = Logger.getLogger(OneBlockConfiguration.class.getName());
 
     public OneBlockConfiguration {
         Objects.requireNonNull(phases, "phases");
+        Objects.requireNonNull(saveInterval, "saveInterval");
+        if (saveInterval.isNegative() || saveInterval.isZero()) {
+            throw new IllegalArgumentException("The save interval must be positive: " + saveInterval);
+        }
     }
 
     /** One phase of plain blocks, for a server whose file holds nothing usable. */
@@ -46,7 +54,8 @@ public record OneBlockConfiguration(boolean enabled, OneBlockPhases phases) {
                 true,
                 new OneBlockPhases(
                         List.of(new OneBlockPhase("plains", 500, new WeightedPool(blocks), WeightedPool.empty(), 0)),
-                        OneBlockPhases.AfterTheLast.STAY));
+                        OneBlockPhases.AfterTheLast.STAY),
+                DEFAULT_SAVE_INTERVAL);
     }
 
     public static OneBlockConfiguration load(ConfigurationNode root) {
@@ -57,6 +66,8 @@ public record OneBlockConfiguration(boolean enabled, OneBlockPhases phases) {
         boolean enabled = root.node("enabled").getBoolean(true);
         OneBlockPhases.AfterTheLast after =
                 afterTheLast(root.node("after-last-phase").getString("stay"));
+        java.time.Duration saveInterval =
+                saveInterval(root.node("save-interval").getString());
         List<OneBlockPhase> phases = new ArrayList<>();
         // A list, because the phases are gone through in order and a HOCON object keeps none.
         for (ConfigurationNode phase : root.node("phases").childrenList()) {
@@ -79,9 +90,26 @@ public record OneBlockConfiguration(boolean enabled, OneBlockPhases phases) {
         }
         if (phases.isEmpty()) {
             LOGGER.warning("modules/oneblock.conf holds no usable phase, so the built in one is used.");
-            return new OneBlockConfiguration(enabled, defaultConfiguration().phases());
+            return new OneBlockConfiguration(enabled, defaultConfiguration().phases(), saveInterval);
         }
-        return new OneBlockConfiguration(enabled, new OneBlockPhases(phases, after));
+        return new OneBlockConfiguration(enabled, new OneBlockPhases(phases, after), saveInterval);
+    }
+
+    private static java.time.Duration saveInterval(@org.jspecify.annotations.Nullable String written) {
+        if (written == null || written.isBlank()) {
+            return DEFAULT_SAVE_INTERVAL;
+        }
+        try {
+            java.time.Duration parsed = com.uxplima.uxmlib.common.Durations.parse(written.strip());
+            if (!parsed.isNegative() && !parsed.isZero()) {
+                return parsed;
+            }
+        } catch (RuntimeException unreadable) {
+            // Said below, with the interval used instead.
+        }
+        LOGGER.warning(() -> "save-interval '" + written + "' is not a positive duration, so "
+                + DEFAULT_SAVE_INTERVAL.toSeconds() + "s is used.");
+        return DEFAULT_SAVE_INTERVAL;
     }
 
     private static OneBlockPhases.AfterTheLast afterTheLast(String written) {

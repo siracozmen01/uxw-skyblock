@@ -107,6 +107,7 @@ public final class GameplayWiring {
     private final AdminWiring adminWiring;
     private final StorageBucket backupBucket;
     private final IslandCacheEviction cacheEviction;
+    private final OneBlockWiring oneBlockWiring;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
@@ -279,6 +280,8 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.adminWiring.antiAbuseService()::forgetIsland);
         this.cacheEviction.whenForgotten(this.economicWiring.bankruptcyService()::forgetIsland);
         this.cacheEviction.whenForgotten(freezeService::forgetIsland);
+        this.oneBlockWiring = new OneBlockWiring(config.oneBlockConfig(), persistence, scheduler);
+        this.cacheEviction.whenForgotten(this.oneBlockWiring.service()::forgetIsland);
 
         this.protectionWiring = new GameplayProtectionWiring(
                 config, persistence, authority, protectionListener, temporaryAccessService);
@@ -286,6 +289,11 @@ public final class GameplayWiring {
 
     public SchedulerPort scheduler() {
         return scheduler;
+    }
+
+    /** The OneBlock game mode's service and the schedule that writes its counts. */
+    public OneBlockWiring oneBlockWiring() {
+        return oneBlockWiring;
     }
 
     public AdaptiveBackpressureController backpressureController() {
