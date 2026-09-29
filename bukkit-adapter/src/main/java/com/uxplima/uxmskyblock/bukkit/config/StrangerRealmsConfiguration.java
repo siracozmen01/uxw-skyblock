@@ -10,7 +10,8 @@ import org.spongepowered.configurate.ConfigurationNode;
  * {@code modules/strangerrealms.conf}: whether islands can be StrangerRealms islands, how the Upside
  * Down mirrors their land, and what it makes of the creatures born in it.
  */
-public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown, Mobs mobs, Glimmer glimmer) {
+public record StrangerRealmsConfiguration(
+        boolean enabled, UpsideDown upsideDown, Mobs mobs, Glimmer glimmer, Compass compass) {
 
     private static final Logger LOGGER = Logger.getLogger(StrangerRealmsConfiguration.class.getName());
 
@@ -114,14 +115,39 @@ public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown
         }
     }
 
+    /**
+     * The warped compass: held on a StrangerRealms island, it points at the nearest player on the other
+     * side of the veil, at the same place on this side.
+     *
+     * @param enabled whether the compass can be made and points at all
+     * @param checkEvery how often the compass turns to where the players are
+     * @param ingredients what a crafting grid holds, in any order, to make one
+     */
+    public record Compass(boolean enabled, java.time.Duration checkEvery, List<String> ingredients) {
+
+        public static final Compass SHIPPED =
+                new Compass(true, java.time.Duration.ofSeconds(1), List.of("COMPASS", "WARPED_FUNGUS"));
+
+        public Compass {
+            Objects.requireNonNull(checkEvery, "checkEvery must not be null");
+            ingredients = List.copyOf(ingredients);
+            if (checkEvery.toMillis() < 50 || ingredients.isEmpty() || ingredients.size() > 9) {
+                throw new IllegalArgumentException(
+                        "check-every must be at least one tick, and the ingredients one to nine");
+            }
+        }
+    }
+
     public StrangerRealmsConfiguration {
         Objects.requireNonNull(upsideDown, "upsideDown must not be null");
         Objects.requireNonNull(mobs, "mobs must not be null");
         Objects.requireNonNull(glimmer, "glimmer must not be null");
+        Objects.requireNonNull(compass, "compass must not be null");
     }
 
     public static StrangerRealmsConfiguration defaultConfiguration() {
-        return new StrangerRealmsConfiguration(true, UpsideDown.SHIPPED, Mobs.SHIPPED, Glimmer.SHIPPED);
+        return new StrangerRealmsConfiguration(
+                true, UpsideDown.SHIPPED, Mobs.SHIPPED, Glimmer.SHIPPED, Compass.SHIPPED);
     }
 
     public static StrangerRealmsConfiguration load(ConfigurationNode root) {
@@ -149,6 +175,19 @@ public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown
                     () -> "modules/strangerrealms.conf glimmer: " + e.getMessage() + ". The shipped glimmer is used.");
             glimmer = Glimmer.SHIPPED;
         }
+        ConfigurationNode compassNode = root.node("warped-compass");
+        Compass compass;
+        try {
+            compass = new Compass(
+                    compassNode.node("enabled").getBoolean(Compass.SHIPPED.enabled()),
+                    AcidIslandConfiguration.durationOf(
+                            compassNode.node("check-every").getString(""), Compass.SHIPPED.checkEvery()),
+                    AcidIslandConfiguration.strings(compassNode.node("ingredients"), Compass.SHIPPED.ingredients()));
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(() ->
+                    "modules/strangerrealms.conf warped-compass: " + e.getMessage() + ". The shipped compass is used.");
+            compass = Compass.SHIPPED;
+        }
         return new StrangerRealmsConfiguration(
                 root.node("enabled").getBoolean(true),
                 upsideDown,
@@ -156,6 +195,7 @@ public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown
                         AcidIslandConfiguration.strings(mobs.node("reasons"), Mobs.SHIPPED.reasons()),
                         AcidIslandConfiguration.strings(mobs.node("turn"), Mobs.SHIPPED.turn()),
                         AcidIslandConfiguration.strings(mobs.node("effects"), Mobs.SHIPPED.effects())),
-                glimmer);
+                glimmer,
+                compass);
     }
 }

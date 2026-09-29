@@ -108,12 +108,9 @@ class ALightGlimmersAcrossTest extends MockBukkitHarness {
                 .when(scheduler)
                 .onRegion(anyString(), anyInt(), anyInt(), any(Runnable.class));
         glimmer = new Glimmer(
-                service,
-                islands,
+                new Realms(service, islands, () -> UPSIDE_DOWN, () -> List.of("realms")),
                 scheduler,
-                new StrangerRealmsConfiguration.Glimmer(true, List.of("TORCH", "*_CANDLE", "LANTERN", "A*B*"), 9),
-                () -> UPSIDE_DOWN,
-                () -> List.of("realms"));
+                new StrangerRealmsConfiguration.Glimmer(true, List.of("TORCH", "*_CANDLE", "LANTERN", "A*B*"), 9));
         player = createPlayer("Lamplighter");
     }
 

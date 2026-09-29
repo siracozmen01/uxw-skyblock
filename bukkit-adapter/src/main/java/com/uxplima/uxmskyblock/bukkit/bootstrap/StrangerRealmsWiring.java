@@ -20,7 +20,7 @@ import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 
 /** The StrangerRealms game mode, while the operator lets islands be StrangerRealms islands. */
-public final class StrangerRealmsWiring {
+public final class StrangerRealmsWiring implements AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(StrangerRealmsWiring.class.getName());
 
@@ -30,6 +30,9 @@ public final class StrangerRealmsWiring {
     private final String upsideDownWorld;
     private final UpsideDownSpawns spawns;
     private final com.uxplima.uxmskyblock.bukkit.stranger.Glimmer glimmer;
+    private final com.uxplima.uxmskyblock.bukkit.stranger.WarpedCompass compass;
+    private boolean recipeAdded;
+    private @org.jspecify.annotations.Nullable AutoCloseable beat;
 
     public StrangerRealmsWiring(
             ConfigurationWiring configuration,
@@ -44,15 +47,18 @@ public final class StrangerRealmsWiring {
         this.upsideDownWorld = nether == null
                 ? com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration.DEFAULT_NETHER_WORLD
                 : nether.worldName();
+        com.uxplima.uxmskyblock.bukkit.stranger.Realms realms = new com.uxplima.uxmskyblock.bukkit.stranger.Realms(
+                service, islands, () -> upsideDownWorld, configuration::islandWorlds);
         this.spawns = new UpsideDownSpawns(
-                service,
-                islands,
+                realms,
                 config.mobs(),
-                () -> upsideDownWorld,
-                configuration::islandWorlds,
                 (at, type) -> at.getWorld().spawnEntity(at, type, CreatureSpawnEvent.SpawnReason.CUSTOM));
-        this.glimmer = new com.uxplima.uxmskyblock.bukkit.stranger.Glimmer(
-                service, islands, scheduler, config.glimmer(), () -> upsideDownWorld, configuration::islandWorlds);
+        this.glimmer = new com.uxplima.uxmskyblock.bukkit.stranger.Glimmer(realms, scheduler, config.glimmer());
+        this.compass = new com.uxplima.uxmskyblock.bukkit.stranger.WarpedCompass(
+                realms, scheduler, configuration.messages(), config.compass());
+        if (config.enabled() && config.compass().enabled()) {
+            this.beat = compass.start();
+        }
         scheduler.async(() -> {
             try {
                 int count = service.prime();
@@ -79,6 +85,40 @@ public final class StrangerRealmsWiring {
     /** The glimmer between the land and the Upside Down. */
     public com.uxplima.uxmskyblock.bukkit.stranger.Glimmer glimmer() {
         return glimmer;
+    }
+
+    /** The warped compass, which points across the veil. */
+    public com.uxplima.uxmskyblock.bukkit.stranger.WarpedCompass compass() {
+        return compass;
+    }
+
+    /** Adds the compass's recipe, once, while the plugin enables. */
+    public void addRecipe(org.bukkit.Server server) {
+        if (!config.enabled() || !config.compass().enabled() || recipeAdded) {
+            return;
+        }
+        compass.recipe().ifPresent(recipe -> {
+            server.addRecipe(recipe);
+            recipeAdded = true;
+        });
+    }
+
+    /** Takes the recipe away and stops the compass turning, before the server stops. */
+    @Override
+    public void close() {
+        if (recipeAdded) {
+            recipeAdded = false;
+            org.bukkit.Bukkit.removeRecipe(com.uxplima.uxmskyblock.bukkit.stranger.WarpedCompass.RECIPE);
+        }
+        AutoCloseable running = beat;
+        beat = null;
+        if (running != null) {
+            try {
+                running.close();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Stopping the warped compass failed.", e);
+            }
+        }
     }
 
     public boolean enabled() {

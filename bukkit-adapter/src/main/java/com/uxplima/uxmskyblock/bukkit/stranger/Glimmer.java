@@ -3,8 +3,6 @@ package com.uxplima.uxmskyblock.bukkit.stranger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
@@ -20,10 +18,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 
 import com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration;
-import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
-import com.uxplima.uxmskyblock.core.application.stranger.StrangerRealmsService;
-import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.stranger.NamePattern;
 import org.jspecify.annotations.Nullable;
 
@@ -39,26 +34,14 @@ public final class Glimmer implements Listener {
 
     private static final Logger LOGGER = Logger.getLogger(Glimmer.class.getName());
 
-    private final StrangerRealmsService service;
-    private final IslandProtectionListener islands;
+    private final Realms realms;
     private final SchedulerPort scheduler;
-    private final Supplier<String> upsideDownWorld;
-    private final Supplier<List<String>> landWorlds;
     private final List<NamePattern> lights = new ArrayList<>();
     private final int level;
 
-    public Glimmer(
-            StrangerRealmsService service,
-            IslandProtectionListener islands,
-            SchedulerPort scheduler,
-            StrangerRealmsConfiguration.Glimmer glimmer,
-            Supplier<String> upsideDownWorld,
-            Supplier<List<String>> landWorlds) {
-        this.service = Objects.requireNonNull(service, "service must not be null");
-        this.islands = Objects.requireNonNull(islands, "islands must not be null");
+    public Glimmer(Realms realms, SchedulerPort scheduler, StrangerRealmsConfiguration.Glimmer glimmer) {
+        this.realms = Objects.requireNonNull(realms, "realms must not be null");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
-        this.upsideDownWorld = Objects.requireNonNull(upsideDownWorld, "upsideDownWorld must not be null");
-        this.landWorlds = Objects.requireNonNull(landWorlds, "landWorlds must not be null");
         this.level = glimmer.level();
         for (String written : glimmer.lights()) {
             try {
@@ -127,20 +110,8 @@ public final class Glimmer implements Listener {
 
     /** The world the light glimmers into: the Upside Down from the land, the land from the Upside Down. */
     private @Nullable String otherWorld(String world, int x, int z) {
-        String upsideDown = upsideDownWorld.get();
-        if (world.equals(upsideDown)) {
-            for (String land : landWorlds.get()) {
-                Optional<Island> island = islands.spatialIndex().findIslandAt(land, x, z);
-                if (island.isPresent()) {
-                    return service.isStranger(island.get().id()) ? land : null;
-                }
-            }
-            return null;
-        }
-        if (!landWorlds.get().contains(world)) {
-            return null;
-        }
-        Optional<Island> island = islands.spatialIndex().findIslandAt(world, x, z);
-        return island.isPresent() && service.isStranger(island.get().id()) ? upsideDown : null;
+        return realms.placeOf(world, x, z)
+                .map(place -> place.otherWorld(realms.upsideDownWorld()))
+                .orElse(null);
     }
 }

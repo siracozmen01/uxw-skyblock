@@ -90,14 +90,11 @@ class TheUpsideDownTurnsItsCreaturesTest extends MockBukkitHarness {
         service.prime();
         newborn = mock(LivingEntity.class);
         spawns = new UpsideDownSpawns(
-                service,
-                islands,
+                new Realms(service, islands, () -> UPSIDE_DOWN, () -> List.of("elsewhere", "realms")),
                 new StrangerRealmsConfiguration.Mobs(
                         List.of("NATURAL", "SPAWNER", "NO_SUCH_REASON"),
                         List.of("PIGLIN:ZOMBIE", "STRIDER:NONE", "BLAZE:NOT_A_CREATURE", "BAD LINE"),
                         List.of("speed:0:60", "resistance:1:60")),
-                () -> UPSIDE_DOWN,
-                () -> List.of("elsewhere", "realms"),
                 (at, type) -> {
                     born.add(type + "@" + at.getBlockX());
                     return newborn;
