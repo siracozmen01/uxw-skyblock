@@ -94,6 +94,15 @@ class ANewPoseidonIslandLiesUnderItsOceanTest extends MockBukkitHarness {
                 .onRegion(anyString(), anyInt(), anyInt(), any(Runnable.class));
         engine = new StarterSchematicEngine();
         engine.actions().register(new OceanStart(service, scheduler, OCEAN));
+        // The preset's shipwreck, from a server that has no such template: the ocean is what is looked at.
+        engine.actions()
+                .register(new WreckStart(
+                        "uxm:shipwreck",
+                        java.util.Objects.requireNonNull(PoseidonConfiguration.SHIPPED_WRECKS.get("shipwreck")),
+                        OCEAN,
+                        key -> java.util.Optional.empty(),
+                        (block, table, seed) -> {},
+                        scheduler));
     }
 
     @Test
@@ -137,7 +146,15 @@ class ANewPoseidonIslandLiesUnderItsOceanTest extends MockBukkitHarness {
         StarterPreset preset = preset();
 
         assertThat(preset.mode()).isEqualTo(GameModeType.POSEIDON);
-        assertThat(preset.start()).containsExactly(StarterPreset.PLATFORM, OceanStart.ACTION);
+        assertThat(preset.start()).containsExactly(StarterPreset.PLATFORM, OceanStart.ACTION, "uxm:shipwreck");
+        assertThat(shipped().catalogue().findById("poseidon_ruin").orElseThrow().start())
+                .endsWith("uxm:shipwreck", "uxm:ruin");
+        assertThat(shipped()
+                        .catalogue()
+                        .findById("poseidon_ruins")
+                        .orElseThrow()
+                        .start())
+                .endsWith("uxm:shipwreck", "uxm:ruins");
         assertThat(preset.dimensions().resolve(DimensionId.THE_NETHER))
                 .get()
                 .extracting(StartTemplate::actions)

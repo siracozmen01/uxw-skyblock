@@ -1,6 +1,8 @@
 package com.uxplima.uxmskyblock.bukkit.config;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.logging.Logger;
 
@@ -12,8 +14,10 @@ import org.spongepowered.configurate.ConfigurationNode;
  * the bottom of, and how the air hurts the players who live there.
  *
  * @param waterEffects the effects the water gives, each written {@code name:amplifier:seconds}
+ * @param wrecks the wrecks and ruins a preset can lay, by name; each is the action {@code uxm:<name>}
  */
-public record PoseidonConfiguration(boolean enabled, Ocean ocean, PoseidonRules rules, List<String> waterEffects) {
+public record PoseidonConfiguration(
+        boolean enabled, Ocean ocean, PoseidonRules rules, List<String> waterEffects, Map<String, Wreck> wrecks) {
 
     private static final Logger LOGGER = Logger.getLogger(PoseidonConfiguration.class.getName());
 
@@ -40,15 +44,83 @@ public record PoseidonConfiguration(boolean enabled, Ocean ocean, PoseidonRules 
     /** The effects the shipped file gives in the water: breathing, and sight a little past the beat. */
     public static final List<String> SHIPPED_WATER_EFFECTS = List.of("water_breathing:0:4", "night_vision:0:15");
 
+    /**
+     * Structures laid on the sea floor around a Poseidon island.
+     *
+     * @param templates the structure templates to choose from, such as {@code minecraft:shipwreck/with_mast}
+     * @param count how many are laid, spread evenly around the island
+     * @param distance how far from the island's centre each one lies
+     * @param loot the loot tables the chests get, each in turn
+     */
+    public record Wreck(List<String> templates, int count, int distance, List<String> loot) {
+
+        public Wreck {
+            templates = List.copyOf(templates);
+            loot = List.copyOf(loot);
+            if (count < 0 || distance < 0) {
+                throw new IllegalArgumentException("count and distance must not be negative");
+            }
+        }
+    }
+
+    /** The shipped wrecks: a shipwreck, one big ruin, and a ring of small ones. */
+    public static final Map<String, Wreck> SHIPPED_WRECKS = shippedWrecks();
+
     public PoseidonConfiguration {
         Objects.requireNonNull(ocean, "ocean must not be null");
         Objects.requireNonNull(rules, "rules must not be null");
         waterEffects = List.copyOf(waterEffects);
+        wrecks = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(wrecks));
     }
 
-    /** The shipped ocean and hazard, with Poseidon on or off. */
+    /** The shipped ocean, hazard and wrecks, with Poseidon on or off. */
     public PoseidonConfiguration(boolean enabled, Ocean ocean) {
-        this(enabled, ocean, PoseidonRules.shipped(), SHIPPED_WATER_EFFECTS);
+        this(enabled, ocean, PoseidonRules.shipped(), SHIPPED_WATER_EFFECTS, SHIPPED_WRECKS);
+    }
+
+    private static Map<String, Wreck> shippedWrecks() {
+        Map<String, Wreck> wrecks = new LinkedHashMap<>();
+        wrecks.put(
+                "shipwreck",
+                new Wreck(
+                        List.of(
+                                "minecraft:shipwreck/rightsideup_full",
+                                "minecraft:shipwreck/sideways_full",
+                                "minecraft:shipwreck/upsidedown_full",
+                                "minecraft:shipwreck/with_mast"),
+                        1,
+                        22,
+                        List.of(
+                                "minecraft:chests/shipwreck_supply",
+                                "minecraft:chests/shipwreck_treasure",
+                                "minecraft:chests/shipwreck_map")));
+        wrecks.put(
+                "ruin",
+                new Wreck(
+                        List.of(
+                                "minecraft:underwater_ruin/big_warm_4",
+                                "minecraft:underwater_ruin/big_warm_5",
+                                "minecraft:underwater_ruin/big_warm_6",
+                                "minecraft:underwater_ruin/big_warm_7"),
+                        1,
+                        40,
+                        List.of("minecraft:chests/underwater_ruin_big")));
+        wrecks.put(
+                "ruins",
+                new Wreck(
+                        List.of(
+                                "minecraft:underwater_ruin/warm_1",
+                                "minecraft:underwater_ruin/warm_2",
+                                "minecraft:underwater_ruin/warm_3",
+                                "minecraft:underwater_ruin/warm_4",
+                                "minecraft:underwater_ruin/warm_5",
+                                "minecraft:underwater_ruin/warm_6",
+                                "minecraft:underwater_ruin/warm_7",
+                                "minecraft:underwater_ruin/warm_8"),
+                        5,
+                        44,
+                        List.of("minecraft:chests/underwater_ruin_small")));
+        return wrecks;
     }
 
     public static PoseidonConfiguration defaultConfiguration() {
@@ -90,6 +162,33 @@ public record PoseidonConfiguration(boolean enabled, Ocean ocean, PoseidonRules 
                 root.node("enabled").getBoolean(true),
                 ocean,
                 rules,
-                AcidIslandConfiguration.strings(hazard.node("water-effects"), SHIPPED_WATER_EFFECTS));
+                AcidIslandConfiguration.strings(hazard.node("water-effects"), SHIPPED_WATER_EFFECTS),
+                wrecks(root.node("wrecks")));
+    }
+
+    private static Map<String, Wreck> wrecks(ConfigurationNode node) {
+        if (node.virtual() || !node.isMap()) {
+            return SHIPPED_WRECKS;
+        }
+        Map<String, Wreck> wrecks = new LinkedHashMap<>();
+        for (Map.Entry<Object, ? extends ConfigurationNode> entry :
+                node.childrenMap().entrySet()) {
+            String name = String.valueOf(entry.getKey()).trim();
+            ConfigurationNode written = entry.getValue();
+            Wreck shipped = SHIPPED_WRECKS.getOrDefault(name, new Wreck(List.of(), 1, 24, List.of()));
+            try {
+                wrecks.put(
+                        name,
+                        new Wreck(
+                                AcidIslandConfiguration.strings(written.node("templates"), shipped.templates()),
+                                written.node("count").getInt(shipped.count()),
+                                written.node("distance").getInt(shipped.distance()),
+                                AcidIslandConfiguration.strings(written.node("loot"), shipped.loot())));
+            } catch (IllegalArgumentException e) {
+                LOGGER.warning(
+                        () -> "modules/poseidon.conf wrecks " + name + ": " + e.getMessage() + ". It is left out.");
+            }
+        }
+        return wrecks;
     }
 }

@@ -97,7 +97,7 @@ public final class StarterSchematicEngine {
 
         Material primaryBlock =
                 switch (preset.id()) {
-                    case "desert", "poseidon" -> Material.SAND;
+                    case "desert", "poseidon", "poseidon_ruin", "poseidon_ruins" -> Material.SAND;
                     case "nether" -> Material.NETHERRACK;
                     case "cave", "caveblock" -> Material.DEEPSLATE;
                     default -> Material.GRASS_BLOCK;
@@ -105,7 +105,7 @@ public final class StarterSchematicEngine {
 
         Material subBlock =
                 switch (preset.id()) {
-                    case "desert", "poseidon" -> Material.SANDSTONE;
+                    case "desert", "poseidon", "poseidon_ruin", "poseidon_ruins" -> Material.SANDSTONE;
                     case "nether" -> Material.BASALT;
                     case "cave", "caveblock" -> Material.STONE;
                     default -> Material.DIRT;
@@ -131,7 +131,7 @@ public final class StarterSchematicEngine {
                 featureBlock.setType(Material.CRIMSON_FUNGUS);
                 world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
             }
-            case "poseidon" -> {
+            case "poseidon", "poseidon_ruin", "poseidon_ruins" -> {
                 // A sapling cannot grow under water, and a sea lantern lights the sea floor.
                 featureBlock.setType(Material.SEA_LANTERN);
                 world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);

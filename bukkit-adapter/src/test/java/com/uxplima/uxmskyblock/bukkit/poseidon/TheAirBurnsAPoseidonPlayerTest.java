@@ -96,7 +96,8 @@ class TheAirBurnsAPoseidonPlayerTest extends MockBukkitHarness {
                 true,
                 PoseidonConfiguration.Ocean.SHIPPED,
                 new PoseidonRules(1.0, 3.0, 2.5, Duration.ofSeconds(5), 1.0, true, Duration.ofSeconds(1)),
-                List.of("water_breathing:0:4", "night_vision:0:15", "no_such_effect:0:3"));
+                List.of("water_breathing:0:4", "night_vision:0:15", "no_such_effect:0:3"),
+                java.util.Map.of());
         hazard = new PoseidonHazard(
                 service,
                 islands,

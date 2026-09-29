@@ -11,6 +11,9 @@ import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.poseidon.OceanStart;
 import com.uxplima.uxmskyblock.bukkit.poseidon.PoseidonHazard;
+import com.uxplima.uxmskyblock.bukkit.poseidon.ServerChestLoot;
+import com.uxplima.uxmskyblock.bukkit.poseidon.ServerWreckTemplates;
+import com.uxplima.uxmskyblock.bukkit.poseidon.WreckStart;
 import com.uxplima.uxmskyblock.bukkit.schematic.IslandStart;
 import com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider;
 import com.uxplima.uxmskyblock.core.application.poseidon.PoseidonService;
@@ -74,9 +77,19 @@ public final class PoseidonWiring implements AutoCloseable {
         return config.enabled();
     }
 
-    /** The action that lays the ocean, while Poseidon is enabled, and none otherwise. */
+    /** The actions that lay the ocean and each wreck, while Poseidon is enabled, and none otherwise. */
     public List<CreationActionProvider<IslandStart>> startActions() {
-        return config.enabled() ? List.of(new OceanStart(service, scheduler, config.ocean())) : List.of();
+        if (!config.enabled()) {
+            return List.of();
+        }
+        List<CreationActionProvider<IslandStart>> actions = new java.util.ArrayList<>();
+        actions.add(new OceanStart(service, scheduler, config.ocean()));
+        ServerWreckTemplates templates = new ServerWreckTemplates();
+        ServerChestLoot loot = new ServerChestLoot();
+        config.wrecks()
+                .forEach((name, wreck) ->
+                        actions.add(new WreckStart("uxm:" + name, wreck, config.ocean(), templates, loot, scheduler)));
+        return actions;
     }
 
     /** Stops the air hurting, before the server stops. */
