@@ -264,10 +264,23 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(acid.findAll()).containsEntry(islandId, 97);
             assertThat(acid.find(islandId)).hasValue(97);
 
+            // A Boxed island's advancements: each earned once, summed, gone with the island.
+            com.uxplima.uxmskyblock.persistence.boxed.SqlBoxedIslandsAdapter boxed =
+                    new com.uxplima.uxmskyblock.persistence.boxed.SqlBoxedIslandsAdapter(database.dataSource());
+            boxed.add(islandId);
+            boxed.add(islandId);
+            assertThat(boxed.find(islandId)).hasValue(0);
+            assertThat(boxed.earn(islandId, "minecraft:story/mine_stone", 1)).isTrue();
+            assertThat(boxed.earn(islandId, "minecraft:story/mine_diamond", 3)).isTrue();
+            assertThat(boxed.earn(islandId, "minecraft:story/mine_stone", 1)).isFalse();
+            assertThat(boxed.find(islandId)).hasValue(4);
+            assertThat(boxed.findAll()).containsEntry(islandId, 4L);
+
             // Deleting the island takes its OneBlock row, its chunks and its sea with it.
             islands.deleteIsland(islandId);
             assertThat(acid.findAll()).doesNotContainKey(islandId);
             assertThat(acid.find(islandId)).isEmpty();
+            assertThat(boxed.find(islandId)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

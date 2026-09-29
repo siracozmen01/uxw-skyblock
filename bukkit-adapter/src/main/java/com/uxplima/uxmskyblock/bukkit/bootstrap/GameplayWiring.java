@@ -111,6 +111,7 @@ public final class GameplayWiring {
     private final OneBlockWiring oneBlockWiring;
     private final ChunkBlockWiring chunkBlockWiring;
     private final AcidIslandWiring acidIslandWiring;
+    private final BoxedWiring boxedWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -190,6 +191,8 @@ public final class GameplayWiring {
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
         this.chunkBlockWiring = new ChunkBlockWiring(config, persistence, scheduler, protectionListener);
         this.acidIslandWiring = new AcidIslandWiring(config, persistence, scheduler, protectionListener);
+        this.boxedWiring = new BoxedWiring(
+                config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -205,7 +208,9 @@ public final class GameplayWiring {
                                         this.chunkBlockWiring.startActions().stream(),
                                         java.util.stream.Stream.concat(
                                                 this.acidIslandWiring.startActions().stream(),
-                                                caveBlockStart(config, scheduler))))
+                                                java.util.stream.Stream.concat(
+                                                        this.boxedWiring.startActions().stream(),
+                                                        caveBlockStart(config, scheduler)))))
                         .toList());
 
         // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
@@ -297,10 +302,21 @@ public final class GameplayWiring {
         // read the radius: an island that paid for the top tier reached exactly as far as one that
         // had paid nothing. The edge follows the tier now, and the protection index is told, because
         // it is what answers for every block a player touches.
+        // A Boxed island reaches as far as its box; every other island as far as its size tier.
+        IslandSizeAllowance sizeAllowance = new IslandSizeAllowance(this.economicWiring.upgradeService());
         this.borderService = new IslandBorderService(
                 persistence.islandStoragePort(),
-                new IslandSizeAllowance(this.economicWiring.upgradeService()),
+                islandId ->
+                        this.boxedWiring.service().radius(islandId).orElseGet(() -> sizeAllowance.applyAsInt(islandId)),
                 persistence.islandMutationLock());
+        this.boxedWiring.whenBoxChanged(islandId -> borderService
+                .applyAllowance(islandId)
+                .ifPresent(moved -> {
+                    protectionListener
+                            .spatialIndex()
+                            .indexIsland(moved.island(), moved.location().worldName());
+                    redrawTheEdgeFor(moved);
+                }));
         this.economicWiring.upgradeService().whenUpgraded((islandId, upgradeId, newTier) -> {
             if (!UpgradeId.SIZE.equals(upgradeId)) {
                 return;
@@ -324,6 +340,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.economicWiring.worthService()::forgetIsland);
         this.cacheEviction.whenForgotten(this.chunkBlockWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.acidIslandWiring.service()::forget);
+        this.cacheEviction.whenForgotten(this.boxedWiring.service()::forget);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
         // the answer so the path is not a query. An island id is a fresh uuid every time, so an
@@ -374,6 +391,10 @@ public final class GameplayWiring {
     }
 
     /** The OneBlock game mode's service and the schedule that writes its counts. */
+    public BoxedWiring boxedWiring() {
+        return boxedWiring;
+    }
+
     public AcidIslandWiring acidIslandWiring() {
         return acidIslandWiring;
     }

@@ -124,7 +124,23 @@ class IslandLifecycleCommandsTest {
         IslandLifecycleCommands commands = new IslandLifecycleCommands(
                 create,
                 locations,
-                new StarterPresetCatalog(),
+                new StarterPresetCatalog(
+                        java.util.stream.Stream.concat(
+                                        StarterPresetCatalog.shipped().stream(),
+                                        java.util.stream.Stream.of(
+                                                new com.uxplima.uxmskyblock.core.domain.preset.StarterPreset(
+                                                        "faraway",
+                                                        "@presets.faraway.name",
+                                                        "@presets.faraway.description",
+                                                        "schematics/faraway.schem",
+                                                        com.uxplima.uxmskyblock.core.domain.biome.IslandBiome.PLAINS,
+                                                        com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.BOXED,
+                                                        List.of("uxm:platform"),
+                                                        com.uxplima.uxmskyblock.core.domain.preset.StartTemplateBundle
+                                                                .shipped(),
+                                                        "a_world_nobody_loaded")))
+                                .toList(),
+                        new StarterPresetCatalog().defaultPreset().id()),
                 mock(StarterSchematicEngine.class),
                 mock(IslandProtectionListener.class),
                 sessions,
@@ -186,6 +202,21 @@ class IslandLifecycleCommandsTest {
         assertThat(said)
                 .describedAs("the catalogue line, never the database's words")
                 .isEqualTo("create.failed");
+    }
+
+    @Test
+    @DisplayName("A preset whose world the server has not loaded makes nothing, and the player is told which")
+    void aMissingWorldMakesNothing() throws Exception {
+        while (player.nextComponentMessage() != null) {
+            // Only what the creation says matters here.
+        }
+
+        run("create faraway", player);
+
+        verify(create, never()).execute(any(), any(), anyString(), any(ServerNodeId.class), anyString());
+        String said = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage()));
+        assertThat(said).isEqualTo("create.world_missing");
     }
 
     @Test

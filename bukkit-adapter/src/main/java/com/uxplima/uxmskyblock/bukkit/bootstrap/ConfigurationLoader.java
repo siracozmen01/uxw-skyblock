@@ -312,6 +312,12 @@ public final class ConfigurationLoader {
                 "skygrid.conf",
                 com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration boxedConfig = loadConfig(
+                plugin,
+                dataDir,
+                "boxed.conf",
+                com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -352,6 +358,7 @@ public final class ConfigurationLoader {
                 acidIslandConfig,
                 caveBlockConfig,
                 skyGridConfig,
+                boxedConfig,
                 presetConfig);
 
         wiring.validate();

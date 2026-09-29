@@ -34,6 +34,9 @@ public final class BootstrapEventRegistrar {
         if (gameplayWiring.chunkBlockWiring().enabled()) {
             pm.registerEvents(gameplayWiring.chunkBlockWiring().listener(), plugin);
         }
+        if (gameplayWiring.boxedWiring().enabled()) {
+            pm.registerEvents(gameplayWiring.boxedWiring().listener(), plugin);
+        }
         if (gameplayWiring.acidIslandWiring().enabled()) {
             pm.registerEvents(gameplayWiring.acidIslandWiring().waterListener(), plugin);
             gameplayWiring.acidIslandWiring().addRecipes(plugin.getServer());

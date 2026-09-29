@@ -291,6 +291,16 @@ public final class IslandLifecycleCommands {
             return Cmd.OK;
         }
         ProfileId profileId = optProfile.get();
+        // A preset may name a world of its own. One the server has not loaded would get an island
+        // written to it and nowhere to send the player, so nothing is made.
+        java.util.Optional<String> missingWorld = presetCatalog
+                .findById(presetId)
+                .map(preset -> preset.worldOr(worldName))
+                .filter(world -> Bukkit.getWorld(world) == null);
+        if (missingWorld.isPresent()) {
+            send(player, "create.world_missing", Placeholder.unparsed("world", missingWorld.get()));
+            return Cmd.OK;
+        }
 
         schedulerPort.async(() -> {
             CreateIslandUseCase.CreateIslandResult result;

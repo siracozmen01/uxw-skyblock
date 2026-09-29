@@ -75,6 +75,7 @@ public final class EffectsConfiguration {
                 "acid-clean-water-filled",
                 parseAll("acid-clean-water-filled", List.of("[sound] item.bottle.fill 1.0 1.0")));
         defaults.put("acid-vent-fumes", parseAll("acid-vent-fumes", List.of("[particle] CAMPFIRE_COSY_SMOKE 4 0.4")));
+        defaults.put("boxed-grew", parseAll("boxed-grew", List.of("[sound] entity.player.levelup 0.8 1.6")));
         return new InteractionEffects(defaults);
     }
 
