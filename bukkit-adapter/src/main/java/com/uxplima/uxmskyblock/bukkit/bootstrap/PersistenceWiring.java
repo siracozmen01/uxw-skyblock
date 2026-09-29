@@ -13,6 +13,7 @@ import com.uxplima.uxmskyblock.core.domain.storage.S3StorageConfiguration;
 import com.uxplima.uxmskyblock.core.domain.storage.StorageBucket;
 import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import com.uxplima.uxmskyblock.persistence.sql.SqlDeadlines;
 import com.uxplima.uxmskyblock.persistence.storage.LocalFilesystemStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.storage.s3.S3ObjectStorageAdapter;
 import org.jspecify.annotations.Nullable;
@@ -90,6 +91,36 @@ public final class PersistenceWiring implements AutoCloseable {
     }
 
     /**
+     * {@code jdbcUrl} with the lock wait and the idle transaction limit the operator wrote, or the
+     * specification's when they wrote none or one that is not a positive duration. See {@link SqlDeadlines}.
+     */
+    static String withDeadlines(String jdbcUrl, @Nullable ConfigurationNode rootNode) {
+        return SqlDeadlines.apply(
+                jdbcUrl,
+                durationAt(rootNode, "lock-timeout", SqlDeadlines.DEFAULT_LOCK_TIMEOUT),
+                durationAt(rootNode, "idle-transaction-timeout", SqlDeadlines.DEFAULT_IDLE_IN_TRANSACTION));
+    }
+
+    private static java.time.Duration durationAt(
+            @Nullable ConfigurationNode rootNode, String key, java.time.Duration fallback) {
+        String raw = rootNode == null ? null : rootNode.node("database", key).getString();
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            java.time.Duration parsed = com.uxplima.uxmlib.common.Durations.parse(raw.strip());
+            if (!parsed.isNegative() && !parsed.isZero()) {
+                return parsed;
+            }
+        } catch (RuntimeException unreadable) {
+            // Said below, with the value the database is given instead.
+        }
+        LOGGER.warning("database." + key + " '" + raw + "' is not a positive duration, so " + fallback.toMillis()
+                + "ms is used.");
+        return fallback;
+    }
+
+    /**
      * Resolves the database backend and object storage engine from configuration or environment overrides.
      */
     public static PersistenceWiring resolve(@Nullable ConfigurationNode rootNode, Path dataDir) {
@@ -99,14 +130,16 @@ public final class PersistenceWiring implements AutoCloseable {
         String envPass = System.getProperty("skyblock.db.password", System.getenv("SKYBLOCK_DB_PASSWORD"));
 
         if (envJdbc != null && !envJdbc.isBlank()) {
-            persistenceBootstrap = PersistenceBootstrap.createRemote(envJdbc.trim(), envUser, envPass, 10);
+            persistenceBootstrap =
+                    PersistenceBootstrap.createRemote(withDeadlines(envJdbc.trim(), rootNode), envUser, envPass, 10);
         } else if (rootNode != null && isRemoteConfigured(rootNode)) {
             ConfigurationNode dbNode = rootNode.node("database");
             String jdbcUrl = dbNode.node("jdbc-url").getString();
             String user = dbNode.node("username").getString("");
             String pass = dbNode.node("password").getString("");
             int poolSize = dbNode.node("max-pool-size").getInt(10);
-            persistenceBootstrap = PersistenceBootstrap.createRemote(jdbcUrl.trim(), user, pass, poolSize);
+            persistenceBootstrap =
+                    PersistenceBootstrap.createRemote(withDeadlines(jdbcUrl.trim(), rootNode), user, pass, poolSize);
         } else {
             Path dbFile = dataDir.resolve("skyblock.db");
             persistenceBootstrap = PersistenceBootstrap.createSqlite(dbFile);
