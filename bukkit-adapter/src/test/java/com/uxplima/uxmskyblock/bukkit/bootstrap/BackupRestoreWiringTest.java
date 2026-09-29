@@ -284,6 +284,7 @@ class BackupRestoreWiringTest {
         when(config.generatorsConfig()).thenReturn(generatorsConfig);
         when(config.oneBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
+        when(config.effectsConfig()).thenReturn(com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects.none());
 
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();

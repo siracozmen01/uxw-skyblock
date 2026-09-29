@@ -44,7 +44,16 @@ class OneBlockCountsAreWrittenTest {
             });
             OneBlockConfiguration config = OneBlockConfiguration.load(
                     HoconConfigurationLoader.builder().buildAndLoadString("save-interval = \"45s\""));
-            OneBlockWiring wiring = new OneBlockWiring(config, persistence, scheduler);
+            ConfigurationWiring configuration = mock(ConfigurationWiring.class);
+            when(configuration.oneBlockConfig()).thenReturn(config);
+            when(configuration.messages()).thenReturn(com.uxplima.uxmskyblock.bukkit.i18n.Messages.bundled());
+            when(configuration.effectsConfig())
+                    .thenReturn(com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects.none());
+            OneBlockWiring wiring = new OneBlockWiring(
+                    configuration,
+                    persistence,
+                    scheduler,
+                    mock(com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener.class));
             wiring.service().start(island, 0, 100, 0);
 
             wiring.service().onBreak(island);

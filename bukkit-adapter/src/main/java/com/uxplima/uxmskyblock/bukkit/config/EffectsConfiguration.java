@@ -61,6 +61,11 @@ public final class EffectsConfiguration {
                 "island-created", parseAll("island-created", List.of("[sound] ui.toast.challenge_complete 1.0 1.2")));
         defaults.put("member-joined", parseAll("member-joined", List.of("[sound] entity.player.levelup 1.0 1.4")));
         defaults.put("upgrade-bought", parseAll("upgrade-bought", List.of("[sound] entity.player.levelup 1.0 1.0")));
+        defaults.put(
+                "oneblock-phase-began",
+                parseAll(
+                        "oneblock-phase-began",
+                        List.of("[sound] ui.toast.challenge_complete 1.0 0.8", "[particle] TOTEM_OF_UNDYING 30 0.6")));
         return new InteractionEffects(defaults);
     }
 

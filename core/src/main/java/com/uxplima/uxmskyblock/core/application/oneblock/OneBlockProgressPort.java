@@ -13,6 +13,9 @@ public interface OneBlockProgressPort {
     /** Makes {@code islandId} a OneBlock island whose block stands at x, y, z, with nothing broken yet. */
     void start(IslandId islandId, int x, int y, int z);
 
+    /** Every OneBlock island there is, read once when the server starts. */
+    java.util.List<OneBlockIsland> findAll();
+
     /** The island, if it is a OneBlock island. */
     Optional<OneBlockIsland> find(IslandId islandId);
 

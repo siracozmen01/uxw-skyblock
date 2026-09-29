@@ -280,7 +280,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.adminWiring.antiAbuseService()::forgetIsland);
         this.cacheEviction.whenForgotten(this.economicWiring.bankruptcyService()::forgetIsland);
         this.cacheEviction.whenForgotten(freezeService::forgetIsland);
-        this.oneBlockWiring = new OneBlockWiring(config.oneBlockConfig(), persistence, scheduler);
+        this.oneBlockWiring = new OneBlockWiring(config, persistence, scheduler, protectionListener);
         this.cacheEviction.whenForgotten(this.oneBlockWiring.service()::forgetIsland);
 
         this.protectionWiring = new GameplayProtectionWiring(

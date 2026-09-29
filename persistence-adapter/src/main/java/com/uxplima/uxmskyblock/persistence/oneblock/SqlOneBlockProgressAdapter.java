@@ -39,6 +39,23 @@ public final class SqlOneBlockProgressAdapter implements OneBlockProgressPort {
     }
 
     @Override
+    public java.util.List<OneBlockIsland> findAll() {
+        String sql = "SELECT island_id, block_x, block_y, block_z, blocks_broken FROM oneblock_progress";
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
+            java.util.List<OneBlockIsland> all = new java.util.ArrayList<>();
+            while (rs.next()) {
+                all.add(new OneBlockIsland(
+                        IslandId.fromString(rs.getString(1)), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getLong(5)));
+            }
+            return all;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read the OneBlock islands", e);
+        }
+    }
+
+    @Override
     public Optional<OneBlockIsland> find(IslandId islandId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         String sql = "SELECT block_x, block_y, block_z, blocks_broken FROM oneblock_progress WHERE island_id = ?";

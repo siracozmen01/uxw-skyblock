@@ -18,17 +18,49 @@ public final class OneBlockWiring implements AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(OneBlockWiring.class.getName());
 
+    private final OneBlockConfiguration config;
     private final OneBlockService service;
     private final AutoCloseable saving;
+    private final com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockListener listener;
 
-    public OneBlockWiring(OneBlockConfiguration config, PersistenceBootstrap persistence, SchedulerPort scheduler) {
-        Objects.requireNonNull(config, "config must not be null");
+    public OneBlockWiring(
+            ConfigurationWiring configuration,
+            PersistenceBootstrap persistence,
+            SchedulerPort scheduler,
+            com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener islands) {
+        this.config = Objects.requireNonNull(configuration.oneBlockConfig(), "oneBlockConfig must not be null");
         this.service = new OneBlockService(persistence.oneBlockProgressPort(), config.phases(), new SplittableRandom());
         this.saving = scheduler.repeatAsync(service::flush, config.saveInterval(), config.saveInterval());
+        this.listener = new com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockListener(
+                service,
+                islands,
+                scheduler,
+                configuration.messages(),
+                configuration.effectsConfig(),
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler, configuration.messages()));
+        // Every OneBlock island into memory before players break anything, so no break is a query on
+        // the region's thread. A break before it finishes reads its island once.
+        scheduler.async(() -> {
+            try {
+                int count = service.prime();
+                LOGGER.fine(() -> count + " OneBlock islands are in memory.");
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING, "The OneBlock islands could not be read ahead; each is read when needed.", e);
+            }
+        });
     }
 
     public OneBlockService service() {
         return service;
+    }
+
+    /** Whether the operator lets islands be OneBlock islands, which is when the listener is registered. */
+    public boolean enabled() {
+        return config.enabled();
+    }
+
+    public com.uxplima.uxmskyblock.bukkit.oneblock.OneBlockListener listener() {
+        return listener;
     }
 
     /** Stops the schedule and writes what is still only counted, before the database closes. */

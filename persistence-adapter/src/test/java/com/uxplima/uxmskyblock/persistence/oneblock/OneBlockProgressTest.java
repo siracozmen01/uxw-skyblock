@@ -65,6 +65,12 @@ class OneBlockProgressTest {
             }
 
             @Override
+            public List<OneBlockIsland> findAll() {
+                reads.incrementAndGet();
+                return stored.findAll();
+            }
+
+            @Override
             public Optional<OneBlockIsland> find(IslandId islandId) {
                 reads.incrementAndGet();
                 return stored.find(islandId);
@@ -147,6 +153,30 @@ class OneBlockProgressTest {
         }
 
         assertThat(reads).hasValue(1);
+    }
+
+    @Test
+    @DisplayName("Once primed, every OneBlock island is held and no break asks the database anything")
+    void aPrimedServiceNeverReads() throws Exception {
+        stored.start(island, 1, 64, 1);
+        IslandId ordinary = island();
+        OneBlockService service = service();
+
+        assertThat(service.prime()).isEqualTo(1);
+        int afterPriming = reads.get();
+        assertThat(service.onBreak(island)).isPresent();
+        assertThat(service.onBreak(ordinary)).isEmpty();
+        assertThat(service.island(island).orElseThrow().x()).isEqualTo(1);
+
+        assertThat(reads).hasValue(afterPriming);
+
+        // A change on another node makes this node forget the island; it is still a OneBlock island.
+        service.forgetIsland(island);
+        assertThat(stored.find(island).orElseThrow().blocksBroken())
+                .describedAs("forgetting wrote the one break")
+                .isEqualTo(1);
+        assertThat(service.onBreak(island)).isPresent();
+        assertThat(service.island(island).orElseThrow().blocksBroken()).isEqualTo(2);
     }
 
     @Test

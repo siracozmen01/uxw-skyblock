@@ -381,6 +381,7 @@ class ZeroFootprintModuleWiringTest {
         when(config.generatorsConfig()).thenReturn(generators);
         when(config.oneBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
+        when(config.effectsConfig()).thenReturn(com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects.none());
 
         return config;
     }

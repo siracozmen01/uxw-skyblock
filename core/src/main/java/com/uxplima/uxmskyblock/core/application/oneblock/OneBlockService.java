@@ -47,6 +47,16 @@ public final class OneBlockService {
     private final RandomGenerator random;
     private final Map<IslandId, Counted> counted = new ConcurrentHashMap<>();
 
+    /**
+     * Whether every OneBlock island is in memory. Once it is, an island not held is not a OneBlock
+     * island, and a block broken on it asks the database nothing: the question is answered on the
+     * thread that owns the block, where a query would stall the region.
+     */
+    private volatile boolean primed;
+
+    /** Islands let go of since priming, which are read again the next time a block breaks on one. */
+    private final java.util.Set<IslandId> forgotten = ConcurrentHashMap.newKeySet();
+
     /** Islands read once and found not to be OneBlock islands, so a block broken on one asks nothing. */
     private final java.util.Set<IslandId> notOneBlock = ConcurrentHashMap.newKeySet();
 
@@ -88,11 +98,26 @@ public final class OneBlockService {
                 phases.startsAPhase(broken)));
     }
 
+    /**
+     * Reads every OneBlock island into memory. Run off the region threads when the server starts;
+     * until it has, an island is read the first time a block breaks on it.
+     *
+     * @return how many OneBlock islands there are
+     */
+    public int prime() {
+        java.util.List<OneBlockProgressPort.OneBlockIsland> all = progress.findAll();
+        for (OneBlockProgressPort.OneBlockIsland island : all) {
+            counted.putIfAbsent(island.islandId(), new Counted(island));
+        }
+        primed = true;
+        return all.size();
+    }
+
     /** Makes a new island a OneBlock island whose block stands at x, y, z. */
     public void start(IslandId islandId, int x, int y, int z) {
         progress.start(islandId, x, y, z);
-        counted.remove(islandId);
         notOneBlock.remove(islandId);
+        counted.put(islandId, new Counted(new OneBlockProgressPort.OneBlockIsland(islandId, x, y, z, 0)));
     }
 
     /**
@@ -125,6 +150,9 @@ public final class OneBlockService {
     /** Writes what the island has counted and lets go of it, as when it is deleted or leaves this node. */
     public void forgetIsland(IslandId islandId) {
         notOneBlock.remove(islandId);
+        // Forgetting is also what a change on another node asks for, and the island may well still be a
+        // OneBlock island: it is read again rather than taken for an ordinary one.
+        forgotten.add(islandId);
         Counted held = counted.remove(islandId);
         if (held == null) {
             return;
@@ -145,9 +173,10 @@ public final class OneBlockService {
         if (held != null) {
             return held;
         }
-        if (notOneBlock.contains(islandId)) {
+        if ((primed && !forgotten.contains(islandId)) || notOneBlock.contains(islandId)) {
             return null;
         }
+        forgotten.remove(islandId);
         Optional<OneBlockProgressPort.OneBlockIsland> stored = progress.find(islandId);
         if (stored.isEmpty()) {
             notOneBlock.add(islandId);

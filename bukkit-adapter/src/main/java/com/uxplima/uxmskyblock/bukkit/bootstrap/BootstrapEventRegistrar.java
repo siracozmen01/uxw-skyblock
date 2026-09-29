@@ -30,6 +30,9 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("chat") && gameplayWiring.chatListener() != null) {
             pm.registerEvents(gameplayWiring.chatListener(), plugin);
         }
+        if (gameplayWiring.oneBlockWiring().enabled()) {
+            pm.registerEvents(gameplayWiring.oneBlockWiring().listener(), plugin);
+        }
         if (gameplayWiring.vaultListener() != null) {
             pm.registerEvents(gameplayWiring.vaultListener(), plugin);
         }
