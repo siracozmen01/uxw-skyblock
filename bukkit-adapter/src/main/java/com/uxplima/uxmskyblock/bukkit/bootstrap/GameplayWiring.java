@@ -115,6 +115,7 @@ public final class GameplayWiring {
     private final PoseidonWiring poseidonWiring;
     private final StrangerRealmsWiring strangerRealmsWiring;
     private final ParkourWiring parkourWiring;
+    private final BrixWiring brixWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -199,6 +200,7 @@ public final class GameplayWiring {
         this.poseidonWiring = new PoseidonWiring(config, persistence, scheduler, protectionListener);
         this.strangerRealmsWiring = new StrangerRealmsWiring(config, persistence, scheduler, protectionListener);
         this.parkourWiring = new ParkourWiring(config, persistence, scheduler, protectionListener);
+        this.brixWiring = new BrixWiring(config, persistence, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -362,6 +364,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.poseidonWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.strangerRealmsWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.parkourWiring.service()::forget);
+        this.cacheEviction.whenForgotten(this.brixWiring.service()::forget);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
         // the answer so the path is not a query. An island id is a fresh uuid every time, so an
@@ -427,8 +430,13 @@ public final class GameplayWiring {
         actions.addAll(this.poseidonWiring.startActions());
         actions.addAll(this.strangerRealmsWiring.startActions());
         actions.addAll(this.parkourWiring.startActions());
+        actions.addAll(this.brixWiring.startActions());
         caveBlockStart(config, scheduler).forEach(actions::add);
         return actions;
+    }
+
+    public BrixWiring brixWiring() {
+        return brixWiring;
     }
 
     public ParkourWiring parkourWiring() {

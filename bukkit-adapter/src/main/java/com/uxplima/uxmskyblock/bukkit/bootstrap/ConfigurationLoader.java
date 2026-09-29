@@ -336,6 +336,12 @@ public final class ConfigurationLoader {
                 "parkour.conf",
                 com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig = loadConfig(
+                plugin,
+                dataDir,
+                "brix.conf",
+                com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -380,6 +386,7 @@ public final class ConfigurationLoader {
                 poseidonConfig,
                 strangerRealmsConfig,
                 parkourConfig,
+                brixConfig,
                 presetConfig);
 
         wiring.validate();

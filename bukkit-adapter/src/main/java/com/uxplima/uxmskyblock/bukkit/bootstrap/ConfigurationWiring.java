@@ -111,6 +111,7 @@ public final class ConfigurationWiring {
     private final com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration poseidonConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration parkourConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -192,6 +193,7 @@ public final class ConfigurationWiring {
             com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration poseidonConfig,
             com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig,
             com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration parkourConfig,
+            com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -237,6 +239,7 @@ public final class ConfigurationWiring {
         this.strangerRealmsConfig =
                 Objects.requireNonNull(strangerRealmsConfig, "strangerRealmsConfig must not be null");
         this.parkourConfig = Objects.requireNonNull(parkourConfig, "parkourConfig must not be null");
+        this.brixConfig = Objects.requireNonNull(brixConfig, "brixConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -323,6 +326,7 @@ public final class ConfigurationWiring {
                 com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -523,6 +527,11 @@ public final class ConfigurationWiring {
      */
     public java.util.List<String> islandWorlds() {
         return presetConfig.worlds(nodeConfig.worldName());
+    }
+
+    /** Whether islands can be Brix plots, and the ground a plot is laid on. */
+    public com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig() {
+        return brixConfig;
     }
 
     /** Whether islands can be Parkour courses, what marks a course and how a run is kept. */

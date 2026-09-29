@@ -113,7 +113,8 @@ class EveryPerIslandCacheSaysHowToForgetTest {
                 .contains("boxedWiring.service()::forget")
                 .contains("poseidonWiring.service()::forget")
                 .contains("strangerRealmsWiring.service()::forget")
-                .contains("parkourWiring.service()::forget");
+                .contains("parkourWiring.service()::forget")
+                .contains("brixWiring.service()::forget");
     }
 
     @Test

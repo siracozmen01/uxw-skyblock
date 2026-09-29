@@ -140,6 +140,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final com.uxplima.uxmskyblock.persistence.poseidon.SqlPoseidonIslandsAdapter poseidonIslandsAdapter;
     private final com.uxplima.uxmskyblock.persistence.stranger.SqlStrangerRealmsAdapter strangerRealmsAdapter;
     private final com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter parkourAdapter;
+    private final com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter brixPlotsAdapter;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
             profileCosmeticStorageAdapter;
@@ -213,6 +214,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.strangerRealmsAdapter =
                 new com.uxplima.uxmskyblock.persistence.stranger.SqlStrangerRealmsAdapter(database.dataSource());
         this.parkourAdapter = new com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter(database.dataSource());
+        this.brixPlotsAdapter = new com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter(database.dataSource());
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
         this.islandRecycleStorageAdapter =
@@ -453,6 +455,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public com.uxplima.uxmskyblock.core.application.parkour.ParkourPort parkourPort() {
         return parkourAdapter;
+    }
+
+    /** Which islands are Brix plots. */
+    public com.uxplima.uxmskyblock.core.application.brix.BrixPlotsPort brixPlotsPort() {
+        return brixPlotsAdapter;
     }
 
     /** Which islands are Boxed islands, and the advancements each has earned. */

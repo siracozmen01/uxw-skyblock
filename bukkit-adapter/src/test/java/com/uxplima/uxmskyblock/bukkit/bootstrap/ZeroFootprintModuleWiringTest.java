@@ -290,6 +290,13 @@ class ZeroFootprintModuleWiringTest {
             assertThat(gameplay.chatListener()).isNotNull();
             assertThat(gameplay.leaderboardMetrics().metrics())
                     .contains(com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID);
+            assertThat(gameplay.schematicEngine()
+                            .actions()
+                            .knowsAll(java.util.List.of(
+                                    com.uxplima.uxmskyblock.bukkit.parkour.CourseStart.ACTION,
+                                    com.uxplima.uxmskyblock.bukkit.brix.PlotStart.ACTION)))
+                    .describedAs("every enabled mode's start action is known to the islands it starts")
+                    .isTrue();
         }
     }
 
@@ -405,6 +412,8 @@ class ZeroFootprintModuleWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration());
         when(config.parkourConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.defaultConfiguration());
+        when(config.brixConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration());
         when(config.strangerRealmsConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
         when(config.poseidonConfig())

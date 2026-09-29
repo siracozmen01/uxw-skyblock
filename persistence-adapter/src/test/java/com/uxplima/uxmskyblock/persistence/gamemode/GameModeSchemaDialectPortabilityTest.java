@@ -291,6 +291,13 @@ class GameModeSchemaDialectPortabilityTest {
             stranger.add(islandId);
             assertThat(stranger.exists(islandId)).isTrue();
             assertThat(stranger.findAll()).contains(islandId);
+            // A Brix plot: recorded once, found, gone with the island.
+            com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter brix =
+                    new com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter(database.dataSource());
+            brix.add(islandId);
+            brix.add(islandId);
+            assertThat(brix.exists(islandId)).isTrue();
+            assertThat(brix.findAll()).containsExactly(islandId);
             // A Parkour course: recorded once, a runner's first finish and a faster and a slower one.
             com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter parkour =
                     new com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter(database.dataSource());
@@ -331,6 +338,8 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(stranger.exists(islandId)).isFalse();
             assertThat(stranger.farthestReach()).isZero();
             assertThat(parkour.exists(islandId)).isFalse();
+            assertThat(brix.exists(islandId)).isFalse();
+            assertThat(brix.findAll()).isEmpty();
             assertThat(parkour.top(islandId, 5)).isEmpty();
             assertThat(parkour.mostRun(5)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();
