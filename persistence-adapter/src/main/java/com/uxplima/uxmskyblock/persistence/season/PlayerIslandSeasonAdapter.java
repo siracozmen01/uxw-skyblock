@@ -35,11 +35,14 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
 
     private final Database database;
     private final Dialect dialect;
+    private final String rank;
     private final DialectTransactions tx;
 
     public PlayerIslandSeasonAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database must not be null");
         this.dialect = database.dialect();
+        // MySQL 8 reserves RANK for its window function, so the column is quoted there.
+        this.rank = this.dialect == Dialect.MYSQL ? "`rank`" : "rank";
         this.tx = new DialectTransactions(this.dialect);
     }
 
@@ -165,9 +168,9 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
 
         String sql = """
                 INSERT INTO season_snapshots (
-                    season_id, metric, rank, island_id, owner_player_uuid, score, snapshot_timestamp
+                    season_id, metric, %s, island_id, owner_player_uuid, score, snapshot_timestamp
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """;
+                """.formatted(rank);
 
         try (Connection conn = database.connection();
                 PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -206,12 +209,12 @@ public final class PlayerIslandSeasonAdapter implements IslandSeasonStoragePort 
         }
 
         String sql = """
-                SELECT season_id, metric, rank, island_id, owner_player_uuid, score, snapshot_timestamp
+                SELECT season_id, metric, %1$s, island_id, owner_player_uuid, score, snapshot_timestamp
                 FROM season_snapshots
                 WHERE season_id = ? AND metric = ?
-                ORDER BY rank ASC
+                ORDER BY %1$s ASC
                 LIMIT ?
-                """;
+                """.formatted(rank);
 
         try (Connection conn = database.connection();
                 PreparedStatement ps = conn.prepareStatement(sql)) {

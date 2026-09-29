@@ -17,6 +17,8 @@ vault-api      = "1.7.1"
 sqlite-jdbc    = "3.49.1.0"
 mariadb-jdbc   = "3.5.3"
 postgresql     = "42.7.4"
+# The MySQL driver Paper itself ships, which a server on a jdbc:mysql: URL connects through. Tests only.
+mysql-connector = "9.2.0"
 gson           = "2.11.0"
 jspecify       = "1.0.0"
 slf4j          = "2.0.16"
@@ -68,6 +70,7 @@ lettuce-core      = { module = "io.lettuce:lettuce-core",                       
 sqlite-jdbc       = { module = "org.xerial:sqlite-jdbc",                         version.ref = "sqlite-jdbc" }
 mariadb-jdbc      = { module = "org.mariadb.jdbc:mariadb-java-client",           version.ref = "mariadb-jdbc" }
 postgresql        = { module = "org.postgresql:postgresql",                      version.ref = "postgresql" }
+mysql-connector-j = { module = "com.mysql:mysql-connector-j",                    version.ref = "mysql-connector" }
 gson              = { module = "com.google.code.gson:gson",                      version.ref = "gson" }
 jspecify          = { module = "org.jspecify:jspecify",                          version.ref = "jspecify" }
 slf4j-api         = { module = "org.slf4j:slf4j-api",                            version.ref = "slf4j" }
@@ -86,6 +89,7 @@ archunit-junit            = { module = "com.tngtech.archunit:archunit-junit5",  
 testcontainers            = { module = "org.testcontainers:testcontainers",              version.ref = "testcontainers" }
 testcontainers-mariadb    = { module = "org.testcontainers:mariadb",                     version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql",                  version.ref = "testcontainers" }
+testcontainers-mysql      = { module = "org.testcontainers:mysql",                       version.ref = "testcontainers" }
 testcontainers-junit      = { module = "org.testcontainers:junit-jupiter",                version.ref = "testcontainers" }
 
 # Tooling Dependencies (buildSrc & compilation)

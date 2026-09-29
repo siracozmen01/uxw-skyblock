@@ -99,6 +99,8 @@ final class GameplaySchemaMigrationsV13ToV15 {
             CREATE INDEX IF NOT EXISTS idx_season_payouts_season ON season_payouts (season_id);
             """;
 
+    // rank is quoted: MySQL 8 reserves it for its window function and refused the whole migration.
+    // MariaDB reads the quoted name as the same column, so a database it already made is unchanged.
     private static final String MYSQL_V13_DDL = """
             CREATE TABLE IF NOT EXISTS island_seasons (
                 season_id INT NOT NULL PRIMARY KEY,
@@ -115,17 +117,17 @@ final class GameplaySchemaMigrationsV13ToV15 {
             CREATE TABLE IF NOT EXISTS season_snapshots (
                 season_id INT NOT NULL,
                 metric VARCHAR(32) NOT NULL,
-                rank INT NOT NULL,
+                `rank` INT NOT NULL,
                 island_id VARCHAR(36) NOT NULL,
                 owner_player_uuid VARCHAR(36) NOT NULL,
                 score BIGINT NOT NULL,
                 snapshot_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (season_id, metric, rank),
+                PRIMARY KEY (season_id, metric, `rank`),
                 CONSTRAINT fk_season_snapshots_season FOREIGN KEY (season_id)
                     REFERENCES island_seasons (season_id) ON DELETE CASCADE
             );
 
-            CREATE INDEX idx_season_snapshots_metric ON season_snapshots (season_id, metric, rank);
+            CREATE INDEX idx_season_snapshots_metric ON season_snapshots (season_id, metric, `rank`);
             CREATE INDEX idx_season_snapshots_island ON season_snapshots (island_id);
             CREATE INDEX idx_season_snapshots_owner ON season_snapshots (owner_player_uuid);
 

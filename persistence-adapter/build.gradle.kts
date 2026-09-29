@@ -18,6 +18,9 @@ dependencies {
     testImplementation(libs.testcontainers)
     testImplementation(libs.testcontainers.mariadb)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.mysql)
+    // Paper carries this driver itself, so a jdbc:mysql: URL on a real server reaches MySQL through it.
+    testRuntimeOnly(libs.mysql.connector.j)
     testImplementation(libs.testcontainers.junit)
 }
 
@@ -28,7 +31,7 @@ tasks.test {
 }
 
 val databaseIntegrationTest by tasks.registering(Test::class) {
-    description = "Runs containerized database integration tests against MariaDB and PostgreSQL"
+    description = "Runs containerized database integration tests against MariaDB, MySQL and PostgreSQL"
     group = "verification"
     testClassesDirs =
         sourceSets.test
@@ -54,6 +57,21 @@ val mariadbIntegrationTest by tasks.registering(Test::class) {
         includeTags("database-integration")
     }
     systemProperty("skyblock.test.database", "mariadb")
+    shouldRunAfter(tasks.test)
+}
+
+val mysqlIntegrationTest by tasks.registering(Test::class) {
+    description = "Runs containerized database integration tests against MySQL only"
+    group = "verification"
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("database-integration")
+    }
+    systemProperty("skyblock.test.database", "mysql")
     shouldRunAfter(tasks.test)
 }
 
@@ -129,4 +147,5 @@ fun registerLaneRanGuard(lane: TaskProvider<Test>) {
 
 registerLaneRanGuard(databaseIntegrationTest)
 registerLaneRanGuard(mariadbIntegrationTest)
+registerLaneRanGuard(mysqlIntegrationTest)
 registerLaneRanGuard(postgresIntegrationTest)

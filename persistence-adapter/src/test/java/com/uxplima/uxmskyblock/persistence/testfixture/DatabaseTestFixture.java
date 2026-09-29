@@ -7,6 +7,7 @@ import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.MariaDBContainer;
+import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
@@ -19,6 +20,9 @@ public final class DatabaseTestFixture {
 
     /** Pinned, stable LTS MariaDB container image version. */
     public static final String MARIADB_IMAGE = "mariadb:10.11.11";
+
+    /** Pinned, stable MySQL LTS container image version. */
+    public static final String MYSQL_IMAGE = "mysql:8.4.5";
 
     /** Pinned, stable PostgreSQL container image version. */
     public static final String POSTGRES_IMAGE = "postgres:15.12-alpine";
@@ -34,10 +38,22 @@ public final class DatabaseTestFixture {
         }
     }
 
-    /** Checks whether MariaDB / MySQL integration tests are enabled for this test run. */
+    /** Checks whether MariaDB integration tests are enabled for this test run. */
     public static boolean isMariaDbEnabled() {
         String db = System.getProperty("skyblock.test.database", "all").trim().toLowerCase(java.util.Locale.ROOT);
-        boolean requested = db.equals("all") || db.equals("mariadb") || db.equals("mysql");
+        boolean requested = db.equals("all") || db.equals("mariadb");
+        return requested && isDockerAvailable();
+    }
+
+    /**
+     * Checks whether MySQL integration tests are enabled for this test run.
+     *
+     * <p>MySQL is its own engine, not MariaDB under another name: "mysql" once ran the MariaDB tests
+     * and no MySQL server was ever started.
+     */
+    public static boolean isMySqlEnabled() {
+        String db = System.getProperty("skyblock.test.database", "all").trim().toLowerCase(java.util.Locale.ROOT);
+        boolean requested = db.equals("all") || db.equals("mysql");
         return requested && isDockerAvailable();
     }
 
@@ -73,6 +89,24 @@ public final class DatabaseTestFixture {
             return null;
         }
         MariaDBContainer<?> container = newMariaDbContainer();
+        container.start();
+        return container;
+    }
+
+    /** Creates a configured, unstarted MySQL container instance. */
+    public static MySQLContainer<?> newMySqlContainer() {
+        return new MySQLContainer<>(MYSQL_IMAGE)
+                .withDatabaseName("testdb")
+                .withUsername("testuser")
+                .withPassword("testpass");
+    }
+
+    /** Starts a MySQL container only if MySQL tests are enabled; returns null otherwise. */
+    public static MySQLContainer<?> startMySqlIfEnabled() {
+        if (!isMySqlEnabled()) {
+            return null;
+        }
+        MySQLContainer<?> container = newMySqlContainer();
         container.start();
         return container;
     }
