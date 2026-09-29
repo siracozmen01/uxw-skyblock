@@ -187,7 +187,7 @@ public final class GameplayWiring {
         // Before creation, because a game mode brings the actions that build its islands.
         this.oneBlockWiring = new OneBlockWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
-        this.chunkBlockWiring = new ChunkBlockWiring(config, persistence, scheduler);
+        this.chunkBlockWiring = new ChunkBlockWiring(config, persistence, scheduler, protectionListener);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,

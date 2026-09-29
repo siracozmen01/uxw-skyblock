@@ -31,6 +31,9 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("chat") && gameplayWiring.chatListener() != null) {
             pm.registerEvents(gameplayWiring.chatListener(), plugin);
         }
+        if (gameplayWiring.chunkBlockWiring().enabled()) {
+            pm.registerEvents(gameplayWiring.chunkBlockWiring().listener(), plugin);
+        }
         if (gameplayWiring.oneBlockWiring().enabled()) {
             pm.registerEvents(gameplayWiring.oneBlockWiring().listener(), plugin);
         }
