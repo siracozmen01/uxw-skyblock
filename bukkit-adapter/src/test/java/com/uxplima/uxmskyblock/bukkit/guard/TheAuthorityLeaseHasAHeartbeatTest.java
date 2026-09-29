@@ -76,12 +76,20 @@ class TheAuthorityLeaseHasAHeartbeatTest {
     @DisplayName("Starting the plugin finishes the island resets a crash left half done")
     void thePluginFinishesHalfDoneResets() throws IOException {
         String source = Files.readString(WIRING, StandardCharsets.UTF_8);
+        String housekeeping = Files.readString(WIRING.resolveSibling("Housekeeping.java"), StandardCharsets.UTF_8);
+        String up = source.substring(source.indexOf("public void whenServerIsUp()"));
+        up = up.substring(0, up.indexOf("\n    }\n"));
+        String afterStart = housekeeping.substring(housekeeping.indexOf("void recoverAfterStart()"));
+        afterStart = afterStart.substring(0, afterStart.indexOf("\n    }\n"));
 
-        assertThat(source)
+        assertThat(up)
+                .describedAs("the server finishes what a crash left once it is up")
+                .contains("housekeeping.recoverAfterStart();");
+        assertThat(afterStart)
                 .describedAs("a crash between deleting the island and handing its slot back leaves the "
                         + "grid a hole that nothing ever fills")
-                .contains("recoverIncompleteRecycles();")
-                .contains("recycleService.recoverIncompleteOperations();");
+                .contains("recoverIncompleteRecycles();");
+        assertThat(housekeeping).contains("recycleService.recoverIncompleteOperations();");
     }
 
     @Test

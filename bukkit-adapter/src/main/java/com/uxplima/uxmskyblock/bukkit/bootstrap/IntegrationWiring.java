@@ -13,9 +13,6 @@ import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockDetector;
 import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockScreen;
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
-import com.uxplima.uxmskyblock.bukkit.command.IslandFeatures;
-import com.uxplima.uxmskyblock.bukkit.config.NotificationConfiguration;
-import com.uxplima.uxmskyblock.bukkit.health.SkyblockHealth;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.integration.discord.JavaHttpClientDiscordAdapter;
@@ -32,19 +29,15 @@ import com.uxplima.uxmskyblock.bukkit.webmap.DynmapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.IslandMarkerSynchroniser;
 import com.uxplima.uxmskyblock.bukkit.webmap.Pl3xMapAdapter;
 import com.uxplima.uxmskyblock.bukkit.webmap.WebMapAdapter;
-import com.uxplima.uxmskyblock.bukkit.world.IslandWorldCheck;
 import com.uxplima.uxmskyblock.core.application.chat.IslandChatTransportPort;
 import com.uxplima.uxmskyblock.core.application.discord.IslandDiscordWebhookService;
 import com.uxplima.uxmskyblock.core.application.event.DeduplicatingOutboxConsumer;
 import com.uxplima.uxmskyblock.core.application.event.DurableEventTransportPort;
 import com.uxplima.uxmskyblock.core.application.event.TransactionalOutboxDispatcher;
-import com.uxplima.uxmskyblock.core.application.flag.IslandFlagService;
 import com.uxplima.uxmskyblock.core.application.island.IslandAuthorityService;
 import com.uxplima.uxmskyblock.core.application.network.ClusterRoutingDirectoryPort;
 import com.uxplima.uxmskyblock.core.application.network.IslandNetworkRouter;
 import com.uxplima.uxmskyblock.core.application.network.VelocityBridgePort;
-import com.uxplima.uxmskyblock.core.application.notification.NotificationService;
-import com.uxplima.uxmskyblock.core.application.recycle.IslandRecycleService;
 import com.uxplima.uxmskyblock.core.application.webmap.IslandWebMapService;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
@@ -71,17 +64,8 @@ public final class IntegrationWiring implements AutoCloseable {
     private final TransactionalOutboxDispatcher outboxDispatcher;
     private final IslandAuthorityService authorityService;
     private final ClusterPlacementWiring clusterPlacement;
-    private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
-    private final com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService restoreService;
-    private final com.uxplima.uxmskyblock.core.application.backup.BackupService backupService;
-    private final com.uxplima.uxmskyblock.core.domain.storage.StorageBucket backupBucket;
-    private final NotificationService notificationService;
-    private final com.uxplima.uxmskyblock.core.application.activity.ActivityFeedService activityFeedService;
-    private final com.uxplima.uxmskyblock.core.application.economy.EconomySagaPort economySagaPort;
-    private final com.uxplima.uxmskyblock.core.application.inventory.InventoryMutationJournalPort journalPort;
-    private final NotificationConfiguration notificationConfig;
+    private final Housekeeping housekeeping;
 
-    private @org.jspecify.annotations.Nullable AutoCloseable notificationSweep;
     private @org.jspecify.annotations.Nullable AutoCloseable sagaRecovery;
     private final @org.jspecify.annotations.Nullable AutoCloseable domainEvents;
     private final java.time.Duration authorityHeartbeatInterval;
@@ -197,15 +181,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // Every write that needs authority is refused once it runs out, so an island stopped being
         // able to use its own bank one lease after it was created. This is the missing heartbeat.
         this.scheduler = gameplay.scheduler();
-        this.recycleService = gameplay.recycleService();
-        this.restoreService = gameplay.islandRestoreService();
-        this.backupService = gameplay.backupService();
-        this.backupBucket = gameplay.backupBucket();
-        this.notificationService = gameplay.notificationService();
-        this.activityFeedService = gameplay.activityFeedService();
-        this.economySagaPort = persistence.economySagaPort();
-        this.journalPort = persistence.mutationJournalPort();
-        this.notificationConfig = config.notificationConfig();
+        this.housekeeping = new Housekeeping(gameplay, persistence, config.notificationConfig());
         this.authorityService = new IslandAuthorityService(
                 persistence.islandAuthorityPort(),
                 serverNodeId,
@@ -228,7 +204,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 com.uxplima.uxmskyblock.core.application.activity.ActivityFeedProjection.CONSUMER_NAME,
                 persistence.consumerInboxPort(),
                 new com.uxplima.uxmskyblock.core.application.activity.ActivityFeedProjection(
-                        this.activityFeedService,
+                        gameplay.activityFeedService(),
                         uuid -> java.util.Optional.ofNullable(
                                 plugin.getServer().getOfflinePlayer(uuid).getName()))));
 
@@ -239,7 +215,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // The group is this node's own, because every node has to hear every event: a group shared
         // between them would hand each event to one node and leave the rest stale, which is the
         // thing being fixed.
-        this.domainEvents = subscribeToDomainEvents(gameplay, persistence);
+        this.domainEvents = DomainEventSubscription.subscribe(serverNodeId, this.eventTransport, gameplay, persistence);
 
         this.velocityBridge =
                 new BukkitVelocityBridge(plugin, gameplay.scheduler(), authority.sessionCoordinator()::handOff);
@@ -273,109 +249,8 @@ public final class IntegrationWiring implements AutoCloseable {
         gameplay.allianceService().setAnnouncer(this.discordService);
         gameplay.freezeService().setAnnouncer(this.discordService);
 
-        this.commandTree = new IslandCommandTree(
-                gameplay.createIslandUseCase(),
-                gameplay.locationService(),
-                new IslandFlagService(persistence.islandStoragePort(), persistence.islandMutationLock()),
-                gameplay.bankService(),
-                persistence.islandUpgradeStoragePort(),
-                gameplay.leaderboardService(),
-                gameplay.biomeAdapter(),
-                gameplay.presetCatalog(),
-                gameplay.schematicEngine(),
-                gameplay.protectionListener(),
-                authority.sessionCoordinator(),
-                gameplay.scheduler(),
-                this.messages,
-                config.homeConfig(),
-                serverNodeId,
-                worldName,
-                this.economyBridge,
-                IslandFeatures.builder()
-                        .controlMenu(this.controlMenu)
-                        .chatService(gameplay.chatService())
-                        .inactivityService(gameplay.inactivityService())
-                        .freezeService(gameplay.freezeService())
-                        .missionsMenu(gameplay.missionsMenu())
-                        .boundaryService(gameplay.boundaryService())
-                        .recycleService(gameplay.recycleService())
-                        .resetMenu(gameplay.resetConfirmationMenu())
-                        .worthService(gameplay.worthService())
-                        .dimensionListener(gameplay.dimensionListener())
-                        .limitService(gameplay.limitService())
-                        .antiAbuseService(gameplay.antiAbuseService())
-                        .boosterService(gameplay.boosterService())
-                        .boosterMenu(gameplay.boosterMenu())
-                        .upgradeService(gameplay.upgradeService())
-                        .shopService(gameplay.shopService())
-                        .shopMenu(gameplay.shopMenu())
-                        // The grant subsystem was complete underneath and nothing could make a
-                        // grant: the whole write side had no caller, so the check on every click
-                        // asked about grants that could not exist.
-                        .temporaryAccessService(
-                                config.moduleSettings().isModuleEnabled("temporary-access")
-                                        ? gameplay.temporaryAccessService()
-                                        : null)
-                        .build());
-        // A button runs an island command under the operator's names for it, so the verbs need the tree.
-        registerMenuVerbs(this.menuEngine, this.messages, this.commandTree::typed);
-        this.commandTree.useTemporaryAccess(
-                config.temporaryAccessConfig(), authority.nodeProcessIdentity(), authority.profileTypes());
-        // The inbox, its table, its ten categories and the delivery on join were all here and
-        // nothing ever wrote a row, so "while you were away" was always empty.
-        this.commandTree.useNotifications(gameplay.notificationService());
-        // Nothing ever wrote an activity event, so every island's feed was empty for as long as the
-        // server ran.
-        this.commandTree.useActivityFeed(gameplay.activityFeedService());
-        tellTheFeedWhenAMissionFinishes(gameplay);
-        this.commandTree.setBankruptcyService(gameplay.bankruptcyService());
-        this.commandTree.setHomeService(gameplay.homeService());
-        this.commandTree.setVaultWindow(gameplay.vaultWindow());
-        this.commandTree.useLifecycle(gameplay.playerLifecycle());
-        this.commandTree.useGameModes(gameplay.gameModeHierarchyService()::modeOf);
-        this.commandTree.useLeaderboards(gameplay.leaderboardMetrics());
-        // A OneBlock island's standing, as the operator's menu file draws it and as placeholders.
-        var oneBlockPanel = gameplay.oneBlockWiring().panel(this.menuEngine);
-        this.commandTree.useOneBlock(oneBlockPanel);
-        this.placeholderExpansion.useOneBlock(oneBlockPanel);
-        this.commandTree.setActivityFeedService(gameplay.activityFeedService());
-        this.commandTree.setNameService(gameplay.islandNameService());
-        this.commandTree.setNetworkRouter(this.networkRouter);
-        this.commandTree.setRestoreService(gameplay.islandRestoreService());
-        this.commandTree.setBackupService(gameplay.backupService());
-        this.commandTree.setBackupBucket(gameplay.backupBucket());
-        this.commandTree.setIslandBackupService(gameplay.islandBackupService());
-        this.commandTree.setDatabaseBackupService(gameplay.databaseBackupService());
-        this.commandTree.setMembershipService(gameplay.membershipService());
-        this.commandTree.setSeasonService(gameplay.seasonService());
-        // A reload reads the catalogues and the menus and nothing else: no service is re-bound and
-        // no table is touched, because hot swapping a subsystem is how a plugin leaks classloaders
-        // and leaves listeners behind.
-        this.commandTree.setReloader(new SkyblockReloader(this.messages.provider(), config.dataDir(), this.menuEngine));
-        String islandWorld = config.nodeConfig().worldName();
-        java.util.List<com.uxplima.uxmlib.health.HealthCheck> checks = java.util.List.of(
-                SkyblockHealth.storage(persistence::databaseAnswers),
-                SkyblockHealth.windows(() -> this.menuEngine.loadedSpecs().size()),
-                SkyblockHealth.placeholders(() -> this.placeholderExpansion.isPublished()),
-                SkyblockHealth.islandWorld(
-                        () -> IslandWorldCheck.warningFor(
-                                islandWorld, plugin.getServer().getWorld(islandWorld), plugin.getName()),
-                        () -> plugin.getServer().getWorld(islandWorld) != null),
-                SkyblockHealth.economy(() -> this.economyBridge.isEconomyAvailable()));
-        this.commandTree.setHealthChecks(() -> checks);
-        // Four subsystems that were running with no door. Every one of them had a service, a table
-        // and a feature module, and no command a player could type.
-        this.commandTree.setWarpService(gameplay.warpService());
-        this.commandTree.setWarpBrowseMenu(gameplay.warpBrowseMenu());
-        this.commandTree.setBiomeConfiguration(config.biomeConfig());
-        this.commandTree.setRecalculationCooldown(config.levelConfig().recalculationCooldown());
-        this.commandTree.setAntiAbuseConfiguration(config.antiAbuseConfig());
-        this.commandTree.setInteractionEffects(config.effectsConfig());
-        this.commandTree.setSocialService(gameplay.socialService());
-        this.commandTree.setAllianceService(gameplay.allianceService());
-        this.commandTree.setRewardInboxService(gameplay.rewardInboxService());
-        this.commandTree.useMarkerSynchroniser(this.markerSynchroniser);
-        this.commandTree.setMissionService(gameplay.missionService());
+        this.commandTree =
+                IslandCommandWiring.build(this, plugin, config, persistence, authority, gameplay, housekeeping);
 
         this.apiBridge = new BukkitSkyblockApiBridge(
                 persistence.islandStoragePort(),
@@ -408,116 +283,7 @@ public final class IntegrationWiring implements AutoCloseable {
                 .registerEvents(new PlaceholderCacheEviction(placeholderExpansion), plugin);
         commandTree.register(plugin);
         apiBridge.register();
-        this.notificationSweep = scheduler.repeatAsync(
-                () -> {
-                    sweepReadNotifications();
-                    sweepOldActivity();
-                    sweepSettledRecoveryRecords();
-                },
-                notificationConfig.sweepInterval(),
-                notificationConfig.sweepInterval());
-    }
-
-    /**
-     * Drops the activity lines an island's feed has outgrown.
-     *
-     * <p>A feed is a digest of what happened lately, not a ledger. Nothing wrote a line until now
-     * and nothing ever deleted one.
-     */
-    private void sweepOldActivity() {
-        try {
-            int swept = activityFeedService.purgeOlderThan(
-                    java.time.Instant.now().minus(notificationConfig.activityRetention()));
-            if (swept > 0) {
-                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                        .fine(() -> "Swept " + swept + " activity events an island's feed had outgrown.");
-            }
-        } catch (RuntimeException e) {
-            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                    .log(
-                            java.util.logging.Level.WARNING,
-                            "Sweeping the activity feed failed. The next sweep retries.",
-                            e);
-        }
-    }
-
-    /**
-     * Deletes the recovery records that have nothing left to recover.
-     *
-     * <p>A write-ahead inventory journal and an economy saga exist so a crash in the middle of
-     * something can be finished or undone. Once one has committed or been undone it has done its
-     * job, and nothing ever deleted one: the tables held every economic item movement and every
-     * external money movement a server had ever made. A journal a crash left unreconciled stays,
-     * and so does a saga that failed.
-     */
-    private void sweepSettledRecoveryRecords() {
-        java.time.Instant before = java.time.Instant.now().minus(notificationConfig.recoveryRetention());
-        try {
-            int journals = journalPort.purgeSettledBefore(before);
-            int sagas = economySagaPort.purgeSettledBefore(before);
-            if (journals + sagas > 0) {
-                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                        .fine(() -> "Swept " + journals + " settled inventory journals and " + sagas
-                                + " settled economy sagas.");
-            }
-        } catch (RuntimeException e) {
-            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                    .log(
-                            java.util.logging.Level.WARNING,
-                            "Sweeping the settled recovery records failed. The next sweep retries.",
-                            e);
-        }
-    }
-
-    /**
-     * Deletes the notices a player has already read and long since acted on.
-     *
-     * <p>Nothing wrote a notification until now and nothing ever deleted one, so the table would
-     * have grown for as long as the server ran the moment anything started writing to it.
-     */
-    private void sweepReadNotifications() {
-        try {
-            int swept =
-                    notificationService.purgeRead(java.time.Instant.now().minus(notificationConfig.readRetention()));
-            if (swept > 0) {
-                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                        .fine(() -> "Swept " + swept + " notifications that had been read.");
-            }
-        } catch (RuntimeException e) {
-            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                    .log(
-                            java.util.logging.Level.WARNING,
-                            "Sweeping the notifications already read failed. The next sweep retries.",
-                            e);
-        }
-    }
-
-    /**
-     * Writes a finished mission into the island's feed.
-     *
-     * <p>Only the mission service knows the moment a mission crosses its target: it happens inside
-     * an advance, and the callers that trigger it are block breaks and hand-ins that know nothing
-     * about it. The write is a row, so it hops off whichever thread the last block break arrived on.
-     */
-    private void tellTheFeedWhenAMissionFinishes(GameplayWiring gameplay) {
-        com.uxplima.uxmskyblock.core.application.mission.IslandMissionService missions = gameplay.missionService();
-        if (missions == null) {
-            return;
-        }
-        missions.setFinishedListener(finished -> scheduler.async(() -> {
-            try {
-                activityFeedService.record(
-                        finished.islandId().value().toString(),
-                        finished.profileId(),
-                        com.uxplima.uxmskyblock.core.domain.activity.ActivityEventType.MISSION_COMPLETED,
-                        com.uxplima.uxmskyblock.core.domain.activity.ActivityVisibility.MEMBERS_ONLY,
-                        "activity.mission_completed",
-                        java.util.Map.of("mission", finished.definition().displayName()));
-            } catch (RuntimeException e) {
-                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                        .log(java.util.logging.Level.WARNING, "Writing a finished mission into the feed failed.", e);
-            }
-        }));
+        housekeeping.start();
     }
 
     /**
@@ -528,87 +294,7 @@ public final class IntegrationWiring implements AutoCloseable {
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
         economyBridge.recoverPendingSagas(serverNodeId);
         this.sagaRecovery = economyBridge.keepRecoveringSagas(serverNodeId);
-        recoverIncompleteRecycles();
-        resumeInterruptedRestores();
-    }
-
-    /**
-     * Finishes the restores a stop left half done, once the worlds they write into are loaded.
-     *
-     * <p>A restore writes each unit down before it puts it back and again after. A node that stopped
-     * between the two left an island half put back and frozen; this puts the rest back and opens it.
-     */
-    private void resumeInterruptedRestores() {
-        scheduler.async(() -> {
-            try {
-                restoreService.resumeUnfinished(backupBucket, backupService::loadManifest);
-            } catch (RuntimeException e) {
-                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                        .log(
-                                java.util.logging.Level.WARNING,
-                                "Finishing the restores a stop left half done failed. The islands stay frozen.",
-                                e);
-            }
-        });
-    }
-
-    /**
-     * Finishes the island resets a crash left half done.
-     *
-     * <p>A reset deletes the island and then hands its grid slot back. A crash between the two
-     * leaves the operation sitting in CANONICAL_DELETE and the slot marked allocated for an island
-     * that no longer exists, so the grid never reuses it and the world grows a hole per crash. The
-     * recovery for exactly this was written, said "startup recovery" in its own documentation, and
-     * had no caller anywhere.
-     *
-     * <p>It runs off the thread that is starting the server, because it reads and writes rows.
-     */
-    private void recoverIncompleteRecycles() {
-        IslandRecycleService recycleService = this.recycleService;
-        if (recycleService == null) {
-            return;
-        }
-        scheduler.async(() -> {
-            try {
-                recycleService.recoverIncompleteOperations();
-            } catch (RuntimeException e) {
-                java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                        .log(
-                                java.util.logging.Level.WARNING,
-                                "Finishing the island resets a crash left half done failed.",
-                                e);
-            }
-        });
-    }
-
-    /**
-     * Listens for what other nodes did to islands this node remembers something about.
-     *
-     * <p>A transport that cannot be subscribed to is not a failure to start: a single node server
-     * has nobody to hear from, and the local transport delivers to this node's own consumers
-     * already.
-     */
-    private @org.jspecify.annotations.Nullable AutoCloseable subscribeToDomainEvents(
-            GameplayWiring gameplay, PersistenceBootstrap persistence) {
-        String node = this.serverNodeId.value();
-        com.uxplima.uxmskyblock.core.application.event.OutboxEventConsumer forgetting =
-                new com.uxplima.uxmskyblock.core.application.event.ClusterIslandCacheInvalidation(islandId -> {
-                    gameplay.cacheEviction().forget(islandId);
-                    gameplay.protectionListener().invalidateIsland(islandId);
-                });
-        try {
-            return this.eventTransport.subscribe(
-                    "uxmskyblock:stream:domain_events",
-                    node,
-                    node + "-cache-invalidation",
-                    new com.uxplima.uxmskyblock.core.application.event.InboxDeduplicatingConsumer(
-                            node + "-cache-invalidation", persistence.consumerInboxPort(), forgetting));
-        } catch (RuntimeException notSubscribable) {
-            java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
-                    .warning(() -> "Nothing is listening for island changes from other nodes: "
-                            + notSubscribable.getMessage());
-            return null;
-        }
+        housekeeping.recoverAfterStart();
     }
 
     private void closeQuietly(@org.jspecify.annotations.Nullable AutoCloseable task, String what) {
@@ -694,74 +380,6 @@ public final class IntegrationWiring implements AutoCloseable {
         return islandWebMapService;
     }
 
-    /**
-     * The verbs a skyblock menu file may name, on top of the five every plugin has.
-     *
-     * <p>Each one is what the window used to do in Java when its slot was clicked. The file decides
-     * which slot runs which verb; this decides what each verb means.
-     */
-    private static void registerMenuVerbs(
-            SkyblockMenuEngine engine, Messages messages, java.util.function.UnaryOperator<String> typed) {
-        engine.action("skyblock:teleport-home", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("home"));
-        });
-        engine.action("skyblock:bank", ctx -> {
-            ctx.player().closeInventory();
-            messages.send(ctx.player(), "menu.control.bank_hint");
-        });
-        engine.action("skyblock:upgrades", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("upgrades"));
-        });
-        engine.action("skyblock:members", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("members"));
-        });
-        engine.action("skyblock:settings", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("settings"));
-        });
-        // The invite button sent a hint message, because there was no command behind it. The name
-        // the player types is the verb's argument, so one slot serves every invite.
-        engine.action("skyblock:invite", ctx -> {
-            String name = ctx.arg().strip();
-            ctx.player().closeInventory();
-            if (name.isEmpty()) {
-                messages.send(ctx.player(), "menu.control.members_hint");
-                return;
-            }
-            ctx.player().performCommand(typed.apply("invite " + name));
-        });
-        engine.action("skyblock:shop", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("shop"));
-        });
-        engine.action("skyblock:permissions", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("permissions"));
-        });
-        // The upgrade key is the verb's argument, so one verb serves every upgrade a file names and
-        // an operator can add a slot for a new one without a line of Java.
-        // skyblock:island:<branch> <arguments> runs an island command under the operator's names for it,
-        // so a menu file keeps working when commands.conf renames the root or the branch.
-        engine.action("skyblock:island", ctx -> {
-            String line = ctx.arg().strip();
-            if (!line.isEmpty()) {
-                ctx.player().performCommand(typed.apply(line));
-            }
-        });
-        engine.action("skyblock:buy-upgrade", ctx -> {
-            String upgradeKey = ctx.arg().strip();
-            ctx.player().closeInventory();
-            if (upgradeKey.isEmpty()) {
-                messages.send(ctx.player(), "menu.control.upgrade_unnamed");
-                return;
-            }
-            ctx.player().performCommand(typed.apply("upgrades buy " + upgradeKey));
-        });
-    }
-
     /** The menu engine, so a feature can register the verbs its own menu files name. */
     public SkyblockMenuEngine menuEngine() {
         return menuEngine;
@@ -826,8 +444,7 @@ public final class IntegrationWiring implements AutoCloseable {
     @Override
     public void close() {
         closeAuthorityHeartbeat();
-        closeQuietly(this.notificationSweep, "the notification sweep");
-        this.notificationSweep = null;
+        housekeeping.close();
         closeQuietly(this.sagaRecovery, "the economy saga recovery");
         this.sagaRecovery = null;
         closeQuietly(this.domainEvents, "the island change listener");
