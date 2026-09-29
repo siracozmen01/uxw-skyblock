@@ -158,6 +158,9 @@ class AClosedChunkIsClosedTest extends MockBukkitHarness {
     @Test
     @DisplayName("An island of another mode has no closed chunks")
     void anotherModeIsLeftAlone() {
+        // No ChunkBlock rows: the island belongs to another mode, and reading it again says so.
+        origins.remove(island.id());
+        opened.remove(island.id());
         service.forget(island.id());
         PlayerMock player = createPlayer("Classic");
 

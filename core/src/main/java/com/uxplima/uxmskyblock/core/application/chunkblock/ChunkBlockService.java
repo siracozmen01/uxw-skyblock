@@ -149,9 +149,23 @@ public final class ChunkBlockService {
         closedListeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     }
 
-    /** Drops an island this node no longer keeps, such as one deleted or reset. */
+    /**
+     * Reads the island's territory again after it changed. An island that still has its rows keeps
+     * the territory they hold, and one whose rows are gone, because it was erased, is dropped.
+     *
+     * <p>Forgetting is also what a node does when it hears an island changed, and it hears its own
+     * island being created. The rows are what say whether the island is gone. Off the main thread: it
+     * reads rows.
+     */
     public void forget(IslandId islandId) {
-        memory.remove(islandId);
+        synchronized (lockOf(islandId)) {
+            Optional<ChunkTerritory> stored = port.find(islandId);
+            if (stored.isPresent()) {
+                memory.put(islandId, stored.get());
+                return;
+            }
+            memory.remove(islandId);
+        }
         locks.remove(islandId);
     }
 

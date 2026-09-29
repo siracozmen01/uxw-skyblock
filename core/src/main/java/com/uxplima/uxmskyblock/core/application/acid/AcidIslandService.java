@@ -39,9 +39,21 @@ public final class AcidIslandService {
         return level == null ? OptionalInt.empty() : OptionalInt.of(level);
     }
 
-    /** Drops an island that was erased. */
+    /**
+     * Reads the island again after it changed. An island that still has its row stays an AcidIsland
+     * island and one whose row is gone, because it was erased, is dropped.
+     *
+     * <p>Forgetting is also what a node does when it hears an island changed, and it hears its own
+     * island being created. The row is what says whether the island is gone. Off the main thread: it
+     * reads a row.
+     */
     public void forget(IslandId islandId) {
-        seaLevels.remove(islandId);
+        OptionalInt stored = port.find(islandId);
+        if (stored.isPresent()) {
+            seaLevels.put(islandId, stored.getAsInt());
+        } else {
+            seaLevels.remove(islandId);
+        }
     }
 
     public boolean isAcid(IslandId islandId) {

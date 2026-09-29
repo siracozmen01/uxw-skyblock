@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.UUID;
 
 import javax.sql.DataSource;
@@ -35,6 +36,21 @@ public final class SqlAcidIslandsAdapter implements AcidIslandsPort {
             return all;
         } catch (SQLException e) {
             throw new IllegalStateException("Could not read the AcidIsland islands", e);
+        }
+    }
+
+    @Override
+    public OptionalInt find(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement ps =
+                        conn.prepareStatement("SELECT sea_level FROM acid_island_state WHERE island_id = ?")) {
+            ps.setString(1, islandId.value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? OptionalInt.of(rs.getInt(1)) : OptionalInt.empty();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read island " + islandId + " as an AcidIsland island", e);
         }
     }
 

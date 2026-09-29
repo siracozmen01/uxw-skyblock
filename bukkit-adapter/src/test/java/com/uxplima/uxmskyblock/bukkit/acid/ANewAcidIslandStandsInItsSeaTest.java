@@ -69,6 +69,12 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
             }
 
             @Override
+            public java.util.OptionalInt find(IslandId islandId) {
+                Integer level = recorded.get(islandId);
+                return level == null ? java.util.OptionalInt.empty() : java.util.OptionalInt.of(level);
+            }
+
+            @Override
             public void add(IslandId islandId, int seaLevel) {
                 recorded.putIfAbsent(islandId, seaLevel);
             }

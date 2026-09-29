@@ -262,10 +262,12 @@ class GameModeSchemaDialectPortabilityTest {
             acid.add(islandId, 97);
             acid.add(islandId, 40);
             assertThat(acid.findAll()).containsEntry(islandId, 97);
+            assertThat(acid.find(islandId)).hasValue(97);
 
             // Deleting the island takes its OneBlock row, its chunks and its sea with it.
             islands.deleteIsland(islandId);
             assertThat(acid.findAll()).doesNotContainKey(islandId);
+            assertThat(acid.find(islandId)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

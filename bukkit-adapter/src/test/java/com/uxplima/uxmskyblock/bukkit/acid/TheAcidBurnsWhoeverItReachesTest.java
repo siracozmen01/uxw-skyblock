@@ -78,6 +78,12 @@ class TheAcidBurnsWhoeverItReachesTest extends MockBukkitHarness {
             }
 
             @Override
+            public java.util.OptionalInt find(IslandId islandId) {
+                Integer level = stored.get(islandId);
+                return level == null ? java.util.OptionalInt.empty() : java.util.OptionalInt.of(level);
+            }
+
+            @Override
             public void add(IslandId islandId, int seaLevel) {
                 stored.putIfAbsent(islandId, seaLevel);
             }

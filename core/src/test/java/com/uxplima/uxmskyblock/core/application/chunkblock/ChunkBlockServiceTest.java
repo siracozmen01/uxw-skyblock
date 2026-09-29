@@ -106,6 +106,34 @@ class ChunkBlockServiceTest {
         assertThat(service.isOpen(islandId, new ChunkPos(4, 4))).contains(true);
     }
 
+    @Test
+    @DisplayName("An island heard back as changed is read again and stays a ChunkBlock island")
+    void aChangedIslandIsReadAgain() {
+        service.start(islandId, 8, 8);
+        table.open(islandId, new ChunkPos(1, 0), 1);
+
+        service.forget(islandId);
+
+        assertThat(service.isOpen(islandId, new ChunkPos(0, 0)))
+                .describedAs("a node hears its own island being created, and the island must stay closed-in")
+                .contains(true);
+        assertThat(service.isOpen(islandId, new ChunkPos(1, 0)))
+                .describedAs("a chunk another node opened is open here once the island is read again")
+                .contains(true);
+        assertThat(service.isOpen(islandId, new ChunkPos(0, 1))).contains(false);
+    }
+
+    @Test
+    @DisplayName("An island whose rows are gone is dropped from memory")
+    void anErasedIslandIsDropped() {
+        service.start(islandId, 8, 8);
+        table.origins.remove(islandId);
+
+        service.forget(islandId);
+
+        assertThat(service.isOpen(islandId, new ChunkPos(0, 0))).isEmpty();
+    }
+
     /** The table, in memory, with the unique order the real one has. */
     private static final class Table implements ChunkTerritoryPort {
 
