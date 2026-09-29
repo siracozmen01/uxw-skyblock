@@ -58,6 +58,13 @@ tasks.shadowJar {
     exclude("net/kyori/**")
     // bStats insists on being relocated, so two plugins never share one copy of it.
     relocate("org.bstats", "com.uxplima.uxmskyblock.libs.bstats")
+    // Shadow keeps the first copy of a duplicate path unless told otherwise, and a services file is a
+    // duplicate by design: each JDBC driver ships one. Kept first, only MariaDB's survived.
+    // Shadow keeps the first copy of a duplicate path unless told otherwise, and its service merge
+    // only sees the copies it is given. A services file is a duplicate by design, one per JDBC driver,
+    // and kept first only MariaDB's survived: a server pointed at PostgreSQL found no driver.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    filesNotMatching("META-INF/services/**") { duplicatesStrategy = DuplicatesStrategy.EXCLUDE }
     mergeServiceFiles()
 }
 
@@ -97,6 +104,38 @@ val verifyJar by tasks.registering {
                     found.distinct().joinToString(", ") +
                     ". A second copy of these does not fail loudly, it makes logging or text go wrong.",
             )
+        }
+        // A JDBC driver is found through the services file, not by its class being present. The
+        // PostgreSQL driver sat in the jar unlisted once, and a server pointed at PostgreSQL did not
+        // start: "No suitable driver".
+        val drivers =
+            mapOf(
+                "org/mariadb/jdbc/Driver.class" to "org.mariadb.jdbc.Driver",
+                "org/postgresql/Driver.class" to "org.postgresql.Driver",
+            )
+        ZipFile(jar.get().asFile).use { zip ->
+            val listed =
+                zip
+                    .getEntry("META-INF/services/java.sql.Driver")
+                    ?.let { entry ->
+                        zip
+                            .getInputStream(entry)
+                            .bufferedReader()
+                            .readLines()
+                            .map { it.trim() }
+                    }.orEmpty()
+            val unlisted =
+                drivers
+                    .filter { (file, _) -> zip.getEntry(file) != null }
+                    .values
+                    .filterNot { it in listed }
+            if (unlisted.isNotEmpty()) {
+                throw GradleException(
+                    "The shaded jar holds JDBC drivers its services file does not list: " +
+                        unlisted.joinToString(", ") +
+                        ". A server configured for one of them will not find it.",
+                )
+            }
         }
     }
 }

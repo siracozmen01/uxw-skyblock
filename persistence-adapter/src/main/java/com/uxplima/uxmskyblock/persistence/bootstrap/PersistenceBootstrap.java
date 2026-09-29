@@ -225,6 +225,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public static PersistenceBootstrap createRemote(String jdbcUrl, String username, String password, int maxPoolSize) {
         Objects.requireNonNull(jdbcUrl, "jdbcUrl must not be null");
+        var unused = com.uxplima.uxmskyblock.persistence.sql.JdbcDrivers.register(jdbcUrl);
         com.uxplima.uxmlib.storage.sql.DatabaseBuilder builder =
                 Database.builder().jdbcUrl(jdbcUrl);
         if (username != null && !username.isBlank()) {
