@@ -11,7 +11,12 @@ import org.spongepowered.configurate.ConfigurationNode;
  * Down mirrors their land, and what it makes of the creatures born in it.
  */
 public record StrangerRealmsConfiguration(
-        boolean enabled, UpsideDown upsideDown, Mobs mobs, Glimmer glimmer, Compass compass) {
+        boolean enabled,
+        UpsideDown upsideDown,
+        Mobs mobs,
+        Glimmer glimmer,
+        Compass compass,
+        com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth claim) {
 
     private static final Logger LOGGER = Logger.getLogger(StrangerRealmsConfiguration.class.getName());
 
@@ -143,11 +148,17 @@ public record StrangerRealmsConfiguration(
         Objects.requireNonNull(mobs, "mobs must not be null");
         Objects.requireNonNull(glimmer, "glimmer must not be null");
         Objects.requireNonNull(compass, "compass must not be null");
+        Objects.requireNonNull(claim, "claim must not be null");
     }
 
     public static StrangerRealmsConfiguration defaultConfiguration() {
         return new StrangerRealmsConfiguration(
-                true, UpsideDown.SHIPPED, Mobs.SHIPPED, Glimmer.SHIPPED, Compass.SHIPPED);
+                true,
+                UpsideDown.SHIPPED,
+                Mobs.SHIPPED,
+                Glimmer.SHIPPED,
+                Compass.SHIPPED,
+                com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth.SHIPPED);
     }
 
     public static StrangerRealmsConfiguration load(ConfigurationNode root) {
@@ -196,6 +207,21 @@ public record StrangerRealmsConfiguration(
                         AcidIslandConfiguration.strings(mobs.node("turn"), Mobs.SHIPPED.turn()),
                         AcidIslandConfiguration.strings(mobs.node("effects"), Mobs.SHIPPED.effects())),
                 glimmer,
-                compass);
+                compass,
+                claim(root.node("claim")));
+    }
+
+    private static com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth claim(ConfigurationNode node) {
+        com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth shipped =
+                com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth.SHIPPED;
+        try {
+            return new com.uxplima.uxmskyblock.core.domain.stranger.ClaimGrowth(
+                    node.node("per-member").getInt(shipped.perMember()),
+                    node.node("max-radius").getInt(shipped.maxRadius()));
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(
+                    () -> "modules/strangerrealms.conf claim: " + e.getMessage() + ". The shipped claim is used.");
+            return shipped;
+        }
     }
 }

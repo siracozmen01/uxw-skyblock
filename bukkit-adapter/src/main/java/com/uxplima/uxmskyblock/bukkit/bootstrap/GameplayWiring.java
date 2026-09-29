@@ -297,12 +297,16 @@ public final class GameplayWiring {
         // read the radius: an island that paid for the top tier reached exactly as far as one that
         // had paid nothing. The edge follows the tier now, and the protection index is told, because
         // it is what answers for every block a player touches.
-        // A Boxed island reaches as far as its box; every other island as far as its size tier.
+        // A Boxed island reaches as far as its box, a StrangerRealms island as far as its size tier and
+        // its members take it, and every other island as far as its size tier.
         IslandSizeAllowance sizeAllowance = new IslandSizeAllowance(this.economicWiring.upgradeService());
         this.borderService = new IslandBorderService(
                 persistence.islandStoragePort(),
-                islandId ->
-                        this.boxedWiring.service().radius(islandId).orElseGet(() -> sizeAllowance.applyAsInt(islandId)),
+                islandId -> this.boxedWiring
+                        .service()
+                        .radius(islandId)
+                        .orElseGet(() ->
+                                this.strangerRealmsWiring.claimRadius(islandId, sizeAllowance.applyAsInt(islandId))),
                 persistence.islandMutationLock());
         this.boxedWiring.whenBoxChanged(islandId -> borderService
                 .applyAllowance(islandId)
@@ -312,6 +316,16 @@ public final class GameplayWiring {
                             .indexIsland(moved.island(), moved.location().worldName());
                     redrawTheEdgeFor(moved);
                 }));
+        this.membershipService.whenMembersChanged(islandId -> {
+            if (this.strangerRealmsWiring.service().isStranger(islandId)) {
+                borderService.applyAllowance(islandId).ifPresent(moved -> {
+                    protectionListener
+                            .spatialIndex()
+                            .indexIsland(moved.island(), moved.location().worldName());
+                    redrawTheEdgeFor(moved);
+                });
+            }
+        });
         this.economicWiring.upgradeService().whenUpgraded((islandId, upgradeId, newTier) -> {
             if (!UpgradeId.SIZE.equals(upgradeId)) {
                 return;

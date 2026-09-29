@@ -161,6 +161,13 @@ public final class IslandMembershipService {
 
     private volatile KeyedMutationLock<ProfileId> profileLock = new KeyedMutationLock<>();
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandMembershipService.class.getName());
+
+    /** Who hears that an island's members changed, after the change is written. */
+    private final List<java.util.function.Consumer<IslandId>> membersChanged =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
     public IslandMembershipService(
             IslandStoragePort islandStoragePort,
             IslandMutationLock mutationLock,
@@ -241,7 +248,33 @@ public final class IslandMembershipService {
     public JoinOutcome accept(ProfileId target, PlayerUuid targetPlayerUuid) {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(targetPlayerUuid, "targetPlayerUuid must not be null");
-        return profileLock.inside(target, () -> acceptInside(target, targetPlayerUuid));
+        JoinOutcome outcome = profileLock.inside(target, () -> acceptInside(target, targetPlayerUuid));
+        if (outcome instanceof JoinOutcome.Joined joined) {
+            tellMembersChanged(joined.islandId());
+        }
+        return outcome;
+    }
+
+    /**
+     * Tells {@code listener} each time a player joins, leaves or is removed from an island, once the
+     * change is written. It runs on the thread that made the change, outside every lock.
+     */
+    public void whenMembersChanged(java.util.function.Consumer<IslandId> listener) {
+        membersChanged.add(Objects.requireNonNull(listener, "listener must not be null"));
+    }
+
+    private void tellMembersChanged(IslandId islandId) {
+        for (java.util.function.Consumer<IslandId> listener : membersChanged) {
+            try {
+                listener.accept(islandId);
+            } catch (RuntimeException e) {
+                // The change is written; a listener that fails does not undo it or hide it from the others.
+                LOGGER.log(
+                        java.util.logging.Level.WARNING,
+                        e,
+                        () -> "A listener to island " + islandId + "'s members failed.");
+            }
+        }
     }
 
     private JoinOutcome acceptInside(ProfileId target, PlayerUuid targetPlayerUuid) {
@@ -305,7 +338,14 @@ public final class IslandMembershipService {
                 && !outranks(island, actor, removing.role().weight())) {
             return new RemovalOutcome.OutOfReach();
         }
-        return remove(island, target);
+        return told(remove(island, target));
+    }
+
+    private RemovalOutcome told(RemovalOutcome outcome) {
+        if (outcome instanceof RemovalOutcome.Removed removed) {
+            tellMembersChanged(removed.islandId());
+        }
+        return outcome;
     }
 
     /**
@@ -322,7 +362,7 @@ public final class IslandMembershipService {
         if (optIsland.isEmpty()) {
             return new RemovalOutcome.NoIsland();
         }
-        return remove(optIsland.get(), profileId);
+        return told(remove(optIsland.get(), profileId));
     }
 
     /** Puts {@code target} into {@code rawRoleId}, if the caller's role may. */

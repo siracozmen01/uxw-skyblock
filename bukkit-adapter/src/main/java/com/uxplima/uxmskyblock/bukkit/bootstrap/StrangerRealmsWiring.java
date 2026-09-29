@@ -34,6 +34,8 @@ public final class StrangerRealmsWiring implements AutoCloseable {
     private boolean recipeAdded;
     private @org.jspecify.annotations.Nullable AutoCloseable beat;
 
+    private final com.uxplima.uxmskyblock.core.application.stranger.StrangerClaims claims;
+
     public StrangerRealmsWiring(
             ConfigurationWiring configuration,
             PersistenceBootstrap persistence,
@@ -43,6 +45,8 @@ public final class StrangerRealmsWiring implements AutoCloseable {
                 Objects.requireNonNull(configuration.strangerRealmsConfig(), "strangerRealmsConfig must not be null");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.service = new StrangerRealmsService(persistence.strangerRealmsPort());
+        this.claims = new com.uxplima.uxmskyblock.core.application.stranger.StrangerClaims(
+                service, persistence.islandStoragePort(), config.claim());
         DimensionMapping nether = configuration.dimensionConfig().mappings().get(IslandDimensionType.NETHER);
         this.upsideDownWorld = nether == null
                 ? com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration.DEFAULT_NETHER_WORLD
@@ -119,6 +123,14 @@ public final class StrangerRealmsWiring implements AutoCloseable {
                 LOGGER.log(Level.WARNING, "Stopping the warped compass failed.", e);
             }
         }
+    }
+
+    /**
+     * How far the island reaches when its size gives it {@code base}: grown by its members for a
+     * StrangerRealms island, {@code base} for any other. Reads the island, so off the main thread.
+     */
+    public int claimRadius(com.uxplima.uxmskyblock.core.domain.identity.IslandId islandId, int base) {
+        return claims.radius(islandId, base);
     }
 
     public boolean enabled() {

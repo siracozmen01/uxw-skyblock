@@ -82,6 +82,33 @@ class IslandMembershipServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "A join, a kick and a leave are heard once written, a refusal is not, and one deaf listener stops none")
+    void aChangeOfMembersIsHeard() {
+        java.util.List<IslandId> heard = new java.util.ArrayList<>();
+        service.whenMembersChanged(id -> {
+            throw new IllegalStateException("a listener that fails");
+        });
+        service.whenMembersChanged(heard::add);
+
+        assertThat(service.accept(MATE, MATE_UUID)).isInstanceOf(IslandMembershipService.JoinOutcome.NoInvite.class);
+        assertThat(heard).isEmpty();
+
+        service.invite(OWNER, MATE);
+        assertThat(service.accept(MATE, MATE_UUID)).isInstanceOf(IslandMembershipService.JoinOutcome.Joined.class);
+        assertThat(heard).containsExactly(ISLAND);
+
+        island = savedIsland();
+        assertThat(service.kick(OWNER, STRANGER)).isInstanceOf(IslandMembershipService.RemovalOutcome.NotAMember.class);
+        assertThat(service.kick(OWNER, MATE)).isInstanceOf(IslandMembershipService.RemovalOutcome.Removed.class);
+        assertThat(heard).containsExactly(ISLAND, ISLAND);
+
+        when(storage.findIslandIdByProfileId(MATE)).thenReturn(Optional.of(ISLAND));
+        assertThat(service.leave(MATE)).isInstanceOf(IslandMembershipService.RemovalOutcome.Removed.class);
+        assertThat(heard).containsExactly(ISLAND, ISLAND, ISLAND);
+    }
+
+    @Test
     @DisplayName("An owner may invite, and the invite stands for the timeout")
     void anOwnerMayInvite() {
         IslandMembershipService.InviteOutcome outcome = service.invite(OWNER, MATE);
