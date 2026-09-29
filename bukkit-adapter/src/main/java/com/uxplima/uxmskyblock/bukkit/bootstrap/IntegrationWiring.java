@@ -221,6 +221,15 @@ public final class IntegrationWiring implements AutoCloseable {
                 serverNodeId.value() + "-event-transport",
                 persistence.consumerInboxPort(),
                 event -> this.eventTransport.publish("uxmskyblock:stream:domain_events", event)));
+        // The island's feed is written out of what the bank committed, so a feed that will not write
+        // leaves the move standing and is asked again. One name on every node: each line once.
+        this.outboxDispatcher.registerConsumer(new DeduplicatingOutboxConsumer(
+                com.uxplima.uxmskyblock.core.application.activity.ActivityFeedProjection.CONSUMER_NAME,
+                persistence.consumerInboxPort(),
+                new com.uxplima.uxmskyblock.core.application.activity.ActivityFeedProjection(
+                        this.activityFeedService,
+                        uuid -> java.util.Optional.ofNullable(
+                                plugin.getServer().getOfflinePlayer(uuid).getName()))));
 
         // And somebody reads it. Every node published onto this stream and no node ever subscribed,
         // so a node that froze an island, archived one or handed one to a new owner told every

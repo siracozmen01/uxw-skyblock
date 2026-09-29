@@ -107,7 +107,6 @@ final class CommandGroupBuilder {
         trustCommands.useActivityFeed(tree.activityFeedService);
 
         upgradeCommands.useActivityFeed(tree.activityFeedService);
-        bankCommands.useActivityFeed(tree.activityFeedService);
 
         IslandShopCommands shopCommands = new IslandShopCommands(
                 () -> tree.features.shopService(),
