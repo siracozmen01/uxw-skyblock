@@ -124,6 +124,11 @@ public final class ConfigurationLoader {
         // 2. Load root config.conf
         Path configFile = dataDir.resolve("config.conf");
         unpackResource(plugin, "config.conf", configFile);
+        bringUpToDate(plugin, dataDir, configFile, "config.conf");
+        // The command tree reads this file later in the boot, and gets the release's new words from here.
+        Path commandsFile = dataDir.resolve("commands.conf");
+        unpackResource(plugin, "commands.conf", commandsFile);
+        bringUpToDate(plugin, dataDir, commandsFile, "commands.conf");
         CommentedConfigurationNode root = loadHocon(configFile);
 
         ServerNodeConfiguration nodeConfig;
@@ -141,6 +146,7 @@ public final class ConfigurationLoader {
         // 3. Load modules.conf
         Path modulesFile = dataDir.resolve("modules.conf");
         unpackResource(plugin, "modules.conf", modulesFile);
+        bringUpToDate(plugin, dataDir, modulesFile, "modules.conf");
         CommentedConfigurationNode modulesRoot = loadHocon(modulesFile);
         ModuleSettingsConfiguration moduleSettings = modulesRoot != null
                 ? ModuleSettingsConfiguration.load(modulesRoot)
@@ -329,6 +335,9 @@ public final class ConfigurationLoader {
             }
             targetFile = moduleFile;
         }
+        if (!bringUpToDate(plugin, dataDir, targetFile, "modules/" + configName)) {
+            bringUpToDate(plugin, dataDir, targetFile, configName);
+        }
 
         if (Files.exists(targetFile)) {
             try {
@@ -342,6 +351,28 @@ public final class ConfigurationLoader {
             }
         }
         return defaultVal;
+    }
+
+    /**
+     * Adds to the operator's {@code file} what this release ships in {@code resource} and the file lacks,
+     * and says so in one line. See {@link PluginSettings#bringUpToDate}.
+     *
+     * <p>A file that cannot be brought up to date still loads as it is: the server starts with the keys
+     * the operator has, and the line says which file and why.
+     */
+    private static boolean bringUpToDate(JavaPlugin plugin, Path dataDir, Path file, String resource) {
+        try {
+            if (PluginSettings.bringUpToDate(
+                    dataDir, file, resource, plugin.getClass().getClassLoader())) {
+                LOGGER.info("Added what this release brings to " + dataDir.relativize(file)
+                        + ". The file as it was is beside it as " + file.getFileName() + ".bak.");
+                return true;
+            }
+        } catch (RuntimeException failed) {
+            LOGGER.warning("Could not bring " + file + " up to date with this release: " + failed.getMessage()
+                    + ". It loads as it is.");
+        }
+        return false;
     }
 
     /**
