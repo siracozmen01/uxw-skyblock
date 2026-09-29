@@ -262,11 +262,22 @@ public final class IslandLifecycleCommands {
         ProfileId profileId = optProfile.get();
 
         schedulerPort.async(() -> {
-            CreateIslandUseCase.CreateIslandResult result =
-                    createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, worldName);
+            CreateIslandUseCase.CreateIslandResult result;
+            try {
+                result = createIslandUseCase.execute(playerUuid, profileId, presetId, serverNodeId, worldName);
+            } catch (RuntimeException thrown) {
+                // A database that refuses a statement throws out of the use case. The player was told
+                // nothing and the command just stopped; the trace goes to the log, they get the failure.
+                LOGGER.log(
+                        java.util.logging.Level.WARNING,
+                        thrown,
+                        () -> "Creating an island for " + player.getName() + " threw.");
+                result = new CreateIslandUseCase.CreateIslandResult.Failure(String.valueOf(thrown.getMessage()));
+            }
+            CreateIslandUseCase.CreateIslandResult outcome = result;
 
             schedulerPort.onEntity(playerUuid, () -> {
-                if (result instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
+                if (outcome instanceof CreateIslandUseCase.CreateIslandResult.Success success) {
                     activityLog.recordForMembers(
                             success.island().id(),
                             profileId,
@@ -332,15 +343,15 @@ public final class IslandLifecycleCommands {
                     } else {
                         send(player, "create.world_unloaded", Placeholder.unparsed("world", worldName));
                     }
-                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
+                } else if (outcome instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
                     send(player, "create.already_has_island");
-                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.UnknownPreset unknown) {
+                } else if (outcome instanceof CreateIslandUseCase.CreateIslandResult.UnknownPreset unknown) {
                     send(
                             player,
                             "create.unknown_preset",
                             Placeholder.unparsed("preset", unknown.presetId()),
                             Placeholder.unparsed("presets", availablePresetIds()));
-                } else if (result instanceof CreateIslandUseCase.CreateIslandResult.Failure failure) {
+                } else if (outcome instanceof CreateIslandUseCase.CreateIslandResult.Failure failure) {
                     // The reason is an exception's message, which can be a database's own words. It
                     // goes to the log; the player reads a line in their own language.
                     LOGGER.warning(() -> "Creating an island for " + player.getName() + " failed: " + failure.reason());

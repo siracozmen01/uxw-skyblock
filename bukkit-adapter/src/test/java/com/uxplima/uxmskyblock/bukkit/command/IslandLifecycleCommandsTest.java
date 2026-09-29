@@ -171,6 +171,24 @@ class IslandLifecycleCommandsTest {
     }
 
     @Test
+    @DisplayName("A creation the database throws out of is still answered, in the player's own words")
+    void aThrownCreationIsAnswered() throws Exception {
+        when(create.execute(any(), any(), anyString(), any(ServerNodeId.class), anyString()))
+                .thenThrow(new IllegalStateException("ERROR: operator does not exist: boolean = integer"));
+        while (player.nextComponentMessage() != null) {
+            // Only what the creation says matters here.
+        }
+
+        run("create", player);
+
+        String said = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage()));
+        assertThat(said)
+                .describedAs("the catalogue line, never the database's words")
+                .isEqualTo("create.failed");
+    }
+
+    @Test
     @DisplayName("A named preset is carried through to the use case")
     void createCarriesTheNamedPreset() throws Exception {
         run("create desert", player);
