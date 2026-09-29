@@ -39,7 +39,7 @@ public final class BrixWiring implements AutoCloseable {
                 scheduler,
                 config.modes(),
                 new com.uxplima.uxmskyblock.bukkit.creative.SealedInventory(
-                        new com.uxplima.uxmskyblock.bukkit.creative.ServerInventoryCodec()),
+                        new com.uxplima.uxmskyblock.bukkit.creative.ServerInventoryCodec(), "brix"),
                 configuration.messages(),
                 configuration.effectsConfig(),
                 new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer(scheduler, configuration.messages()));

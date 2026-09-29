@@ -23,6 +23,9 @@ import org.bukkit.potion.PotionEffectType;
  * somewhere else. Whatever they held in the place is gone when they leave it: nothing made in creative
  * reaches the rest of the server.
  *
+ * <p>A seal says which place put it on, and only that place takes it off: a player on a Parkour course is
+ * not given back what the course keeps because the Brix beat saw them off every plot.
+ *
  * <p>Every call is made on the player's own thread.
  */
 public final class SealedInventory {
@@ -31,14 +34,18 @@ public final class SealedInventory {
     static final NamespacedKey MODE = Objects.requireNonNull(NamespacedKey.fromString("uxmskyblock:sealed_mode"));
     static final NamespacedKey LEVEL = Objects.requireNonNull(NamespacedKey.fromString("uxmskyblock:sealed_level"));
     static final NamespacedKey EXP = Objects.requireNonNull(NamespacedKey.fromString("uxmskyblock:sealed_exp"));
+    static final NamespacedKey OWNER = Objects.requireNonNull(NamespacedKey.fromString("uxmskyblock:sealed_by"));
     static final NamespacedKey EFFECTS = Objects.requireNonNull(NamespacedKey.fromString("uxmskyblock:sealed_effects"));
 
     private static final Logger LOGGER = Logger.getLogger(SealedInventory.class.getName());
 
     private final InventoryCodec codec;
+    private final String owner;
 
-    public SealedInventory(InventoryCodec codec) {
+    /** @param owner the place this seal belongs to, which alone takes it off */
+    public SealedInventory(InventoryCodec codec, String owner) {
         this.codec = Objects.requireNonNull(codec, "codec must not be null");
+        this.owner = Objects.requireNonNull(owner, "owner must not be null");
     }
 
     /** Whether the player has something kept aside. */
@@ -65,6 +72,7 @@ public final class SealedInventory {
         // A window left open would keep taking items across the seal: a vault page opened off the plot.
         player.closeInventory();
         PersistentDataContainer data = player.getPersistentDataContainer();
+        data.set(OWNER, PersistentDataType.STRING, owner);
         data.set(MODE, PersistentDataType.STRING, player.getGameMode().name());
         data.set(LEVEL, PersistentDataType.INTEGER, player.getLevel());
         data.set(EXP, PersistentDataType.FLOAT, player.getExp());
@@ -84,13 +92,13 @@ public final class SealedInventory {
     }
 
     /**
-     * Gives the player back what was kept aside and drops whatever they held since. Returns whether
-     * anything was given back.
+     * Gives the player back what this place kept aside and drops whatever they held since. A seal another
+     * place put on is left alone. Returns whether anything was given back.
      */
     public boolean unseal(Player player) {
         PersistentDataContainer data = player.getPersistentDataContainer();
         byte[] items = data.get(ITEMS, PersistentDataType.BYTE_ARRAY);
-        if (items == null) {
+        if (items == null || !owner.equals(data.get(OWNER, PersistentDataType.STRING))) {
             return false;
         }
         // A chest on the plot left open would hand its items to the inventory given back.
@@ -120,6 +128,7 @@ public final class SealedInventory {
             }
         }
         data.remove(ITEMS);
+        data.remove(OWNER);
         data.remove(MODE);
         data.remove(LEVEL);
         data.remove(EXP);

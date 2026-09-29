@@ -80,6 +80,12 @@ public final class EffectsConfiguration {
                 "brix-plot-entered", parseAll("brix-plot-entered", List.of("[sound] block.beacon.activate 0.6 1.4")));
         defaults.put("brix-plot-left", parseAll("brix-plot-left", List.of("[sound] block.beacon.deactivate 0.6 1.4")));
         defaults.put(
+                "parkour-course-entered",
+                parseAll("parkour-course-entered", List.of("[sound] block.beacon.activate 0.6 1.4")));
+        defaults.put(
+                "parkour-course-left",
+                parseAll("parkour-course-left", List.of("[sound] block.beacon.deactivate 0.6 1.4")));
+        defaults.put(
                 "parkour-run-started",
                 parseAll("parkour-run-started", List.of("[sound] block.note_block.pling 0.8 1.2")));
         defaults.put(

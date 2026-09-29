@@ -37,6 +37,8 @@ public final class BootstrapEventRegistrar {
         if (gameplayWiring.boxedWiring().enabled()) {
             pm.registerEvents(gameplayWiring.boxedWiring().listener(), plugin);
         }
+        // Whatever mode sealed a player, what they hold stays where it was made.
+        pm.registerEvents(new com.uxplima.uxmskyblock.bukkit.creative.SealedInventoryGuard(), plugin);
         if (gameplayWiring.brixWiring().enabled()) {
             pm.registerEvents(gameplayWiring.brixWiring().modes(), plugin);
             pm.registerEvents(gameplayWiring.brixWiring().rules(), plugin);

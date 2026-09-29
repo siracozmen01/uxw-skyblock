@@ -62,7 +62,7 @@ class AVaultDoesNotOpenToCreativeItemsTest {
 
         window.open(player, 1);
 
-        assertThat(player.nextMessage()).contains("creative plot");
+        assertThat(player.nextMessage()).contains("creative place");
         verifyNoInteractions(islands, scheduler);
     }
 
@@ -80,6 +80,6 @@ class AVaultDoesNotOpenToCreativeItemsTest {
 
         window.open(player, 1);
 
-        assertThat(player.nextMessage()).doesNotContain("creative plot");
+        assertThat(player.nextMessage()).doesNotContain("creative place");
     }
 }

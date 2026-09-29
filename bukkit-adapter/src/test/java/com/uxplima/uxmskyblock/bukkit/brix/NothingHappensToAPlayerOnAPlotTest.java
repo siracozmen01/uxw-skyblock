@@ -20,10 +20,8 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
-import org.bukkit.persistence.PersistentDataType;
 
 import com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration;
-import com.uxplima.uxmskyblock.bukkit.creative.SealedInventory;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.brix.BrixPlotsPort;
@@ -144,7 +142,7 @@ class NothingHappensToAPlayerOnAPlotTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("An ender chest does not open on a plot, nor anywhere for a player whose items are kept aside")
+    @DisplayName("An ender chest does not open on a plot, and opens elsewhere")
     void noEnderChest() {
         BrixRules rules = rules(BrixConfiguration.Rules.SHIPPED);
         at(PLOT);
@@ -153,14 +151,6 @@ class NothingHappensToAPlayerOnAPlotTest extends MockBukkitHarness {
 
         at(ELSEWHERE);
         assertThat(opened(rules, player.getEnderChest())).isTrue();
-        player.getPersistentDataContainer()
-                .set(
-                        java.util.Objects.requireNonNull(
-                                org.bukkit.NamespacedKey.fromString("uxmskyblock:sealed_items")),
-                        PersistentDataType.BYTE_ARRAY,
-                        new byte[] {1});
-        assertThat(SealedInventory.holds(player)).isTrue();
-        assertThat(opened(rules, player.getEnderChest())).isFalse();
     }
 
     @Test

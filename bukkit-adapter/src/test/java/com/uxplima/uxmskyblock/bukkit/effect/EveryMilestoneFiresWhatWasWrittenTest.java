@@ -97,6 +97,8 @@ class EveryMilestoneFiresWhatWasWrittenTest {
                         "poseidon-still-drowns",
                         "brix-plot-entered",
                         "brix-plot-left",
+                        "parkour-course-entered",
+                        "parkour-course-left",
                         "parkour-run-started",
                         "parkour-checkpoint",
                         "parkour-finished",

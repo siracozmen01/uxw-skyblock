@@ -157,7 +157,7 @@ class IslandShopMenuTest {
 
         verify(shop, never()).sell(any(), any(), anyString(), anyLong(), any());
         assertThat(countOf(Material.DIAMOND)).isEqualTo(10);
-        assertThat(player.nextMessage()).contains("creative plot");
+        assertThat(player.nextMessage()).contains("creative place");
     }
 
     @Test

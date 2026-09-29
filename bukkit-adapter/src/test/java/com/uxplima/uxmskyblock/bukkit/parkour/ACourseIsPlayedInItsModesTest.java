@@ -42,6 +42,7 @@ class ACourseIsPlayedInItsModesTest extends MockBukkitHarness {
 
     private final Set<IslandId> courses = new HashSet<>();
     private final Set<UUID> runners = new HashSet<>();
+    private final List<org.bukkit.inventory.ItemStack[]> kept = new java.util.ArrayList<>();
 
     @SuppressWarnings("NullAway.Init")
     private World world;
@@ -106,7 +107,31 @@ class ACourseIsPlayedInItsModesTest extends MockBukkitHarness {
                 islands,
                 mock(SchedulerPort.class),
                 ParkourConfiguration.Modes.SHIPPED,
-                player -> runners.contains(player.getUniqueId()));
+                player -> runners.contains(player.getUniqueId()),
+                new com.uxplima.uxmskyblock.bukkit.creative.SealedInventory(
+                        new com.uxplima.uxmskyblock.bukkit.creative.InventoryCodec() {
+                            @Override
+                            public byte[] write(org.bukkit.inventory.ItemStack[] items) {
+                                org.bukkit.inventory.ItemStack[] copy =
+                                        new org.bukkit.inventory.ItemStack[items.length];
+                                for (int slot = 0; slot < items.length; slot++) {
+                                    copy[slot] = items[slot] == null ? null : items[slot].clone();
+                                }
+                                kept.add(copy);
+                                return java.nio.ByteBuffer.allocate(4)
+                                        .putInt(kept.size() - 1)
+                                        .array();
+                            }
+
+                            @Override
+                            public org.bukkit.inventory.ItemStack[] read(byte[] bytes) {
+                                return kept.get(java.nio.ByteBuffer.wrap(bytes).getInt());
+                            }
+                        },
+                        "parkour"),
+                com.uxplima.uxmskyblock.bukkit.i18n.Messages.bundled(),
+                com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects.none(),
+                new com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer());
         builder.setGameMode(GameMode.SURVIVAL);
         visitor.setGameMode(GameMode.ADVENTURE);
     }
@@ -148,6 +173,76 @@ class ACourseIsPlayedInItsModesTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("What the team makes in creative stays on the course, and what it brought comes back off it")
+    void theCourseKeepsItsItems() {
+        builder.getInventory().setItem(0, new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_PICKAXE));
+        at(builder, 8);
+        modes.check(builder);
+        assertThat(builder.getInventory().isEmpty()).isTrue();
+        builder.getInventory().setItem(1, new org.bukkit.inventory.ItemStack(org.bukkit.Material.ELYTRA));
+
+        at(builder, 1008);
+        modes.check(builder);
+
+        assertThat(builder.getGameMode()).isEqualTo(GameMode.SURVIVAL);
+        assertThat(builder.getInventory().getItem(0))
+                .isEqualTo(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_PICKAXE));
+        assertThat(builder.getInventory().contains(org.bukkit.Material.ELYTRA))
+                .describedAs("nothing creative gave the team leaves the course")
+                .isFalse();
+        String said = said(builder);
+        assertThat(said).contains("kept safe while you are on this course").contains("items back");
+        modes.check(builder);
+        assertThat(said(builder))
+                .describedAs("off a course with nothing kept, nothing is said")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("A run starts empty handed, and a player off the course starts none of it")
+    void aRunStartsEmptyHanded() {
+        builder.getInventory().setItem(0, new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_PICKAXE));
+        at(builder, 8);
+        modes.check(builder);
+        builder.getInventory().setItem(1, new org.bukkit.inventory.ItemStack(org.bukkit.Material.ENDER_PEARL, 16));
+
+        runners.add(builder.getUniqueId());
+        assertThat(modes.startRun(builder)).isEqualTo(GameMode.SURVIVAL);
+        assertThat(builder.getInventory().isEmpty())
+                .describedAs("the pearls creative gave are not run with")
+                .isTrue();
+
+        runners.clear();
+        at(builder, 1008);
+        modes.check(builder);
+        assertThat(builder.getInventory().getItem(0))
+                .isEqualTo(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_PICKAXE));
+        builder.getInventory().setItem(2, new org.bukkit.inventory.ItemStack(org.bukkit.Material.BREAD));
+        modes.startRun(builder);
+        assertThat(builder.getInventory().getItem(2))
+                .describedAs("a player with nothing kept aside keeps what they hold")
+                .isEqualTo(new org.bukkit.inventory.ItemStack(org.bukkit.Material.BREAD));
+    }
+
+    @Test
+    @DisplayName("What was kept is on the player, so it is given back when they come back after a stop")
+    void aStopGivesItBack() {
+        builder.getInventory().setItem(0, new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_PICKAXE));
+        at(builder, 8);
+        modes.check(builder);
+        assertThat(builder.getGameMode()).isEqualTo(GameMode.CREATIVE);
+        at(builder, 1008);
+
+        modes.onJoin(new org.bukkit.event.player.PlayerJoinEvent(builder, net.kyori.adventure.text.Component.empty()));
+
+        assertThat(builder.getGameMode())
+                .describedAs("not left in creative off the course")
+                .isEqualTo(GameMode.SURVIVAL);
+        assertThat(builder.getInventory().getItem(0))
+                .isEqualTo(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_PICKAXE));
+    }
+
+    @Test
     @DisplayName("A spectator and a player with the keep permission keep their mode")
     void someKeepTheirMode() {
         visitor.setGameMode(GameMode.SPECTATOR);
@@ -173,6 +268,18 @@ class ACourseIsPlayedInItsModesTest extends MockBukkitHarness {
         assertThat(odd.modes()).isEqualTo(ParkourConfiguration.Modes.SHIPPED);
         assertThat(adventure.modes().play()).isEqualTo(GameMode.ADVENTURE);
         assertThat(adventure.modes().keepPermission()).isEmpty();
+    }
+
+    /** Everything the player was told since the last look, as plain text. */
+    private static String said(PlayerMock player) {
+        StringBuilder all = new StringBuilder();
+        net.kyori.adventure.text.Component line;
+        while ((line = player.nextComponentMessage()) != null) {
+            all.append(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                            .serialize(line))
+                    .append('\n');
+        }
+        return all.toString();
     }
 
     private void at(PlayerMock player, int x) {

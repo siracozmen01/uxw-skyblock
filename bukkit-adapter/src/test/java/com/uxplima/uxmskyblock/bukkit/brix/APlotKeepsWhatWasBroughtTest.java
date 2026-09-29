@@ -101,25 +101,27 @@ class APlotKeepsWhatWasBroughtTest extends MockBukkitHarness {
             }
         });
         service.start(plot.id());
-        sealed = new SealedInventory(new InventoryCodec() {
-            @Override
-            public byte[] write(ItemStack[] items) {
-                ItemStack[] copy = new ItemStack[items.length];
-                for (int slot = 0; slot < items.length; slot++) {
-                    copy[slot] = items[slot] == null ? null : items[slot].clone();
-                }
-                kept.add(copy);
-                return ByteBuffer.allocate(4).putInt(kept.size() - 1).array();
-            }
+        sealed = new SealedInventory(
+                new InventoryCodec() {
+                    @Override
+                    public byte[] write(ItemStack[] items) {
+                        ItemStack[] copy = new ItemStack[items.length];
+                        for (int slot = 0; slot < items.length; slot++) {
+                            copy[slot] = items[slot] == null ? null : items[slot].clone();
+                        }
+                        kept.add(copy);
+                        return ByteBuffer.allocate(4).putInt(kept.size() - 1).array();
+                    }
 
-            @Override
-            public ItemStack[] read(byte[] bytes) {
-                if (unreadable) {
-                    throw new IllegalStateException("an item from a newer server");
-                }
-                return kept.get(ByteBuffer.wrap(bytes).getInt());
-            }
-        });
+                    @Override
+                    public ItemStack[] read(byte[] bytes) {
+                        if (unreadable) {
+                            throw new IllegalStateException("an item from a newer server");
+                        }
+                        return kept.get(ByteBuffer.wrap(bytes).getInt());
+                    }
+                },
+                "brix");
         modes = modes(service, islands, BrixConfiguration.Modes.SHIPPED);
         builder.setGameMode(GameMode.SURVIVAL);
         visitor.setGameMode(GameMode.SURVIVAL);

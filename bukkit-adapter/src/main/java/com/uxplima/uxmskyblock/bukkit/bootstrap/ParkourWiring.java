@@ -52,8 +52,13 @@ public final class ParkourWiring implements AutoCloseable {
                 islands,
                 scheduler,
                 config.modes(),
-                runner -> runs.runningOn(runner).isPresent());
-        runs.whenStarted(modes::check);
+                runner -> runs.runningOn(runner).isPresent(),
+                new com.uxplima.uxmskyblock.bukkit.creative.SealedInventory(
+                        new com.uxplima.uxmskyblock.bukkit.creative.ServerInventoryCodec(), "parkour"),
+                configuration.messages(),
+                configuration.effectsConfig(),
+                new InteractionEffectPlayer(scheduler, configuration.messages()));
+        runs.whenStarted(modes::startRun);
         this.board = new com.uxplima.uxmskyblock.bukkit.parkour.ParkourBoard(
                 service,
                 islands,
