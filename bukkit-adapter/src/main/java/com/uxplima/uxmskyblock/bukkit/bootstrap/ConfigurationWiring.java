@@ -101,6 +101,7 @@ public final class ConfigurationWiring {
     private final WorldConfiguration worldConfig;
     private final UpgradesConfiguration upgradesConfig;
     private final GeneratorsConfiguration generatorsConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -172,6 +173,7 @@ public final class ConfigurationWiring {
             WorldConfiguration worldConfig,
             UpgradesConfiguration upgradesConfig,
             GeneratorsConfiguration generatorsConfig,
+            com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -206,6 +208,7 @@ public final class ConfigurationWiring {
         this.worldConfig = Objects.requireNonNull(worldConfig, "worldConfig must not be null");
         this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
+        this.oneBlockConfig = Objects.requireNonNull(oneBlockConfig, "oneBlockConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -282,6 +285,7 @@ public final class ConfigurationWiring {
                 worldConfig,
                 upgradesConfig,
                 generatorsConfig,
+                com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -474,5 +478,10 @@ public final class ConfigurationWiring {
 
     public GeneratorsConfiguration generatorsConfig() {
         return generatorsConfig;
+    }
+
+    /** The OneBlock game mode's phases, as {@code modules/oneblock.conf} writes them. */
+    public com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig() {
+        return oneBlockConfig;
     }
 }

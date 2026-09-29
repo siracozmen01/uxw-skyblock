@@ -274,6 +274,13 @@ public final class ConfigurationLoader {
                 GeneratorsConfiguration::load,
                 GeneratorsConfiguration.defaultConfiguration());
 
+        com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig = loadConfig(
+                plugin,
+                dataDir,
+                "oneblock.conf",
+                com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
+
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
                 root,
@@ -307,6 +314,7 @@ public final class ConfigurationLoader {
                 worldConfig,
                 upgradesConfig,
                 generatorsConfig,
+                oneBlockConfig,
                 presetConfig);
 
         wiring.validate();
