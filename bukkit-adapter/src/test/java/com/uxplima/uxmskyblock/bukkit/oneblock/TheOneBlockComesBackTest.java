@@ -16,6 +16,7 @@ import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -145,6 +146,36 @@ class TheOneBlockComesBackTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A player who stood on the block and dropped while it was gone is put back on top of it")
+    void aPlayerStandingOnItDoesNotFall() {
+        Block block = world.getBlockAt(0, 100, 0);
+        block.setType(Material.GRASS_BLOCK);
+        MovingPlayer stander = new MovingPlayer(server);
+        server.addPlayer(stander);
+        stander.teleport(new Location(world, 0.3, 101, 0.7, 90f, 10f));
+
+        listener.onBlockBreak(new BlockBreakEvent(block, stander));
+        block.setType(Material.AIR);
+        // The tick before the block comes back: the client saw air, and fell into where it was.
+        stander.teleport(new Location(world, 0.3, 100.6, 0.7, 90f, 10f));
+        MovingPlayer bystander = new MovingPlayer(server);
+        server.addPlayer(bystander);
+        bystander.teleport(new Location(world, 4.5, 100.6, 4.5));
+        List<Runnable> due = new ArrayList<>(regionTasks);
+        regionTasks.clear();
+        due.forEach(Runnable::run);
+
+        assertThat(stander.getLocation().getY()).isEqualTo(101.0);
+        assertThat(stander.getLocation().getX()).isEqualTo(0.3);
+        assertThat(stander.getLocation().getZ()).isEqualTo(0.7);
+        assertThat(stander.getLocation().getYaw()).isEqualTo(90f);
+        assertThat(stander.getFallDistance()).isZero();
+        assertThat(bystander.getLocation().getY())
+                .describedAs("a player beside the block is not moved")
+                .isEqualTo(100.6);
+    }
+
+    @Test
     @DisplayName("Any other block on the island breaks as usual, and is neither counted nor put back")
     void anyOtherBlockIsLeftAlone() {
         Block other = world.getBlockAt(3, 100, 3);
@@ -164,6 +195,23 @@ class TheOneBlockComesBackTest extends MockBukkitHarness {
         List<Runnable> due = new ArrayList<>(regionTasks);
         regionTasks.clear();
         due.forEach(Runnable::run);
+    }
+
+    /** A player whose asynchronous move lands at once, which MockBukkit leaves unimplemented. */
+    private static final class MovingPlayer extends PlayerMock {
+
+        MovingPlayer(org.mockbukkit.mockbukkit.ServerMock server) {
+            super(server, "Stander" + UUID.randomUUID().toString().substring(0, 4), UUID.randomUUID());
+        }
+
+        @Override
+        public java.util.concurrent.CompletableFuture<Boolean> teleportAsync(
+                Location location,
+                org.bukkit.event.player.PlayerTeleportEvent.TeleportCause cause,
+                io.papermc.paper.entity.TeleportFlag... flags) {
+            setLocation(location);
+            return java.util.concurrent.CompletableFuture.completedFuture(true);
+        }
     }
 
     private OneBlockProgressPort memory() {

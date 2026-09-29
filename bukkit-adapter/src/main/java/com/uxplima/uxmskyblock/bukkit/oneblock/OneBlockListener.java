@@ -8,12 +8,15 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.Vector;
 
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
@@ -93,8 +96,15 @@ public final class OneBlockListener implements Listener {
         return block.getX() == island.x() && block.getY() == island.y() && block.getZ() == island.z();
     }
 
+    /**
+     * How far below the block's top a player may have dropped while it was gone and still be put back.
+     * The block is gone for a tick; a player falls well under a block in that time.
+     */
+    static final double CAUGHT_WITHIN = 3.0;
+
     private static void comeBack(World world, int x, int y, int z, OneBlockService.Broken next) {
         world.getBlockAt(x, y, z).setType(OneBlockStart.blockOf(next.nextBlock()));
+        putBackOnTop(world, x, y, z);
         next.creature().ifPresent(creature -> {
             NamespacedKey key = NamespacedKey.fromString(creature.toLowerCase(java.util.Locale.ROOT));
             EntityType type = key == null ? null : Registry.ENTITY_TYPE.get(key);
@@ -102,6 +112,28 @@ public final class OneBlockListener implements Listener {
                 world.spawnEntity(new Location(world, x + 0.5, y + 1, z + 0.5), type);
             }
         });
+    }
+
+    /**
+     * Puts back on top of the block every player who stood on it and dropped while it was gone.
+     *
+     * <p>A player's client breaks the block before the server does and sees air at once, so the player
+     * standing on it starts to fall, and the block comes back around their feet. From there the game
+     * lets them fall through it into the void. Whoever is in the block's column, below its top and not
+     * far under it, is set back on it where they stood, looking where they looked.
+     */
+    private static void putBackOnTop(World world, int x, int y, int z) {
+        BoundingBox column = new BoundingBox(x, y - CAUGHT_WITHIN, z, x + 1, y + 1, z + 1);
+        for (Entity entity : world.getNearbyEntities(column, Player.class::isInstance)) {
+            Location at = entity.getLocation();
+            if (at.getY() >= y + 1 || at.getY() < y - CAUGHT_WITHIN) {
+                continue;
+            }
+            Location top = new Location(world, at.getX(), y + 1, at.getZ(), at.getYaw(), at.getPitch());
+            entity.setFallDistance(0f);
+            entity.setVelocity(new Vector(0, 0, 0));
+            var unused = entity.teleportAsync(top);
+        }
     }
 
     /** The phase's title in the player's language, or its name when the catalogue has none. */
