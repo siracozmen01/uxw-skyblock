@@ -112,6 +112,7 @@ public final class GameplayWiring {
     private final ChunkBlockWiring chunkBlockWiring;
     private final AcidIslandWiring acidIslandWiring;
     private final BoxedWiring boxedWiring;
+    private final PoseidonWiring poseidonWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -193,6 +194,7 @@ public final class GameplayWiring {
         this.acidIslandWiring = new AcidIslandWiring(config, persistence, scheduler, protectionListener);
         this.boxedWiring = new BoxedWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
+        this.poseidonWiring = new PoseidonWiring(config, persistence, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -202,16 +204,7 @@ public final class GameplayWiring {
                 accessService,
                 this.economicWiring.rewardInboxService(),
                 this.economicWiring.upgradeService(),
-                java.util.stream.Stream.concat(
-                                this.oneBlockWiring.startActions().stream(),
-                                java.util.stream.Stream.concat(
-                                        this.chunkBlockWiring.startActions().stream(),
-                                        java.util.stream.Stream.concat(
-                                                this.acidIslandWiring.startActions().stream(),
-                                                java.util.stream.Stream.concat(
-                                                        this.boxedWiring.startActions().stream(),
-                                                        caveBlockStart(config, scheduler)))))
-                        .toList());
+                modeStartActions(config, scheduler));
 
         // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
         this.playerLifecycle = new com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle(
@@ -341,6 +334,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.chunkBlockWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.acidIslandWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.boxedWiring.service()::forget);
+        this.cacheEviction.whenForgotten(this.poseidonWiring.service()::forget);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
         // the answer so the path is not a query. An island id is a fresh uuid every time, so an
@@ -390,7 +384,28 @@ public final class GameplayWiring {
                         : java.util.stream.Stream.empty());
     }
 
-    /** The OneBlock game mode's service and the schedule that writes its counts. */
+    /** Every creation action the game modes bring, each while its mode is enabled. */
+    private java.util.List<
+                    com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
+                            com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
+            modeStartActions(ConfigurationWiring config, SchedulerPort scheduler) {
+        java.util.List<
+                        com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
+                                com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
+                actions = new java.util.ArrayList<>();
+        actions.addAll(this.oneBlockWiring.startActions());
+        actions.addAll(this.chunkBlockWiring.startActions());
+        actions.addAll(this.acidIslandWiring.startActions());
+        actions.addAll(this.boxedWiring.startActions());
+        actions.addAll(this.poseidonWiring.startActions());
+        caveBlockStart(config, scheduler).forEach(actions::add);
+        return actions;
+    }
+
+    public PoseidonWiring poseidonWiring() {
+        return poseidonWiring;
+    }
+
     public BoxedWiring boxedWiring() {
         return boxedWiring;
     }
@@ -403,6 +418,7 @@ public final class GameplayWiring {
         return chunkBlockWiring;
     }
 
+    /** The OneBlock game mode's service and the schedule that writes its counts. */
     public OneBlockWiring oneBlockWiring() {
         return oneBlockWiring;
     }

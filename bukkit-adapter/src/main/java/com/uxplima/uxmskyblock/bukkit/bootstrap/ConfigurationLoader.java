@@ -318,6 +318,12 @@ public final class ConfigurationLoader {
                 "boxed.conf",
                 com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.BoxedConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration poseidonConfig = loadConfig(
+                plugin,
+                dataDir,
+                "poseidon.conf",
+                com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -359,6 +365,7 @@ public final class ConfigurationLoader {
                 caveBlockConfig,
                 skyGridConfig,
                 boxedConfig,
+                poseidonConfig,
                 presetConfig);
 
         wiring.validate();

@@ -16,6 +16,9 @@ import org.bukkit.block.Block;
  * or high over a valley, and a player arrived suffocating or falling. The nearest height that is safe
  * is found in the column itself, up before down at each distance, so a player in a cave world arrives
  * in the cave rather than on its roof.
+ *
+ * <p>For a mode played under water, water is room like air, so a player on the sea floor arrives in the
+ * sea rather than in a pocket of air cut out of it.
  */
 public final class SafeArrival {
 
@@ -44,11 +47,16 @@ public final class SafeArrival {
      * or empty when nothing within {@link #REACH} is safe. Read on the thread that owns the column.
      */
     public static OptionalInt standingY(World world, int x, int feet, int z) {
+        return standingY(world, x, feet, z, false);
+    }
+
+    /** As {@link #standingY(World, int, int, int)}, with water counted as room when {@code underwater}. */
+    public static OptionalInt standingY(World world, int x, int feet, int z, boolean underwater) {
         for (int distance = 0; distance <= REACH; distance++) {
-            if (safe(world, x, feet + distance, z)) {
+            if (safe(world, x, feet + distance, z, underwater)) {
                 return OptionalInt.of(feet + distance);
             }
-            if (distance > 0 && safe(world, x, feet - distance, z)) {
+            if (distance > 0 && safe(world, x, feet - distance, z, underwater)) {
                 return OptionalInt.of(feet - distance);
             }
         }
@@ -61,16 +69,26 @@ public final class SafeArrival {
      * left as the island made it. Read and written on the thread that owns the column.
      */
     public static void makeRoom(World world, int x, int feet, int z) {
+        makeRoom(world, x, feet, z, false);
+    }
+
+    /** As {@link #makeRoom(World, int, int, int)}; under water the room is filled with water, not air. */
+    public static void makeRoom(World world, int x, int feet, int z, boolean underwater) {
         for (int y = feet; y <= feet + 1; y++) {
             Block block = world.getBlockAt(x, y, z);
-            if (!roomAt(block)) {
-                block.setType(Material.AIR, false);
+            if (!roomAt(block, underwater)) {
+                block.setType(underwater ? Material.WATER : Material.AIR, false);
             }
         }
     }
 
     /** Whether a player's feet can stand at {@code y}. */
     public static boolean safe(World world, int x, int y, int z) {
+        return safe(world, x, y, z, false);
+    }
+
+    /** As {@link #safe(World, int, int, int)}, with water counted as room when {@code underwater}. */
+    public static boolean safe(World world, int x, int y, int z, boolean underwater) {
         // The logical height is where play stops: in the Nether, the bedrock roof. Above it is not a
         // place to arrive, though there is air and something solid under it.
         int top = world.getMinHeight() + world.getLogicalHeight();
@@ -80,12 +98,15 @@ public final class SafeArrival {
         Block ground = world.getBlockAt(x, y - 1, z);
         return ground.getType().isSolid()
                 && !HURTS.contains(ground.getType())
-                && roomAt(world.getBlockAt(x, y, z))
-                && roomAt(world.getBlockAt(x, y + 1, z));
+                && roomAt(world.getBlockAt(x, y, z), underwater)
+                && roomAt(world.getBlockAt(x, y + 1, z), underwater);
     }
 
-    private static boolean roomAt(Block block) {
+    private static boolean roomAt(Block block, boolean underwater) {
         Material type = block.getType();
-        return !type.isSolid() && !block.isLiquid() && !HURTS.contains(type);
+        if (type.isSolid() || HURTS.contains(type)) {
+            return false;
+        }
+        return !block.isLiquid() || (underwater && type == Material.WATER);
     }
 }

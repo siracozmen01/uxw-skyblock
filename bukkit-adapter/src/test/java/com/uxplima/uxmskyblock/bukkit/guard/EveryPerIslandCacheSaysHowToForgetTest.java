@@ -110,7 +110,8 @@ class EveryPerIslandCacheSaysHowToForgetTest {
                 .describedAs("the game modes that answer a step from memory: the chunks and the acid seas")
                 .contains("chunkBlockWiring.service()::forget")
                 .contains("acidIslandWiring.service()::forget")
-                .contains("boxedWiring.service()::forget");
+                .contains("boxedWiring.service()::forget")
+                .contains("poseidonWiring.service()::forget");
     }
 
     @Test

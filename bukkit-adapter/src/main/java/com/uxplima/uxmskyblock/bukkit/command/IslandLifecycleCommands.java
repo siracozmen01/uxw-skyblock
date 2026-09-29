@@ -260,14 +260,18 @@ public final class IslandLifecycleCommands {
      * the thread that owns it. A spawn that had to move is written back, so a home is not inside a hill
      * either.
      */
-    private double arrivalOn(World world, IslandId islandId, IslandLocation location) {
+    private double arrivalOn(World world, IslandId islandId, IslandLocation location, boolean underwater) {
         int planned = (int) Math.floor(location.spawnY());
         java.util.OptionalInt safe = com.uxplima.uxmskyblock.bukkit.world.SafeArrival.standingY(
-                world, (int) Math.floor(location.spawnX()), planned, (int) Math.floor(location.spawnZ()));
+                world, (int) Math.floor(location.spawnX()), planned, (int) Math.floor(location.spawnZ()), underwater);
         if (safe.isEmpty()) {
             // Rock as far as the search reaches: the room above the platform is cleared instead.
             com.uxplima.uxmskyblock.bukkit.world.SafeArrival.makeRoom(
-                    world, (int) Math.floor(location.spawnX()), planned, (int) Math.floor(location.spawnZ()));
+                    world,
+                    (int) Math.floor(location.spawnX()),
+                    planned,
+                    (int) Math.floor(location.spawnZ()),
+                    underwater);
             return location.spawnY();
         }
         if (safe.getAsInt() == planned) {
@@ -359,7 +363,11 @@ public final class IslandLifecycleCommands {
                                 // The preset's own creation actions: a platform, a OneBlock island's block.
                                 schematicEngine.start(new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
                                         w, success.island().id(), centerX, platformY, centerZ, success.preset()));
-                                arrivalY = arrivalOn(w, success.island().id(), success.location());
+                                arrivalY = arrivalOn(
+                                        w,
+                                        success.island().id(),
+                                        success.location(),
+                                        success.preset().mode().playedUnderwater());
                             }
                             double standingY = arrivalY;
                             schedulerPort.onEntity(playerUuid, () -> {

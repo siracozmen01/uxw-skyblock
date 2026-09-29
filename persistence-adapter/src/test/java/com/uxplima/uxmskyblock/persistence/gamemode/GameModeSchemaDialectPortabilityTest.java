@@ -276,11 +276,20 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(boxed.find(islandId)).hasValue(4);
             assertThat(boxed.findAll()).containsEntry(islandId, 4L);
 
+            // A Poseidon island: recorded once, found, gone with the island.
+            com.uxplima.uxmskyblock.persistence.poseidon.SqlPoseidonIslandsAdapter poseidon =
+                    new com.uxplima.uxmskyblock.persistence.poseidon.SqlPoseidonIslandsAdapter(database.dataSource());
+            poseidon.add(islandId);
+            poseidon.add(islandId);
+            assertThat(poseidon.exists(islandId)).isTrue();
+            assertThat(poseidon.findAll()).contains(islandId);
+
             // Deleting the island takes its OneBlock row, its chunks and its sea with it.
             islands.deleteIsland(islandId);
             assertThat(acid.findAll()).doesNotContainKey(islandId);
             assertThat(acid.find(islandId)).isEmpty();
             assertThat(boxed.find(islandId)).isEmpty();
+            assertThat(poseidon.exists(islandId)).isFalse();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

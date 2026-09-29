@@ -11,5 +11,11 @@ public enum GameModeType {
     ACID_ISLAND,
     CAVEBLOCK,
     SKYGRID,
-    BOXED
+    BOXED,
+    POSEIDON;
+
+    /** Whether the mode is played under water, so that water is room to arrive in rather than a danger. */
+    public boolean playedUnderwater() {
+        return this == POSEIDON;
+    }
 }

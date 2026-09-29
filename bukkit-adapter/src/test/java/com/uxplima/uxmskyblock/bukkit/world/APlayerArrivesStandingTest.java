@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.World;
 
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,29 @@ class APlayerArrivesStandingTest extends MockBukkitHarness {
 
         fill(world.getMinHeight(), world.getMaxHeight() - 1, Material.AIR);
         assertThat(SafeArrival.standingY(world, X, 100, Z)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Under water, water is room to arrive in and to make, and lava still is not")
+    void waterIsRoomUnderWater() {
+        fill(60, 79, Material.STONE);
+        fill(80, 89, Material.WATER);
+        world.getBlockAt(X, 90, Z).setType(Material.STONE);
+
+        assertThat(SafeArrival.standingY(world, X, 80, Z))
+                .describedAs("on land, water is no room")
+                .hasValue(91);
+        assertThat(SafeArrival.standingY(world, X, 80, Z, true)).hasValue(80);
+        world.getBlockAt(X, 81, Z).setType(Material.LAVA);
+        assertThat(SafeArrival.safe(world, X, 80, Z, true)).isFalse();
+
+        fill(world.getMinHeight(), world.getMaxHeight() - 1, Material.SANDSTONE);
+        SafeArrival.makeRoom(world, X, 101, Z, true);
+        assertThat(world.getBlockAt(X, 101, Z).getType()).isEqualTo(Material.WATER);
+        assertThat(world.getBlockAt(X, 102, Z).getType()).isEqualTo(Material.WATER);
+        assertThat(SafeArrival.safe(world, X, 101, Z, true)).isTrue();
+        assertThat(GameModeType.POSEIDON.playedUnderwater()).isTrue();
+        assertThat(GameModeType.ACID_ISLAND.playedUnderwater()).isFalse();
     }
 
     @Test
