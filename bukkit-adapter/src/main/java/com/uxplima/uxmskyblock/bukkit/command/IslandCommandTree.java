@@ -317,6 +317,13 @@ public final class IslandCommandTree {
         this.chunkBlockPanel = panel;
     }
 
+    private com.uxplima.uxmskyblock.bukkit.poseidon.@Nullable PoseidonLore poseidonLore;
+
+    /** What {@code /is lore} opens, while the operator lets islands be Poseidon islands. */
+    public void usePoseidonLore(com.uxplima.uxmskyblock.bukkit.poseidon.@Nullable PoseidonLore lore) {
+        this.poseidonLore = lore;
+    }
+
     /** What {@code /is oneblock} opens, while the operator lets islands be OneBlock islands. */
     public void useOneBlock(com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel panel) {
         this.oneBlockPanel = panel;
@@ -587,6 +594,7 @@ public final class IslandCommandTree {
                 .then(groups.mechanicsCommands().buildMissions())
                 .then(groups.mechanicsCommands().buildChallenges())
                 .then(Cmd.literal("oneblock").executes(this::executeOneBlock))
+                .then(Cmd.literal("lore").executes(this::executeLore))
                 .then(Cmd.literal("chunks")
                         .executes(ctx -> executeChunks(ctx, false))
                         .then(Cmd.literal("unlock").executes(ctx -> executeChunks(ctx, true))))
@@ -717,6 +725,20 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         panel.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeLore(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.poseidon.PoseidonLore lore = this.poseidonLore;
+        if (lore == null) {
+            send(player, "poseidon.not_poseidon");
+            return Cmd.OK;
+        }
+        lore.open(player);
         return Cmd.OK;
     }
 

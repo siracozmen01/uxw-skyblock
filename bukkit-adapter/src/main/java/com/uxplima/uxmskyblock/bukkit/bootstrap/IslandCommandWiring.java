@@ -120,6 +120,18 @@ final class IslandCommandWiring {
         tree.useChunkBlock(chunkBlockPanel);
         integration.placeholderExpansion().useChunkBlock(chunkBlockPanel);
         tree.useOneBlock(oneBlockPanel);
+        // A Poseidon island's lore: a book on Java, a form on Bedrock, pages from the language files.
+        if (gameplay.poseidonWiring().enabled()) {
+            var forms = integration.bedrockFormService();
+            tree.usePoseidonLore(new com.uxplima.uxmskyblock.bukkit.poseidon.PoseidonLore(
+                    integration.messages(),
+                    gameplay.scheduler(),
+                    authority.sessionCoordinator()::activeProfile,
+                    gameplay.gameModeHierarchyService()::modeOf,
+                    forms::isBedrock,
+                    forms.screen(),
+                    org.bukkit.entity.Player::openBook));
+        }
         integration.placeholderExpansion().useOneBlock(oneBlockPanel);
         tree.setActivityFeedService(gameplay.activityFeedService());
         tree.setNameService(gameplay.islandNameService());
