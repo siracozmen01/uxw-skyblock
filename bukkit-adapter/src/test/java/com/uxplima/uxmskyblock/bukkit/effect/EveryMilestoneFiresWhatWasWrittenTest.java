@@ -94,7 +94,11 @@ class EveryMilestoneFiresWhatWasWrittenTest {
                         "boxed-grew",
                         "poseidon-dry-air",
                         "poseidon-sun-burns",
-                        "poseidon-still-drowns"));
+                        "poseidon-still-drowns",
+                        "parkour-run-started",
+                        "parkour-checkpoint",
+                        "parkour-finished",
+                        "parkour-record"));
     }
 
     private static Set<String> firedInteractions() throws IOException {

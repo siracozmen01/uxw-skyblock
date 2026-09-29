@@ -291,6 +291,22 @@ class GameModeSchemaDialectPortabilityTest {
             stranger.add(islandId);
             assertThat(stranger.exists(islandId)).isTrue();
             assertThat(stranger.findAll()).contains(islandId);
+            // A Parkour course: recorded once, a runner's first finish and a faster and a slower one.
+            com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter parkour =
+                    new com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter(database.dataSource());
+            com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid runner =
+                    com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid.of(java.util.UUID.randomUUID());
+            parkour.add(islandId);
+            parkour.add(islandId);
+            assertThat(parkour.exists(islandId)).isTrue();
+            assertThat(parkour.best(islandId, runner)).isEmpty();
+            parkour.finish(islandId, runner, 30_000);
+            parkour.finish(islandId, runner, 25_000);
+            parkour.finish(islandId, runner, 40_000);
+            assertThat(parkour.best(islandId, runner)).hasValue(25_000);
+            assertThat(parkour.top(islandId, 5))
+                    .containsExactly(
+                            new com.uxplima.uxmskyblock.core.application.parkour.ParkourPort.Best(runner, 25_000, 3));
             assertThat(stranger.farthestReach())
                     .describedAs("the edge of the island furthest from the centre, on x or z")
                     .isGreaterThan(0);
@@ -303,6 +319,8 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(poseidon.exists(islandId)).isFalse();
             assertThat(stranger.exists(islandId)).isFalse();
             assertThat(stranger.farthestReach()).isZero();
+            assertThat(parkour.exists(islandId)).isFalse();
+            assertThat(parkour.top(islandId, 5)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {

@@ -76,6 +76,18 @@ public final class EffectsConfiguration {
                 parseAll("acid-clean-water-filled", List.of("[sound] item.bottle.fill 1.0 1.0")));
         defaults.put("acid-vent-fumes", parseAll("acid-vent-fumes", List.of("[particle] CAMPFIRE_COSY_SMOKE 4 0.4")));
         defaults.put("boxed-grew", parseAll("boxed-grew", List.of("[sound] entity.player.levelup 0.8 1.6")));
+        defaults.put(
+                "parkour-run-started",
+                parseAll("parkour-run-started", List.of("[sound] block.note_block.pling 0.8 1.2")));
+        defaults.put(
+                "parkour-checkpoint", parseAll("parkour-checkpoint", List.of("[sound] block.note_block.bell 0.8 1.5")));
+        defaults.put(
+                "parkour-finished", parseAll("parkour-finished", List.of("[sound] entity.player.levelup 0.8 1.2")));
+        defaults.put(
+                "parkour-record",
+                parseAll(
+                        "parkour-record",
+                        List.of("[sound] ui.toast.challenge_complete 0.8 1.0", "[particle] TOTEM_OF_UNDYING 20 0.5")));
         defaults.put("poseidon-dry-air", parseAll("poseidon-dry-air", List.of("[sound] entity.player.breath 0.6 0.7")));
         defaults.put(
                 "poseidon-sun-burns",

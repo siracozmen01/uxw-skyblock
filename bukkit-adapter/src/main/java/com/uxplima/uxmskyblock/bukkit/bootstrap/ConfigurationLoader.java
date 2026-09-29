@@ -330,6 +330,12 @@ public final class ConfigurationLoader {
                 "strangerrealms.conf",
                 com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration parkourConfig = loadConfig(
+                plugin,
+                dataDir,
+                "parkour.conf",
+                com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -373,6 +379,7 @@ public final class ConfigurationLoader {
                 boxedConfig,
                 poseidonConfig,
                 strangerRealmsConfig,
+                parkourConfig,
                 presetConfig);
 
         wiring.validate();

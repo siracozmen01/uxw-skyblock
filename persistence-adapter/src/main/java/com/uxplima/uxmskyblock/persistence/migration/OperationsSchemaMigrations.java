@@ -34,6 +34,7 @@ final class OperationsSchemaMigrations {
         list.add(GameModeSchemaMigrationsV39.migration(dialect));
         list.add(GameModeSchemaMigrationsV40.migration(dialect));
         list.add(GameModeSchemaMigrationsV41.migration(dialect));
+        list.add(GameModeSchemaMigrationsV42.migration(dialect));
         return List.copyOf(list);
     }
 }

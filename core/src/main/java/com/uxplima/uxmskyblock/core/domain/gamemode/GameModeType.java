@@ -13,7 +13,8 @@ public enum GameModeType {
     SKYGRID,
     BOXED,
     POSEIDON,
-    STRANGER_REALMS;
+    STRANGER_REALMS,
+    PARKOUR;
 
     /** Whether the mode is played under water, so that water is room to arrive in rather than a danger. */
     public boolean playedUnderwater() {

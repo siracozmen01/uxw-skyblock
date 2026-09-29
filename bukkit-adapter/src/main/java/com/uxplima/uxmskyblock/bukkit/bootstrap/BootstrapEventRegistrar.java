@@ -37,6 +37,9 @@ public final class BootstrapEventRegistrar {
         if (gameplayWiring.boxedWiring().enabled()) {
             pm.registerEvents(gameplayWiring.boxedWiring().listener(), plugin);
         }
+        if (gameplayWiring.parkourWiring().enabled()) {
+            pm.registerEvents(gameplayWiring.parkourWiring().runs(), plugin);
+        }
         if (gameplayWiring.strangerRealmsWiring().enabled()) {
             pm.registerEvents(gameplayWiring.strangerRealmsWiring().spawns(), plugin);
             if (gameplayWiring.strangerRealmsWiring().config().compass().enabled()) {
