@@ -324,6 +324,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.commandTree.setHomeService(gameplay.homeService());
         this.commandTree.setVaultWindow(gameplay.vaultWindow());
         this.commandTree.useLifecycle(gameplay.playerLifecycle());
+        this.commandTree.useGameModes(gameplay.gameModeHierarchyService()::modeOf);
         // A OneBlock island's standing, as the operator's menu file draws it and as placeholders.
         var oneBlockPanel = gameplay.oneBlockWiring().panel(this.menuEngine);
         this.commandTree.useOneBlock(oneBlockPanel);

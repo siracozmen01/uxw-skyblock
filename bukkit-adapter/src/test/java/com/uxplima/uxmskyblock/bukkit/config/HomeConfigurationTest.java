@@ -8,6 +8,9 @@ import java.io.StringReader;
 import java.util.Map;
 import java.util.Set;
 
+import com.uxplima.uxmskyblock.core.domain.dimension.DimensionId;
+import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
+import com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -83,6 +86,47 @@ class HomeConfigurationTest {
     void missingBlockFallsBack() throws Exception {
         assertThat(HomeConfiguration.load(null)).isEqualTo(HomeConfiguration.defaults());
         assertThat(load("server-node { id = \"node-1\" }\n").baseHomes()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("The dimensions block says where a home may stand, and a mode may switch homes off")
+    void theDimensionsBlockIsRead() throws Exception {
+        HomeConfiguration config = load("""
+                homes {
+                    dimensions {
+                        overworld { allowed = true, on-island-only = false }
+                        the_nether { allowed = true, on-island-only = true, permission = "server.homes.nether" }
+                        the_end { allowed = false }
+                    }
+                    disabled-in-modes = [ "oneblock", "no-such-mode" ]
+                }
+                """);
+
+        HomePlacementPolicy placement = config.placement();
+
+        assertThat(placement.check(DimensionId.OVERWORLD, GameModeType.SKYBLOCK, true, false))
+                .isEqualTo(HomePlacementPolicy.Verdict.ALLOWED);
+        assertThat(placement.permissionFor(DimensionId.THE_NETHER)).contains("server.homes.nether");
+        assertThat(placement.check(DimensionId.THE_NETHER, GameModeType.SKYBLOCK, true, false))
+                .isEqualTo(HomePlacementPolicy.Verdict.OUTSIDE_ISLAND);
+        assertThat(placement.check(DimensionId.THE_END, GameModeType.SKYBLOCK, true, true))
+                .isEqualTo(HomePlacementPolicy.Verdict.DIMENSION_NOT_ALLOWED);
+        assertThat(placement.disabledInModes()).containsExactly(GameModeType.ONEBLOCK);
+    }
+
+    @Test
+    @DisplayName("Without a dimensions block the shipped rules stand, and a mode is still switched off")
+    void noDimensionsBlockKeepsTheShippedRules() throws Exception {
+        HomeConfiguration config = load("""
+                homes {
+                    disabled-in-modes = [ "oneblock" ]
+                }
+                """);
+
+        assertThat(config.placement().dimensions())
+                .isEqualTo(HomePlacementPolicy.shipped().dimensions());
+        assertThat(config.placement().check(DimensionId.OVERWORLD, GameModeType.ONEBLOCK, true, true))
+                .isEqualTo(HomePlacementPolicy.Verdict.MODE_DISABLED);
     }
 
     private static HomeConfiguration load(String hocon) throws Exception {

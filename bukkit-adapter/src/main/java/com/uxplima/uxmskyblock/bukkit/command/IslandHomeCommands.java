@@ -107,12 +107,32 @@ public final class IslandHomeCommands {
         float yaw = at.getYaw();
         float pitch = at.getPitch();
         int allowance = configuration.allowanceFor(standing::hasPermission);
+        com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy placement = configuration.placement();
+        com.uxplima.uxmskyblock.core.domain.dimension.DimensionId dimension = dimensionOf(at.getWorld());
+        // A permission is read on the thread that owns the player, so it is read here.
+        boolean permitted =
+                placement.permissionFor(dimension).map(standing::hasPermission).orElse(true);
 
         return withHome(ctx, (player, service, profileId) -> {
             String name = StringArgumentType.getString(ctx, "name");
             Optional<IslandId> optIsland = islandLocationService.findIslandId(profileId);
             if (optIsland.isEmpty()) {
                 send(player, "error.no_island");
+                return;
+            }
+            boolean onOwnIsland = islandLocationService
+                    .findLocation(optIsland.get())
+                    .filter(island ->
+                            dimension.equals(com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.OVERWORLD)
+                                    ? island.worldName().equals(worldName)
+                                    // Every other dimension mirrors the island one to one, in its own world.
+                                    : true)
+                    .map(island -> island.bounds().contains((int) Math.floor(x), (int) Math.floor(z)))
+                    .orElse(false);
+            com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy.Verdict verdict =
+                    placement.check(dimension, gameModes.apply(profileId), permitted, onOwnIsland);
+            if (verdict != com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy.Verdict.ALLOWED) {
+                send(player, refusalKey(verdict));
                 return;
             }
             HomeService.SetHomeResult result = service.setHome(
@@ -132,6 +152,35 @@ public final class IslandHomeCommands {
                             Placeholder.unparsed("max", Integer.toString(limit.maxAllowed())));
             }
         });
+    }
+
+    private java.util.function.Function<ProfileId, com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType>
+            gameModes = profile -> com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.SKYBLOCK;
+
+    /** The mode a profile's island plays, which a mode that keeps no homes refuses them by. */
+    public void useGameModes(
+            java.util.function.Function<ProfileId, com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType>
+                    gameModes) {
+        this.gameModes = java.util.Objects.requireNonNull(gameModes, "gameModes must not be null");
+    }
+
+    /** Which dimension a world is, by the environment the server gave it. */
+    private static com.uxplima.uxmskyblock.core.domain.dimension.DimensionId dimensionOf(World world) {
+        return switch (world.getEnvironment()) {
+            case NETHER -> com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_NETHER;
+            case THE_END -> com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.THE_END;
+            default -> com.uxplima.uxmskyblock.core.domain.dimension.DimensionId.OVERWORLD;
+        };
+    }
+
+    private static String refusalKey(com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy.Verdict verdict) {
+        return switch (verdict) {
+            case MODE_DISABLED -> "home.mode_disabled";
+            case DIMENSION_NOT_ALLOWED -> "home.dimension_not_allowed";
+            case NO_PERMISSION -> "home.dimension_no_permission";
+            case OUTSIDE_ISLAND -> "home.outside_island";
+            case ALLOWED -> "home.set";
+        };
     }
 
     private int executeTravelHome(CommandContext<CommandSourceStack> ctx) {

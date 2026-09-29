@@ -290,6 +290,16 @@ public final class IslandCommandTree {
 
     com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle playerLifecycle;
 
+    java.util.function.Function<ProfileId, com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType> gameModes =
+            profile -> com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.SKYBLOCK;
+
+    /** The mode a profile's island plays, for the commands whose rules depend on it. */
+    public void useGameModes(
+            java.util.function.Function<ProfileId, com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType>
+                    gameModes) {
+        this.gameModes = java.util.Objects.requireNonNull(gameModes, "gameModes must not be null");
+    }
+
     /** What carries out the operator's lifecycle rules on a leave, a kick and a reset. */
     public void useLifecycle(com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle lifecycle) {
         this.playerLifecycle = lifecycle;

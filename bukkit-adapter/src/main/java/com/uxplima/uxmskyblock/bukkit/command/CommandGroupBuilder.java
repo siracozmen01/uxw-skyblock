@@ -210,6 +210,7 @@ final class CommandGroupBuilder {
                 tree.homeConfiguration,
                 tree.messages,
                 tree.sessionCoordinator);
+        homeCommands.useGameModes(profile -> tree.gameModes.apply(profile));
 
         // Four subsystems were built, wired and running with no command to reach them: warps, the
         // social system, alliances and the reward inbox. Rewards were being issued into a table a

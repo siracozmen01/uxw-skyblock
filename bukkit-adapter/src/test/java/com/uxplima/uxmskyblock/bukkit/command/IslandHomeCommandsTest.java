@@ -128,15 +128,31 @@ class IslandHomeCommandsTest {
 
         IslandLocationService locations = mock(IslandLocationService.class);
         when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        // The player's island, around the spot they stand on: a home must stand on it.
+        when(locations.findLocation(ISLAND))
+                .thenReturn(Optional.of(com.uxplima.uxmskyblock.core.domain.island.IslandLocation.fromCenterAndRadius(
+                        ISLAND, WORLD, 0, 0, 50)));
 
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
-        IslandHomeCommands commands = new IslandHomeCommands(
+        this.locations = locations;
+        this.sessions = sessions;
+        rebuildWith(HomeConfiguration.defaults());
+    }
+
+    private IslandLocationService locations;
+    private PlayerSessionCoordinator sessions;
+
+    /** The commands as a server with this configuration builds them. */
+    private void rebuildWith(HomeConfiguration configuration) {
+        java.util.function.Function<ProfileId, com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType> modes =
+                commands == null ? null : currentModes;
+        commands = new IslandHomeCommands(
                 () -> homes,
                 locations,
                 inlineScheduler(),
-                HomeConfiguration.defaults(),
+                configuration,
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
                 sessions);
 
@@ -145,7 +161,15 @@ class IslandHomeCommandsTest {
         dispatcher.register(commands.buildNamedHome());
         dispatcher.register(commands.buildDeleteHome());
         dispatcher.register(commands.buildTravelHome());
+        if (modes != null) {
+            commands.useGameModes(modes);
+        }
     }
+
+    private java.util.function.Function<ProfileId, com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType>
+            currentModes = profile -> com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.SKYBLOCK;
+
+    private IslandHomeCommands commands;
 
     @AfterEach
     void tearDown() {
@@ -186,6 +210,73 @@ class IslandHomeCommandsTest {
                         eq(90.0f),
                         eq(10.0f),
                         anyInt());
+    }
+
+    @Test
+    @DisplayName("A home off the player's own island is refused and nothing is written")
+    void aHomeOffTheIslandIsRefused() throws Exception {
+        player.teleport(new Location(server.getWorld(WORLD), 500.5, 70.0, 500.5));
+
+        run("sethome far", player);
+
+        verify(homes, org.mockito.Mockito.never())
+                .setHome(
+                        any(),
+                        any(),
+                        anyString(),
+                        any(),
+                        anyString(),
+                        anyDouble(),
+                        anyDouble(),
+                        anyDouble(),
+                        anyFloat(),
+                        anyFloat(),
+                        anyInt());
+        assertThat(said()).contains("home.outside_island");
+    }
+
+    @Test
+    @DisplayName("A game mode that keeps no homes refuses one, even on the island")
+    void aModeWithoutHomesRefusesOne() throws Exception {
+        currentModes = profile -> com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.ONEBLOCK;
+        rebuildWith(new HomeConfiguration(
+                true,
+                1,
+                10,
+                java.util.Map.of(),
+                new com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy(
+                        com.uxplima.uxmskyblock.core.domain.home.HomePlacementPolicy.shipped()
+                                .dimensions(),
+                        java.util.Set.of(com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType.ONEBLOCK))));
+
+        run("sethome base", player);
+
+        verify(homes, org.mockito.Mockito.never())
+                .setHome(
+                        any(),
+                        any(),
+                        anyString(),
+                        any(),
+                        anyString(),
+                        anyDouble(),
+                        anyDouble(),
+                        anyDouble(),
+                        anyFloat(),
+                        anyFloat(),
+                        anyInt());
+        assertThat(said()).contains("home.mode_disabled");
+    }
+
+    /** Everything the player was told, in plain text. */
+    private java.util.List<String> said() {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        net.kyori.adventure.text.Component next;
+        while ((next = player.nextComponentMessage()) != null) {
+            String plain = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                    .serialize(next);
+            lines.add(plain.substring(plain.indexOf('»') + 1).trim());
+        }
+        return lines;
     }
 
     @Test

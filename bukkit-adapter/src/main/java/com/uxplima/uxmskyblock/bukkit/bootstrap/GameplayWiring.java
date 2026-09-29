@@ -324,6 +324,11 @@ public final class GameplayWiring {
         return scheduler;
     }
 
+    /** Which game mode instance each profile plays, and so which mode its island is. */
+    public com.uxplima.uxmskyblock.core.application.gamemode.GameModeHierarchyService gameModeHierarchyService() {
+        return creationWiring.gameModeHierarchyService();
+    }
+
     /** What carries out the operator's lifecycle rules on players. */
     public com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle() {
         return playerLifecycle;
