@@ -112,6 +112,31 @@ public final class SkyblockEconomyBridge {
     }
 
     /**
+     * Settles abandoned sagas once every saga timeout, for as long as the server runs.
+     *
+     * <p>Recovery ran once, at startup. A move the database never answered left its saga waiting for
+     * the next restart, with the player's money in neither place they could see. A saga is abandoned
+     * once its timeout has passed, so looking that often finds each one within two timeouts.
+     */
+    public AutoCloseable keepRecoveringSagas(ServerNodeId nodeId) {
+        EconomySagaCoordinator coordinator = this.sagaCoordinator;
+        if (coordinator == null) {
+            return () -> {};
+        }
+        return schedulerPort.repeatAsync(
+                () -> {
+                    try {
+                        coordinator.recoverIncompleteSagas(Instant.now(), nodeId);
+                    } catch (RuntimeException e) {
+                        LOGGER.log(
+                                Level.WARNING, "Settling abandoned economy sagas failed; the next turn tries again", e);
+                    }
+                },
+                coordinator.sagaTimeout(),
+                coordinator.sagaTimeout());
+    }
+
+    /**
      * Deposits money from player's wallet into the island bank via durable two-phase saga.
      * If bank mutation fails, wallet deduction is compensated and refunded immediately.
      */

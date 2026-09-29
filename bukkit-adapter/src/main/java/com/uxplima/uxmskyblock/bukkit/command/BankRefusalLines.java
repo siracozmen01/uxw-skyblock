@@ -30,6 +30,7 @@ public final class BankRefusalLines {
                     case WALLET_REFUSED -> walletKey;
                     case REFUND_FAILED -> "bank.refund_failed";
                     case NO_ECONOMY -> "bank.no_economy";
+                    case OUTCOME_UNKNOWN -> "bank.outcome_unknown";
                     case OTHER -> "bank.refused";
                 };
             case BankTransactionOutcome.StaleVersion _ -> "bank.busy";

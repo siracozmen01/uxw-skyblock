@@ -71,8 +71,15 @@ public final class EconomySagaCoordinator {
         // finish: the bank move is keyed and can be asked again.
         sagaPort.updateState(sagaId, SagaState.WALLET_DEBITED, now);
 
-        BankTransactionOutcome outcome = bankService.moveOnce(
-                profileId, playerUuid, amountMinorUnits, "Player deposit", nodeId, forwardKey(sagaId));
+        BankTransactionOutcome outcome;
+        try {
+            outcome = bankService.moveOnce(
+                    profileId, playerUuid, amountMinorUnits, "Player deposit", nodeId, forwardKey(sagaId));
+        } catch (RuntimeException unanswered) {
+            // The move may have landed. Refunding now would pay the player twice if it did, so the
+            // saga stays where it is and recovery asks the bank again under the same key.
+            return unknown(sagaId, unanswered);
+        }
         if (outcome instanceof BankTransactionOutcome.Success) {
             sagaPort.updateState(sagaId, SagaState.COMMITTED, now);
             return outcome;
@@ -110,8 +117,15 @@ public final class EconomySagaCoordinator {
 
         sagaPort.createSaga(saga);
 
-        BankTransactionOutcome outcome = bankService.moveOnce(
-                profileId, playerUuid, -amountMinorUnits, "Player withdrawal", nodeId, forwardKey(sagaId));
+        BankTransactionOutcome outcome;
+        try {
+            outcome = bankService.moveOnce(
+                    profileId, playerUuid, -amountMinorUnits, "Player withdrawal", nodeId, forwardKey(sagaId));
+        } catch (RuntimeException unanswered) {
+            // The bank may have paid out. Nothing reaches the wallet on a guess: recovery finds out
+            // under the same key and puts back what was taken.
+            return unknown(sagaId, unanswered);
+        }
         if (!(outcome instanceof BankTransactionOutcome.Success)) {
             sagaPort.updateState(sagaId, SagaState.FAILED, now);
             return outcome;
@@ -261,6 +275,22 @@ public final class EconomySagaCoordinator {
                 refundKey(saga.sagaId()));
         sagaPort.updateState(
                 saga.sagaId(), IslandBankService.landed(refund) ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
+    }
+
+    /** How long a saga may run before recovery treats it as abandoned, and how often recovery looks. */
+    public Duration sagaTimeout() {
+        return sagaTimeout;
+    }
+
+    private static BankTransactionOutcome unknown(SagaId sagaId, RuntimeException unanswered) {
+        LOGGER.log(
+                java.util.logging.Level.WARNING,
+                "The bank did not say whether economy saga " + sagaId + " moved its money. Recovery settles it"
+                        + " from the saga journal.",
+                unanswered);
+        return new BankTransactionOutcome.AuthorityRejected(
+                BankTransactionOutcome.AuthorityRejected.Kind.OUTCOME_UNKNOWN,
+                "The bank did not say whether saga " + sagaId + " landed; it is settled from the journal.");
     }
 
     /** The key a saga's own bank move is recorded under. */

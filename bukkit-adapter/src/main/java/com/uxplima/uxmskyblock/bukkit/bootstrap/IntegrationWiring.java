@@ -81,6 +81,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final NotificationConfiguration notificationConfig;
 
     private @org.jspecify.annotations.Nullable AutoCloseable notificationSweep;
+    private @org.jspecify.annotations.Nullable AutoCloseable sagaRecovery;
     private final @org.jspecify.annotations.Nullable AutoCloseable domainEvents;
     private final java.time.Duration authorityHeartbeatInterval;
     private final com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort scheduler;
@@ -501,6 +502,7 @@ public final class IntegrationWiring implements AutoCloseable {
     public void whenServerIsUp() {
         placeholderExpansion.registerExpansion("uxplima", plugin.getPluginMeta().getVersion());
         economyBridge.recoverPendingSagas(serverNodeId);
+        this.sagaRecovery = economyBridge.keepRecoveringSagas(serverNodeId);
         recoverIncompleteRecycles();
         resumeInterruptedRestores();
     }
@@ -782,6 +784,8 @@ public final class IntegrationWiring implements AutoCloseable {
         closeAuthorityHeartbeat();
         closeQuietly(this.notificationSweep, "the notification sweep");
         this.notificationSweep = null;
+        closeQuietly(this.sagaRecovery, "the economy saga recovery");
+        this.sagaRecovery = null;
         closeQuietly(this.domainEvents, "the island change listener");
         menuEngine.close();
         discordService.close();

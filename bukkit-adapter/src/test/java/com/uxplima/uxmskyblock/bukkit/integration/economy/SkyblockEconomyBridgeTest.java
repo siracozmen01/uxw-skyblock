@@ -265,6 +265,36 @@ class SkyblockEconomyBridgeTest {
         verify(mockCoordinator).recoverIncompleteSagas(any(Instant.class), eq(nodeId));
     }
 
+    @Test
+    @DisplayName("Abandoned sagas are settled every saga timeout while the server runs, not only at startup")
+    void sagasAreSettledWhileTheServerRuns() throws Exception {
+        EconomySagaCoordinator mockCoordinator = mock(EconomySagaCoordinator.class);
+        when(mockCoordinator.sagaTimeout()).thenReturn(Duration.ofSeconds(30));
+        java.util.List<Runnable> repeating = new java.util.ArrayList<>();
+        java.util.List<Duration> periods = new java.util.ArrayList<>();
+        SchedulerPort recording = new DirectSchedulerPort() {
+            @Override
+            public AutoCloseable repeatAsync(Runnable task, Duration initialDelay, Duration period) {
+                repeating.add(task);
+                periods.add(period);
+                return () -> {};
+            }
+        };
+        SkyblockEconomyBridge sagaBridge =
+                new SkyblockEconomyBridge(mockEconomy, mockBankService, recording, mockCoordinator);
+
+        sagaBridge.keepRecoveringSagas(nodeId).close();
+
+        assertThat(periods).containsExactly(Duration.ofSeconds(30));
+        repeating.getFirst().run();
+        repeating.getFirst().run();
+        verify(mockCoordinator, org.mockito.Mockito.times(2)).recoverIncompleteSagas(any(Instant.class), eq(nodeId));
+        assertThat(java.nio.file.Files.readString(java.nio.file.Path.of(
+                        "src/main/java/com/uxplima/uxmskyblock/bukkit/bootstrap/IntegrationWiring.java")))
+                .describedAs("the server keeps the recovery running once it is up")
+                .contains("this.sagaRecovery = economyBridge.keepRecoveringSagas(serverNodeId);");
+    }
+
     private static class DirectSchedulerPort implements SchedulerPort {
         @Override
         public void onGlobal(Runnable task) {
