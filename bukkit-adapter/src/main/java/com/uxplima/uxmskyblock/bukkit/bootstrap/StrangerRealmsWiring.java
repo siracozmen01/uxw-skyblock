@@ -29,6 +29,7 @@ public final class StrangerRealmsWiring {
     private final SchedulerPort scheduler;
     private final String upsideDownWorld;
     private final UpsideDownSpawns spawns;
+    private final com.uxplima.uxmskyblock.bukkit.stranger.Glimmer glimmer;
 
     public StrangerRealmsWiring(
             ConfigurationWiring configuration,
@@ -50,6 +51,8 @@ public final class StrangerRealmsWiring {
                 () -> upsideDownWorld,
                 configuration::islandWorlds,
                 (at, type) -> at.getWorld().spawnEntity(at, type, CreatureSpawnEvent.SpawnReason.CUSTOM));
+        this.glimmer = new com.uxplima.uxmskyblock.bukkit.stranger.Glimmer(
+                service, islands, scheduler, config.glimmer(), () -> upsideDownWorld, configuration::islandWorlds);
         scheduler.async(() -> {
             try {
                 int count = service.prime();
@@ -71,6 +74,11 @@ public final class StrangerRealmsWiring {
     /** What the Upside Down makes of the creatures born in it, while StrangerRealms is enabled. */
     public UpsideDownSpawns spawns() {
         return spawns;
+    }
+
+    /** The glimmer between the land and the Upside Down. */
+    public com.uxplima.uxmskyblock.bukkit.stranger.Glimmer glimmer() {
+        return glimmer;
     }
 
     public boolean enabled() {

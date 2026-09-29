@@ -10,7 +10,7 @@ import org.spongepowered.configurate.ConfigurationNode;
  * {@code modules/strangerrealms.conf}: whether islands can be StrangerRealms islands, how the Upside
  * Down mirrors their land, and what it makes of the creatures born in it.
  */
-public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown, Mobs mobs) {
+public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown, Mobs mobs, Glimmer glimmer) {
 
     private static final Logger LOGGER = Logger.getLogger(StrangerRealmsConfiguration.class.getName());
 
@@ -78,13 +78,50 @@ public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown
         }
     }
 
+    /**
+     * The glimmer: a light set on a StrangerRealms island's land shines through at the same place in
+     * the Upside Down, and the other way round, while it stands.
+     *
+     * @param enabled whether lights glimmer across at all
+     * @param lights the blocks that are lights, each a name or a name with one {@code *}
+     * @param level how bright the glimmer is, from 1 to 15
+     */
+    public record Glimmer(boolean enabled, List<String> lights, int level) {
+
+        public static final Glimmer SHIPPED = new Glimmer(
+                true,
+                List.of(
+                        "TORCH",
+                        "WALL_TORCH",
+                        "SOUL_TORCH",
+                        "SOUL_WALL_TORCH",
+                        "LANTERN",
+                        "SOUL_LANTERN",
+                        "GLOWSTONE",
+                        "SEA_LANTERN",
+                        "SHROOMLIGHT",
+                        "JACK_O_LANTERN",
+                        "*_CANDLE",
+                        "CANDLE",
+                        "REDSTONE_LAMP"),
+                12);
+
+        public Glimmer {
+            lights = List.copyOf(lights);
+            if (level < 1 || level > 15) {
+                throw new IllegalArgumentException("the level is from 1 to 15");
+            }
+        }
+    }
+
     public StrangerRealmsConfiguration {
         Objects.requireNonNull(upsideDown, "upsideDown must not be null");
         Objects.requireNonNull(mobs, "mobs must not be null");
+        Objects.requireNonNull(glimmer, "glimmer must not be null");
     }
 
     public static StrangerRealmsConfiguration defaultConfiguration() {
-        return new StrangerRealmsConfiguration(true, UpsideDown.SHIPPED, Mobs.SHIPPED);
+        return new StrangerRealmsConfiguration(true, UpsideDown.SHIPPED, Mobs.SHIPPED, Glimmer.SHIPPED);
     }
 
     public static StrangerRealmsConfiguration load(ConfigurationNode root) {
@@ -100,12 +137,25 @@ public record StrangerRealmsConfiguration(boolean enabled, UpsideDown upsideDown
             upsideDown = UpsideDown.SHIPPED;
         }
         ConfigurationNode mobs = root.node("mobs");
+        ConfigurationNode written = root.node("glimmer");
+        Glimmer glimmer;
+        try {
+            glimmer = new Glimmer(
+                    written.node("enabled").getBoolean(Glimmer.SHIPPED.enabled()),
+                    AcidIslandConfiguration.strings(written.node("lights"), Glimmer.SHIPPED.lights()),
+                    written.node("level").getInt(Glimmer.SHIPPED.level()));
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(
+                    () -> "modules/strangerrealms.conf glimmer: " + e.getMessage() + ". The shipped glimmer is used.");
+            glimmer = Glimmer.SHIPPED;
+        }
         return new StrangerRealmsConfiguration(
                 root.node("enabled").getBoolean(true),
                 upsideDown,
                 new Mobs(
                         AcidIslandConfiguration.strings(mobs.node("reasons"), Mobs.SHIPPED.reasons()),
                         AcidIslandConfiguration.strings(mobs.node("turn"), Mobs.SHIPPED.turn()),
-                        AcidIslandConfiguration.strings(mobs.node("effects"), Mobs.SHIPPED.effects())));
+                        AcidIslandConfiguration.strings(mobs.node("effects"), Mobs.SHIPPED.effects())),
+                glimmer);
     }
 }

@@ -24,9 +24,10 @@ public final class DistressPalette {
         public Rule {
             Objects.requireNonNull(from, "from must not be null");
             Objects.requireNonNull(to, "to must not be null");
-            if (from.isBlank() || to.isBlank() || from.indexOf('*') != from.lastIndexOf('*')) {
-                throw new IllegalArgumentException("a rule is FROM:TO with at most one * in FROM");
+            if (to.isBlank()) {
+                throw new IllegalArgumentException("a rule is FROM:TO");
             }
+            from = new NamePattern(from).written();
         }
 
         /** A rule written {@code FROM:TO}, or empty when it is not one. */
@@ -43,13 +44,7 @@ public final class DistressPalette {
         }
 
         boolean matches(String block) {
-            int star = from.indexOf('*');
-            if (star < 0) {
-                return from.equals(block);
-            }
-            String start = from.substring(0, star);
-            String end = from.substring(star + 1);
-            return block.length() >= start.length() + end.length() && block.startsWith(start) && block.endsWith(end);
+            return new NamePattern(from).matches(block);
         }
     }
 

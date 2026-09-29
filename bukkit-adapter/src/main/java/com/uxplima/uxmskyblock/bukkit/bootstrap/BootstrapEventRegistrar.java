@@ -39,6 +39,9 @@ public final class BootstrapEventRegistrar {
         }
         if (gameplayWiring.strangerRealmsWiring().enabled()) {
             pm.registerEvents(gameplayWiring.strangerRealmsWiring().spawns(), plugin);
+            if (gameplayWiring.strangerRealmsWiring().config().glimmer().enabled()) {
+                pm.registerEvents(gameplayWiring.strangerRealmsWiring().glimmer(), plugin);
+            }
         }
         if (gameplayWiring.acidIslandWiring().enabled()) {
             pm.registerEvents(gameplayWiring.acidIslandWiring().waterListener(), plugin);
