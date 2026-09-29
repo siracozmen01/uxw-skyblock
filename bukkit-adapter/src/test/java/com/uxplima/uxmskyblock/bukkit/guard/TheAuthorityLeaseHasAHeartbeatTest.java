@@ -32,13 +32,20 @@ class TheAuthorityLeaseHasAHeartbeatTest {
     void thePluginStartsTheHeartbeat() throws IOException {
         String source = Files.readString(WIRING, StandardCharsets.UTF_8);
 
-        assertThat(source)
+        String enable = source.substring(source.indexOf("public void enable()"));
+        enable = enable.substring(0, enable.indexOf("\n    }\n"));
+        String beat = source.substring(source.indexOf("private void beat()"));
+        beat = beat.substring(0, beat.indexOf("\n    }\n"));
+
+        assertThat(beat)
+                .describedAs("one beat pushes this node's leases forward")
+                .contains("authorityService.heartbeat()");
+        assertThat(enable)
                 .describedAs("a server down longer than the lease must take its islands back before anybody banks")
-                .contains("authorityService.heartbeat();");
-        assertThat(source)
+                .contains("        beat();");
+        assertThat(enable)
                 .describedAs("and keep taking them, on the operator's interval")
-                .contains("scheduler.repeatAsync(")
-                .contains("authorityService::heartbeat");
+                .contains("scheduler.repeatAsync(this::beat, authorityHeartbeatInterval, authorityHeartbeatInterval)");
     }
 
     @Test

@@ -99,6 +99,24 @@ public final class GameModeHierarchyService {
         return storagePort.findRootRefByInstanceId(instanceId);
     }
 
+    /**
+     * The gameplay root an island is, read and never written.
+     *
+     * <p>An island made before islands were bound into the hierarchy has no row of its own; it is the
+     * root of its owner's instance all the same, so that is what it reads as.
+     */
+    public Optional<PrimaryGameplayRootRef> rootOfIsland(IslandId islandId, ProfileId ownerProfileId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        Objects.requireNonNull(ownerProfileId, "ownerProfileId must not be null");
+        String rootId = islandId.value().toString();
+        return storagePort
+                .findRootRefByRootId(rootId, "ISLAND")
+                .or(() -> storagePort
+                        .findInstanceByProfileId(ownerProfileId)
+                        .map(instance ->
+                                PrimaryGameplayRootRef.forIsland(instance.id(), rootId, instance.createdAt())));
+    }
+
     public Optional<GameModeInstance> findInstanceByProfile(ProfileId profileId) {
         Objects.requireNonNull(profileId, "profileId must not be null");
         return storagePort.findInstanceByProfileId(profileId);

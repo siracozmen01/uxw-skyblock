@@ -11,6 +11,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Application service coordinating distributed island affinity, cross-server visits,
@@ -29,6 +30,7 @@ public final class IslandNetworkRouter {
     private final VelocityBridgePort velocityBridgePort;
     private final ClusterRoutingDirectoryPort clusterRoutingDirectoryPort;
     private final Duration routeCacheTtl;
+    private @Nullable IslandPlacement placement;
 
     public IslandNetworkRouter(
             ServerNodeId localNodeId,
@@ -61,6 +63,14 @@ public final class IslandNetworkRouter {
         this.velocityBridgePort = Objects.requireNonNull(velocityBridgePort, "velocityBridgePort must not be null");
         this.clusterRoutingDirectoryPort =
                 Objects.requireNonNull(clusterRoutingDirectoryPort, "clusterRoutingDirectoryPort must not be null");
+    }
+
+    /**
+     * Where to send a visitor to an island whose lease has run out. Without one the visitor is sent to
+     * the node that last held it, which may be the node that stopped.
+     */
+    public void usePlacement(@Nullable IslandPlacement placement) {
+        this.placement = placement;
     }
 
     /**
@@ -103,6 +113,20 @@ public final class IslandNetworkRouter {
 
         IslandAuthorityRecord authority = optAuthority.get();
         ServerNodeId targetNode = authority.authoritativeNode();
+        IslandPlacement placing = this.placement;
+        if (placing != null && !targetNode.equals(localNodeId) && authority.isExpired(Instant.now())) {
+            // The node that held it stopped beating. The placement recommends a live one and takes
+            // nothing: that node takes the island through the lease, and no route to it is cached
+            // under an epoch it does not hold.
+            Optional<ServerNodeId> recommended = placing.recommend(targetIslandId);
+            if (recommended.isEmpty()) {
+                return CompletableFuture.completedFuture(new RouteOutcome.Unavailable(ERROR_CLUSTER_UNAVAILABLE));
+            }
+            if (recommended.get().equals(localNodeId)) {
+                return CompletableFuture.completedFuture(new RouteOutcome.Local(targetIslandId));
+            }
+            return dispatchCrossServer(playerUuid, recommended.get(), targetIslandId);
+        }
         // Update routing directory cache
         clusterRoutingDirectoryPort.cacheRoute(targetIslandId, targetNode, authority.authorityEpoch(), routeCacheTtl);
 

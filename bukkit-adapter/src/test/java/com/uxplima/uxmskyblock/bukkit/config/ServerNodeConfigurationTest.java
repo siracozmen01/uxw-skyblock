@@ -125,4 +125,33 @@ class ServerNodeConfigurationTest {
         assertThat(config.isClustered()).isTrue();
         assertThat(config.redisUri()).isEqualTo("redis://custom-redis:6380");
     }
+
+    @Test
+    @DisplayName("The placement block names the strategy, the capacity and the tick ceiling")
+    void loadsThePlacementBlock() throws Exception {
+        ServerNodeConfiguration config = ServerNodeConfiguration.load(parseHocon("""
+                server-node {
+                    id = "node-a"
+                    placement {
+                        strategy = " mspt-aware "
+                        capacity = 250
+                        mspt-ceiling = 38.5
+                    }
+                }
+                """));
+
+        assertThat(config.placement()).isEqualTo(new ServerNodeConfiguration.Placement("mspt-aware", 250, 38.5));
+    }
+
+    @Test
+    @DisplayName("Without a placement block the shipped placement stands, and a capacity below one is refused")
+    void placementFallsBackAndRefusesNonsense() throws Exception {
+        ServerNodeConfiguration config = ServerNodeConfiguration.load(parseHocon("server-node { id = \"node-a\" }"));
+
+        assertThat(config.placement()).isEqualTo(ServerNodeConfiguration.Placement.DEFAULTS);
+        assertThatThrownBy(() -> ServerNodeConfiguration.load(
+                        parseHocon("server-node { id = \"node-a\", placement { capacity = 0 } }")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("placement.capacity");
+    }
 }

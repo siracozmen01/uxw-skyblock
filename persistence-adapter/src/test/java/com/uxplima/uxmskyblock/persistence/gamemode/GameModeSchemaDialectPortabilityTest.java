@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -12,6 +13,9 @@ import java.util.UUID;
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
+import com.uxplima.uxmskyblock.core.application.network.IslandPlacement;
+import com.uxplima.uxmskyblock.core.application.network.PlacementStrategies;
+import com.uxplima.uxmskyblock.core.application.network.PlacementStrategy;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstance;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
@@ -21,12 +25,15 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome;
+import com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityRecord;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEffect;
+import com.uxplima.uxmskyblock.core.domain.network.NodeHealth;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
+import com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter;
 import com.uxplima.uxmskyblock.persistence.oneblock.SqlOneBlockProgressAdapter;
 import com.uxplima.uxmskyblock.persistence.testfixture.DatabaseTestFixture;
 import com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb;
@@ -52,7 +59,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * refused a boolean compared with a number and every island creation failed there. Here every
  * migration runs on each engine from nothing, and the rows the game mode layer writes are written,
  * changed and read back: a profile's instance, the island it is bound to, a OneBlock island's count,
- * the island's authority lease with its epoch, and what a lifecycle event still owes a player.
+ * the island's authority lease with its epoch, which nodes are alive and where a placement sends a
+ * visitor without touching that lease, and what a lifecycle event still owes a player.
  */
 @Tag("database-integration")
 @Execution(ExecutionMode.SAME_THREAD)
@@ -180,6 +188,37 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(islands.findAuthority(islandId).orElseThrow().leaseExpiresAt())
                     .isAfter(Instant.now());
 
+            // Which nodes are alive: published twice, one in another world, one heard from long ago.
+            SqlClusterNodesAdapter nodes = new SqlClusterNodesAdapter(database);
+            nodes.publish(new NodeHealth(NODE, true, 3, 100, 12.5), "skyblock");
+            nodes.publish(new NodeHealth(NODE, true, 4, 100, 11.0), "skyblock");
+            nodes.publish(new NodeHealth(ServerNodeId.of("node-elsewhere"), true, 0, 100, 5.0), "elsewhere");
+            try (Connection conn = database.connection();
+                    PreparedStatement stmt = conn.prepareStatement("INSERT INTO cluster_nodes (node_id, world_name, "
+                            + "hosted, capacity, average_mspt, last_seen) "
+                            + "VALUES ('node-stopped', 'skyblock', 0, 100, 1.0, '2000-01-01 00:00:00')")) {
+                stmt.executeUpdate();
+            }
+            assertThat(nodes.serving("skyblock", Duration.ofMinutes(4)))
+                    .containsExactly(new NodeHealth(NODE, true, 4, 100, 11.0));
+
+            // A placement reads those rows and the island's lease stays exactly as it was.
+            IslandAuthorityRecord before = islands.findAuthority(islandId).orElseThrow();
+            String leaseBefore = lease(database, islandId);
+            IslandPlacement placement = new IslandPlacement(
+                    PlacementStrategies.shipped(PlacementStrategy.DEFAULT_MSPT_CEILING),
+                    PlacementStrategies.LEAST_LOADED,
+                    nodes,
+                    id -> islands.findLocationByIslandId(id).map(IslandLocation::worldName),
+                    id -> hierarchy.findRootRefByRootId(id.value().toString(), "ISLAND"),
+                    Duration.ofMinutes(4));
+            assertThat(placement.recommend(islandId)).contains(NODE);
+            assertThat(islands.findAuthority(islandId)).get().satisfies(after -> {
+                assertThat(after.authoritativeNode()).isEqualTo(before.authoritativeNode());
+                assertThat(after.authorityEpoch()).isEqualTo(before.authorityEpoch());
+            });
+            assertThat(lease(database, islandId)).isEqualTo(leaseBefore);
+
             // What a lifecycle event owes a player who was away: owed once however often, paid in part.
             com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter owedEffects =
                     new com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter(
@@ -198,6 +237,19 @@ class GameModeSchemaDialectPortabilityTest {
         } finally {
             if (!database.isClosed()) {
                 database.close();
+            }
+        }
+    }
+
+    /** The island's lease row as the database holds it, read without the adapter. */
+    private static String lease(Database database, IslandId islandId) throws Exception {
+        try (Connection conn = database.connection();
+                PreparedStatement stmt = conn.prepareStatement("SELECT authoritative_node, authority_epoch, "
+                        + "lease_expires_at, last_heartbeat_at FROM island_authorities WHERE island_id = ?")) {
+            stmt.setString(1, islandId.value().toString());
+            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                return rs.getString(1) + " " + rs.getLong(2) + " " + rs.getString(3) + " " + rs.getString(4);
             }
         }
     }

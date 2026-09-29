@@ -133,6 +133,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter
             lifecycleOwedEffectsAdapter;
     private final SqlNotificationAdapter notificationAdapter;
+    private final com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter clusterNodesAdapter;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
             profileCosmeticStorageAdapter;
@@ -194,6 +195,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.lifecycleOwedEffectsAdapter =
                 new com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter(database.dataSource());
         this.notificationAdapter = new SqlNotificationAdapter(database.dataSource());
+        this.clusterNodesAdapter = new com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter(database);
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
         this.islandRecycleStorageAdapter =
@@ -421,6 +423,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ActivityFeedStoragePort activityFeedStoragePort() {
         return activityFeedAdapter;
+    }
+
+    /** Which nodes are alive, the world each serves and how loaded it is. */
+    public com.uxplima.uxmskyblock.core.application.network.ClusterNodesPort clusterNodesPort() {
+        return clusterNodesAdapter;
     }
 
     /** What lifecycle events still owe players who were away when they happened. */

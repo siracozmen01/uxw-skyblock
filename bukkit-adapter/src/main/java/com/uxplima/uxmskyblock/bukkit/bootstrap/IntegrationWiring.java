@@ -70,6 +70,7 @@ public final class IntegrationWiring implements AutoCloseable {
     private final SkyblockPlaceholderExpansion placeholderExpansion;
     private final TransactionalOutboxDispatcher outboxDispatcher;
     private final IslandAuthorityService authorityService;
+    private final ClusterPlacementWiring clusterPlacement;
     private final @org.jspecify.annotations.Nullable IslandRecycleService recycleService;
     private final com.uxplima.uxmskyblock.core.application.snapshot.IslandRestoreService restoreService;
     private final com.uxplima.uxmskyblock.core.application.backup.BackupService backupService;
@@ -249,6 +250,13 @@ public final class IntegrationWiring implements AutoCloseable {
                 velocityBridge,
                 clusterRoutingDirectory,
                 config.nodeConfig().routeCacheTtl());
+        this.clusterPlacement = new ClusterPlacementWiring(
+                config.nodeConfig(),
+                persistence.clusterNodesPort(),
+                persistence.islandStoragePort(),
+                gameplay.gameModeHierarchyService(),
+                this::averageMspt);
+        this.networkRouter.usePlacement(clusterPlacement.placement());
 
         this.discordService = new IslandDiscordWebhookService(
                 new JavaHttpClientDiscordAdapter(),
@@ -387,9 +395,9 @@ public final class IntegrationWiring implements AutoCloseable {
         outboxDispatcher.start();
         // The first beat runs at once: a server that has been down longer than the lease has to take
         // its islands back before anybody tries to bank on one.
-        authorityService.heartbeat();
-        this.authorityHeartbeat = scheduler.repeatAsync(
-                authorityService::heartbeat, authorityHeartbeatInterval, authorityHeartbeatInterval);
+        beat();
+        this.authorityHeartbeat =
+                scheduler.repeatAsync(this::beat, authorityHeartbeatInterval, authorityHeartbeatInterval);
         economyBridge
                 .economyRebinder()
                 .ifPresent(rebinder -> plugin.getServer().getPluginManager().registerEvents(rebinder, plugin));
@@ -625,6 +633,25 @@ public final class IntegrationWiring implements AutoCloseable {
             java.util.logging.Logger.getLogger(IntegrationWiring.class.getName())
                     .log(java.util.logging.Level.WARNING, "Stopping the island authority heartbeat failed.", e);
         }
+    }
+
+    /** One heartbeat: this node's leases pushed forward, then its health published to the cluster. */
+    private void beat() {
+        clusterPlacement.presence().beat(authorityService.heartbeat());
+    }
+
+    /** The server's tick time, or 0 where the platform keeps none for the whole server. */
+    private double averageMspt() {
+        try {
+            return plugin.getServer().getAverageTickTime();
+        } catch (UnsupportedOperationException perRegion) {
+            return 0.0;
+        }
+    }
+
+    /** The placement strategies an operator may name. Another plugin registers its own here. */
+    public com.uxplima.uxmskyblock.core.application.network.PlacementStrategies placementStrategies() {
+        return clusterPlacement.strategies();
     }
 
     /** The heartbeat that keeps this node's authority alive. */

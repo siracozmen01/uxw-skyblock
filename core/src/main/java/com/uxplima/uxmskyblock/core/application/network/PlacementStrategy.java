@@ -46,12 +46,23 @@ public interface PlacementStrategy {
                 .map(NodeHealth::nodeId);
     }
 
+    /** The tick time above which {@link #msptAware()} avoids a node, when the operator names no number. */
+    double DEFAULT_MSPT_CEILING = 45.0;
+
     /**
-     * Allocates to the node with the lowest MSPT, avoiding nodes over 45.0ms.
+     * Allocates to the node with the lowest MSPT, avoiding nodes over {@link #DEFAULT_MSPT_CEILING}.
      */
     static PlacementStrategy msptAware() {
+        return msptAware(DEFAULT_MSPT_CEILING);
+    }
+
+    /**
+     * Allocates to the node with the lowest MSPT, avoiding nodes over {@code ceiling} milliseconds while
+     * one under it is left.
+     */
+    static PlacementStrategy msptAware(double ceiling) {
         return (rootRef, candidates) -> candidates.stream()
-                .filter(n -> n.active() && n.averageMspt() <= 45.0)
+                .filter(n -> n.active() && n.averageMspt() <= ceiling)
                 .min(Comparator.comparingDouble(NodeHealth::averageMspt))
                 .or(() -> candidates.stream()
                         .filter(NodeHealth::active)

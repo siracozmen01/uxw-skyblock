@@ -3,6 +3,8 @@ package com.uxplima.uxmskyblock.bukkit.config;
 import java.time.Duration;
 import java.util.Objects;
 
+import com.uxplima.uxmskyblock.core.application.network.PlacementStrategies;
+import com.uxplima.uxmskyblock.core.application.network.PlacementStrategy;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.spongepowered.configurate.ConfigurationNode;
 
@@ -20,7 +22,40 @@ public record ServerNodeConfiguration(
         String redisUri,
         Duration routeCacheTtl,
         Duration authorityLease,
-        Duration authorityHeartbeatInterval) {
+        Duration authorityHeartbeatInterval,
+        Placement placement) {
+
+    /**
+     * Where a visitor is sent when the node that held an island has stopped: which strategy picks
+     * among the live nodes serving its world, how many islands this node takes before it counts as
+     * full, and the tick time above which {@code mspt-aware} avoids a node.
+     */
+    public record Placement(String strategy, int capacity, double msptCeiling) {
+
+        public static final Placement DEFAULTS =
+                new Placement(PlacementStrategies.LEAST_LOADED, 1000, PlacementStrategy.DEFAULT_MSPT_CEILING);
+
+        public Placement {
+            Objects.requireNonNull(strategy, "strategy must not be null");
+            if (strategy.isBlank()) {
+                throw new IllegalArgumentException("placement.strategy must not be blank");
+            }
+            if (capacity < 1) {
+                throw new IllegalArgumentException("placement.capacity must be at least 1: " + capacity);
+            }
+            if (!(msptCeiling > 0)) {
+                throw new IllegalArgumentException("placement.mspt-ceiling must be above 0: " + msptCeiling);
+            }
+            strategy = strategy.trim();
+        }
+
+        static Placement load(ConfigurationNode node) {
+            return new Placement(
+                    node.node("strategy").getString(DEFAULTS.strategy()),
+                    node.node("capacity").getInt(DEFAULTS.capacity()),
+                    node.node("mspt-ceiling").getDouble(DEFAULTS.msptCeiling()));
+        }
+    }
 
     /**
      * How long a route to another node stays cached, when the operator names no other number.
@@ -51,6 +86,7 @@ public record ServerNodeConfiguration(
         Objects.requireNonNull(routeCacheTtl, "routeCacheTtl must not be null");
         Objects.requireNonNull(authorityLease, "authorityLease must not be null");
         Objects.requireNonNull(authorityHeartbeatInterval, "authorityHeartbeatInterval must not be null");
+        Objects.requireNonNull(placement, "placement must not be null");
         if (authorityLease.toSeconds() < 1) {
             throw new IllegalArgumentException("authority-lease must be at least a second: " + authorityLease);
         }
@@ -69,6 +105,26 @@ public record ServerNodeConfiguration(
         if (clustered && redisUri.isBlank()) {
             throw new IllegalArgumentException("redis-uri must not be blank when clustered is true");
         }
+    }
+
+    /** A node that places visitors the way the plugin ships. */
+    public ServerNodeConfiguration(
+            ServerNodeId nodeId,
+            String worldName,
+            boolean clustered,
+            String redisUri,
+            Duration routeCacheTtl,
+            Duration authorityLease,
+            Duration authorityHeartbeatInterval) {
+        this(
+                nodeId,
+                worldName,
+                clustered,
+                redisUri,
+                routeCacheTtl,
+                authorityLease,
+                authorityHeartbeatInterval,
+                Placement.DEFAULTS);
     }
 
     public ServerNodeConfiguration(ServerNodeId nodeId, String worldName) {
@@ -185,7 +241,8 @@ public record ServerNodeConfiguration(
                 redisUri,
                 routeCacheTtl,
                 authorityLease,
-                heartbeat);
+                heartbeat,
+                Placement.load(nodeConfig.node("placement")));
     }
 
     /**
