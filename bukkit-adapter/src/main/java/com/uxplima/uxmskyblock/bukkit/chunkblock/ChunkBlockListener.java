@@ -55,6 +55,7 @@ public final class ChunkBlockListener implements Listener {
     private final Function<IslandId, Optional<IslandLocation>> locations;
     private final String bypassPermission;
     private final Map<UUID, Long> lastTold = new ConcurrentHashMap<>();
+    private final java.util.Set<UUID> puttingOut = ConcurrentHashMap.newKeySet();
 
     public ChunkBlockListener(
             ChunkBlockService service,
@@ -98,6 +99,13 @@ public final class ChunkBlockListener implements Listener {
     public void onMove(PlayerMoveEvent event) {
         Location from = event.getFrom();
         Location to = event.getTo();
+        // Folia fires no teleport event for an asynchronous teleport, so a player can arrive in a closed
+        // chunk by a teleport, or log in where a chunk has closed since. Their first step takes them out.
+        if (standsInClosed(event.getPlayer(), from)) {
+            event.setCancelled(true);
+            putOut(event.getPlayer(), from);
+            return;
+        }
         if ((from.getBlockX() >> 4) == (to.getBlockX() >> 4) && (from.getBlockZ() >> 4) == (to.getBlockZ() >> 4)) {
             return;
         }
@@ -134,6 +142,44 @@ public final class ChunkBlockListener implements Listener {
                 messages.send(player, "chunkblock.moved_out");
             });
         }
+    }
+
+    private boolean standsInClosed(Player player, Location location) {
+        Optional<Island> island = islands.findIslandAt(location);
+        return island.isPresent()
+                && !service.isOpen(island.get().id(), ChunkPos.ofBlock(location.getBlockX(), location.getBlockZ()))
+                        .orElse(true)
+                && (bypassPermission.isEmpty() || !player.hasPermission(bypassPermission));
+    }
+
+    /** Sends a player found in a closed chunk to the island's spawn, once until they are there. */
+    private void putOut(Player player, Location at) {
+        Optional<Island> island = islands.findIslandAt(at);
+        if (island.isEmpty() || !puttingOut.add(player.getUniqueId())) {
+            return;
+        }
+        IslandId islandId = island.get().id();
+        scheduler.async(() -> {
+            Optional<IslandLocation> home = locations.apply(islandId);
+            scheduler.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                World world =
+                        home.map(spawn -> Bukkit.getWorld(spawn.worldName())).orElse(null);
+                if (home.isEmpty() || world == null || !player.isOnline()) {
+                    puttingOut.remove(player.getUniqueId());
+                    return;
+                }
+                IslandLocation spawn = home.get();
+                var unused = player.teleportAsync(new Location(
+                                world,
+                                spawn.spawnX(),
+                                spawn.spawnY(),
+                                spawn.spawnZ(),
+                                spawn.spawnYaw(),
+                                spawn.spawnPitch()))
+                        .whenComplete((moved, failure) -> puttingOut.remove(player.getUniqueId()));
+                messages.send(player, "chunkblock.put_out");
+            });
+        });
     }
 
     private boolean standsIn(Location location, IslandId islandId, List<ChunkPos> closed) {

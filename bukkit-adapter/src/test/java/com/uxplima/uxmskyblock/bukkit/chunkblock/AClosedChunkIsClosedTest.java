@@ -93,6 +93,12 @@ class AClosedChunkIsClosedTest extends MockBukkitHarness {
                 })
                 .when(scheduler)
                 .onEntity(any(PlayerUuid.class), any(Runnable.class));
+        doAnswer(call -> {
+                    call.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(scheduler)
+                .async(any(Runnable.class));
         IslandLocation home = new IslandLocation(island.id(), "skyblock", island.bounds(), 8.5, 101.0, 8.5, 0.0f, 0.0f);
         listener = new ChunkBlockListener(
                 service, islands, scheduler, Messages.bundled(), id -> Optional.of(home), BYPASS);
@@ -173,6 +179,21 @@ class AClosedChunkIsClosedTest extends MockBukkitHarness {
         assertThat(inClosing.getLocation().getY()).isEqualTo(101.0);
         assertThat(said(inClosing)).anySatisfy(line -> assertThat(line).contains("moved"));
         assertThat(inOpen.getLocation().getX()).isEqualTo(3.0);
+    }
+
+    @Test
+    @DisplayName("A player found in a closed chunk, as Folia's teleports leave one, is moved out at the first step")
+    void aPlayerFoundInsideIsMovedOut() {
+        Stander arrived = new Stander(server, new Location(world, 3, Y, 20));
+        server.addPlayer(arrived);
+
+        PlayerMoveEvent step =
+                new PlayerMoveEvent(arrived, new Location(world, 3, Y, 20), new Location(world, 3.5, Y, 20.5));
+        listener.onMove(step);
+
+        assertThat(step.isCancelled()).isTrue();
+        assertThat(arrived.getLocation().getX()).isEqualTo(8.5);
+        assertThat(said(arrived)).anySatisfy(line -> assertThat(line).contains("moved to the island spawn"));
     }
 
     private BlockPlaceEvent place(PlayerMock player, int x, int z) {
