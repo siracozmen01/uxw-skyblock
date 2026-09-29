@@ -37,6 +37,9 @@ public final class BootstrapEventRegistrar {
         if (gameplayWiring.boxedWiring().enabled()) {
             pm.registerEvents(gameplayWiring.boxedWiring().listener(), plugin);
         }
+        if (gameplayWiring.strangerRealmsWiring().enabled()) {
+            pm.registerEvents(gameplayWiring.strangerRealmsWiring().spawns(), plugin);
+        }
         if (gameplayWiring.acidIslandWiring().enabled()) {
             pm.registerEvents(gameplayWiring.acidIslandWiring().waterListener(), plugin);
             gameplayWiring.acidIslandWiring().addRecipes(plugin.getServer());

@@ -5,8 +5,12 @@ import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.bukkit.event.entity.CreatureSpawnEvent;
+
 import com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration;
+import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.schematic.IslandStart;
+import com.uxplima.uxmskyblock.bukkit.stranger.UpsideDownSpawns;
 import com.uxplima.uxmskyblock.bukkit.stranger.UpsideDownStart;
 import com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -24,9 +28,13 @@ public final class StrangerRealmsWiring {
     private final StrangerRealmsService service;
     private final SchedulerPort scheduler;
     private final String upsideDownWorld;
+    private final UpsideDownSpawns spawns;
 
     public StrangerRealmsWiring(
-            ConfigurationWiring configuration, PersistenceBootstrap persistence, SchedulerPort scheduler) {
+            ConfigurationWiring configuration,
+            PersistenceBootstrap persistence,
+            SchedulerPort scheduler,
+            IslandProtectionListener islands) {
         this.config =
                 Objects.requireNonNull(configuration.strangerRealmsConfig(), "strangerRealmsConfig must not be null");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
@@ -35,6 +43,13 @@ public final class StrangerRealmsWiring {
         this.upsideDownWorld = nether == null
                 ? com.uxplima.uxmskyblock.bukkit.config.DimensionConfiguration.DEFAULT_NETHER_WORLD
                 : nether.worldName();
+        this.spawns = new UpsideDownSpawns(
+                service,
+                islands,
+                config.mobs(),
+                () -> upsideDownWorld,
+                configuration::islandWorlds,
+                (at, type) -> at.getWorld().spawnEntity(at, type, CreatureSpawnEvent.SpawnReason.CUSTOM));
         scheduler.async(() -> {
             try {
                 int count = service.prime();
@@ -51,6 +66,11 @@ public final class StrangerRealmsWiring {
 
     public StrangerRealmsConfiguration config() {
         return config;
+    }
+
+    /** What the Upside Down makes of the creatures born in it, while StrangerRealms is enabled. */
+    public UpsideDownSpawns spawns() {
+        return spawns;
     }
 
     public boolean enabled() {
