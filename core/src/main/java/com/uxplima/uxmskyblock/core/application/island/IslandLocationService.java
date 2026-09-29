@@ -53,6 +53,34 @@ public final class IslandLocationService {
         return islandStoragePort.findLocationByIslandId(islandId);
     }
 
+    /**
+     * Moves the island's spawn to {@code y} in the same column, when creation found the planned height
+     * was not somewhere a player can stand. Returns whether the island was there to move.
+     */
+    public boolean moveSpawnHeight(IslandId islandId, double y) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        return mutationLock.inside(islandId, () -> {
+            Optional<Island> island = islandStoragePort.findIslandById(islandId);
+            Optional<IslandLocation> location = islandStoragePort.findLocationByIslandId(islandId);
+            if (island.isEmpty() || location.isEmpty()) {
+                return false;
+            }
+            IslandLocation current = location.get();
+            islandStoragePort.saveIsland(
+                    island.get(),
+                    new IslandLocation(
+                            islandId,
+                            current.worldName(),
+                            current.bounds(),
+                            current.spawnX(),
+                            y,
+                            current.spawnZ(),
+                            current.spawnYaw(),
+                            current.spawnPitch()));
+            return true;
+        });
+    }
+
     /** What became of a request to move an island's spawn. */
     public enum SpawnUpdate {
         /** The spawn is where the caller stood. */

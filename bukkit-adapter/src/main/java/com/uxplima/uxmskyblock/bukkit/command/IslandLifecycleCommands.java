@@ -42,6 +42,7 @@ import com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.name.IslandName;
 import com.uxplima.uxmskyblock.core.domain.name.IslandNameRefusedException;
 import com.uxplima.uxmskyblock.core.domain.recycle.ResetChallenge;
@@ -254,6 +255,29 @@ public final class IslandLifecycleCommands {
         }
     }
 
+    /**
+     * The height a player arrives standing at on a new island, found in the column it was built in, on
+     * the thread that owns it. A spawn that had to move is written back, so a home is not inside a hill
+     * either.
+     */
+    private double arrivalOn(World world, IslandId islandId, IslandLocation location) {
+        int planned = (int) Math.floor(location.spawnY());
+        java.util.OptionalInt safe = com.uxplima.uxmskyblock.bukkit.world.SafeArrival.standingY(
+                world, (int) Math.floor(location.spawnX()), planned, (int) Math.floor(location.spawnZ()));
+        if (safe.isEmpty()) {
+            // Rock as far as the search reaches: the room above the platform is cleared instead.
+            com.uxplima.uxmskyblock.bukkit.world.SafeArrival.makeRoom(
+                    world, (int) Math.floor(location.spawnX()), planned, (int) Math.floor(location.spawnZ()));
+            return location.spawnY();
+        }
+        if (safe.getAsInt() == planned) {
+            return location.spawnY();
+        }
+        double moved = safe.getAsInt();
+        schedulerPort.async(() -> islandLocationService.moveSpawnHeight(islandId, moved));
+        return moved;
+    }
+
     private int executeCreate(CommandContext<CommandSourceStack> ctx, String presetId) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             send(ctx.getSource().getSender(), "error.players_only");
@@ -320,11 +344,14 @@ public final class IslandLifecycleCommands {
 
                         schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
                             World w = Bukkit.getWorld(targetWorld);
+                            double arrivalY = success.location().spawnY();
                             if (w != null) {
                                 // The preset's own creation actions: a platform, a OneBlock island's block.
                                 schematicEngine.start(new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
                                         w, success.island().id(), centerX, platformY, centerZ, success.preset()));
+                                arrivalY = arrivalOn(w, success.island().id(), success.location());
                             }
+                            double standingY = arrivalY;
                             schedulerPort.onEntity(playerUuid, () -> {
                                 if (!player.isOnline()) {
                                     return;
@@ -332,7 +359,7 @@ public final class IslandLifecycleCommands {
                                 Location destination = new Location(
                                         w != null ? w : resolvedWorld,
                                         success.location().spawnX(),
-                                        success.location().spawnY(),
+                                        standingY,
                                         success.location().spawnZ(),
                                         0.0f,
                                         0.0f);
