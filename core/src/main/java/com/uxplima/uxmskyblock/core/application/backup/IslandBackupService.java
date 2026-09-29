@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.core.application.backup;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,6 +76,21 @@ public final class IslandBackupService {
         this.pluginVersion = Objects.requireNonNull(pluginVersion, "pluginVersion must not be null");
     }
 
+    private @org.jspecify.annotations.Nullable CaptureQuiesce quiesce;
+    private Duration quiesceBound = Duration.ofSeconds(30);
+
+    /**
+     * Holds the island still while it is captured, for at most {@code bound}: the capture's own
+     * deadline. See {@link CaptureQuiesce}. A backup taken so says {@code QUIESCED} in its manifest.
+     */
+    public void quiesceWith(CaptureQuiesce quiesce, Duration bound) {
+        this.quiesce = Objects.requireNonNull(quiesce, "quiesce must not be null");
+        if (bound.isNegative() || bound.isZero()) {
+            throw new IllegalArgumentException("The quiesce bound must be positive: " + bound);
+        }
+        this.quiesceBound = bound;
+    }
+
     /** The prefix a backup set of this island is written under, and read back from. */
     public static String prefixFor(BackupSetId backupSetId) {
         return "backups/" + backupSetId;
@@ -102,6 +118,8 @@ public final class IslandBackupService {
                 new PrimaryGameplayRootRef(GameModeInstanceId.fromString(rootKey), rootKey, "ISLAND", now);
 
         Map<String, byte[]> payloads = new LinkedHashMap<>();
+        CaptureQuiesce holding = this.quiesce;
+        CaptureQuiesce.Window window = holding != null ? holding.enter(islandId, quiesceBound) : null;
         try {
             payloads.put(RELATIONAL_ARTIFACT, relationalSnapshotPort.captureRelationalSnapshot(rootRef, 1L));
             for (DimensionId dimension : dimensions) {
@@ -115,6 +133,10 @@ public final class IslandBackupService {
             // Nothing has been written yet, so there is no half published set to clean up. Saying
             // why beats a catalog row that sits in CAPTURING for ever.
             return new BackupOutcome.Failure("Capture failed: " + capture.getMessage());
+        } finally {
+            if (window != null) {
+                window.close();
+            }
         }
 
         Map<String, BackupArtifact> artifacts = new LinkedHashMap<>();
@@ -136,7 +158,7 @@ public final class IslandBackupService {
                 1,
                 pluginVersion,
                 artifacts,
-                "CONSISTENT");
+                holding != null ? "QUIESCED" : "CONSISTENT");
 
         BackupCatalogRecord record = new BackupCatalogRecord(
                 backupSetId,

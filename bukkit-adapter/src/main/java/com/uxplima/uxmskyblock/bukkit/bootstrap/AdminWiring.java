@@ -95,7 +95,8 @@ public final class AdminWiring {
                 // Putting an island back writes as many blocks as clearing one, so it is paced by
                 // the same number the operator set for clearing.
                 backpressureController);
-        snapshots.captureWithin(captureTimeoutOf(config.rootNode()));
+        java.time.Duration captureTimeout = captureTimeoutOf(config.rootNode());
+        snapshots.captureWithin(captureTimeout);
         this.worldDimensionSnapshotPort = snapshots;
         this.islandBackupAdapter = new NbtIslandBackupAdapter(
                 plugin.getDataFolder(), this.worldDimensionSnapshotPort, persistence.gameModeHierarchyStoragePort());
@@ -136,6 +137,11 @@ public final class AdminWiring {
                 persistence.rootRelationalSnapshotPort(),
                 this.worldDimensionSnapshotPort,
                 pluginVersionOf(plugin));
+        // The island holds still while it is read, for as long as the capture may take and no longer.
+        com.uxplima.uxmskyblock.core.application.backup.CaptureQuiesce quiesce =
+                new com.uxplima.uxmskyblock.core.application.backup.CaptureQuiesce();
+        this.islandBackupService.quiesceWith(quiesce, captureTimeout);
+        protectionListener.setCaptureQuiesce(quiesce);
 
         // The second kind of backup the persistence specification publishes. The port, its adapter
         // and the word in the catalog table were all written and no command drove any of them.

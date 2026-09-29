@@ -158,7 +158,6 @@ public final class IslandActionPermissionListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        player.sendMessage(messages.render(
-                player, verdict == IslandProtectionListener.Verdict.FROZEN ? "protection.frozen" : refusalKey));
+        player.sendMessage(messages.render(player, verdict.messageKey(refusalKey)));
     }
 }

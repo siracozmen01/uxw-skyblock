@@ -107,6 +107,33 @@ class IslandProtectionListenerTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("While a backup reads the island even its owner is refused, and is told why; after, the owner builds")
+    void aBackupHoldsTheIslandStill() {
+        com.uxplima.uxmskyblock.core.application.backup.CaptureQuiesce quiesce =
+                new com.uxplima.uxmskyblock.core.application.backup.CaptureQuiesce();
+        listener.setCaptureQuiesce(quiesce);
+        Block block = world.getBlockAt(50, 64, 50);
+        block.setType(Material.STONE);
+
+        com.uxplima.uxmskyblock.core.application.backup.CaptureQuiesce.Window window =
+                quiesce.enter(island.id(), java.time.Duration.ofSeconds(30));
+        BlockBreakEvent during = new BlockBreakEvent(block, ownerPlayer);
+        listener.onBlockBreak(during);
+        window.close();
+        BlockBreakEvent after = new BlockBreakEvent(block, ownerPlayer);
+        listener.onBlockBreak(after);
+
+        assertThat(during.isCancelled()).isTrue();
+        assertThat(ownerPlayer.nextComponentMessage())
+                .isNotNull()
+                .satisfies(line -> assertThat(
+                                net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                                        .serialize(line))
+                        .contains("backed up"));
+        assertThat(after.isCancelled()).isFalse();
+    }
+
+    @Test
     @DisplayName("non-member cannot break blocks on an island")
     void visitorCannotBreakBlocks() {
         Block block = world.getBlockAt(50, 64, 50);

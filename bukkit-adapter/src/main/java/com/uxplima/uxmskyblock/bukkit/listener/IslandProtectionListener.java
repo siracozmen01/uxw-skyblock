@@ -125,6 +125,13 @@ public final class IslandProtectionListener implements Listener {
         this.freezeService = freezeService;
     }
 
+    private volatile com.uxplima.uxmskyblock.core.application.backup.@Nullable CaptureQuiesce captureQuiesce;
+
+    /** The islands a backup is reading, which nobody changes until it has. */
+    public void setCaptureQuiesce(com.uxplima.uxmskyblock.core.application.backup.@Nullable CaptureQuiesce quiesce) {
+        this.captureQuiesce = quiesce;
+    }
+
     private boolean isStaffInspector(Player player) {
         return player.isOp()
                 || player.hasPermission("uxmskyblock.admin.bypass")
@@ -269,6 +276,10 @@ public final class IslandProtectionListener implements Listener {
         if (isIslandFrozen(island)) {
             return isStaffInspector(player) ? Verdict.ALLOWED : Verdict.FROZEN;
         }
+        com.uxplima.uxmskyblock.core.application.backup.CaptureQuiesce quiesce = this.captureQuiesce;
+        if (quiesce != null && quiesce.isQuiesced(island.id())) {
+            return Verdict.BACKING_UP;
+        }
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         ProfileId profileId = activeProfiles.get(playerUuid);
         if (profileId == null) {
@@ -290,8 +301,19 @@ public final class IslandProtectionListener implements Listener {
         ALLOWED,
         /** The island is under an administrative freeze. */
         FROZEN,
+        /** A backup is reading the island, for as long as its capture takes and no longer. */
+        BACKING_UP,
         /** The role, and any grant standing in for it, do not allow it. */
-        REFUSED
+        REFUSED;
+
+        /** The line a player refused this way is told, where {@code refusalKey} is the one the rule names. */
+        public String messageKey(String refusalKey) {
+            return switch (this) {
+                case FROZEN -> "protection.frozen";
+                case BACKING_UP -> "protection.backing_up";
+                case ALLOWED, REFUSED -> refusalKey;
+            };
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -335,7 +357,7 @@ public final class IslandProtectionListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        player.sendMessage(messages.render(player, verdict == Verdict.FROZEN ? "protection.frozen" : refusalKey));
+        player.sendMessage(messages.render(player, verdict.messageKey(refusalKey)));
     }
 
     /**
