@@ -120,6 +120,10 @@ final class IslandCommandWiring {
         tree.useChunkBlock(chunkBlockPanel);
         integration.placeholderExpansion().useChunkBlock(chunkBlockPanel);
         tree.useOneBlock(oneBlockPanel);
+        // A Parkour course's best times.
+        if (gameplay.parkourWiring().enabled()) {
+            tree.useParkourBoard(gameplay.parkourWiring().board());
+        }
         // A Poseidon island's lore: a book on Java, a form on Bedrock, pages from the language files.
         if (gameplay.poseidonWiring().enabled()) {
             var forms = integration.bedrockFormService();

@@ -209,6 +209,13 @@ public final class GameplayWiring {
                 this.economicWiring.rewardInboxService(),
                 this.economicWiring.upgradeService(),
                 modeStartActions(config, scheduler));
+        if (this.parkourWiring.enabled()) {
+            // The courses run most, on the boards and to every plugin that reads them.
+            creationWiring
+                    .leaderboardMetrics()
+                    .register(new com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric(
+                            this.parkourWiring.service()));
+        }
 
         // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
         this.playerLifecycle = new com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle(

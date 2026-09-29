@@ -50,15 +50,17 @@ public record ParkourConfiguration(boolean enabled, Markers markers, Runs runs, 
      *
      * @param fallDepth how far below the last checkpoint a runner may fall before being put back on it
      * @param timeLimit how long a run may take before it is dropped
+     * @param boardSize how many runners the course command shows
      */
-    public record Runs(int fallDepth, Duration timeLimit) {
+    public record Runs(int fallDepth, Duration timeLimit, int boardSize) {
 
-        public static final Runs SHIPPED = new Runs(8, Duration.ofMinutes(30));
+        public static final Runs SHIPPED = new Runs(8, Duration.ofMinutes(30), 10);
 
         public Runs {
             Objects.requireNonNull(timeLimit, "timeLimit must not be null");
-            if (fallDepth < 1 || timeLimit.toSeconds() < 1) {
-                throw new IllegalArgumentException("the fall depth and the time limit must be above 0");
+            if (fallDepth < 1 || timeLimit.toSeconds() < 1 || boardSize < 1 || boardSize > 100) {
+                throw new IllegalArgumentException(
+                        "the fall depth and the time limit must be above 0, and the board 1 to 100 long");
             }
         }
     }
@@ -113,7 +115,8 @@ public record ParkourConfiguration(boolean enabled, Markers markers, Runs runs, 
         try {
             runs = new Runs(
                     run.node("fall-depth").getInt(Runs.SHIPPED.fallDepth()),
-                    AcidIslandConfiguration.durationOf(run.node("time-limit").getString(""), Runs.SHIPPED.timeLimit()));
+                    AcidIslandConfiguration.durationOf(run.node("time-limit").getString(""), Runs.SHIPPED.timeLimit()),
+                    run.node("board-size").getInt(Runs.SHIPPED.boardSize()));
         } catch (IllegalArgumentException e) {
             LOGGER.warning(() -> "modules/parkour.conf runs: " + e.getMessage() + ". The shipped runs are used.");
             runs = Runs.SHIPPED;

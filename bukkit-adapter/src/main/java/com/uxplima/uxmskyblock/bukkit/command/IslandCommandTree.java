@@ -318,6 +318,12 @@ public final class IslandCommandTree {
     }
 
     private com.uxplima.uxmskyblock.bukkit.poseidon.@Nullable PoseidonLore poseidonLore;
+    private com.uxplima.uxmskyblock.bukkit.parkour.@Nullable ParkourBoard parkourBoard;
+
+    /** What {@code /is course} shows, while the operator lets islands be Parkour courses. */
+    public void useParkourBoard(com.uxplima.uxmskyblock.bukkit.parkour.@Nullable ParkourBoard board) {
+        this.parkourBoard = board;
+    }
 
     /** What {@code /is lore} opens, while the operator lets islands be Poseidon islands. */
     public void usePoseidonLore(com.uxplima.uxmskyblock.bukkit.poseidon.@Nullable PoseidonLore lore) {
@@ -595,6 +601,7 @@ public final class IslandCommandTree {
                 .then(groups.mechanicsCommands().buildChallenges())
                 .then(Cmd.literal("oneblock").executes(this::executeOneBlock))
                 .then(Cmd.literal("lore").executes(this::executeLore))
+                .then(Cmd.literal("course").executes(this::executeCourse))
                 .then(Cmd.literal("chunks")
                         .executes(ctx -> executeChunks(ctx, false))
                         .then(Cmd.literal("unlock").executes(ctx -> executeChunks(ctx, true))))
@@ -725,6 +732,20 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         panel.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeCourse(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.parkour.ParkourBoard board = this.parkourBoard;
+        if (board == null) {
+            send(player, "parkour.not_course");
+            return Cmd.OK;
+        }
+        board.show(player);
         return Cmd.OK;
     }
 

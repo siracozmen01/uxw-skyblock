@@ -30,4 +30,10 @@ public interface ParkourPort {
 
     /** The course's best runners, fastest first. */
     List<Best> top(IslandId course, int limit);
+
+    /** One course and how many runs have been finished on it, by everybody. */
+    record Runs(IslandId course, String name, long runs) {}
+
+    /** The courses finished most often, the most first. */
+    List<Runs> mostRun(int limit);
 }

@@ -172,6 +172,12 @@ class ZeroFootprintModuleWiringTest {
         ModuleSettingsConfiguration moduleSettings = ModuleSettingsConfiguration.load(root);
 
         ConfigurationWiring config = createMockConfigWiring(moduleSettings);
+        when(config.parkourConfig())
+                .thenReturn(new com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration(
+                        false,
+                        com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.Markers.SHIPPED,
+                        com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.Runs.SHIPPED,
+                        com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.Modes.SHIPPED));
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();
             AuthorityWiring authority = mock(AuthorityWiring.class);
@@ -221,6 +227,8 @@ class ZeroFootprintModuleWiringTest {
             assertThat(gameplay.bankruptcyListener()).isNull();
             assertThat(gameplay.oreGeneratorListener()).isNull();
             assertThat(gameplay.chatListener()).isNull();
+            assertThat(gameplay.leaderboardMetrics().metrics())
+                    .doesNotContain(com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID);
         }
     }
 
@@ -280,6 +288,8 @@ class ZeroFootprintModuleWiringTest {
             assertThat(gameplay.bankruptcyListener()).isNotNull();
             assertThat(gameplay.oreGeneratorListener()).isNotNull();
             assertThat(gameplay.chatListener()).isNotNull();
+            assertThat(gameplay.leaderboardMetrics().metrics())
+                    .contains(com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID);
         }
     }
 

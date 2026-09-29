@@ -143,6 +143,32 @@ public final class SqlParkourAdapter implements ParkourPort {
         }
     }
 
+    @Override
+    public List<Runs> mostRun(int limit) {
+        List<Runs> most = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement ps = conn.prepareStatement("SELECT r.island_id, i.custom_name, SUM(r.runs) AS total"
+                        + " FROM parkour_records r JOIN islands i ON i.id = r.island_id"
+                        + " GROUP BY r.island_id, i.custom_name ORDER BY total DESC, r.island_id")) {
+            ps.setMaxRows(limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next() && most.size() < limit) {
+                    String id = rs.getString(1);
+                    String name = rs.getString(2);
+                    // An island nobody named is shown by the start of its id, which reads the same in
+                    // every language.
+                    most.add(new Runs(
+                            IslandId.of(UUID.fromString(id)),
+                            name == null || name.isBlank() ? id.substring(0, 8) : name,
+                            rs.getLong(3)));
+                }
+            }
+            return most;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read the courses run most", e);
+        }
+    }
+
     /** Already there. Class 23, or SQLite's code 19. */
     private static boolean isDuplicate(SQLException e) {
         String state = e.getSQLState();

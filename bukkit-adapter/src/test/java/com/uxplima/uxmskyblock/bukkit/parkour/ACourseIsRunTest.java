@@ -136,6 +136,12 @@ class ACourseIsRunTest extends MockBukkitHarness {
             }
 
             @Override
+            public List<ParkourPort.Runs> mostRun(int limit) {
+
+                return List.of();
+            }
+
+            @Override
             public List<ParkourPort.Best> top(IslandId islandId, int limit) {
                 List<ParkourPort.Best> all = new ArrayList<>(bests.values());
                 all.sort(Comparator.comparingLong(ParkourPort.Best::millis));

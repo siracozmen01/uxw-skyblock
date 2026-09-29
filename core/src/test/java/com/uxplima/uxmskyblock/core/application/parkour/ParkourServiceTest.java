@@ -54,6 +54,12 @@ class ParkourServiceTest {
         }
 
         @Override
+        public List<ParkourPort.Runs> mostRun(int limit) {
+
+            return List.of();
+        }
+
+        @Override
         public List<ParkourPort.Best> top(IslandId course, int limit) {
             List<ParkourPort.Best> all = new ArrayList<>(bests.values());
             all.sort(Comparator.comparingLong(ParkourPort.Best::millis));

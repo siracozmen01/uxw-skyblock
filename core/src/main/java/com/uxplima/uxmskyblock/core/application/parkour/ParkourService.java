@@ -83,6 +83,11 @@ public final class ParkourService {
         return time.compareTo(was) < 0 ? new Finish.Beaten(time, was) : new Finish.Slower(time, was);
     }
 
+    /** The courses finished most often, the most first. Off the main thread. */
+    public List<ParkourPort.Runs> mostRun(int limit) {
+        return port.mostRun(Math.max(1, limit));
+    }
+
     /** The course's best runners, fastest first. Off the main thread. */
     public List<ParkourPort.Best> top(IslandId course, int limit) {
         return port.top(course, Math.max(1, limit));

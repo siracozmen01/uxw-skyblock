@@ -90,6 +90,12 @@ class ACourseIsPlayedInItsModesTest extends MockBukkitHarness {
             public void finish(IslandId islandId, PlayerUuid runner, long millis) {}
 
             @Override
+            public List<ParkourPort.Runs> mostRun(int limit) {
+
+                return List.of();
+            }
+
+            @Override
             public List<ParkourPort.Best> top(IslandId islandId, int limit) {
                 return List.of();
             }

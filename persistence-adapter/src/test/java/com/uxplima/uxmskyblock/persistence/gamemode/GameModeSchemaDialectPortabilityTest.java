@@ -303,10 +303,21 @@ class GameModeSchemaDialectPortabilityTest {
             parkour.finish(islandId, runner, 30_000);
             parkour.finish(islandId, runner, 25_000);
             parkour.finish(islandId, runner, 40_000);
+            com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid second =
+                    com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid.of(java.util.UUID.randomUUID());
+            parkour.finish(islandId, second, 50_000);
             assertThat(parkour.best(islandId, runner)).hasValue(25_000);
             assertThat(parkour.top(islandId, 5))
                     .containsExactly(
-                            new com.uxplima.uxmskyblock.core.application.parkour.ParkourPort.Best(runner, 25_000, 3));
+                            new com.uxplima.uxmskyblock.core.application.parkour.ParkourPort.Best(runner, 25_000, 3),
+                            new com.uxplima.uxmskyblock.core.application.parkour.ParkourPort.Best(second, 50_000, 1));
+            assertThat(parkour.mostRun(5)).singleElement().satisfies(most -> {
+                assertThat(most.course()).isEqualTo(islandId);
+                assertThat(most.runs())
+                        .describedAs("every runner's finishes on the course, together")
+                        .isEqualTo(4);
+                assertThat(most.name()).isNotBlank();
+            });
             assertThat(stranger.farthestReach())
                     .describedAs("the edge of the island furthest from the centre, on x or z")
                     .isGreaterThan(0);
@@ -321,6 +332,7 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(stranger.farthestReach()).isZero();
             assertThat(parkour.exists(islandId)).isFalse();
             assertThat(parkour.top(islandId, 5)).isEmpty();
+            assertThat(parkour.mostRun(5)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();
             assertThat(chunks.find(islandId)).isEmpty();
         } finally {
