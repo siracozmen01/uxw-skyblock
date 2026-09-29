@@ -183,7 +183,12 @@ class ACourseIsRunTest extends MockBukkitHarness {
     @Test
     @DisplayName("A run is timed from stepping off the start to the finish, and each finish is weighed")
     void aRunIsTimed() {
+        List<String> started = new ArrayList<>();
+        runs.whenStarted(who -> started.add(who.getName()));
         step(0);
+        assertThat(started)
+                .describedAs("the play mode is set the moment a run starts")
+                .containsExactly("Runner");
         assertThat(runs.runningOn(runner)).hasValue(course.id());
         assertThat(said()).contains("The run is on");
         clock.advance(Duration.ofSeconds(1));

@@ -64,6 +64,7 @@ public final class ParkourRuns implements Listener {
     private final InteractionEffectPlayer effectPlayer;
     private final Clock clock;
     private final Map<UUID, Run> runs = new ConcurrentHashMap<>();
+    private volatile java.util.function.Consumer<Player> whenStarted = runner -> {};
 
     public ParkourRuns(
             ParkourService service,
@@ -82,6 +83,11 @@ public final class ParkourRuns implements Listener {
         this.effects = Objects.requireNonNull(effects, "effects must not be null");
         this.effectPlayer = Objects.requireNonNull(effectPlayer, "effectPlayer must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    }
+
+    /** Tells {@code listener} each time a run starts, on the runner's thread. */
+    public void whenStarted(java.util.function.Consumer<Player> listener) {
+        this.whenStarted = Objects.requireNonNull(listener, "listener must not be null");
     }
 
     /** The run the player has under way, for the commands and the tests. */
@@ -127,6 +133,7 @@ public final class ParkourRuns implements Listener {
         // Standing on the start plate starts the run again, so the clock runs from the moment the
         // runner steps off it.
         runs.put(runner.getUniqueId(), new Run(course, now, plate, tell || was == null ? now : was.told()));
+        whenStarted.accept(runner);
         if (tell) {
             messages.send(runner, "parkour.started");
             effectPlayer.fire(effects, "parkour-run-started", runner);

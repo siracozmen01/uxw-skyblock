@@ -18,7 +18,7 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
 
 /** The Parkour game mode, while the operator lets islands be Parkour courses. */
-public final class ParkourWiring {
+public final class ParkourWiring implements AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(ParkourWiring.class.getName());
 
@@ -26,6 +26,8 @@ public final class ParkourWiring {
     private final ParkourService service;
     private final SchedulerPort scheduler;
     private final ParkourRuns runs;
+    private final com.uxplima.uxmskyblock.bukkit.parkour.ParkourModes modes;
+    private @org.jspecify.annotations.Nullable AutoCloseable beat;
 
     public ParkourWiring(
             ConfigurationWiring configuration,
@@ -44,6 +46,16 @@ public final class ParkourWiring {
                 configuration.effectsConfig(),
                 new InteractionEffectPlayer(scheduler, configuration.messages()),
                 Clock.systemUTC());
+        this.modes = new com.uxplima.uxmskyblock.bukkit.parkour.ParkourModes(
+                service,
+                islands,
+                scheduler,
+                config.modes(),
+                runner -> runs.runningOn(runner).isPresent());
+        runs.whenStarted(modes::check);
+        if (config.enabled()) {
+            this.beat = modes.start();
+        }
         scheduler.async(() -> {
             try {
                 int count = service.prime();
@@ -62,6 +74,10 @@ public final class ParkourWiring {
         return runs;
     }
 
+    public com.uxplima.uxmskyblock.bukkit.parkour.ParkourModes modes() {
+        return modes;
+    }
+
     public ParkourConfiguration config() {
         return config;
     }
@@ -73,5 +89,19 @@ public final class ParkourWiring {
     /** The action that makes an island a course, while Parkour is enabled, and none otherwise. */
     public List<CreationActionProvider<IslandStart>> startActions() {
         return config.enabled() ? List.of(new CourseStart(service, scheduler, config.markers())) : List.of();
+    }
+
+    /** Stops setting modes, before the server stops. */
+    @Override
+    public void close() {
+        AutoCloseable running = beat;
+        beat = null;
+        if (running != null) {
+            try {
+                running.close();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Stopping the Parkour modes failed.", e);
+            }
+        }
     }
 }

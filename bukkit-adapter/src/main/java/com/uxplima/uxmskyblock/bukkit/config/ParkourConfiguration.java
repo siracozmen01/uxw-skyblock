@@ -13,7 +13,7 @@ import org.spongepowered.configurate.ConfigurationNode;
  * {@code modules/parkour.conf}: whether islands can be Parkour courses, which blocks mark a course's
  * start, checkpoints and finish, and how a run is kept.
  */
-public record ParkourConfiguration(boolean enabled, Markers markers, Runs runs) {
+public record ParkourConfiguration(boolean enabled, Markers markers, Runs runs, Modes modes) {
 
     private static final Logger LOGGER = Logger.getLogger(ParkourConfiguration.class.getName());
 
@@ -63,13 +63,36 @@ public record ParkourConfiguration(boolean enabled, Markers markers, Runs runs) 
         }
     }
 
+    /**
+     * The game modes on a course, which is how a run is played.
+     *
+     * @param build the mode of the course's own team while they are on it and not running
+     * @param play the mode of anybody running, and of everybody else on the course
+     * @param keepPermission the permission that leaves a player's mode alone; empty for none
+     */
+    public record Modes(org.bukkit.GameMode build, org.bukkit.GameMode play, String keepPermission) {
+
+        public static final Modes SHIPPED =
+                new Modes(org.bukkit.GameMode.CREATIVE, org.bukkit.GameMode.SURVIVAL, "uxmskyblock.parkour.keepmode");
+
+        public Modes {
+            Objects.requireNonNull(build, "build must not be null");
+            Objects.requireNonNull(play, "play must not be null");
+            Objects.requireNonNull(keepPermission, "keepPermission must not be null");
+            if (play == org.bukkit.GameMode.CREATIVE || play == org.bukkit.GameMode.SPECTATOR) {
+                throw new IllegalArgumentException("a run is played in survival or adventure");
+            }
+        }
+    }
+
     public ParkourConfiguration {
         Objects.requireNonNull(markers, "markers must not be null");
         Objects.requireNonNull(runs, "runs must not be null");
+        Objects.requireNonNull(modes, "modes must not be null");
     }
 
     public static ParkourConfiguration defaultConfiguration() {
-        return new ParkourConfiguration(true, Markers.SHIPPED, Runs.SHIPPED);
+        return new ParkourConfiguration(true, Markers.SHIPPED, Runs.SHIPPED, Modes.SHIPPED);
     }
 
     public static ParkourConfiguration load(ConfigurationNode root) {
@@ -95,7 +118,27 @@ public record ParkourConfiguration(boolean enabled, Markers markers, Runs runs) 
             LOGGER.warning(() -> "modules/parkour.conf runs: " + e.getMessage() + ". The shipped runs are used.");
             runs = Runs.SHIPPED;
         }
-        return new ParkourConfiguration(root.node("enabled").getBoolean(true), markers, runs);
+        ConfigurationNode mode = root.node("modes");
+        Modes modes;
+        try {
+            modes = new Modes(
+                    gameMode(mode.node("build").getString(""), Modes.SHIPPED.build()),
+                    gameMode(mode.node("play").getString(""), Modes.SHIPPED.play()),
+                    mode.node("keep-permission")
+                            .getString(Modes.SHIPPED.keepPermission())
+                            .trim());
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(() -> "modules/parkour.conf modes: " + e.getMessage() + ". The shipped modes are used.");
+            modes = Modes.SHIPPED;
+        }
+        return new ParkourConfiguration(root.node("enabled").getBoolean(true), markers, runs, modes);
+    }
+
+    private static org.bukkit.GameMode gameMode(String written, org.bukkit.GameMode shipped) {
+        if (written.isBlank()) {
+            return shipped;
+        }
+        return org.bukkit.GameMode.valueOf(written.trim().toUpperCase(Locale.ROOT));
     }
 
     private static Material block(String written, Material shipped) {
