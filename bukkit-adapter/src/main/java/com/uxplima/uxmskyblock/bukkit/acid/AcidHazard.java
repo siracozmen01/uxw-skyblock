@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
@@ -51,6 +52,8 @@ public final class AcidHazard {
     private final AcidRules rules;
     private final List<PotionEffectType> protection;
     private final List<PotionEffect> seaEffects;
+    private final List<PotionEffect> ventFumes;
+    private final AcidIslandConfiguration.Sea sea;
     private final InteractionEffects effects;
     private final InteractionEffectPlayer effectPlayer;
 
@@ -76,16 +79,10 @@ public final class AcidHazard {
                 protection.add(type);
             }
         }
-        this.seaEffects = new ArrayList<>();
-        for (String written : config.waterEffects()) {
-            PotionEffect effect = effectWritten(written);
-            if (effect == null) {
-                LOGGER.warning(() -> "modules/acidisland.conf water-effects: " + written
-                        + " is not name:amplifier:seconds with an effect of that name.");
-            } else {
-                seaEffects.add(effect);
-            }
-        }
+        this.seaEffects = effectsWritten("hazard water-effects", config.waterEffects());
+        this.ventFumes =
+                effectsWritten("sea vents effects", config.sea().vents().effects());
+        this.sea = config.sea();
     }
 
     /** Starts the beat. Closing what it returns stops it. */
@@ -116,6 +113,7 @@ public final class AcidHazard {
         if (island.isEmpty() || !service.isAcid(island.get().id())) {
             return 0;
         }
+        breatheVents(player, feet, island.get());
         AcidExposure exposure = exposureOf(player, feet);
         double taken = rules.damage(exposure);
         if (taken <= 0) {
@@ -131,6 +129,36 @@ public final class AcidHazard {
             effectPlayer.fire(effects, "acid-rain-burns", player);
         }
         return taken;
+    }
+
+    /**
+     * Gives the fumes of a sulfur vent to a player near one: in the sea or just above it, within the
+     * vent's reach sideways. The blocks read are the player's neighbours, which their region owns.
+     */
+    private void breatheVents(Player player, Location feet, Island island) {
+        int reach = sea.vents().reach();
+        if (ventFumes.isEmpty() || sea.vents().chance() <= 0) {
+            return;
+        }
+        OptionalInt surface = service.seaLevel(island.id());
+        if (surface.isEmpty() || feet.getBlockY() > surface.getAsInt() + 1) {
+            return;
+        }
+        int floor = surface.getAsInt() - sea.depth();
+        World world = feet.getWorld();
+        for (int dx = -reach; dx <= reach; dx++) {
+            for (int dz = -reach; dz <= reach; dz++) {
+                if (world.getBlockAt(feet.getBlockX() + dx, floor, feet.getBlockZ() + dz)
+                                .getType()
+                        == AcidSeaStart.VENT) {
+                    for (PotionEffect effect : ventFumes) {
+                        player.addPotionEffect(effect);
+                    }
+                    effectPlayer.fire(effects, "acid-vent-fumes", player);
+                    return;
+                }
+            }
+        }
     }
 
     /** Whether the spot is on an AcidIsland island. Memory only. */
@@ -192,6 +220,20 @@ public final class AcidHazard {
     private static @Nullable PotionEffectType effectNamed(String name) {
         NamespacedKey key = NamespacedKey.fromString(name.trim().toLowerCase(Locale.ROOT));
         return key == null ? null : Registry.MOB_EFFECT.get(key);
+    }
+
+    private static List<PotionEffect> effectsWritten(String where, List<String> lines) {
+        List<PotionEffect> read = new ArrayList<>();
+        for (String written : lines) {
+            PotionEffect effect = effectWritten(written);
+            if (effect == null) {
+                LOGGER.warning(() -> "modules/acidisland.conf " + where + ": " + written
+                        + " is not name:amplifier:seconds with an effect of that name.");
+            } else {
+                read.add(effect);
+            }
+        }
+        return read;
     }
 
     /** An effect written {@code name:amplifier:seconds}, or null when it cannot be read. */

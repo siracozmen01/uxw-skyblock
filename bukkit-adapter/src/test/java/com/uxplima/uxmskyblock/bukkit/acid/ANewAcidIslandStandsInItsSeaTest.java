@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.data.type.BubbleColumn;
 
 import com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.PresetConfiguration;
@@ -45,7 +46,7 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
 
     private static final int CENTER = 5_000;
     private static final int Y = 99;
-    private static final AcidIslandConfiguration.Sea SEA = new AcidIslandConfiguration.Sea(2, 3, 20, "SAND");
+    private static final AcidIslandConfiguration.Sea SEA = new AcidIslandConfiguration.Sea(2, 3, 20, "SANDSTONE");
 
     private final Map<IslandId, Integer> recorded = new HashMap<>();
     private final Set<String> regions = new HashSet<>();
@@ -58,6 +59,9 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
 
     @SuppressWarnings("NullAway.Init")
     private StarterSchematicEngine engine;
+
+    @SuppressWarnings("NullAway.Init")
+    private SchedulerPort scheduler;
 
     @BeforeEach
     void setUpEngine() {
@@ -79,7 +83,7 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
                 recorded.putIfAbsent(islandId, seaLevel);
             }
         });
-        SchedulerPort scheduler = mock(SchedulerPort.class);
+        scheduler = mock(SchedulerPort.class);
         doAnswer(call -> {
                     regions.add(call.getArgument(1) + "," + call.getArgument(2));
                     call.getArgument(3, Runnable.class).run();
@@ -103,7 +107,7 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
         assertThat(world.getBlockAt(CENTER + 15, surface, CENTER).getType()).isEqualTo(Material.WATER);
         assertThat(world.getBlockAt(CENTER - 20, surface - 2, CENTER + 20).getType())
                 .isEqualTo(Material.WATER);
-        assertThat(world.getBlockAt(CENTER + 15, surface - 3, CENTER).getType()).isEqualTo(Material.SAND);
+        assertThat(world.getBlockAt(CENTER + 15, surface - 3, CENTER).getType()).isEqualTo(Material.SANDSTONE);
         assertThat(world.getBlockAt(CENTER + 15, surface + 1, CENTER).getType())
                 .describedAs("nothing above the surface")
                 .isEqualTo(Material.AIR);
@@ -118,6 +122,43 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
         assertThat(regions)
                 .describedAs("each chunk of the sea is laid on its own region's thread")
                 .hasSize(9);
+    }
+
+    @Test
+    @DisplayName("Vents pull down and geysers throw up, laid only where the sea reaches the floor")
+    void ventsAndGeysers() throws Exception {
+        StarterPreset preset = shipped().catalogue().findById("acid_island").orElseThrow();
+        int surface = Y - SEA.belowIsland();
+        int floor = surface - SEA.depth();
+        world.getBlockAt(CENTER, surface, CENTER).setType(Material.STONE);
+
+        new AcidSeaStart(
+                        service,
+                        scheduler,
+                        new AcidIslandConfiguration.Sea(
+                                2, 3, 6, "SAND", new AcidIslandConfiguration.Vents(1.0, 3, List.of()), 0))
+                .apply(new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset));
+
+        assertThat(world.getBlockAt(CENTER + 3, floor, CENTER).getType()).isEqualTo(AcidSeaStart.VENT);
+        assertThat(world.getBlockAt(CENTER + 3, surface, CENTER).getBlockData())
+                .isInstanceOfSatisfying(
+                        BubbleColumn.class,
+                        column -> assertThat(column.isDrag()).isTrue());
+        assertThat(world.getBlockAt(CENTER, floor, CENTER).getType())
+                .describedAs("a column the island stands in is no vent, and sand, which falls, is sandstone")
+                .isEqualTo(Material.SANDSTONE);
+
+        new AcidSeaStart(
+                        service,
+                        scheduler,
+                        new AcidIslandConfiguration.Sea(2, 3, 6, "SAND", AcidIslandConfiguration.Vents.NONE, 1.0))
+                .apply(new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER + 40, Y, CENTER, preset));
+
+        assertThat(world.getBlockAt(CENTER + 43, floor, CENTER).getType()).isEqualTo(AcidSeaStart.GEYSER);
+        assertThat(world.getBlockAt(CENTER + 43, surface, CENTER).getBlockData())
+                .isInstanceOfSatisfying(
+                        BubbleColumn.class,
+                        column -> assertThat(column.isDrag()).isFalse());
     }
 
     @Test
@@ -151,6 +192,12 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
         assertThat(odd.waterEffects()).isEmpty();
         assertThat(odd.rules()).isNotEqualTo(AcidRules.shipped());
         assertThat(file.waterProtection()).isEqualTo(List.of("water_breathing"));
+        assertThat(file.sea().vents().effects()).contains("nausea:0:6");
+        assertThat(AcidIslandConfiguration.load(HoconConfigurationLoader.builder()
+                                .buildAndLoadString("sea { vents { chance = 0.7 }, geysers { chance = 0.5 } }"))
+                        .sea())
+                .describedAs("chances that add past one are no sea")
+                .isEqualTo(AcidIslandConfiguration.Sea.SHIPPED);
     }
 
     private PresetConfiguration shipped() throws Exception {

@@ -1,11 +1,13 @@
 package com.uxplima.uxmskyblock.bukkit.acid;
 
 import java.util.Objects;
+import java.util.SplittableRandom;
 import java.util.logging.Logger;
 
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.type.BubbleColumn;
 
 import com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration;
 import com.uxplima.uxmskyblock.bukkit.schematic.IslandStart;
@@ -24,6 +26,12 @@ public final class AcidSeaStart implements CreationActionProvider<IslandStart> {
 
     /** The name a preset's start list writes for this action. */
     public static final String ACTION = "uxm:acid-sea";
+
+    /** The block a sulfur vent is on the sea floor. */
+    public static final Material VENT = Material.MAGMA_BLOCK;
+
+    /** The block a geyser is on the sea floor. */
+    public static final Material GEYSER = Material.SOUL_SAND;
 
     private static final Logger LOGGER = Logger.getLogger(AcidSeaStart.class.getName());
 
@@ -47,10 +55,11 @@ public final class AcidSeaStart implements CreationActionProvider<IslandStart> {
         int surface = start.y() - sea.belowIsland();
         service.add(start.islandId(), surface);
         Material floor = Material.matchMaterial(sea.floor());
-        if (floor == null || !floor.isBlock()) {
-            LOGGER.warning(() -> "modules/acidisland.conf names the floor '" + sea.floor() + "', which is no block."
-                    + " The sea stands on sand.");
-            floor = Material.SAND;
+        if (floor == null || !floor.isBlock() || floor.hasGravity()) {
+            // A floor that falls leaves nothing under the sea, and the sea drains away through it.
+            LOGGER.warning(() -> "modules/acidisland.conf names the floor '" + sea.floor()
+                    + "', which is no block or one that falls. The sea stands on sandstone.");
+            floor = Material.SANDSTONE;
         }
         World world = start.world();
         int minX = start.centerX() - sea.radius();
@@ -64,28 +73,58 @@ public final class AcidSeaStart implements CreationActionProvider<IslandStart> {
                 int toX = Math.min(maxX, (chunkX << 4) + 15);
                 int fromZ = Math.max(minZ, chunkZ << 4);
                 int toZ = Math.min(maxZ, (chunkZ << 4) + 15);
+                long seed = start.islandId().value().getMostSignificantBits()
+                        ^ start.islandId().value().getLeastSignificantBits();
                 scheduler.onRegion(
-                        world.getName(), chunkX, chunkZ, () -> fill(world, fromX, toX, fromZ, toZ, surface, bed));
+                        world.getName(), chunkX, chunkZ, () -> fill(world, fromX, toX, fromZ, toZ, surface, bed, seed));
             }
         }
     }
 
-    private void fill(World world, int fromX, int toX, int fromZ, int toZ, int surface, Material floor) {
+    private void fill(World world, int fromX, int toX, int fromZ, int toZ, int surface, Material floor, long seed) {
         int bottom = surface - sea.depth() + 1;
         for (int x = fromX; x <= toX; x++) {
             for (int z = fromZ; z <= toZ; z++) {
-                setIfAir(world.getBlockAt(x, bottom - 1, z), floor);
+                boolean open = setIfAir(world.getBlockAt(x, bottom - 1, z), floor);
                 for (int y = bottom; y <= surface; y++) {
-                    setIfAir(world.getBlockAt(x, y, z), Material.WATER);
+                    open &= setIfAir(world.getBlockAt(x, y, z), Material.WATER);
+                }
+                if (open) {
+                    // Only a column the sea filled from the floor to the surface can hold a vent or a
+                    // geyser, so neither is ever laid under the island.
+                    feature(world, x, z, bottom, surface, seed);
                 }
             }
         }
     }
 
-    private static void setIfAir(Block block, Material material) {
+    /**
+     * Makes the column a vent or a geyser, by its chance. The same island and column always roll the
+     * same, so a sea laid again comes out the same.
+     */
+    private void feature(World world, int x, int z, int bottom, int surface, long seed) {
+        double roll = new SplittableRandom(seed ^ (x * 0x9E3779B97F4A7C15L) ^ (z * 0xC2B2AE3D27D4EB4FL)).nextDouble();
+        boolean vent = roll < sea.vents().chance();
+        if (!vent && roll >= sea.vents().chance() + sea.geyserChance()) {
+            return;
+        }
+        // Magma pulls whoever swims over it down and soul sand throws them up: the server's own
+        // bubble columns, laid here because a sea set without physics would not raise them.
+        world.getBlockAt(x, bottom - 1, z).setType(vent ? VENT : GEYSER, false);
+        BubbleColumn column = (BubbleColumn) Material.BUBBLE_COLUMN.createBlockData();
+        column.setDrag(vent);
+        for (int y = bottom; y <= surface; y++) {
+            world.getBlockAt(x, y, z).setBlockData(column, false);
+        }
+    }
+
+    /** Sets the block when it is air, and says whether it did. */
+    private static boolean setIfAir(Block block, Material material) {
         if (block.getType().isAir()) {
             // No physics: a sea laid a chunk at a time must not flow into the chunk laid next.
             block.setType(material, false);
+            return true;
         }
+        return false;
     }
 }

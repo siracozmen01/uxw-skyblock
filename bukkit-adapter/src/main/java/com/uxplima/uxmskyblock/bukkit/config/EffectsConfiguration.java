@@ -74,6 +74,7 @@ public final class EffectsConfiguration {
         defaults.put(
                 "acid-clean-water-filled",
                 parseAll("acid-clean-water-filled", List.of("[sound] item.bottle.fill 1.0 1.0")));
+        defaults.put("acid-vent-fumes", parseAll("acid-vent-fumes", List.of("[particle] CAMPFIRE_COSY_SMOKE 4 0.4")));
         return new InteractionEffects(defaults);
     }
 

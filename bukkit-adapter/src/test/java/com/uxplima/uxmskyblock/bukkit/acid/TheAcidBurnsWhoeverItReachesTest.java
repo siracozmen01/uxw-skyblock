@@ -91,7 +91,8 @@ class TheAcidBurnsWhoeverItReachesTest extends MockBukkitHarness {
         service.add(acid.id(), Y);
         AcidIslandConfiguration config = new AcidIslandConfiguration(
                 true,
-                AcidIslandConfiguration.Sea.SHIPPED,
+                new AcidIslandConfiguration.Sea(
+                        2, 4, 64, "SAND", new AcidIslandConfiguration.Vents(0.01, 3, List.of("nausea:0:6")), 0),
                 new AcidRules(2.0, 1.0, true, Duration.ofSeconds(1)),
                 List.of("water_breathing", "no_such_effect"),
                 List.of("poison:1:4", "nausea", "no_such_effect:0:3"),
@@ -158,6 +159,32 @@ class TheAcidBurnsWhoeverItReachesTest extends MockBukkitHarness {
         player.getInventory().setHelmet(null);
         world.getBlockAt(8, Y + 10, 8).setType(Material.STONE);
         assertThat(hazard.check(player)).isZero();
+    }
+
+    @Test
+    @DisplayName("A vent's fumes reach a swimmer within its reach, and one further off breathes clean")
+    void theVentsFume() {
+        int floor = Y - 4;
+        world.getBlockAt(11, floor, 8).setType(AcidSeaStart.VENT);
+        standIn(8, Material.WATER);
+        player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 200, 0));
+
+        hazard.check(player);
+        assertThat(player.getPotionEffect(PotionEffectType.NAUSEA))
+                .describedAs("no effect keeps the fumes off")
+                .isNotNull();
+
+        player.removePotionEffect(PotionEffectType.NAUSEA);
+        standIn(4, Material.WATER);
+        hazard.check(player);
+        assertThat(player.getPotionEffect(PotionEffectType.NAUSEA)).isNull();
+
+        player.removePotionEffect(PotionEffectType.NAUSEA);
+        player.teleport(new Location(world, 8.5, Y + 5, 8.5));
+        hazard.check(player);
+        assertThat(player.getPotionEffect(PotionEffectType.NAUSEA))
+                .describedAs("high above the sea the fumes are gone")
+                .isNull();
     }
 
     @Test

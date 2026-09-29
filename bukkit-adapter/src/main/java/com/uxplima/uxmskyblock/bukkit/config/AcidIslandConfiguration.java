@@ -32,16 +32,48 @@ public record AcidIslandConfiguration(
      * @param belowIsland how many blocks below the island's start height the surface stands
      * @param depth how many blocks of water, above the floor
      * @param radius how far from the island's centre the sea reaches; keep it inside half the grid spacing
-     * @param floor the block the sea stands on
+     * @param floor the block the sea stands on; one that falls, such as sand, is replaced by sandstone
+     * @param vents the sulfur vents on the floor
+     * @param geyserChance the chance that one column of the floor is a geyser, which throws a swimmer up
      */
-    public record Sea(int belowIsland, int depth, int radius, String floor) {
+    public record Sea(int belowIsland, int depth, int radius, String floor, Vents vents, double geyserChance) {
 
-        public static final Sea SHIPPED = new Sea(2, 4, 64, "SAND");
+        public static final Sea SHIPPED = new Sea(2, 4, 64, "SANDSTONE", Vents.SHIPPED, 0.004);
 
         public Sea {
             Objects.requireNonNull(floor, "floor must not be null");
+            Objects.requireNonNull(vents, "vents must not be null");
             if (depth < 1 || radius < 1 || belowIsland < 0) {
                 throw new IllegalArgumentException("the sea needs a depth and a radius of at least 1");
+            }
+            if (geyserChance < 0 || geyserChance + vents.chance() > 1) {
+                throw new IllegalArgumentException("the vent and geyser chances must be between 0 and 1 together");
+            }
+        }
+
+        /** A sea with no vents and no geysers. */
+        public Sea(int belowIsland, int depth, int radius, String floor) {
+            this(belowIsland, depth, radius, floor, Vents.NONE, 0);
+        }
+    }
+
+    /**
+     * Sulfur vents: magma on the sea floor that pulls a swimmer down, and fumes that reach whoever is
+     * near one.
+     *
+     * @param chance the chance that one column of the floor is a vent
+     * @param reach how many blocks across the fumes of a vent reach, sideways
+     * @param effects the effects the fumes give, each written {@code name:amplifier:seconds}
+     */
+    public record Vents(double chance, int reach, List<String> effects) {
+
+        public static final Vents NONE = new Vents(0, 0, List.of());
+        public static final Vents SHIPPED = new Vents(0.004, 3, List.of("nausea:0:6", "poison:1:3"));
+
+        public Vents {
+            effects = List.copyOf(effects);
+            if (chance < 0 || chance > 1 || reach < 0 || reach > 8) {
+                throw new IllegalArgumentException("a vent's chance is between 0 and 1 and its reach between 0 and 8");
             }
         }
     }
@@ -72,11 +104,18 @@ public record AcidIslandConfiguration(
         Sea sea;
         ConfigurationNode seaNode = root.node("sea");
         try {
+            ConfigurationNode ventNode = seaNode.node("vents");
+            Vents vents = new Vents(
+                    ventNode.node("chance").getDouble(Vents.SHIPPED.chance()),
+                    ventNode.node("reach").getInt(Vents.SHIPPED.reach()),
+                    strings(ventNode.node("effects"), Vents.SHIPPED.effects()));
             sea = new Sea(
                     seaNode.node("below-island").getInt(Sea.SHIPPED.belowIsland()),
                     seaNode.node("depth").getInt(Sea.SHIPPED.depth()),
                     seaNode.node("radius").getInt(Sea.SHIPPED.radius()),
-                    seaNode.node("floor").getString(Sea.SHIPPED.floor()).trim());
+                    seaNode.node("floor").getString(Sea.SHIPPED.floor()).trim(),
+                    vents,
+                    seaNode.node("geysers", "chance").getDouble(Sea.SHIPPED.geyserChance()));
         } catch (IllegalArgumentException e) {
             LOGGER.warning(() -> "modules/acidisland.conf sea: " + e.getMessage() + ". The shipped sea is used.");
             sea = Sea.SHIPPED;
