@@ -5,8 +5,13 @@ import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Server;
+
 import com.uxplima.uxmskyblock.bukkit.acid.AcidHazard;
 import com.uxplima.uxmskyblock.bukkit.acid.AcidSeaStart;
+import com.uxplima.uxmskyblock.bukkit.acid.AcidWater;
+import com.uxplima.uxmskyblock.bukkit.acid.AcidWaterListener;
 import com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration;
 import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
@@ -26,6 +31,8 @@ public final class AcidIslandWiring implements AutoCloseable {
     private final AcidIslandService service;
     private final SchedulerPort scheduler;
     private final AcidHazard hazard;
+    private final AcidWaterListener waterListener;
+    private boolean recipesAdded;
     private @Nullable AutoCloseable beat;
 
     public AcidIslandWiring(
@@ -43,6 +50,7 @@ public final class AcidIslandWiring implements AutoCloseable {
                 config,
                 configuration.effectsConfig(),
                 new InteractionEffectPlayer(scheduler, configuration.messages()));
+        this.waterListener = new AcidWaterListener(hazard, configuration.messages());
         if (config.enabled()) {
             this.beat = hazard.start();
         }
@@ -68,6 +76,28 @@ public final class AcidIslandWiring implements AutoCloseable {
         return hazard;
     }
 
+    public AcidWaterListener waterListener() {
+        return waterListener;
+    }
+
+    /** Adds the ways water is made clean the operator left on. Once, while the plugin enables. */
+    public void addRecipes(Server server) {
+        if (!config.enabled() || recipesAdded) {
+            return;
+        }
+        recipesAdded = true;
+        if (config.purification().furnace()) {
+            server.addRecipe(AcidWater.furnaceRecipe());
+        }
+        if (config.purification().brewingWithCoal()) {
+            try {
+                server.getPotionBrewer().addPotionMix(AcidWater.brewingMix());
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING, "Brewing acid water clean with coal could not be added.", e);
+            }
+        }
+    }
+
     public boolean enabled() {
         return config.enabled();
     }
@@ -80,6 +110,15 @@ public final class AcidIslandWiring implements AutoCloseable {
     /** Stops the sea and the rain burning, before the server stops. */
     @Override
     public void close() {
+        if (recipesAdded) {
+            recipesAdded = false;
+            Bukkit.removeRecipe(AcidWater.FURNACE);
+            try {
+                Bukkit.getPotionBrewer().removePotionMix(AcidWater.BREWING);
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.FINE, "Brewing acid water clean could not be removed.", e);
+            }
+        }
         AutoCloseable running = beat;
         beat = null;
         if (running != null) {

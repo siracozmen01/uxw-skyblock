@@ -87,7 +87,9 @@ class EveryMilestoneFiresWhatWasWrittenTest {
                         "upgrade-bought",
                         "oneblock-phase-began",
                         "acid-sea-burns",
-                        "acid-rain-burns"));
+                        "acid-rain-burns",
+                        "acid-water-drunk",
+                        "acid-clean-water-filled"));
     }
 
     private static Set<String> firedInteractions() throws IOException {

@@ -133,6 +133,36 @@ public final class AcidHazard {
         return taken;
     }
 
+    /** Whether the spot is on an AcidIsland island. Memory only. */
+    public boolean onAcidIsland(@Nullable Location at) {
+        if (at == null) {
+            return false;
+        }
+        Optional<Island> island = islands.findIslandAt(at);
+        return island.isPresent() && service.isAcid(island.get().id());
+    }
+
+    /**
+     * A player drank a bottle of acid water: it burns as the sea does and gives the sea's effects. No
+     * effect keeps it off, because it is inside them. Returns the health it took.
+     */
+    public double drank(Player player) {
+        double taken = rules.waterDamage();
+        if (taken > 0) {
+            player.damage(taken);
+        }
+        for (PotionEffect effect : seaEffects) {
+            player.addPotionEffect(effect);
+        }
+        effectPlayer.fire(effects, "acid-water-drunk", player);
+        return taken;
+    }
+
+    /** A player filled a clean bottle from a cauldron, which the plugin did in the server's place. */
+    public void filledClean(Player player) {
+        effectPlayer.fire(effects, "acid-clean-water-filled", player);
+    }
+
     private AcidExposure exposureOf(Player player, Location feet) {
         Block feetBlock = feet.getBlock();
         Block eyeBlock = player.getEyeLocation().getBlock();
