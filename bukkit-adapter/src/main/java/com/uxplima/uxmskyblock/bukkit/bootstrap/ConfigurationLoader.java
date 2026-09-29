@@ -300,6 +300,12 @@ public final class ConfigurationLoader {
                 "acidisland.conf",
                 com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration caveBlockConfig = loadConfig(
+                plugin,
+                dataDir,
+                "caveblock.conf",
+                com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -338,6 +344,7 @@ public final class ConfigurationLoader {
                 lifecycleConfig,
                 chunkBlockConfig,
                 acidIslandConfig,
+                caveBlockConfig,
                 presetConfig);
 
         wiring.validate();

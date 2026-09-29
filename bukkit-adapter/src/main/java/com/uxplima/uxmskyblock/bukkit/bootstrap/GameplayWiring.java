@@ -203,7 +203,9 @@ public final class GameplayWiring {
                                 this.oneBlockWiring.startActions().stream(),
                                 java.util.stream.Stream.concat(
                                         this.chunkBlockWiring.startActions().stream(),
-                                        this.acidIslandWiring.startActions().stream()))
+                                        java.util.stream.Stream.concat(
+                                                this.acidIslandWiring.startActions().stream(),
+                                                caveBlockStart(config, scheduler))))
                         .toList());
 
         // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
@@ -348,6 +350,17 @@ public final class GameplayWiring {
     /** What carries out the operator's lifecycle rules on players. */
     public com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle() {
         return playerLifecycle;
+    }
+
+    /** The action that encloses a CaveBlock island in rock, while CaveBlock is enabled, and none otherwise. */
+    private static java.util.stream.Stream<
+                    com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
+                            com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
+            caveBlockStart(ConfigurationWiring config, SchedulerPort scheduler) {
+        com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration cave = config.caveBlockConfig();
+        return cave.enabled()
+                ? java.util.stream.Stream.of(new com.uxplima.uxmskyblock.bukkit.cave.CavernStart(scheduler, cave))
+                : java.util.stream.Stream.empty();
     }
 
     /** The OneBlock game mode's service and the schedule that writes its counts. */

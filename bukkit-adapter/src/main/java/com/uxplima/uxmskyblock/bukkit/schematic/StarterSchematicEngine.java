@@ -99,7 +99,7 @@ public final class StarterSchematicEngine {
                 switch (preset.id()) {
                     case "desert" -> Material.SAND;
                     case "nether" -> Material.NETHERRACK;
-                    case "cave" -> Material.DEEPSLATE;
+                    case "cave", "caveblock" -> Material.DEEPSLATE;
                     default -> Material.GRASS_BLOCK;
                 };
 
@@ -107,7 +107,7 @@ public final class StarterSchematicEngine {
                 switch (preset.id()) {
                     case "desert" -> Material.SANDSTONE;
                     case "nether" -> Material.BASALT;
-                    case "cave" -> Material.STONE;
+                    case "cave", "caveblock" -> Material.STONE;
                     default -> Material.DIRT;
                 };
 
@@ -131,7 +131,7 @@ public final class StarterSchematicEngine {
                 featureBlock.setType(Material.CRIMSON_FUNGUS);
                 world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
             }
-            case "cave" -> {
+            case "cave", "caveblock" -> {
                 featureBlock.setType(Material.LANTERN);
                 world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
             }
