@@ -56,10 +56,44 @@ tasks.shadowJar {
     // this plugin's logging go quiet, which is worse. Adventure is the server's too.
     exclude("org/slf4j/**")
     exclude("net/kyori/**")
-    // bStats insists on being relocated, so two plugins never share one copy of it.
-    relocate("org.bstats", "com.uxplima.uxmskyblock.libs.bstats")
-    // Shadow keeps the first copy of a duplicate path unless told otherwise, and a services file is a
-    // duplicate by design: each JDBC driver ships one. Kept first, only MariaDB's survived.
+    // Annotations a compiler reads and a runtime never loads.
+    dependencies {
+        exclude(dependency("com.google.errorprone:.*:.*"))
+        exclude(dependency("org.checkerframework:.*:.*"))
+        exclude(dependency("org.jspecify:.*:.*"))
+        exclude(dependency("org.jetbrains:annotations:.*"))
+    }
+    // Everything bundled carries this plugin's namespace, so two plugins that shade the same library
+    // never share a class, and a copy the server has on its own class path never stands in for ours.
+    // uxmLib shipped un-relocated here while every other plugin of the family relocated it. Netty is
+    // the plain case: Paper carries its own, and Lettuce was built against a different one.
+    // org.sqlite is never relocated: the driver finds its native library by its own package name.
+    for (pkg in listOf(
+        "com.uxplima.uxmlib" to "uxmlib",
+        "org.bstats" to "bstats",
+        "com.typesafe.config" to "typesafe",
+        "org.spongepowered.configurate" to "configurate",
+        "io.leangen.geantyref" to "geantyref",
+        "com.zaxxer.hikari" to "hikari",
+        "com.github.benmanes.caffeine" to "caffeine",
+        "com.google.gson" to "gson",
+        "io.lettuce" to "lettuce",
+        "reactor" to "reactor",
+        "org.reactivestreams" to "reactivestreams",
+        "io.netty" to "netty",
+        "redis.clients" to "jedis",
+        "io.javalin" to "javalin",
+        "org.eclipse.jetty" to "jetty",
+        "jakarta.servlet" to "jakarta.servlet",
+        "javax.servlet" to "javax.servlet",
+        "kotlin" to "kotlin",
+        "org.intellij" to "intellij",
+        "org.jetbrains" to "jetbrains",
+        "org.postgresql" to "postgresql",
+        "org.mariadb" to "mariadb",
+    )) {
+        relocate(pkg.first, "com.uxplima.uxmskyblock.libs." + pkg.second)
+    }
     // Shadow keeps the first copy of a duplicate path unless told otherwise, and its service merge
     // only sees the copies it is given. A services file is a duplicate by design, one per JDBC driver,
     // and kept first only MariaDB's survived: a server pointed at PostgreSQL found no driver.
@@ -86,7 +120,34 @@ val verifyJar by tasks.registering {
     dependsOn(tasks.shadowJar)
     val jar = tasks.shadowJar.flatMap { it.archiveFile }
     doLast {
-        val forbidden = listOf("org/slf4j/", "net/kyori/", "org/bstats/")
+        val forbidden =
+            listOf(
+                "org/slf4j/",
+                "net/kyori/",
+                "org/bstats/",
+                "com/uxplima/uxmlib/",
+                "com/typesafe/",
+                "org/spongepowered/",
+                "io/leangen/",
+                "com/zaxxer/",
+                "com/github/benmanes/",
+                "com/google/",
+                "io/lettuce/",
+                "reactor/",
+                "org/reactivestreams/",
+                "io/netty/",
+                "redis/",
+                "io/javalin/",
+                "org/eclipse/",
+                "jakarta/",
+                "javax/",
+                "kotlin/",
+                "org/intellij/",
+                "org/jetbrains/",
+                "org/postgresql/",
+                "org/mariadb/",
+                "org/checkerframework/",
+            )
         val found = mutableListOf<String>()
         ZipFile(jar.get().asFile).use { zip ->
             for (entry in zip.entries()) {
@@ -100,9 +161,10 @@ val verifyJar by tasks.registering {
         }
         if (found.isNotEmpty()) {
             throw GradleException(
-                "The shaded jar holds packages the server owns: " +
-                    found.distinct().joinToString(", ") +
-                    ". A second copy of these does not fail loudly, it makes logging or text go wrong.",
+                "The shaded jar holds packages the server owns or that must carry this plugin's " +
+                    "namespace: " + found.distinct().joinToString(", ") +
+                    ". A second copy of these does not fail loudly: it makes logging or text go wrong, " +
+                    "or another plugin's copy of a library answers for ours.",
             )
         }
         // A JDBC driver is found through the services file, not by its class being present. The
@@ -110,8 +172,10 @@ val verifyJar by tasks.registering {
         // start: "No suitable driver".
         val drivers =
             mapOf(
-                "org/mariadb/jdbc/Driver.class" to "org.mariadb.jdbc.Driver",
-                "org/postgresql/Driver.class" to "org.postgresql.Driver",
+                "com/uxplima/uxmskyblock/libs/mariadb/jdbc/Driver.class" to
+                    "com.uxplima.uxmskyblock.libs.mariadb.jdbc.Driver",
+                "com/uxplima/uxmskyblock/libs/postgresql/Driver.class" to
+                    "com.uxplima.uxmskyblock.libs.postgresql.Driver",
             )
         ZipFile(jar.get().asFile).use { zip ->
             val listed =
