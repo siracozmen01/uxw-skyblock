@@ -2,7 +2,6 @@ package com.uxplima.uxmskyblock.bukkit.acid;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -12,8 +11,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Waterlogged;
@@ -25,6 +22,7 @@ import org.bukkit.potion.PotionEffectType;
 import com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration;
 import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer;
 import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects;
+import com.uxplima.uxmskyblock.bukkit.effect.PotionEffectLines;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.acid.AcidIslandService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -218,43 +216,15 @@ public final class AcidHazard {
     }
 
     private static @Nullable PotionEffectType effectNamed(String name) {
-        NamespacedKey key = NamespacedKey.fromString(name.trim().toLowerCase(Locale.ROOT));
-        return key == null ? null : Registry.MOB_EFFECT.get(key);
+        return PotionEffectLines.named(name);
     }
 
     private static List<PotionEffect> effectsWritten(String where, List<String> lines) {
-        List<PotionEffect> read = new ArrayList<>();
-        for (String written : lines) {
-            PotionEffect effect = effectWritten(written);
-            if (effect == null) {
-                LOGGER.warning(() -> "modules/acidisland.conf " + where + ": " + written
-                        + " is not name:amplifier:seconds with an effect of that name.");
-            } else {
-                read.add(effect);
-            }
-        }
-        return read;
+        return PotionEffectLines.allWritten("modules/acidisland.conf " + where, lines);
     }
 
     /** An effect written {@code name:amplifier:seconds}, or null when it cannot be read. */
     static @Nullable PotionEffect effectWritten(String written) {
-        String[] parts = written.trim().split(":", -1);
-        if (parts.length != 3) {
-            return null;
-        }
-        PotionEffectType type = effectNamed(parts[0]);
-        if (type == null) {
-            return null;
-        }
-        try {
-            int amplifier = Integer.parseInt(parts[1].trim());
-            int seconds = Integer.parseInt(parts[2].trim());
-            if (amplifier < 0 || seconds < 1) {
-                return null;
-            }
-            return new PotionEffect(type, seconds * 20, amplifier);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return PotionEffectLines.written(written);
     }
 }

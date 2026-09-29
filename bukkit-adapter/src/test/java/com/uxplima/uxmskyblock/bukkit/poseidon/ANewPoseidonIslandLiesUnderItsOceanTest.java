@@ -161,6 +161,19 @@ class ANewPoseidonIslandLiesUnderItsOceanTest extends MockBukkitHarness {
         assertThat(file).isEqualTo(PoseidonConfiguration.defaultConfiguration());
         assertThat(odd.enabled()).isFalse();
         assertThat(odd.ocean()).isEqualTo(PoseidonConfiguration.Ocean.SHIPPED);
+        PoseidonConfiguration hazard = PoseidonConfiguration.load(HoconConfigurationLoader.builder()
+                .buildAndLoadString("hazard { still-reach = 0, water-effects = [\"conduit_power:0:4\"] }"));
+        assertThat(hazard.rules())
+                .describedAs("a swimmer who could never move is no rule")
+                .isEqualTo(com.uxplima.uxmskyblock.core.domain.hazard.PoseidonRules.shipped());
+        assertThat(hazard.waterEffects()).containsExactly("conduit_power:0:4");
+        assertThat(PoseidonConfiguration.load(HoconConfigurationLoader.builder()
+                                .buildAndLoadString("hazard { sun-damage = 5, still-after = \"2s\" }"))
+                        .rules())
+                .extracting(
+                        com.uxplima.uxmskyblock.core.domain.hazard.PoseidonRules::sunDamage,
+                        com.uxplima.uxmskyblock.core.domain.hazard.PoseidonRules::stillAfter)
+                .containsExactly(5.0, java.time.Duration.ofSeconds(2));
     }
 
     private StarterPreset preset() throws Exception {

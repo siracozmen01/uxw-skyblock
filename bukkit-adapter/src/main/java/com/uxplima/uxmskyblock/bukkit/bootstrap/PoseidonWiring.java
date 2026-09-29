@@ -1,32 +1,53 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.uxplima.uxmskyblock.bukkit.config.PoseidonConfiguration;
+import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffectPlayer;
+import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.poseidon.OceanStart;
+import com.uxplima.uxmskyblock.bukkit.poseidon.PoseidonHazard;
 import com.uxplima.uxmskyblock.bukkit.schematic.IslandStart;
 import com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider;
 import com.uxplima.uxmskyblock.core.application.poseidon.PoseidonService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.persistence.bootstrap.PersistenceBootstrap;
+import org.jspecify.annotations.Nullable;
 
 /** The Poseidon game mode, while the operator lets islands be Poseidon islands. */
-public final class PoseidonWiring {
+public final class PoseidonWiring implements AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(PoseidonWiring.class.getName());
 
     private final PoseidonConfiguration config;
     private final PoseidonService service;
     private final SchedulerPort scheduler;
+    private final PoseidonHazard hazard;
+    private @Nullable AutoCloseable beat;
 
     public PoseidonWiring(
-            ConfigurationWiring configuration, PersistenceBootstrap persistence, SchedulerPort scheduler) {
+            ConfigurationWiring configuration,
+            PersistenceBootstrap persistence,
+            SchedulerPort scheduler,
+            IslandProtectionListener islands) {
         this.config = Objects.requireNonNull(configuration.poseidonConfig(), "poseidonConfig must not be null");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.service = new PoseidonService(persistence.poseidonIslandsPort());
+        this.hazard = new PoseidonHazard(
+                service,
+                islands,
+                scheduler,
+                config,
+                configuration.effectsConfig(),
+                new InteractionEffectPlayer(scheduler, configuration.messages()),
+                Clock.systemUTC());
+        if (config.enabled()) {
+            this.beat = hazard.start();
+        }
         scheduler.async(() -> {
             try {
                 int count = service.prime();
@@ -45,6 +66,10 @@ public final class PoseidonWiring {
         return config;
     }
 
+    public PoseidonHazard hazard() {
+        return hazard;
+    }
+
     public boolean enabled() {
         return config.enabled();
     }
@@ -52,5 +77,19 @@ public final class PoseidonWiring {
     /** The action that lays the ocean, while Poseidon is enabled, and none otherwise. */
     public List<CreationActionProvider<IslandStart>> startActions() {
         return config.enabled() ? List.of(new OceanStart(service, scheduler, config.ocean())) : List.of();
+    }
+
+    /** Stops the air hurting, before the server stops. */
+    @Override
+    public void close() {
+        AutoCloseable running = beat;
+        beat = null;
+        if (running != null) {
+            try {
+                running.close();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Stopping the Poseidon hazard failed.", e);
+            }
+        }
     }
 }

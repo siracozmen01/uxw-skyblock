@@ -194,7 +194,7 @@ public final class GameplayWiring {
         this.acidIslandWiring = new AcidIslandWiring(config, persistence, scheduler, protectionListener);
         this.boxedWiring = new BoxedWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
-        this.poseidonWiring = new PoseidonWiring(config, persistence, scheduler);
+        this.poseidonWiring = new PoseidonWiring(config, persistence, scheduler, protectionListener);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,

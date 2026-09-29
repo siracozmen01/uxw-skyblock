@@ -76,6 +76,17 @@ public final class EffectsConfiguration {
                 parseAll("acid-clean-water-filled", List.of("[sound] item.bottle.fill 1.0 1.0")));
         defaults.put("acid-vent-fumes", parseAll("acid-vent-fumes", List.of("[particle] CAMPFIRE_COSY_SMOKE 4 0.4")));
         defaults.put("boxed-grew", parseAll("boxed-grew", List.of("[sound] entity.player.levelup 0.8 1.6")));
+        defaults.put("poseidon-dry-air", parseAll("poseidon-dry-air", List.of("[sound] entity.player.breath 0.6 0.7")));
+        defaults.put(
+                "poseidon-sun-burns",
+                parseAll(
+                        "poseidon-sun-burns",
+                        List.of("[sound] block.fire.extinguish 0.4 0.8", "[particle] SMOKE 6 0.3")));
+        defaults.put(
+                "poseidon-still-drowns",
+                parseAll(
+                        "poseidon-still-drowns",
+                        List.of("[sound] entity.player.hurt_drown 0.8 1.0", "[particle] BUBBLE 10 0.4")));
         return new InteractionEffects(defaults);
     }
 

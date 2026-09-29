@@ -91,7 +91,10 @@ class EveryMilestoneFiresWhatWasWrittenTest {
                         "acid-water-drunk",
                         "acid-clean-water-filled",
                         "acid-vent-fumes",
-                        "boxed-grew"));
+                        "boxed-grew",
+                        "poseidon-dry-air",
+                        "poseidon-sun-burns",
+                        "poseidon-still-drowns"));
     }
 
     private static Set<String> firedInteractions() throws IOException {

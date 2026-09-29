@@ -147,7 +147,8 @@ public record AcidIslandConfiguration(
                         purification.node("brewing-with-coal").getBoolean(true)));
     }
 
-    private static List<String> strings(ConfigurationNode node, List<String> fallback) {
+    /** The strings of a list, or the fallback when the list is not written at all. */
+    static List<String> strings(ConfigurationNode node, List<String> fallback) {
         if (node.virtual()) {
             return fallback;
         }
@@ -162,7 +163,7 @@ public record AcidIslandConfiguration(
     }
 
     /** A window written as {@code 500ms}, {@code 2s} or a plain number of seconds. */
-    private static Duration durationOf(String written, Duration fallback) {
+    static Duration durationOf(String written, Duration fallback) {
         String raw = written.trim().toLowerCase(java.util.Locale.ROOT);
         if (raw.isEmpty()) {
             return fallback;
