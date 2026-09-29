@@ -61,6 +61,29 @@ class PresetConfigurationTest {
     }
 
     @Test
+    @DisplayName("A preset may name the world its islands are made in, and every such world is an island world")
+    void aPresetNamesItsWorld() throws Exception {
+        CommentedConfigurationNode root = parse("""
+                presets {
+                    default = "classic"
+                    entries {
+                        classic { schematic = "schematics/classic.schem" }
+                        boxed { schematic = "schematics/boxed.schem", world = "boxed_world" }
+                        more_boxed { schematic = "schematics/boxed.schem", world = "boxed_world" }
+                    }
+                }
+                """);
+
+        PresetConfiguration presets = PresetConfiguration.load(root);
+
+        assertThat(presets.catalogue().findById("boxed").orElseThrow().worldOr("skyblock"))
+                .isEqualTo("boxed_world");
+        assertThat(presets.catalogue().findById("classic").orElseThrow().worldOr("skyblock"))
+                .isEqualTo("skyblock");
+        assertThat(presets.worlds("skyblock")).containsExactly("skyblock", "boxed_world");
+    }
+
+    @Test
     @DisplayName("A preset an operator removes is one no player can start with")
     void anOperatorCanRemoveOne() throws Exception {
         CommentedConfigurationNode root = parse("""

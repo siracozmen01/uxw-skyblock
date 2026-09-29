@@ -73,14 +73,18 @@ public final class BankUpkeepFeatureModule extends AbstractFeatureModule {
             BankConfiguration configuration,
             SchedulerPort scheduler,
             IslandStoragePort islandStoragePort,
-            String worldName,
+            java.util.List<String> worlds,
             ServerNodeId serverNodeId) {
         this(
                 bankruptcyService,
                 configuration,
                 scheduler,
-                () -> Objects.requireNonNull(islandStoragePort, "islandStoragePort")
-                        .findAllByWorld(worldName),
+                () -> worlds.stream()
+                        .flatMap(world ->
+                                Objects.requireNonNull(islandStoragePort, "islandStoragePort")
+                                        .findAllByWorld(world)
+                                        .stream())
+                        .toList(),
                 serverNodeId);
     }
 

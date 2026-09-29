@@ -13,6 +13,8 @@ import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
  * {@code start} names the creation actions that build it, in order: a classic island lays a platform,
  * a OneBlock island sets its one block. Creation runs the list and never asks which mode it is making.
  * {@code dimensions} says the same for the Nether, the End and any other dimension, by dimension id.
+ * {@code world} is the world its islands are made in, blank for the server's own island world: a mode
+ * played on generated land names a world the server makes the usual way.
  */
 public record StarterPreset(
         String id,
@@ -22,7 +24,8 @@ public record StarterPreset(
         IslandBiome defaultBiome,
         GameModeType mode,
         List<String> start,
-        StartTemplateBundle dimensions) {
+        StartTemplateBundle dimensions,
+        String world) {
 
     /** The action that lays the starter platform, which a preset runs when it names none. */
     public static final String PLATFORM = "uxm:platform";
@@ -36,10 +39,33 @@ public record StarterPreset(
         Objects.requireNonNull(mode, "mode must not be null");
         Objects.requireNonNull(start, "start must not be null");
         Objects.requireNonNull(dimensions, "dimensions must not be null");
+        Objects.requireNonNull(world, "world must not be null");
+        world = world.strip();
         start = List.copyOf(start);
         if (start.isEmpty()) {
             throw new IllegalArgumentException("The preset " + id + " builds nothing: its start names no action");
         }
+    }
+
+    /** A preset made in the server's own island world. */
+    public StarterPreset(
+            String id,
+            String displayName,
+            String description,
+            String schematicPath,
+            IslandBiome defaultBiome,
+            GameModeType mode,
+            List<String> start,
+            StartTemplateBundle dimensions) {
+        this(id, displayName, description, schematicPath, defaultBiome, mode, start, dimensions, "");
+    }
+
+    /**
+     * The world this preset's islands are made in: the one it names, or {@code islandWorld}, the
+     * server's own island world, when it names none.
+     */
+    public String worldOr(String islandWorld) {
+        return world.isEmpty() ? islandWorld : world;
     }
 
     /** A preset that starts every other dimension the way the plugin ships. */

@@ -500,6 +500,14 @@ public final class ConfigurationWiring {
         return generatorsConfig;
     }
 
+    /**
+     * Every world islands are made in: the server's own island world first, then each world a preset
+     * names for islands of its own, such as a Boxed preset's generated land.
+     */
+    public java.util.List<String> islandWorlds() {
+        return presetConfig.worlds(nodeConfig.worldName());
+    }
+
     /** Whether islands can be SkyGrid islands, where the grid's blocks stand and which blocks they are. */
     public com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration skyGridConfig() {
         return skyGridConfig;

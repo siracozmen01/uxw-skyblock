@@ -64,7 +64,8 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
                     biomeOf(preset),
                     modeOf(preset),
                     startOf(preset),
-                    dimensionsOf(id, preset)));
+                    dimensionsOf(id, preset),
+                    preset.node("world").getString("")));
         }
 
         if (presets.isEmpty()) {
@@ -161,6 +162,19 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
             }
         }
         return true;
+    }
+
+    /**
+     * Every world these presets make islands in: {@code islandWorld}, the server's own, first, then
+     * each world a preset names, once each.
+     */
+    public List<String> worlds(String islandWorld) {
+        java.util.LinkedHashSet<String> worlds = new java.util.LinkedHashSet<>();
+        worlds.add(islandWorld);
+        for (StarterPreset preset : presets) {
+            worlds.add(preset.worldOr(islandWorld));
+        }
+        return List.copyOf(worlds);
     }
 
     public StarterPresetCatalog catalogue() {

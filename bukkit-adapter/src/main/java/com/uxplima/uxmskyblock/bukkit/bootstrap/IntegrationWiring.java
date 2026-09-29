@@ -185,7 +185,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.authorityService = new IslandAuthorityService(
                 persistence.islandAuthorityPort(),
                 serverNodeId,
-                config.nodeConfig().worldName(),
+                config.islandWorlds(),
                 config.nodeConfig().authorityLease());
         this.authorityHeartbeatInterval = config.nodeConfig().authorityHeartbeatInterval();
         this.eventTransport = this.clusterTransport.eventTransport();

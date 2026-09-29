@@ -22,7 +22,7 @@ public final class InactivityFeatureModule extends AbstractFeatureModule {
     private final IslandInactivityService inactivityService;
     private final SchedulerPort scheduler;
     private final InactivityConfiguration configuration;
-    private final String worldName;
+    private final java.util.List<String> worlds;
     private @Nullable AutoCloseable scanTask;
 
     public InactivityFeatureModule(
@@ -30,6 +30,15 @@ public final class InactivityFeatureModule extends AbstractFeatureModule {
             SchedulerPort scheduler,
             InactivityConfiguration configuration,
             String worldName) {
+        this(inactivityService, scheduler, configuration, List.of(Objects.requireNonNull(worldName, "worldName")));
+    }
+
+    /** A module that scans every world islands are made in. */
+    public InactivityFeatureModule(
+            IslandInactivityService inactivityService,
+            SchedulerPort scheduler,
+            InactivityConfiguration configuration,
+            java.util.List<String> worlds) {
         super(new ModuleDescriptor(
                 "inactivity",
                 "1.0.0",
@@ -41,7 +50,7 @@ public final class InactivityFeatureModule extends AbstractFeatureModule {
         this.inactivityService = Objects.requireNonNull(inactivityService, "inactivityService must not be null");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
-        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.worlds = java.util.List.copyOf(worlds);
     }
 
     @Override
@@ -50,7 +59,7 @@ public final class InactivityFeatureModule extends AbstractFeatureModule {
 
         if (configuration.enabled()) {
             this.scanTask = scheduler.repeatAsync(
-                    () -> inactivityService.scanWorld(worldName, Instant.now()),
+                    () -> worlds.forEach(world -> inactivityService.scanWorld(world, Instant.now())),
                     Duration.ofSeconds(60),
                     configuration.checkInterval());
         }

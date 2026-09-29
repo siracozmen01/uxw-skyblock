@@ -306,7 +306,9 @@ public final class IslandLifecycleCommands {
                         antiAbuse.quarantineNewIsland(success.island().id(), Instant.now());
                     }
 
-                    World resolvedWorld = Bukkit.getWorld(worldName);
+                    // The world the island was made in, which its preset may name.
+                    String madeIn = success.location().worldName();
+                    World resolvedWorld = Bukkit.getWorld(madeIn);
                     if (resolvedWorld != null) {
                         int centerX = success.location().bounds().centerX();
                         int centerZ = success.location().bounds().centerZ();
@@ -348,7 +350,7 @@ public final class IslandLifecycleCommands {
                             });
                         });
                     } else {
-                        send(player, "create.world_unloaded", Placeholder.unparsed("world", worldName));
+                        send(player, "create.world_unloaded", Placeholder.unparsed("world", madeIn));
                     }
                 } else if (outcome instanceof CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) {
                     send(player, "create.already_has_island");

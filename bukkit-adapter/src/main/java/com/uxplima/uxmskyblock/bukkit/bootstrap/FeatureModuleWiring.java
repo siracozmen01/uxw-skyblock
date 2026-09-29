@@ -54,7 +54,6 @@ public final class FeatureModuleWiring implements AutoCloseable {
         Objects.requireNonNull(gameplay, "gameplay must not be null");
         Objects.requireNonNull(integration, "integration must not be null");
 
-        String worldName = config.nodeConfig().worldName();
         ServerNodeId serverNodeId = config.nodeConfig().nodeId();
 
         this.moduleRegistry = new ModuleRegistry();
@@ -66,7 +65,7 @@ public final class FeatureModuleWiring implements AutoCloseable {
                     config.bankConfig(),
                     gameplay.scheduler(),
                     persistence.islandStoragePort(),
-                    worldName,
+                    config.islandWorlds(),
                     serverNodeId);
         } else {
             this.bankUpkeepFeatureModule = null;
@@ -143,7 +142,10 @@ public final class FeatureModuleWiring implements AutoCloseable {
         }
         if (config.moduleSettings().isModuleEnabled("inactivity")) {
             this.moduleRegistry.register(new InactivityFeatureModule(
-                    gameplay.inactivityService(), gameplay.scheduler(), config.inactivityConfig(), worldName));
+                    gameplay.inactivityService(),
+                    gameplay.scheduler(),
+                    config.inactivityConfig(),
+                    config.islandWorlds()));
         }
         // Likewise: this asked for "freeze" and the file says "admin-freeze".
         if (config.moduleSettings().isModuleEnabled("admin-freeze")) {

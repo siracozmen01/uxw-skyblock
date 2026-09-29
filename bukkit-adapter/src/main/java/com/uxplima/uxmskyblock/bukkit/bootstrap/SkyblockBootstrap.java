@@ -171,9 +171,9 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
     public void enable() {
         featureModuleWiring.enable();
-        gameplayWiring
-                .protectionListener()
-                .loadPersistedIslands(configWiring.nodeConfig().worldName());
+        for (String world : configWiring.islandWorlds()) {
+            gameplayWiring.protectionListener().loadPersistedIslands(world);
+        }
         integrationWiring.enable();
         startRestApiIfConfigured();
 
@@ -195,12 +195,11 @@ public final class SkyblockBootstrap implements AutoCloseable {
      * three web map integrations shipped, all three were wired, and nothing ever called one.
      */
     private void drawIslandsOnTheWebMap() {
-        integrationWiring
-                .markerSynchroniser()
-                .drawAll(persistenceWiring
-                        .bootstrap()
-                        .islandStoragePort()
-                        .findAllByWorld(configWiring.nodeConfig().worldName()));
+        for (String world : configWiring.islandWorlds()) {
+            integrationWiring
+                    .markerSynchroniser()
+                    .drawAll(persistenceWiring.bootstrap().islandStoragePort().findAllByWorld(world));
+        }
     }
 
     /**

@@ -32,14 +32,23 @@ public final class IslandAuthorityService {
 
     private final IslandAuthorityPort authorityPort;
     private final ServerNodeId nodeId;
-    private final String worldName;
+    private final java.util.List<String> worlds;
     private final Duration lease;
 
     public IslandAuthorityService(
             IslandAuthorityPort authorityPort, ServerNodeId nodeId, String worldName, Duration lease) {
+        this(authorityPort, nodeId, java.util.List.of(Objects.requireNonNull(worldName, "worldName")), lease);
+    }
+
+    /** A service that keeps this node's islands alive in every world islands are made in. */
+    public IslandAuthorityService(
+            IslandAuthorityPort authorityPort, ServerNodeId nodeId, java.util.List<String> worlds, Duration lease) {
         this.authorityPort = Objects.requireNonNull(authorityPort, "authorityPort must not be null");
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId must not be null");
-        this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
+        this.worlds = java.util.List.copyOf(worlds);
+        if (this.worlds.isEmpty()) {
+            throw new IllegalArgumentException("islands are made in at least one world");
+        }
         Objects.requireNonNull(lease, "lease must not be null");
         if (lease.toSeconds() < 1) {
             throw new IllegalArgumentException("the lease must be at least a second: " + lease);
@@ -62,9 +71,24 @@ public final class IslandAuthorityService {
      * One pass of the heartbeat.
      *
      * <p>A pass that fails is logged and the next one tries again. Taking the repeating task down
-     * over one unreachable database would turn a blip into an island that can never bank again.
+     * over one unreachable database would turn a blip into an island that can never bank again. Each
+     * world islands are made in is swept on its own, so one that fails leaves the others' leases
+     * running.
      */
     public IslandAuthoritySweep heartbeat() {
+        int renewed = 0;
+        int takenOver = 0;
+        int acquired = 0;
+        for (String worldName : worlds) {
+            IslandAuthoritySweep swept = sweep(worldName);
+            renewed += swept.renewed();
+            takenOver += swept.takenOver();
+            acquired += swept.acquired();
+        }
+        return new IslandAuthoritySweep(renewed, takenOver, acquired);
+    }
+
+    private IslandAuthoritySweep sweep(String worldName) {
         try {
             IslandAuthoritySweep swept = authorityPort.sweepAuthority(nodeId, worldName, leaseSeconds());
             if (swept.takenOver() > 0 || swept.acquired() > 0) {
@@ -76,7 +100,11 @@ public final class IslandAuthorityService {
             }
             return swept;
         } catch (RuntimeException e) {
-            LOGGER.log(Level.WARNING, e, () -> "The island authority heartbeat failed. The next one tries again.");
+            LOGGER.log(
+                    Level.WARNING,
+                    e,
+                    () -> "The island authority heartbeat failed in world " + worldName
+                            + ". The next one tries again.");
             return IslandAuthoritySweep.NOTHING;
         }
     }

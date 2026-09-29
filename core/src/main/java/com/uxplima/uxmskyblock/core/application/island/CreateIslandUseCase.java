@@ -257,15 +257,17 @@ public final class CreateIslandUseCase {
         }
 
         StarterPreset preset = optPreset.get();
+        // A preset played on land of its own names the world it is made in.
+        String world = preset.worldOr(worldName);
         IslandId islandId = IslandId.of(UUID.randomUUID());
 
-        WorldGridAllocation allocation = worldGridAllocationPort.allocateNext(serverNodeId, worldName, islandId);
+        WorldGridAllocation allocation = worldGridAllocationPort.allocateNext(serverNodeId, world, islandId);
         IslandCoordinates center = new IslandCoordinates(allocation.centerX(), allocation.centerZ());
         IslandBounds bounds = worldGridPort.createBounds(center, startingRadius.applyAsInt(islandId));
 
         Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
         IslandLocation location = new IslandLocation(
-                islandId, worldName, bounds, center.x() + 0.5, islandSpawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
+                islandId, world, bounds, center.x() + 0.5, islandSpawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
 
         String payload = String.format(
                 "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
@@ -327,6 +329,8 @@ public final class CreateIslandUseCase {
         }
 
         StarterPreset preset = optPreset.get();
+        // A preset played on land of its own names the world it is made in.
+        String world = preset.worldOr(worldName);
         IslandId islandId = IslandId.of(UUID.randomUUID());
 
         IslandCoordinates center = worldGridPort.allocateCenter(sequenceIndex);
@@ -334,7 +338,7 @@ public final class CreateIslandUseCase {
 
         Island island = Island.create(islandId, bounds, playerUuid, profileId, Instant.now());
         IslandLocation location = new IslandLocation(
-                islandId, worldName, bounds, center.x() + 0.5, islandSpawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
+                islandId, world, bounds, center.x() + 0.5, islandSpawnY + 1.0, center.z() + 0.5, 0.0f, 0.0f);
 
         String payload = String.format(
                 "{\"islandId\":\"%s\",\"ownerPlayerUuid\":\"%s\",\"ownerProfileId\":\"%s\",\"presetId\":\"%s\"}",
@@ -345,7 +349,7 @@ public final class CreateIslandUseCase {
                 : null;
 
         try {
-            worldGridAllocationPort.reserveNextSequence(serverNodeId, worldName, center.x(), center.z(), islandId);
+            worldGridAllocationPort.reserveNextSequence(serverNodeId, world, center.x(), center.z(), islandId);
             islandStoragePort.saveIsland(island, location, outboxEvent);
             islandAuthorityPort.acquireAuthority(islandId, serverNodeId, authorityLeaseSeconds);
             islandBankPort.createBank(islandId);
