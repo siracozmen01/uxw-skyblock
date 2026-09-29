@@ -147,11 +147,12 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
         Objects.requireNonNull(worldName, "worldName must not be null");
         String sql = """
                 SELECT COUNT(*) FROM spiral_slot_pool
-                WHERE world_name = ? AND (is_allocated = 0 OR is_allocated = false)
+                WHERE world_name = ? AND is_allocated = ?
                 """;
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, worldName);
+            setBoolean(stmt, 2, false);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return rs.getLong(1);
@@ -188,13 +189,14 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
         String sql = """
                 SELECT slot_index, world_name, grid_x, grid_z
                 FROM spiral_slot_pool
-                WHERE world_name = ? AND (is_allocated = 0 OR is_allocated = false)
+                WHERE world_name = ? AND is_allocated = ?
                 ORDER BY slot_index ASC
                 LIMIT 1
                 """;
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, worldName);
+            setBoolean(stmt, 2, false);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return Optional.of(new CandidateSlot(
@@ -214,12 +216,14 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
         String sql = """
                 UPDATE spiral_slot_pool
                 SET is_allocated = ?, vacated_at = NULL
-                WHERE slot_index = ? AND (is_allocated = 0 OR is_allocated = false)
+                WHERE slot_index = ? AND is_allocated = ?
                 """;
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             setBoolean(stmt, 1, true);
             stmt.setLong(2, slotIndex);
+            // Bound rather than written as 0: PostgreSQL's BOOLEAN will not compare with a number.
+            setBoolean(stmt, 3, false);
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to execute atomic claim on slotIndex=" + slotIndex, e);
