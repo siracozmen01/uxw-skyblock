@@ -33,6 +33,15 @@ public final class ProfileTypes {
         return known.computeIfAbsent(profileId, port::typeOf);
     }
 
+    /**
+     * The ruleset if it has already been read, without reading it. For a handler on the thread that
+     * owns a player, where a query must not run; the player's session reads it when it is made.
+     */
+    public java.util.Optional<ProfileType> known(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        return java.util.Optional.ofNullable(known.get(profileId));
+    }
+
     /** Forgets one profile, for a profile that has been deleted. */
     public void forget(ProfileId profileId) {
         Objects.requireNonNull(profileId, "profileId must not be null");

@@ -126,6 +126,13 @@ public final class IslandMembershipCommands {
     }
 
     /** Tells this command group where to leave a notice for a player who is not here. */
+    private Supplier<com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle> lifecycle = () -> null;
+
+    /** What carries out the operator's lifecycle rules, looked up when a leave or a kick happens. */
+    public void useLifecycle(Supplier<com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle> lifecycle) {
+        this.lifecycle = java.util.Objects.requireNonNull(lifecycle, "lifecycle must not be null");
+    }
+
     public void useNotifications(@Nullable NotificationService notificationService) {
         this.notificationService = notificationService;
     }
@@ -468,6 +475,13 @@ public final class IslandMembershipCommands {
                     IslandMembershipService.RemovalOutcome outcome = service.kick(actor, optTarget.get());
                     if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed removed) {
                         optTargetUuid.ifPresent(this::lockOutOfTheNextIsland);
+                        com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle rules = lifecycle.get();
+                        if (rules != null && optTargetUuid.isPresent()) {
+                            rules.happened(
+                                    com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEvent.KICK,
+                                    optTargetUuid.get(),
+                                    optTarget.get());
+                        }
                         activityLog.recordForMembers(
                                 removed.islandId(),
                                 actor,
@@ -492,6 +506,13 @@ public final class IslandMembershipCommands {
                     IslandMembershipService.RemovalOutcome outcome = service.leave(actor);
                     if (outcome instanceof IslandMembershipService.RemovalOutcome.Removed removed) {
                         lockOutOfTheNextIsland(new PlayerUuid(player.getUniqueId()));
+                        com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle rules = lifecycle.get();
+                        if (rules != null) {
+                            rules.happened(
+                                    com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEvent.LEAVE,
+                                    new PlayerUuid(player.getUniqueId()),
+                                    actor);
+                        }
                         activityLog.recordForMembers(
                                 removed.islandId(),
                                 actor,

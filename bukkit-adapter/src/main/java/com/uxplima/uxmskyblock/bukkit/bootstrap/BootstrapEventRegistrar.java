@@ -22,6 +22,7 @@ public final class BootstrapEventRegistrar {
         CatalogPermissions.registerAll(pm);
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("core")) {
             pm.registerEvents(gameplayWiring.protectionListener(), plugin);
+            pm.registerEvents(gameplayWiring.playerLifecycle(), plugin);
             // The island permissions the protection rules never asked for. They belong with the
             // protection listener, not behind a switch for something else.
             pm.registerEvents(gameplayWiring.actionPermissionListener(), plugin);

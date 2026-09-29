@@ -153,6 +153,7 @@ final class CommandGroupBuilder {
                 () -> tree.nameService,
                 tree.messages);
         lifecycleCommands.useActivityFeed(tree.activityFeedService);
+        lifecycleCommands.useLifecycle(() -> tree.playerLifecycle);
         lifecycleCommands.useAntiAbuseRules(tree.antiAbuseConfiguration);
         lifecycleCommands.useEffects(tree.interactionEffects, effectPlayer);
 
@@ -269,6 +270,7 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         membershipCommands.useNotifications(tree.notificationService);
+        membershipCommands.useLifecycle(() -> tree.playerLifecycle);
         membershipCommands.useActivityFeed(tree.activityFeedService);
         membershipCommands.useCoopHoppingLock(tree.antiAbuseService(), tree.antiAbuseConfiguration);
         membershipCommands.useEffects(tree.interactionEffects, effectPlayer);

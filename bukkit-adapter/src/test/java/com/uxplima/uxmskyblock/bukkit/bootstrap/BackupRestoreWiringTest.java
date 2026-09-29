@@ -284,12 +284,17 @@ class BackupRestoreWiringTest {
         when(config.generatorsConfig()).thenReturn(generatorsConfig);
         when(config.oneBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
+        when(config.lifecycleConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration());
         when(config.effectsConfig()).thenReturn(com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects.none());
 
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();
 
             AuthorityWiring authority = mock(AuthorityWiring.class);
+            when(authority.profileTypes())
+                    .thenReturn(new com.uxplima.uxmskyblock.core.application.profile.ProfileTypes(
+                            mock(com.uxplima.uxmskyblock.core.application.profile.ProfileTypePort.class)));
             PlayerSessionCoordinator sessionCoord = mock(PlayerSessionCoordinator.class);
             when(authority.sessionCoordinator()).thenReturn(sessionCoord);
             when(authority.activeProfileProvider()).thenReturn(uuid -> java.util.Optional.empty());

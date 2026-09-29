@@ -281,6 +281,12 @@ public final class ConfigurationLoader {
                 "oneblock.conf",
                 com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration lifecycleConfig = loadConfig(
+                plugin,
+                dataDir,
+                "lifecycle.conf",
+                com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -316,6 +322,7 @@ public final class ConfigurationLoader {
                 upgradesConfig,
                 generatorsConfig,
                 oneBlockConfig,
+                lifecycleConfig,
                 presetConfig);
 
         wiring.validate();

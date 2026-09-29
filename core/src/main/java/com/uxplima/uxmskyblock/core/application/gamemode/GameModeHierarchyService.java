@@ -18,6 +18,10 @@ public final class GameModeHierarchyService {
 
     private final GameModeHierarchyStoragePort storagePort;
 
+    /** The mode each profile's instance plays, as last read or written here. */
+    private final java.util.concurrent.ConcurrentMap<ProfileId, GameModeType> modes =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public GameModeHierarchyService(GameModeHierarchyStoragePort storagePort) {
         this.storagePort = Objects.requireNonNull(storagePort, "storagePort must not be null");
     }
@@ -41,17 +45,44 @@ public final class GameModeHierarchyService {
         if (existing.isPresent()) {
             GameModeInstance found = existing.get();
             if (found.gameModeType() == mode) {
+                modes.put(profileId, mode);
                 return found;
             }
             GameModeInstance moved =
                     new GameModeInstance(found.id(), profileId, mode, rulesetConfig, found.createdAt(), Instant.now());
             storagePort.saveGameModeInstance(moved);
+            modes.put(profileId, mode);
             return moved;
         }
         GameModeInstance instance =
                 GameModeInstance.create(GameModeInstanceId.random(), profileId, mode, rulesetConfig, Instant.now());
         storagePort.saveGameModeInstance(instance);
+        modes.put(profileId, mode);
         return instance;
+    }
+
+    /**
+     * The mode a profile's island plays, read once and then kept. A profile with no instance yet plays
+     * skyblock, the mode every island had before there were others.
+     */
+    public GameModeType modeOf(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        GameModeType held = modes.get(profileId);
+        if (held != null) {
+            return held;
+        }
+        GameModeType read = storagePort
+                .findInstanceByProfileId(profileId)
+                .map(GameModeInstance::gameModeType)
+                .orElse(GameModeType.SKYBLOCK);
+        modes.put(profileId, read);
+        return read;
+    }
+
+    /** The mode if it has been read or written here, without reading it, for a region thread. */
+    public Optional<GameModeType> knownModeOf(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        return Optional.ofNullable(modes.get(profileId));
     }
 
     public void bindIsland(GameModeInstanceId instanceId, IslandId islandId) {

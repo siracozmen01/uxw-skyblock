@@ -69,6 +69,13 @@ public final class IslandLifecycleCommands {
     private volatile com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffectPlayer effectPlayer;
 
     /** Tells this command group what the operator wrote for its milestones. */
+    private Supplier<com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle> lifecycle = () -> null;
+
+    /** What carries out the operator's lifecycle rules, looked up when a reset happens. */
+    public void useLifecycle(Supplier<com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle> lifecycle) {
+        this.lifecycle = java.util.Objects.requireNonNull(lifecycle, "lifecycle must not be null");
+    }
+
     public void useEffects(
             com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffects effects,
             com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffectPlayer player) {
@@ -529,6 +536,13 @@ public final class IslandLifecycleCommands {
                         if (antiAbuse.purgeInventoryOnReset()) {
                             antiAbuse.oweInventoryPurge(playerUuid);
                         }
+                    }
+                    com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle rules = lifecycle.get();
+                    if (result instanceof RecycleResult.Success && rules != null) {
+                        rules.happened(
+                                com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEvent.RESET,
+                                playerUuid,
+                                profileId);
                     }
                     schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                         switch (result) {

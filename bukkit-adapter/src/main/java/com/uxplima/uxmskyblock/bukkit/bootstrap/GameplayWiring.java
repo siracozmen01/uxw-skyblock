@@ -62,6 +62,7 @@ import com.uxplima.uxmskyblock.core.application.island.IslandAccessService;
 import com.uxplima.uxmskyblock.core.application.island.IslandCacheEviction;
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.leaderboard.IslandLeaderboardService;
+import com.uxplima.uxmskyblock.core.application.lifecycle.LifecycleService;
 import com.uxplima.uxmskyblock.core.application.limit.IslandLimitService;
 import com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService;
 import com.uxplima.uxmskyblock.core.application.membership.MemberAllowance;
@@ -108,6 +109,7 @@ public final class GameplayWiring {
     private final StorageBucket backupBucket;
     private final IslandCacheEviction cacheEviction;
     private final OneBlockWiring oneBlockWiring;
+    private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
@@ -194,6 +196,19 @@ public final class GameplayWiring {
                 this.economicWiring.rewardInboxService(),
                 this.economicWiring.upgradeService(),
                 this.oneBlockWiring.startActions());
+
+        // What a leave, a kick, a death and a reset do, as the operator's lifecycle rules say.
+        this.playerLifecycle = new com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle(
+                new LifecycleService(
+                        config.lifecycleConfig().policy(),
+                        persistence.lifecycleOwedEffectsPort(),
+                        this.creationWiring.gameModeHierarchyService()::modeOf,
+                        this.creationWiring.gameModeHierarchyService()::knownModeOf,
+                        authority.profileTypes()::of,
+                        authority.profileTypes()::known),
+                scheduler,
+                authority.sessionCoordinator()::activeProfile);
+        authority.sessionCoordinator().whenSessionActive(this.playerLifecycle::onSessionActive);
 
         this.socialWiring = new SocialWiring(
                 config,
@@ -292,6 +307,11 @@ public final class GameplayWiring {
 
     public SchedulerPort scheduler() {
         return scheduler;
+    }
+
+    /** What carries out the operator's lifecycle rules on players. */
+    public com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle() {
+        return playerLifecycle;
     }
 
     /** The OneBlock game mode's service and the schedule that writes its counts. */

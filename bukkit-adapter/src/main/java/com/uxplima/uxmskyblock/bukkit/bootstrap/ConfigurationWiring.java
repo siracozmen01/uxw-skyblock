@@ -102,6 +102,7 @@ public final class ConfigurationWiring {
     private final UpgradesConfiguration upgradesConfig;
     private final GeneratorsConfiguration generatorsConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration lifecycleConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -174,6 +175,7 @@ public final class ConfigurationWiring {
             UpgradesConfiguration upgradesConfig,
             GeneratorsConfiguration generatorsConfig,
             com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration oneBlockConfig,
+            com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration lifecycleConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -209,6 +211,7 @@ public final class ConfigurationWiring {
         this.upgradesConfig = Objects.requireNonNull(upgradesConfig, "upgradesConfig must not be null");
         this.generatorsConfig = Objects.requireNonNull(generatorsConfig, "generatorsConfig must not be null");
         this.oneBlockConfig = Objects.requireNonNull(oneBlockConfig, "oneBlockConfig must not be null");
+        this.lifecycleConfig = Objects.requireNonNull(lifecycleConfig, "lifecycleConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -286,6 +289,7 @@ public final class ConfigurationWiring {
                 upgradesConfig,
                 generatorsConfig,
                 com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -478,6 +482,11 @@ public final class ConfigurationWiring {
 
     public GeneratorsConfiguration generatorsConfig() {
         return generatorsConfig;
+    }
+
+    /** What a leave, a kick, a death and a reset do, as {@code modules/lifecycle.conf} writes it. */
+    public com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration lifecycleConfig() {
+        return lifecycleConfig;
     }
 
     /** The OneBlock game mode's phases, as {@code modules/oneblock.conf} writes them. */

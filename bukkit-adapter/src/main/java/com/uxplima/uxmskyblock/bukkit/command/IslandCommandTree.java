@@ -288,6 +288,13 @@ public final class IslandCommandTree {
 
     private com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel oneBlockPanel;
 
+    com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle playerLifecycle;
+
+    /** What carries out the operator's lifecycle rules on a leave, a kick and a reset. */
+    public void useLifecycle(com.uxplima.uxmskyblock.bukkit.lifecycle.@Nullable PlayerLifecycle lifecycle) {
+        this.playerLifecycle = lifecycle;
+    }
+
     /** What {@code /is oneblock} opens, while the operator lets islands be OneBlock islands. */
     public void useOneBlock(com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel panel) {
         this.oneBlockPanel = panel;

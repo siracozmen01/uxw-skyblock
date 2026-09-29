@@ -108,6 +108,8 @@ class ZeroFootprintModuleWiringTest {
 
         when(persistence.oneBlockProgressPort())
                 .thenReturn(mock(com.uxplima.uxmskyblock.core.application.oneblock.OneBlockProgressPort.class));
+        when(persistence.lifecycleOwedEffectsPort())
+                .thenReturn(mock(com.uxplima.uxmskyblock.core.application.lifecycle.LifecycleOwedEffectsPort.class));
         GameplayWiring gameplay = mock(GameplayWiring.class);
         when(gameplay.createIslandUseCase())
                 .thenReturn(mock(com.uxplima.uxmskyblock.core.application.island.CreateIslandUseCase.class));
@@ -173,6 +175,9 @@ class ZeroFootprintModuleWiringTest {
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();
             AuthorityWiring authority = mock(AuthorityWiring.class);
+            when(authority.profileTypes())
+                    .thenReturn(new com.uxplima.uxmskyblock.core.application.profile.ProfileTypes(
+                            mock(com.uxplima.uxmskyblock.core.application.profile.ProfileTypePort.class)));
             PlayerSessionCoordinator coordinator = mock(PlayerSessionCoordinator.class);
             when(authority.sessionCoordinator()).thenReturn(coordinator);
             when(authority.activeProfileProvider()).thenReturn(uuid -> java.util.Optional.empty());
@@ -229,6 +234,9 @@ class ZeroFootprintModuleWiringTest {
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();
             AuthorityWiring authority = mock(AuthorityWiring.class);
+            when(authority.profileTypes())
+                    .thenReturn(new com.uxplima.uxmskyblock.core.application.profile.ProfileTypes(
+                            mock(com.uxplima.uxmskyblock.core.application.profile.ProfileTypePort.class)));
             PlayerSessionCoordinator coordinator = mock(PlayerSessionCoordinator.class);
             when(authority.sessionCoordinator()).thenReturn(coordinator);
             when(authority.activeProfileProvider()).thenReturn(uuid -> java.util.Optional.empty());
@@ -381,6 +389,8 @@ class ZeroFootprintModuleWiringTest {
         when(config.generatorsConfig()).thenReturn(generators);
         when(config.oneBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.OneBlockConfiguration.defaultConfiguration());
+        when(config.lifecycleConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration());
         when(config.effectsConfig()).thenReturn(com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects.none());
 
         return config;
