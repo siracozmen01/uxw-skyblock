@@ -393,6 +393,8 @@ class ZeroFootprintModuleWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.LifecycleConfiguration.defaultConfiguration());
         when(config.chunkBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration());
+        when(config.skyGridConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration.defaultConfiguration());
         when(config.caveBlockConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration.defaultConfiguration());
         when(config.acidIslandConfig())

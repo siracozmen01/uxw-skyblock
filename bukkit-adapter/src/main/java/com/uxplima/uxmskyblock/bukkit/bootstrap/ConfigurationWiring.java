@@ -106,6 +106,7 @@ public final class ConfigurationWiring {
     private final com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration chunkBlockConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration acidIslandConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration caveBlockConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration skyGridConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -182,6 +183,7 @@ public final class ConfigurationWiring {
             com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration chunkBlockConfig,
             com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration acidIslandConfig,
             com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration caveBlockConfig,
+            com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration skyGridConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -221,6 +223,7 @@ public final class ConfigurationWiring {
         this.chunkBlockConfig = Objects.requireNonNull(chunkBlockConfig, "chunkBlockConfig must not be null");
         this.acidIslandConfig = Objects.requireNonNull(acidIslandConfig, "acidIslandConfig must not be null");
         this.caveBlockConfig = Objects.requireNonNull(caveBlockConfig, "caveBlockConfig must not be null");
+        this.skyGridConfig = Objects.requireNonNull(skyGridConfig, "skyGridConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -302,6 +305,7 @@ public final class ConfigurationWiring {
                 com.uxplima.uxmskyblock.bukkit.config.ChunkBlockConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.AcidIslandConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -494,6 +498,11 @@ public final class ConfigurationWiring {
 
     public GeneratorsConfiguration generatorsConfig() {
         return generatorsConfig;
+    }
+
+    /** Whether islands can be SkyGrid islands, where the grid's blocks stand and which blocks they are. */
+    public com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration skyGridConfig() {
+        return skyGridConfig;
     }
 
     /** Whether islands can be CaveBlock islands, the shape of their rock and the rock of each dimension. */

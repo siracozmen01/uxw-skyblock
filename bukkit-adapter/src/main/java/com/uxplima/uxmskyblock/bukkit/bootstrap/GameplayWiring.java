@@ -352,15 +352,25 @@ public final class GameplayWiring {
         return playerLifecycle;
     }
 
-    /** The action that encloses a CaveBlock island in rock, while CaveBlock is enabled, and none otherwise. */
+    /**
+     * The actions of the game modes that are only a way of building an island: CaveBlock's rock and
+     * SkyGrid's grid, each while its module is enabled.
+     */
     private static java.util.stream.Stream<
                     com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
                             com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
             caveBlockStart(ConfigurationWiring config, SchedulerPort scheduler) {
         com.uxplima.uxmskyblock.bukkit.config.CaveBlockConfiguration cave = config.caveBlockConfig();
-        return cave.enabled()
-                ? java.util.stream.Stream.of(new com.uxplima.uxmskyblock.bukkit.cave.CavernStart(scheduler, cave))
-                : java.util.stream.Stream.empty();
+        com.uxplima.uxmskyblock.bukkit.config.SkyGridConfiguration grid = config.skyGridConfig();
+        return java.util.stream.Stream.concat(
+                cave.enabled()
+                        ? java.util.stream.Stream.of(
+                                new com.uxplima.uxmskyblock.bukkit.cave.CavernStart(scheduler, cave))
+                        : java.util.stream.Stream.empty(),
+                grid.enabled()
+                        ? java.util.stream.Stream.of(
+                                new com.uxplima.uxmskyblock.bukkit.grid.SkyGridStart(scheduler, grid))
+                        : java.util.stream.Stream.empty());
     }
 
     /** The OneBlock game mode's service and the schedule that writes its counts. */

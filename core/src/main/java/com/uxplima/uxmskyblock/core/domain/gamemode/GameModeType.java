@@ -9,5 +9,6 @@ public enum GameModeType {
     ONEBLOCK,
     CHUNKBLOCK,
     ACID_ISLAND,
-    CAVEBLOCK
+    CAVEBLOCK,
+    SKYGRID
 }
