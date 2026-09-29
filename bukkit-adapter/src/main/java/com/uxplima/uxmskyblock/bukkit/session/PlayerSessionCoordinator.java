@@ -364,49 +364,65 @@ public final class PlayerSessionCoordinator {
             if (player == null || !player.isOnline() || session.isFenced()) {
                 return;
             }
-            org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
-            if (top != null && top.getHolder() instanceof WritesPlayerStateItself) {
-                // The window writes what the player holds when it closes; see WritesPlayerStateItself.
-                return;
-            }
-
-            ProfileInventoryRecord snapshot = BukkitInventorySerializer.snapshotPlayer(
+            ProfileInventoryRecord taken = BukkitInventorySerializer.snapshotPlayer(
                     player, session.activeProfileId(), session.lastDurableVersion());
+            org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+            if (top != null && top.getHolder() instanceof WritesPlayerStateItself selfWriting) {
+                // The window writes what the player holds when it closes. Until then the player is
+                // written as the stored state leaves them, or not at all; see WritesPlayerStateItself.
+                org.bukkit.inventory.ItemStack[] asStored = selfWriting.inventoryAsStored(player, top);
+                if (asStored == null) {
+                    return;
+                }
+                taken = taken.withInventoryNbt(
+                        taken.version(), BukkitInventorySerializer.serializeItemStacks(asStored));
+            }
+            ProfileInventoryRecord snapshot = taken;
 
             schedulerPort.async(() -> {
                 if (session.isFenced()) {
                     return;
                 }
-                ProfileInventoryMutationOutcome outcome;
-                try {
-                    outcome = inventoryCheckpointPort.checkpointInventory(
-                            playerUuid,
-                            session.activeProfileId(),
-                            nodeId,
-                            session.sessionEpoch(),
-                            session.lastDurableVersion(),
-                            snapshot);
-                } catch (RuntimeException e) {
-                    // A database that did not answer loses nothing: the session keeps the version it
-                    // last wrote and the next checkpoint writes the whole state again. Thrown out of
-                    // the repeating task, this could stop every checkpoint after it.
-                    LOGGER.log(
-                            Level.WARNING,
-                            "Ambient checkpoint failed for " + playerUuid.value()
-                                    + "; the next one writes the same state",
-                            e);
+                if (!session.writes().tryLock()) {
+                    // Another write of this player is landing; the next checkpoint writes after it.
                     return;
                 }
-
-                if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
-                    session.setLastDurableVersion(succ.newVersion());
-                } else {
-                    LOGGER.log(
-                            Level.WARNING, "Ambient checkpoint rejected for {0}: {1}", new Object[] {playerUuid, outcome
-                            });
+                try {
+                    checkpointNow(playerUuid, session, snapshot);
+                } finally {
+                    session.writes().unlock();
                 }
             });
         });
+    }
+
+    /** Writes one checkpoint, holding the session's write lock. */
+    private void checkpointNow(PlayerUuid playerUuid, ActiveSession session, ProfileInventoryRecord snapshot) {
+        ProfileInventoryMutationOutcome outcome;
+        try {
+            outcome = inventoryCheckpointPort.checkpointInventory(
+                    playerUuid,
+                    session.activeProfileId(),
+                    nodeId,
+                    session.sessionEpoch(),
+                    session.lastDurableVersion(),
+                    snapshot);
+        } catch (RuntimeException e) {
+            // A database that did not answer loses nothing: the session keeps the version it
+            // last wrote and the next checkpoint writes the whole state again. Thrown out of
+            // the repeating task, this could stop every checkpoint after it.
+            LOGGER.log(
+                    Level.WARNING,
+                    "Ambient checkpoint failed for " + playerUuid.value() + "; the next one writes the same state",
+                    e);
+            return;
+        }
+
+        if (outcome instanceof ProfileInventoryMutationOutcome.Success succ) {
+            session.setLastDurableVersion(succ.newVersion());
+        } else {
+            LOGGER.log(Level.WARNING, "Ambient checkpoint rejected for {0}: {1}", new Object[] {playerUuid, outcome});
+        }
     }
 
     /**

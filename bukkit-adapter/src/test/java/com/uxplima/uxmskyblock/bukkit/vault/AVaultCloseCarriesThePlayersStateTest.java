@@ -99,6 +99,36 @@ class AVaultCloseCarriesThePlayersStateTest {
     }
 
     @Test
+    @DisplayName("A checkpoint that lands between the close and the save moves the version the save writes over")
+    void aCheckpointBetweenTheCloseAndTheSaveIsBuiltOn() {
+        java.util.List<Runnable> later = new java.util.ArrayList<>();
+        SchedulerPort deferred = inlineScheduler();
+        doAnswer(invocation -> later.add(invocation.getArgument(0, Runnable.class)))
+                .when(deferred)
+                .async(any(Runnable.class));
+        IslandVaultWindow deferring = new IslandVaultWindow(
+                vaultService,
+                mock(IslandStoragePort.class),
+                deferred,
+                VaultConfiguration.defaultConfiguration(),
+                Messages.bundled(),
+                sessions);
+        PlayerMock player = server.addPlayer();
+        ActiveSession session = new ActiveSession(new PlayerUuid(player.getUniqueId()), profile, 4L, 9L);
+        when(sessions.getActiveSession(player.getUniqueId())).thenReturn(session);
+
+        deferring.commit(player, holder(profile), new ItemStack[] {null});
+        // The checkpoint taken while the window was open lands before the save does.
+        session.setLastDurableVersion(10L);
+        later.forEach(Runnable::run);
+
+        PlayerStateWrite written = captured();
+        assertThat(written.expectedVersion()).isEqualTo(10L);
+        assertThat(written.state().version()).isEqualTo(10L);
+        assertThat(session.lastDurableVersion()).isEqualTo(11L);
+    }
+
+    @Test
     @DisplayName("A window opened for another profile than the one in play carries nothing for the player")
     void anotherProfileCarriesNothing() {
         PlayerMock player = server.addPlayer();

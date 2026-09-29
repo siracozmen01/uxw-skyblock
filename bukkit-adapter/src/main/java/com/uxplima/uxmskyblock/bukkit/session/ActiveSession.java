@@ -25,6 +25,7 @@ public final class ActiveSession {
     private volatile ProfileId activeProfileId;
     private final AtomicLong sessionEpoch;
     private final AtomicLong lastDurableVersion;
+    private final java.util.concurrent.locks.ReentrantLock writes = new java.util.concurrent.locks.ReentrantLock();
     private final AtomicReference<SessionState> state = new AtomicReference<>(SessionState.ACTIVE);
     private final AtomicReference<@Nullable AutoCloseable> heartbeatTask = new AtomicReference<>(null);
     private final AtomicReference<@Nullable AutoCloseable> checkpointTask = new AtomicReference<>(null);
@@ -73,6 +74,18 @@ public final class ActiveSession {
 
     public void setLastDurableVersion(long version) {
         this.lastDurableVersion.set(version);
+    }
+
+    /**
+     * Held by whatever writes this player's state, so two writes never race for the same version.
+     *
+     * <p>A checkpoint and a vault save each write over the version the session last wrote. Run at
+     * once, one of them was refused, and a refused vault save hands the page's items back as though the
+     * player never moved them. A checkpoint that finds this held leaves it to the next one; a vault save
+     * waits for it and writes over the version the checkpoint left.
+     */
+    public java.util.concurrent.locks.ReentrantLock writes() {
+        return writes;
     }
 
     /**

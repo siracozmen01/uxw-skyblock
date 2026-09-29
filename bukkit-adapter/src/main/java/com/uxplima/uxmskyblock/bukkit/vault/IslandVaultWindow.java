@@ -1,14 +1,11 @@
 package com.uxplima.uxmskyblock.bukkit.vault;
 
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -32,7 +29,6 @@ import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandMember;
 import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.island.IslandRole;
-import com.uxplima.uxmskyblock.core.domain.vault.VaultActionType;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultAuditLogEntry;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultPage;
 import com.uxplima.uxmskyblock.core.domain.vault.VaultPageBusyException;
@@ -95,6 +91,15 @@ public final class IslandVaultWindow {
         @Override
         public Inventory getInventory() {
             throw new UnsupportedOperationException("The holder is a marker; the inventory owns it, not the reverse.");
+        }
+
+        /** The player as the stored page leaves them: see {@link WhatThePageOwes#asStored}. */
+        @Override
+        public ItemStack @Nullable [] inventoryAsStored(Player player, Inventory window) {
+            return WhatThePageOwes.asStored(
+                    player.getInventory().getContents(),
+                    player.getItemOnCursor(),
+                    WhatThePageOwes.between(openedWith, window.getContents()));
         }
     }
 
@@ -264,7 +269,7 @@ public final class IslandVaultWindow {
                 page,
                 profileId,
                 opened.session().sessionId().value().toString(),
-                snapshotOf(stored, configuration.slotsPerPage()),
+                WhatThePageOwes.openedWith(stored, configuration.slotsPerPage()),
                 mayDeposit,
                 mayWithdraw);
         Inventory inventory = Bukkit.createInventory(
@@ -320,12 +325,11 @@ public final class IslandVaultWindow {
     public void commit(Player player, VaultHolder holder, ItemStack[] contents) {
         Objects.requireNonNull(holder, "holder must not be null");
         byte[] serialized = BukkitInventorySerializer.serializeItemStacks(contents);
-        List<VaultAuditLogEntry> auditTrail = auditTrailOf(holder, contents);
-        PlayerStateWrite playerState = stateOf(player, holder);
+        List<VaultAuditLogEntry> auditTrail = VaultAuditTrail.of(holder, contents);
+        PlayerAtClose playerState = stateOf(player, holder);
         schedulerPort.async(() -> {
             try {
                 commitPage(holder, serialized, playerState, auditTrail);
-                settled(player, playerState);
             } catch (RuntimeException e) {
                 // The window is already closed and what it held is nowhere: not in the page, because
                 // the commit was refused, and not with the player, because they put it in the vault.
@@ -353,14 +357,13 @@ public final class IslandVaultWindow {
             return;
         }
         ItemStack[] contents = top.getContents();
-        PlayerStateWrite playerState = stateOf(player, holder);
+        PlayerAtClose playerState = stateOf(player, holder);
         try {
             commitPage(
                     holder,
                     BukkitInventorySerializer.serializeItemStacks(contents),
                     playerState,
-                    auditTrailOf(holder, contents));
-            settled(player, playerState);
+                    VaultAuditTrail.of(holder, contents));
         } catch (RuntimeException e) {
             LOGGER.log(
                     java.util.logging.Level.WARNING,
@@ -371,18 +374,49 @@ public final class IslandVaultWindow {
         }
     }
 
+    /**
+     * Writes the page, and the player with it, under the session's write lock.
+     *
+     * <p>The player is written over the version the session stands at when the lock is taken, not the
+     * one it stood at when the window closed: a checkpoint that landed in between moved it on, and a
+     * save over the older version was refused and handed the page's items back.
+     */
     private void commitPage(
             VaultHolder holder,
             byte[] serialized,
-            @Nullable PlayerStateWrite playerState,
+            @Nullable PlayerAtClose player,
             List<VaultAuditLogEntry> auditTrail) {
-        vaultService.commitVaultPage(
-                com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId.fromString(holder.sessionId()),
-                serialized,
-                holder.profileId().toString(),
-                playerState,
-                auditTrail);
+        com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId sessionId =
+                com.uxplima.uxmskyblock.core.domain.vault.VaultSessionId.fromString(holder.sessionId());
+        if (player == null) {
+            vaultService.commitVaultPage(
+                    sessionId, serialized, holder.profileId().toString(), null, auditTrail);
+            return;
+        }
+        ActiveSession session = player.session();
+        session.writes().lock();
+        try {
+            long version = session.lastDurableVersion();
+            PlayerStateWrite write = new PlayerStateWrite(
+                    session.playerUuid(),
+                    player.node(),
+                    session.sessionEpoch(),
+                    version,
+                    player.state().withInventoryNbt(version, player.state().inventoryNbt()));
+            vaultService.commitVaultPage(
+                    sessionId, serialized, holder.profileId().toString(), write, auditTrail);
+            // The session now stands at the version the commit wrote, so the next checkpoint builds on it.
+            session.setLastDurableVersion(write.writtenVersion());
+        } finally {
+            session.writes().unlock();
+        }
     }
+
+    /** What the player holds as the window closes, and the session it is written under. */
+    private record PlayerAtClose(
+            ActiveSession session,
+            com.uxplima.uxmskyblock.core.domain.session.ServerNodeId node,
+            com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord state) {}
 
     /**
      * What the player holds as the window closes, to be written with the page.
@@ -392,7 +426,7 @@ public final class IslandVaultWindow {
      * they had taken out. Both are now written in one transaction, under the player's session. A
      * player with no session here has nothing to write, and the page is written alone as before.
      */
-    private @Nullable PlayerStateWrite stateOf(Player player, VaultHolder holder) {
+    private @Nullable PlayerAtClose stateOf(Player player, VaultHolder holder) {
         PlayerSessionCoordinator sessions = this.sessionCoordinator;
         if (sessions == null) {
             return null;
@@ -401,25 +435,11 @@ public final class IslandVaultWindow {
         if (session == null || !session.activeProfileId().equals(holder.profileId())) {
             return null;
         }
-        return new PlayerStateWrite(
-                session.playerUuid(),
+        return new PlayerAtClose(
+                session,
                 sessions.nodeId(),
-                session.sessionEpoch(),
-                session.lastDurableVersion(),
                 BukkitInventorySerializer.snapshotPlayer(
                         player, session.activeProfileId(), session.lastDurableVersion()));
-    }
-
-    /** The session now stands at the version the commit wrote, so the next checkpoint builds on it. */
-    private void settled(Player player, @Nullable PlayerStateWrite playerState) {
-        PlayerSessionCoordinator sessions = this.sessionCoordinator;
-        if (playerState == null || sessions == null) {
-            return;
-        }
-        ActiveSession session = sessions.getActiveSession(player.getUniqueId());
-        if (session != null && session.sessionEpoch() == playerState.sessionEpoch()) {
-            session.setLastDurableVersion(playerState.writtenVersion());
-        }
     }
 
     private IslandRole roleOf(Island island, ProfileId profileId) {
@@ -447,39 +467,11 @@ public final class IslandVaultWindow {
      * taken back, and is written to the log with who and what, for an administrator to settle.
      */
     private void settleTheRefusedCommit(Player player, VaultHolder holder, ItemStack[] atClose) {
-        List<ItemStack> stillInThePage = new ArrayList<>();
-        for (ItemStack stack : holder.openedWith()) {
-            if (!stack.getType().isAir()) {
-                stillInThePage.add(stack.clone());
-            }
-        }
+        WhatThePageOwes.Moved moved = WhatThePageOwes.between(holder.openedWith(), atClose);
+        List<ItemStack> stillInThePage = moved.takenOut();
+        List<ItemStack> putIn = moved.putIn();
 
-        List<ItemStack> putIn = new ArrayList<>();
-        for (ItemStack stack : atClose) {
-            if (stack == null || stack.getType().isAir()) {
-                continue;
-            }
-            ItemStack owed = stack.clone();
-            // Take this stack's amount out of what the page still holds, stack by stack, so a player
-            // who added ten to a stack of five gets ten back and not fifteen.
-            for (Iterator<ItemStack> stored = stillInThePage.iterator(); stored.hasNext() && owed.getAmount() > 0; ) {
-                ItemStack candidate = stored.next();
-                if (!candidate.isSimilar(owed)) {
-                    continue;
-                }
-                int settled = Math.min(candidate.getAmount(), owed.getAmount());
-                owed.setAmount(owed.getAmount() - settled);
-                candidate.setAmount(candidate.getAmount() - settled);
-                if (candidate.getAmount() <= 0) {
-                    stored.remove();
-                }
-            }
-            if (owed.getAmount() > 0) {
-                putIn.add(owed);
-            }
-        }
-
-        // What is left of the page is what the player took out and the page still holds.
+        // What the player took out, the page still holds.
         for (ItemStack takenOut : stillInThePage) {
             for (ItemStack kept : player.getInventory().removeItem(takenOut).values()) {
                 LOGGER.warning(() -> player.getName() + " took " + kept.getAmount() + " " + kept.getType()
@@ -492,70 +484,5 @@ public final class IslandVaultWindow {
                 player.getWorld().dropItemNaturally(player.getLocation(), overflow);
             }
         }
-    }
-
-    /** The page as it stood when the window opened, one entry per slot, air where a slot was empty. */
-    private static List<ItemStack> snapshotOf(ItemStack[] stored, int slots) {
-        List<ItemStack> snapshot = new ArrayList<>(slots);
-        for (int slot = 0; slot < slots; slot++) {
-            ItemStack stack = slot < stored.length ? stored[slot] : null;
-            snapshot.add(stack == null ? new ItemStack(Material.AIR) : stack.clone());
-        }
-        return snapshot;
-    }
-
-    /**
-     * What the player moved, slot by slot, as audit entries.
-     *
-     * <p>The vault has held a security audit table, a port and a service call since the vault work,
-     * and nothing ever wrote a row: the window passed an empty list at every commit. A shared chest
-     * several island members can reach is exactly the thing an owner needs a record of.
-     *
-     * <p>A slot whose item changed outright is two entries, one out and one in, because that is what
-     * happened. A slot that only changed amount is the one entry for the difference.
-     */
-    private static List<VaultAuditLogEntry> auditTrailOf(VaultHolder holder, ItemStack[] atClose) {
-        List<ItemStack> openedWith = holder.openedWith();
-        List<VaultAuditLogEntry> trail = new ArrayList<>();
-        int slots = Math.max(openedWith.size(), atClose.length);
-        for (int slot = 0; slot < slots; slot++) {
-            ItemStack before = somethingOrNothing(slot < openedWith.size() ? openedWith.get(slot) : null);
-            ItemStack after = somethingOrNothing(slot < atClose.length ? atClose[slot] : null);
-
-            if (before != null && after != null && before.isSimilar(after)) {
-                int moved = after.getAmount() - before.getAmount();
-                if (moved > 0) {
-                    trail.add(entry(holder, slot, VaultActionType.DEPOSIT, after, moved));
-                } else if (moved < 0) {
-                    trail.add(entry(holder, slot, VaultActionType.WITHDRAW, before, -moved));
-                }
-                continue;
-            }
-            if (before != null) {
-                trail.add(entry(holder, slot, VaultActionType.WITHDRAW, before, before.getAmount()));
-            }
-            if (after != null) {
-                trail.add(entry(holder, slot, VaultActionType.DEPOSIT, after, after.getAmount()));
-            }
-        }
-        return List.copyOf(trail);
-    }
-
-    /** An empty slot and an air stack are the same thing here: nothing. */
-    private static @Nullable ItemStack somethingOrNothing(@Nullable ItemStack stack) {
-        return stack == null || stack.getType().isAir() ? null : stack;
-    }
-
-    private static VaultAuditLogEntry entry(
-            VaultHolder holder, int slot, VaultActionType action, ItemStack stack, int quantity) {
-        String summary = stack.getType().name();
-        return VaultAuditLogEntry.create(
-                holder.islandId(),
-                holder.page(),
-                holder.profileId().toString(),
-                action,
-                slot,
-                summary.length() > 128 ? summary.substring(0, 128) : summary,
-                quantity);
     }
 }
