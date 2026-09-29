@@ -189,7 +189,7 @@ public final class GameplayWiring {
         this.oneBlockWiring = new OneBlockWiring(
                 config, persistence, scheduler, protectionListener, authority.sessionCoordinator()::activeProfile);
         this.chunkBlockWiring = new ChunkBlockWiring(config, persistence, scheduler, protectionListener);
-        this.acidIslandWiring = new AcidIslandWiring(config, persistence, scheduler);
+        this.acidIslandWiring = new AcidIslandWiring(config, persistence, scheduler, protectionListener);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,

@@ -66,6 +66,10 @@ public final class EffectsConfiguration {
                 parseAll(
                         "oneblock-phase-began",
                         List.of("[sound] ui.toast.challenge_complete 1.0 0.8", "[particle] TOTEM_OF_UNDYING 30 0.6")));
+        defaults.put(
+                "acid-sea-burns",
+                parseAll("acid-sea-burns", List.of("[sound] block.fire.extinguish 0.5 1.6", "[particle] SMOKE 8 0.3")));
+        defaults.put("acid-rain-burns", parseAll("acid-rain-burns", List.of("[sound] block.fire.extinguish 0.3 1.9")));
         return new InteractionEffects(defaults);
     }
 

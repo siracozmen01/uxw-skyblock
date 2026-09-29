@@ -85,7 +85,9 @@ class EveryMilestoneFiresWhatWasWrittenTest {
                         "island-created",
                         "member-joined",
                         "upgrade-bought",
-                        "oneblock-phase-began"));
+                        "oneblock-phase-began",
+                        "acid-sea-burns",
+                        "acid-rain-burns"));
     }
 
     private static Set<String> firedInteractions() throws IOException {
