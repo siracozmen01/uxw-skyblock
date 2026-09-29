@@ -134,6 +134,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
             lifecycleOwedEffectsAdapter;
     private final SqlNotificationAdapter notificationAdapter;
     private final com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter clusterNodesAdapter;
+    private final com.uxplima.uxmskyblock.persistence.chunkblock.SqlChunkTerritoryAdapter chunkTerritoryAdapter;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
             profileCosmeticStorageAdapter;
@@ -196,6 +197,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
                 new com.uxplima.uxmskyblock.persistence.lifecycle.SqlLifecycleOwedEffectsAdapter(database.dataSource());
         this.notificationAdapter = new SqlNotificationAdapter(database.dataSource());
         this.clusterNodesAdapter = new com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter(database);
+        this.chunkTerritoryAdapter =
+                new com.uxplima.uxmskyblock.persistence.chunkblock.SqlChunkTerritoryAdapter(database.dataSource());
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
         this.islandRecycleStorageAdapter =
@@ -423,6 +426,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public ActivityFeedStoragePort activityFeedStoragePort() {
         return activityFeedAdapter;
+    }
+
+    /** The chunks each ChunkBlock island has open. */
+    public com.uxplima.uxmskyblock.core.application.chunkblock.ChunkTerritoryPort chunkTerritoryPort() {
+        return chunkTerritoryAdapter;
     }
 
     /** Which nodes are alive, the world each serves and how loaded it is. */

@@ -16,6 +16,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.network.IslandPlacement;
 import com.uxplima.uxmskyblock.core.application.network.PlacementStrategies;
 import com.uxplima.uxmskyblock.core.application.network.PlacementStrategy;
+import com.uxplima.uxmskyblock.core.domain.chunkblock.ChunkPos;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstance;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeInstanceId;
 import com.uxplima.uxmskyblock.core.domain.gamemode.GameModeType;
@@ -31,6 +32,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
 import com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEffect;
 import com.uxplima.uxmskyblock.core.domain.network.NodeHealth;
 import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
+import com.uxplima.uxmskyblock.persistence.chunkblock.SqlChunkTerritoryAdapter;
 import com.uxplima.uxmskyblock.persistence.island.PlayerIslandStorageAdapter;
 import com.uxplima.uxmskyblock.persistence.migration.SkyblockMigrations;
 import com.uxplima.uxmskyblock.persistence.network.SqlClusterNodesAdapter;
@@ -231,9 +233,31 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(owedEffects.owed(owner)).containsExactly(LifecycleEffect.SEND_TO_SPAWN);
             assertThat(owedEffects.owed(PlayerUuid.of(UUID.randomUUID()))).isEmpty();
 
-            // Deleting the island takes its OneBlock row with it.
+            // A ChunkBlock island's chunks: started once, opened in order, a taken place refused, closed.
+            SqlChunkTerritoryAdapter chunks = new SqlChunkTerritoryAdapter(database.dataSource());
+            chunks.start(islandId, new ChunkPos(0, 0));
+            chunks.start(islandId, new ChunkPos(5, 5));
+            assertThat(chunks.open(islandId, new ChunkPos(1, 0), 1)).isTrue();
+            assertThat(chunks.open(islandId, new ChunkPos(0, 1), 1))
+                    .describedAs("two openings at once: the second finds its place taken")
+                    .isFalse();
+            assertThat(chunks.open(islandId, new ChunkPos(1, 0), 2)).isFalse();
+            assertThat(chunks.open(islandId, new ChunkPos(-1, 0), 2)).isTrue();
+            assertThat(chunks.find(islandId)).get().satisfies(territory -> {
+                assertThat(territory.origin()).isEqualTo(new ChunkPos(0, 0));
+                assertThat(territory.opened()).containsExactly(new ChunkPos(1, 0), new ChunkPos(-1, 0));
+            });
+            chunks.close(islandId, java.util.List.of(new ChunkPos(-1, 0), new ChunkPos(0, 0)));
+            assertThat(chunks.find(islandId).orElseThrow().opened()).containsExactly(new ChunkPos(1, 0));
+            assertThat(chunks.find(islandId).orElseThrow().origin())
+                    .describedAs("the first chunk is never closed")
+                    .isEqualTo(new ChunkPos(0, 0));
+            assertThat(chunks.open(islandId, new ChunkPos(-1, 0), 2)).isTrue();
+
+            // Deleting the island takes its OneBlock row and its chunks with it.
             islands.deleteIsland(islandId);
             assertThat(oneBlock.find(islandId)).isEmpty();
+            assertThat(chunks.find(islandId)).isEmpty();
         } finally {
             if (!database.isClosed()) {
                 database.close();
