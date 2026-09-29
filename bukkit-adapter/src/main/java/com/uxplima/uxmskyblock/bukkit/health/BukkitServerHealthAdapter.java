@@ -11,15 +11,32 @@ import com.uxplima.uxmskyblock.core.application.health.ServerHealthPort;
 public final class BukkitServerHealthAdapter implements ServerHealthPort {
 
     private final SpatialIslandIndex spatialIndex;
+    private final java.util.function.Supplier<double[]> serverTps;
 
     public BukkitServerHealthAdapter(SpatialIslandIndex spatialIndex) {
-        this.spatialIndex = Objects.requireNonNull(spatialIndex, "spatialIndex must not be null");
+        this(spatialIndex, Bukkit::getTPS);
     }
 
+    /** Package private so a test can stand in for a server that keeps no single tick rate. */
+    BukkitServerHealthAdapter(SpatialIslandIndex spatialIndex, java.util.function.Supplier<double[]> serverTps) {
+        this.spatialIndex = Objects.requireNonNull(spatialIndex, "spatialIndex must not be null");
+        this.serverTps = Objects.requireNonNull(serverTps, "serverTps must not be null");
+    }
+
+    /**
+     * The server's tick rate, or NaN where there is none to read.
+     *
+     * <p>Folia ticks each region on its own and refuses the question off a region's thread, which is
+     * where a REST call arrives: the health endpoint answered every call with a server error.
+     */
     @Override
     public double ticksPerSecond() {
-        double[] tps = Bukkit.getTPS();
-        return tps.length > 0 ? tps[0] : 0.0;
+        try {
+            double[] tps = serverTps.get();
+            return tps.length > 0 ? tps[0] : Double.NaN;
+        } catch (UnsupportedOperationException perRegion) {
+            return Double.NaN;
+        }
     }
 
     @Override

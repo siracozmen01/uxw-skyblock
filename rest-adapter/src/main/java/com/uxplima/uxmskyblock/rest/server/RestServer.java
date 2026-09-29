@@ -144,7 +144,10 @@ public final class RestServer implements AutoCloseable {
         // The three the enterprise foundation document publishes. They are absent rather than
         // invented when this node has no health source wired, which a caller can tell apart.
         if (healthPort != null) {
-            body.put("ticksPerSecond", round(healthPort.ticksPerSecond()));
+            double tps = healthPort.ticksPerSecond();
+            if (!Double.isNaN(tps)) {
+                body.put("ticksPerSecond", round(tps));
+            }
             body.put("activeIslands", healthPort.activeIslandCount());
             body.put("cacheHitRatio", round(healthPort.spatialCacheHitRatio()));
         }

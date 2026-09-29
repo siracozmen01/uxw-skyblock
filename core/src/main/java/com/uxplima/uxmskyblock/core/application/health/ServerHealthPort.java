@@ -8,7 +8,10 @@ package com.uxplima.uxmskyblock.core.application.health;
  */
 public interface ServerHealthPort {
 
-    /** Ticks per second over the last minute, as the server measures it. */
+    /**
+     * Ticks per second over the last minute, as the server measures it, or NaN where the server keeps
+     * no single rate: Folia ticks each region on its own.
+     */
     double ticksPerSecond();
 
     /** How many islands are live on this node. */

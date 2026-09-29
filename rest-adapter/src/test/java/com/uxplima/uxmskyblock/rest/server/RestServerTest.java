@@ -657,6 +657,49 @@ class RestServerTest {
     }
 
     @Test
+    @DisplayName("A server that keeps no single tick rate leaves it out and still answers")
+    void testHealthWithoutATickRate() throws Exception {
+        RestServer folia = new RestServer(
+                new RestConfiguration(true, "127.0.0.1", 0, TEST_TOKEN),
+                NODE_ID,
+                islandStoragePort,
+                bankService,
+                leaderboardService,
+                new com.uxplima.uxmskyblock.core.application.health.ServerHealthPort() {
+                    @Override
+                    public double ticksPerSecond() {
+                        return Double.NaN;
+                    }
+
+                    @Override
+                    public int activeIslandCount() {
+                        return 3;
+                    }
+
+                    @Override
+                    public double spatialCacheHitRatio() {
+                        return 1.0;
+                    }
+                });
+        folia.start();
+        try {
+            HttpResponse<String> response = httpClient.send(
+                    HttpRequest.newBuilder()
+                            .uri(URI.create("http://127.0.0.1:" + folia.port() + "/api/v1/health"))
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+            assertThat(json.has("ticksPerSecond")).isFalse();
+            assertThat(json.get("activeIslands").getAsInt()).isEqualTo(3);
+        } finally {
+            folia.close();
+        }
+    }
+
+    @Test
     @DisplayName("The board answers on the documented path as well as the code's own")
     void testLeaderboardAnswersOnBothPaths() throws Exception {
         when(leaderboardService.getTop(LeaderboardCategory.LEVEL, 10))
