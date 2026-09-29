@@ -117,6 +117,36 @@ class ConfigReachesAnOldServerTest {
     }
 
     @Test
+    @DisplayName("A section new to this release keeps every value the operator already wrote in it, empty ones too")
+    void aNewSectionKeepsWhatTheOperatorWrote() throws Exception {
+        Path file = dataDir.resolve("missions.conf");
+        Files.writeString(file, "enabled = true");
+        try (URLClassLoader first = loader(release("enabled = true"))) {
+            PluginSettings.bringUpToDate(dataDir, file, "missions.conf", first);
+        }
+        Files.writeString(file, "enabled = true\nmodes { keep = \"\", build = SURVIVAL, list = [] }\nstreak = off");
+
+        try (URLClassLoader next = loader(release(
+                "enabled = true\nmodes { keep = \"a.permission\", build = CREATIVE, visit = ADVENTURE, list = [a] }\n"
+                        + "streak { days = 3 }"))) {
+            assertThat(PluginSettings.bringUpToDate(dataDir, file, "missions.conf", next))
+                    .isTrue();
+        }
+        ConfigurationNode now = read(file);
+        assertThat(now.node("modes", "visit").getString()).isEqualTo("ADVENTURE");
+        assertThat(now.node("modes", "build").getString()).isEqualTo("SURVIVAL");
+        assertThat(now.node("modes", "keep").getString())
+                .describedAs("an empty value is a value the operator wrote")
+                .isEmpty();
+        assertThat(now.node("modes", "list").childrenList())
+                .describedAs("an empty list is a list the operator wrote")
+                .isEmpty();
+        assertThat(now.node("streak").getString())
+                .describedAs("a value where the release has a section stays the operator's value")
+                .isEqualTo("off");
+    }
+
+    @Test
     @DisplayName("The boot brings the operator's files up to date before it reads them")
     void theBootMakesTheCall() throws Exception {
         Path config = dataDir.resolve("config.conf");
