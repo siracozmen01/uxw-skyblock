@@ -84,7 +84,7 @@ public final class PluginSettings {
             ConfigurationNode was = baseline == null ? null : baseline.node(key);
             ConfigurationNode liveChild = live.node(key);
             if (was == null || was.virtual()) {
-                addMissing(child.getValue(), liveChild, into, key);
+                into.node(key).from(child.getValue());
                 continue;
             }
             if (child.getValue().isMap() && was.isMap() && liveChild.isMap()) {
@@ -94,27 +94,6 @@ public final class PluginSettings {
                     into.node(key).from(nested);
                 }
             }
-        }
-    }
-
-    /**
-     * Copies into {@code into} under {@code key} what the operator's {@code live} node lacks of
-     * {@code shipped}. A key the operator already wrote, ahead of the release, keeps its value, an empty
-     * one too: the merge underneath fills an empty string or list as though it were missing.
-     */
-    private static void addMissing(
-            ConfigurationNode shipped, ConfigurationNode live, CommentedConfigurationNode into, Object key) {
-        if (live.virtual()) {
-            into.node(key).from(shipped);
-            return;
-        }
-        CommentedConfigurationNode nested = CommentedConfigurationNode.root();
-        for (Map.Entry<Object, ? extends ConfigurationNode> child :
-                shipped.childrenMap().entrySet()) {
-            addMissing(child.getValue(), live.node(child.getKey()), nested, child.getKey());
-        }
-        if (!nested.childrenMap().isEmpty()) {
-            into.node(key).from(nested);
         }
     }
 
