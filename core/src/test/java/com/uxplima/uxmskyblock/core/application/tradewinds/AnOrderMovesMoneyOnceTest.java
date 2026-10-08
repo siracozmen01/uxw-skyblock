@@ -121,6 +121,25 @@ class AnOrderMovesMoneyOnceTest {
     }
 
     @Test
+    @DisplayName("A key the bank refused before writing it down is asked again, never passed over")
+    void aKeyNotWrittenIsAskedAgain() {
+        docked();
+        hold.items.put("WHEAT", 10);
+        bank.next(PortMarket.Bank.Answer.NOT_NOW, PortMarket.Bank.Answer.NOT_NOW);
+        bank.forgets = true;
+
+        market().sell(vessel, ada, BAY, WHEAT);
+        assertThat(only().attempts()).isEqualTo(1);
+        market().recover(vessel);
+        assertThat(only().state()).isEqualTo(MarketOrdersPort.State.OWED);
+        market().recover(vessel);
+
+        assertThat(bank.asked).containsExactly(only().id() + ":pay:1", only().id() + ":pay:1", only().id() + ":pay:1");
+        assertThat(bank.balance).isEqualTo(200);
+        assertThat(only().state()).isEqualTo(MarketOrdersPort.State.DONE);
+    }
+
+    @Test
     @DisplayName("A purchase is paid once and stowed, and one the bank cannot pay changes nothing")
     void aPurchase() {
         docked();
@@ -428,6 +447,7 @@ class AnOrderMovesMoneyOnceTest {
         private final List<String> asked = new ArrayList<>();
         private long balance;
         private boolean landsAnyway;
+        private boolean forgets;
         private Runnable whenCharged = () -> {};
 
         void next(Answer... answers) {
@@ -442,6 +462,10 @@ class AnOrderMovesMoneyOnceTest {
                 return before;
             }
             Answer answer = script.isEmpty() ? Answer.LANDED : script.poll();
+            if (answer == Answer.NOT_NOW && forgets) {
+                // Not written down: the same key is a new question next time.
+                return Answer.NOT_NOW;
+            }
             if (answer == Answer.UNKNOWN) {
                 if (landsAnyway) {
                     balance += delta;

@@ -45,6 +45,12 @@ public final class PortMarket {
             NO_FUNDS,
             /** Refused for anything else: the key is spent and nothing moved. */
             REFUSED,
+            /**
+             * Refused before the key was written down, such as by a node that does not write the bank now:
+             * nothing moved and the key is not spent. It is asked again later, never passed over for a new
+             * one, or a key passed over could still move the money after a new one already had.
+             */
+            NOT_NOW,
             /** No answer: the move may or may not have happened, and the key must be asked again. */
             UNKNOWN
         }
@@ -251,7 +257,7 @@ public final class PortMarket {
                     orders.settle(order.id(), MarketOrdersPort.State.PAYING, MarketOrdersPort.State.CANCELLED);
                     yield Result.err("tradewinds.market.no_funds");
                 }
-                case REFUSED, UNKNOWN -> Result.err("tradewinds.market.pending");
+                case REFUSED, NOT_NOW, UNKNOWN -> Result.err("tradewinds.market.pending");
             };
         } finally {
             held.unlock();
@@ -300,7 +306,7 @@ public final class PortMarket {
                     case LANDED -> stow(order).isOk();
                     case NO_FUNDS ->
                         orders.settle(order.id(), MarketOrdersPort.State.PAYING, MarketOrdersPort.State.CANCELLED);
-                    case REFUSED, UNKNOWN -> false;
+                    case REFUSED, NOT_NOW, UNKNOWN -> false;
                 };
             case REFUNDING -> refund(order);
             case DONE, CANCELLED, REFUNDED -> false;
