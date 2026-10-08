@@ -150,16 +150,12 @@ public final class CargoHolds {
             messages.send(player, "tradewinds.hold.sealed");
             return;
         }
-        ActiveSession session = sessions.session(player.getUniqueId());
-        if (session == null) {
-            messages.send(player, "tradewinds.hold.busy");
-            return;
-        }
-        if (!island.get().isOwner(session.activeProfileId()) && !island.get().isMember(session.activeProfileId())) {
-            messages.send(player, "tradewinds.hold.not_crew");
-            return;
-        }
         IslandId vessel = island.get().id();
+        String refused = crewAboard(player, vessel);
+        if (refused != null) {
+            messages.send(player, refused);
+            return;
+        }
         PlayerUuid who = PlayerUuid.of(player.getUniqueId());
         scheduler.async(() -> {
             Optional<VesselsPort.Cargo> cargo;
@@ -206,6 +202,13 @@ public final class CargoHolds {
             messages.send(player, "tradewinds.hold.sealed");
             return;
         }
+        // Asked again on every click: a window stays open after its player left the crew or the vessel.
+        String refused = crewAboard(player, view.vessel());
+        if (refused != null) {
+            messages.send(player, refused);
+            player.closeInventory();
+            return;
+        }
         int slot = event.getSlot();
         if (clicked.getHolder() instanceof View) {
             ItemStack shown = clicked.getItem(slot);
@@ -242,6 +245,26 @@ public final class CargoHolds {
     /** A player who leaves sees no hold. */
     public void onLeave(UUID player) {
         viewers.values().forEach(watching -> watching.remove(player));
+    }
+
+    /**
+     * Why {@code player} may not work the hold of {@code vessel} now, or null while they are of its crew and
+     * aboard it. Read on the player's thread, from the island as it stands.
+     */
+    private @Nullable String crewAboard(Player player, IslandId vessel) {
+        Location at = player.getLocation();
+        Optional<Island> island = at == null ? Optional.empty() : islandAt.apply(at);
+        if (island.isEmpty() || !island.get().id().equals(vessel)) {
+            return "tradewinds.hold.not_vessel";
+        }
+        ActiveSession session = sessions.session(player.getUniqueId());
+        if (session == null) {
+            return "tradewinds.hold.busy";
+        }
+        if (!island.get().isOwner(session.activeProfileId()) && !island.get().isMember(session.activeProfileId())) {
+            return "tradewinds.hold.not_crew";
+        }
+        return null;
     }
 
     private enum Direction {

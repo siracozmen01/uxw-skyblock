@@ -164,6 +164,21 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A window left open after leaving the vessel moves nothing, and closes")
+    void anOpenWindowIsAskedAgain() {
+        holds.open(ada);
+        said(ada);
+        aboard = false;
+
+        click(ada, ROWS * 9 + slotInView(4));
+
+        assertThat(said(ada)).contains("not aboard a TradeWinds vessel");
+        assertThat(count(ada, Material.EMERALD)).isEqualTo(16);
+        assertThat(journal.events).isEmpty();
+        assertThat(window(ada)).isNull();
+    }
+
+    @Test
     @DisplayName("A full hold takes nothing more, and the stack stays with the player")
     void aFullHoldTakesNothing() {
         holds = holds(1);
