@@ -144,6 +144,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter brixPlotsAdapter;
     private final com.uxplima.uxmskyblock.persistence.tradewinds.SqlVesselsAdapter vesselsAdapter;
     private final com.uxplima.uxmskyblock.persistence.inventory.VesselCargoJournalAdapter cargoJournal;
+    private final com.uxplima.uxmskyblock.persistence.tradewinds.SqlVoyagesAdapter voyages;
+    private final com.uxplima.uxmskyblock.persistence.tradewinds.SqlMarketOrdersAdapter marketOrders;
     private final com.uxplima.uxmskyblock.persistence.island.RootAuthorityAdapter rootAuthority;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
@@ -224,6 +226,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.vesselsAdapter =
                 new com.uxplima.uxmskyblock.persistence.tradewinds.SqlVesselsAdapter(database.dataSource());
         this.cargoJournal = new com.uxplima.uxmskyblock.persistence.inventory.VesselCargoJournalAdapter(database);
+        this.voyages = new com.uxplima.uxmskyblock.persistence.tradewinds.SqlVoyagesAdapter(database);
+        this.marketOrders = new com.uxplima.uxmskyblock.persistence.tradewinds.SqlMarketOrdersAdapter(database);
         this.rootAuthority = new com.uxplima.uxmskyblock.persistence.island.RootAuthorityAdapter(database);
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
@@ -485,6 +489,16 @@ public final class PersistenceBootstrap implements AutoCloseable {
     /** The journal of moves between a player's inventory and a vessel's cargo hold. */
     public com.uxplima.uxmskyblock.core.application.tradewinds.CargoJournalPort cargoJournalPort() {
         return cargoJournal;
+    }
+
+    /** Where each TradeWinds vessel is bound. */
+    public com.uxplima.uxmskyblock.core.application.tradewinds.VoyagesPort voyagesPort() {
+        return voyages;
+    }
+
+    /** The orders placed at the TradeWinds ports' markets. */
+    public com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort marketOrdersPort() {
+        return marketOrders;
     }
 
     /** Who writes a root that is not an island, such as a vessel's hold. */

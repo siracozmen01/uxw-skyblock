@@ -139,6 +139,8 @@ final class IslandCommandWiring {
         integration.placeholderExpansion().useOneBlock(oneBlockPanel);
         if (gameplay.tradeWindsWiring().enabled()) {
             tree.useCargoHolds(gameplay.tradeWindsWiring().holds());
+            gameplay.tradeWindsWiring().harbour().useForms(integration.bedrockFormService());
+            tree.useHarbour(gameplay.tradeWindsWiring().harbour());
         }
         if (gameplay.tradeWiring().enabled()) {
             tree.useTrades(gameplay.tradeWiring().trades());

@@ -35,7 +35,10 @@ import com.uxplima.uxmskyblock.core.domain.session.ServerNodeId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** The cargo branch opens the hold of the vessel the player is aboard, and says so when there is none. */
+/**
+ * The cargo, sail and market branches open the hold and the harbour of the vessel the player is aboard,
+ * and say so when there is none.
+ */
 class TheCargoBranchOpensTheHoldTest {
 
     private final IslandCommandTree tree = new IslandCommandTree(
@@ -80,6 +83,24 @@ class TheCargoBranchOpensTheHoldTest {
 
         verify(player).sendMessage(any(Component.class));
         verify(holds, never()).open(any());
+    }
+
+    @Test
+    @DisplayName("The sail and market branches open the harbour, and say so when TradeWinds is off")
+    void theHarbourBranches() throws Exception {
+        com.uxplima.uxmskyblock.bukkit.tradewinds.Harbour harbour =
+                mock(com.uxplima.uxmskyblock.bukkit.tradewinds.Harbour.class);
+        tree.useHarbour(harbour);
+
+        dispatcher().execute("island sail", source());
+        dispatcher().execute("island market", source());
+
+        verify(harbour).sail(player);
+        verify(harbour).market(player);
+
+        tree.useHarbour(null);
+        dispatcher().execute("island market", source());
+        verify(player).sendMessage(any(Component.class));
     }
 
     private CommandDispatcher<CommandSourceStack> dispatcher() {

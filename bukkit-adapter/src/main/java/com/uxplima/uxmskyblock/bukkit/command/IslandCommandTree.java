@@ -333,6 +333,12 @@ public final class IslandCommandTree {
     private com.uxplima.uxmskyblock.bukkit.trade.@Nullable Trades trades;
 
     private com.uxplima.uxmskyblock.bukkit.tradewinds.@Nullable CargoHolds cargoHolds;
+    private com.uxplima.uxmskyblock.bukkit.tradewinds.@Nullable Harbour harbour;
+
+    /** What {@code /is sail} and {@code /is market} open, while the operator lets islands be vessels. */
+    public void useHarbour(com.uxplima.uxmskyblock.bukkit.tradewinds.@Nullable Harbour harbour) {
+        this.harbour = harbour;
+    }
 
     /** What {@code /is cargo} opens, while the operator lets islands be TradeWinds vessels. */
     public void useCargoHolds(com.uxplima.uxmskyblock.bukkit.tradewinds.@Nullable CargoHolds holds) {
@@ -618,6 +624,8 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("trade")
                         .then(Cmd.argument("player", StringArgumentType.word()).executes(this::executeTrade)))
                 .then(Cmd.literal("cargo").executes(this::executeCargo))
+                .then(Cmd.literal("sail").executes(ctx -> executeHarbour(ctx, true)))
+                .then(Cmd.literal("market").executes(ctx -> executeHarbour(ctx, false)))
                 .then(Cmd.literal("course").executes(this::executeCourse))
                 .then(Cmd.literal("chunks")
                         .executes(ctx -> executeChunks(ctx, false))
@@ -777,6 +785,24 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         lore.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeHarbour(CommandContext<CommandSourceStack> ctx, boolean sailing) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.tradewinds.Harbour open = this.harbour;
+        if (open == null) {
+            send(player, "tradewinds.hold.not_vessel");
+            return Cmd.OK;
+        }
+        if (sailing) {
+            open.sail(player);
+        } else {
+            open.market(player);
+        }
         return Cmd.OK;
     }
 
