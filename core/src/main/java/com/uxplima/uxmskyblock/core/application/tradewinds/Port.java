@@ -58,9 +58,9 @@ public record Port(String id, int voyageSeconds, List<Good> goods) {
             if (pays == 0 && asks == 0) {
                 throw new IllegalArgumentException(item + " is neither bought nor sold");
             }
-            if (asks > 0 && pays > asks) {
-                // Otherwise one port would pay more for a good than it asks, and money would come from nowhere.
-                throw new IllegalArgumentException(item + " is paid for more than it is asked for");
+            if (asks > 0 && pays >= asks) {
+                // Otherwise buying a good and selling it back would cost nothing, or make money from nowhere.
+                throw new IllegalArgumentException(item + " is paid for as much as it is asked for, or more");
             }
         }
 

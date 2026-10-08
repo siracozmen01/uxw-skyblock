@@ -175,20 +175,29 @@ class AnOrderMovesMoneyOnceTest {
     }
 
     @Test
-    @DisplayName("Standing lowers what a port asks and raises what it pays, never one past the other")
+    @DisplayName("Standing lowers what a port asks and raises what it pays, closing at most half the gap")
     void standingMovesPrices() {
         Standing standing = new Standing(1000, 5, 4);
-        Port.Good good = new Port.Good("WHEAT", 1, 100, 110);
+        Port.Good wide = new Port.Good("WHEAT", 1, 100, 200);
+        Port.Good narrow = new Port.Good("WHEAT", 1, 100, 110);
+        Port.Good soldOnly = new Port.Good("SILK", 1, 0, 300);
 
         assertThat(standing.steps(999)).isZero();
         assertThat(standing.steps(2500)).isEqualTo(2);
         assertThat(standing.steps(1_000_000)).isEqualTo(4);
-        assertThat(standing.pays(good, 0)).isEqualTo(100);
-        assertThat(standing.asks(good, 0)).isEqualTo(110);
-        assertThat(standing.asks(good, 1000)).isEqualTo(104);
-        assertThat(standing.pays(good, 1000)).isEqualTo(104);
-        assertThat(standing.pays(good, 4000)).isLessThanOrEqualTo(standing.asks(good, 4000));
-        assertThat(Standing.NONE.pays(good, 1_000_000)).isEqualTo(100);
+        assertThat(standing.pays(wide, 0)).isEqualTo(100);
+        assertThat(standing.asks(wide, 0)).isEqualTo(200);
+        assertThat(standing.pays(wide, 1000)).isEqualTo(105);
+        assertThat(standing.asks(wide, 1000)).isEqualTo(190);
+        assertThat(standing.pays(wide, 1_000_000)).isEqualTo(120);
+        assertThat(standing.asks(wide, 1_000_000)).isEqualTo(175);
+        assertThat(standing.asks(narrow, 1_000_000) - standing.pays(narrow, 1_000_000))
+                .describedAs("a round trip still costs half the gap")
+                .isEqualTo(6);
+        assertThat(standing.asks(soldOnly, 1_000_000)).isEqualTo(240);
+        assertThat(Standing.NONE.pays(wide, 1_000_000)).isEqualTo(100);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new Port.Good("WHEAT", 1, 100, 100))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private void docked() {

@@ -5,7 +5,9 @@ package com.uxplima.uxmskyblock.core.application.tradewinds;
  * and each step pays {@code percent} more for what the crew sells and asks that much less for what it
  * buys, up to {@code maxSteps}.
  *
- * <p>A price paid never passes the price asked, so no standing turns a port into a source of money.
+ * <p>Where a port both buys and sells a good, standing closes at most half the gap between the two
+ * prices: a quarter from each side. Buying a good and selling it back always costs the crew, so standing
+ * and trade are never had for nothing.
  */
 public record Standing(long step, int percent, int maxSteps) {
 
@@ -31,13 +33,17 @@ public record Standing(long step, int percent, int maxSteps) {
 
     /** What the port pays for {@code good}, per item, to a vessel of {@code standing}. */
     public long pays(Port.Good good, long standing) {
-        long raised = good.pays() * (100L + (long) percent * steps(standing)) / 100L;
-        return good.sold() ? Math.min(raised, asks(good, standing)) : raised;
+        long moved = good.pays() * percent * steps(standing) / 100L;
+        return good.pays() + (good.sold() ? Math.min(moved, spread(good) / 4) : moved);
     }
 
     /** What the port asks for {@code good}, per item, of a vessel of {@code standing}. */
     public long asks(Port.Good good, long standing) {
-        long lowered = good.asks() * (100L - (long) percent * steps(standing)) / 100L;
-        return Math.max(lowered, good.pays());
+        long moved = good.asks() * percent * steps(standing) / 100L;
+        return good.asks() - (good.bought() ? Math.min(moved, spread(good) / 4) : moved);
+    }
+
+    private static long spread(Port.Good good) {
+        return good.asks() - good.pays();
     }
 }
