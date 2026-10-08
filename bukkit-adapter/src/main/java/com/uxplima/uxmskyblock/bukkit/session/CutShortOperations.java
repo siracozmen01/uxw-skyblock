@@ -26,6 +26,7 @@ final class CutShortOperations {
     private final InventoryJournalRecovery recovery;
     private final ServerNodeId nodeId;
     private volatile @Nullable TradeJournalRecovery trades;
+    private volatile com.uxplima.uxmskyblock.core.application.inventory.@Nullable CargoJournalRecovery cargo;
 
     CutShortOperations(InventoryJournalRecovery recovery, ServerNodeId nodeId) {
         this.recovery = Objects.requireNonNull(recovery, "recovery");
@@ -37,9 +38,15 @@ final class CutShortOperations {
         this.trades = Objects.requireNonNull(recovery, "recovery");
     }
 
+    /** Settles the moves into and out of a vessel's hold a crash cut short, as the player's session starts. */
+    void settleCargoWith(com.uxplima.uxmskyblock.core.application.inventory.CargoJournalRecovery recovery) {
+        this.cargo = Objects.requireNonNull(recovery, "recovery");
+    }
+
     /** Settles every operation left open on {@code profile}, under the session this node holds at {@code epoch}. */
     void settle(PlayerUuid playerUuid, ProfileId profile, long epoch) {
         settleTrades(playerUuid, profile, epoch);
+        settleCargo(playerUuid, profile, epoch);
         for (InventoryJournalRecovery.Settled settled : recovery.recover(playerUuid, profile, nodeId, epoch)) {
             Object[] about = {settled.operationId().value(), playerUuid.value(), settled.settlement()};
             switch (settled.settlement()) {
@@ -58,6 +65,34 @@ final class CutShortOperations {
                 case ABORTED, ROLLED_FORWARD ->
                     LOGGER.log(
                             Level.INFO, "Inventory operation {0} of {1} was cut short and is settled as {2}.", about);
+            }
+        }
+    }
+
+    private void settleCargo(PlayerUuid playerUuid, ProfileId profile, long epoch) {
+        com.uxplima.uxmskyblock.core.application.inventory.CargoJournalRecovery recovery = cargo;
+        if (recovery == null) {
+            return;
+        }
+        for (com.uxplima.uxmskyblock.core.application.inventory.CargoJournalRecovery.Settled settled :
+                recovery.recover(new TradeJournalPort.Holder(playerUuid, profile, epoch), nodeId)) {
+            Object[] about = {settled.operationId().value(), playerUuid.value(), settled.settlement()};
+            switch (settled.settlement()) {
+                case QUARANTINED ->
+                    LOGGER.log(
+                            Level.SEVERE,
+                            "Cargo move {0} of {1} was cut short and the inventory holds neither what it had nor"
+                                    + " what the move left. It is quarantined as RECOVERY_REQUIRED and nothing was"
+                                    + " given or taken.",
+                            about);
+                case REFUSED ->
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Cargo move {0} of {1} was cut short and could not be settled now."
+                                    + " It is settled the next time the player''s session starts.",
+                            about);
+                case ABORTED, PUT_BACK ->
+                    LOGGER.log(Level.INFO, "Cargo move {0} of {1} was cut short and is settled as {2}.", about);
             }
         }
     }

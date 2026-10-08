@@ -332,6 +332,13 @@ public final class IslandCommandTree {
 
     private com.uxplima.uxmskyblock.bukkit.trade.@Nullable Trades trades;
 
+    private com.uxplima.uxmskyblock.bukkit.tradewinds.@Nullable CargoHolds cargoHolds;
+
+    /** What {@code /is cargo} opens, while the operator lets islands be TradeWinds vessels. */
+    public void useCargoHolds(com.uxplima.uxmskyblock.bukkit.tradewinds.@Nullable CargoHolds holds) {
+        this.cargoHolds = holds;
+    }
+
     /** What {@code /is trade} asks and answers, while the operator lets players trade. */
     public void useTrades(com.uxplima.uxmskyblock.bukkit.trade.@Nullable Trades trades) {
         this.trades = trades;
@@ -610,6 +617,7 @@ public final class IslandCommandTree {
                 .then(Cmd.literal("lore").executes(this::executeLore))
                 .then(Cmd.literal("trade")
                         .then(Cmd.argument("player", StringArgumentType.word()).executes(this::executeTrade)))
+                .then(Cmd.literal("cargo").executes(this::executeCargo))
                 .then(Cmd.literal("course").executes(this::executeCourse))
                 .then(Cmd.literal("chunks")
                         .executes(ctx -> executeChunks(ctx, false))
@@ -769,6 +777,20 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         lore.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeCargo(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.tradewinds.CargoHolds holds = this.cargoHolds;
+        if (holds == null) {
+            send(player, "tradewinds.hold.not_vessel");
+            return Cmd.OK;
+        }
+        holds.open(player);
         return Cmd.OK;
     }
 

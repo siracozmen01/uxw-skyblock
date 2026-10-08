@@ -204,7 +204,7 @@ public final class GameplayWiring {
         this.parkourWiring = new ParkourWiring(config, persistence, scheduler, protectionListener);
         this.brixWiring = new BrixWiring(config, persistence, scheduler, protectionListener);
         this.tradeWiring = new TradeWiring(config, persistence, authority, scheduler);
-        this.tradeWindsWiring = new TradeWindsWiring(config, persistence, scheduler);
+        this.tradeWindsWiring = new TradeWindsWiring(config, persistence, authority, scheduler, protectionListener);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,

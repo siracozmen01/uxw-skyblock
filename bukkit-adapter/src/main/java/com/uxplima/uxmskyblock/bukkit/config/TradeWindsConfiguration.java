@@ -11,13 +11,20 @@ import org.spongepowered.configurate.ConfigurationNode;
  *
  * @param enabled whether islands can be made as TradeWinds vessels
  * @param sea the sea a new vessel is launched on
+ * @param holdRows how many rows of nine slots a vessel's cargo hold has, from 1 to 6
  */
-public record TradeWindsConfiguration(boolean enabled, Sea sea) {
+public record TradeWindsConfiguration(boolean enabled, Sea sea, int holdRows) {
+
+    /** The rows of a hold when the file names none, or none that fits a chest. */
+    public static final int SHIPPED_HOLD_ROWS = 3;
 
     private static final Logger LOGGER = Logger.getLogger(TradeWindsConfiguration.class.getName());
 
     public TradeWindsConfiguration {
         Objects.requireNonNull(sea, "sea must not be null");
+        if (holdRows < 1 || holdRows > 6) {
+            throw new IllegalArgumentException("a hold has from 1 to 6 rows");
+        }
     }
 
     /**
@@ -49,21 +56,28 @@ public record TradeWindsConfiguration(boolean enabled, Sea sea) {
     }
 
     public static TradeWindsConfiguration defaultConfiguration() {
-        return new TradeWindsConfiguration(true, Sea.SHIPPED);
+        return new TradeWindsConfiguration(true, Sea.SHIPPED, SHIPPED_HOLD_ROWS);
     }
 
     public static TradeWindsConfiguration load(ConfigurationNode root) {
-        ConfigurationNode written = root.node("sea");
+        ConfigurationNode seaNode = root.node("sea");
         Sea sea;
         try {
             sea = new Sea(
-                    written.node("radius").getInt(Sea.SHIPPED.radius()),
-                    written.node("depth").getInt(Sea.SHIPPED.depth()),
-                    written.node("floor").getString(Sea.SHIPPED.floor()));
+                    seaNode.node("radius").getInt(Sea.SHIPPED.radius()),
+                    seaNode.node("depth").getInt(Sea.SHIPPED.depth()),
+                    seaNode.node("floor").getString(Sea.SHIPPED.floor()));
         } catch (IllegalArgumentException e) {
             LOGGER.warning(() -> "modules/tradewinds.conf sea: " + e.getMessage() + ". The shipped sea is used.");
             sea = Sea.SHIPPED;
         }
-        return new TradeWindsConfiguration(root.node("enabled").getBoolean(true), sea);
+        int written = root.node("hold", "rows").getInt(SHIPPED_HOLD_ROWS);
+        int rows = written;
+        if (rows < 1 || rows > 6) {
+            LOGGER.warning(() -> "modules/tradewinds.conf hold.rows is " + written + ", not from 1 to 6. The hold has "
+                    + SHIPPED_HOLD_ROWS + " rows.");
+            rows = SHIPPED_HOLD_ROWS;
+        }
+        return new TradeWindsConfiguration(root.node("enabled").getBoolean(true), sea, rows);
     }
 }

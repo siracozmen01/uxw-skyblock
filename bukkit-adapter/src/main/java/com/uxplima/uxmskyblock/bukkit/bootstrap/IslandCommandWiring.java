@@ -137,6 +137,9 @@ final class IslandCommandWiring {
                     org.bukkit.entity.Player::openBook));
         }
         integration.placeholderExpansion().useOneBlock(oneBlockPanel);
+        if (gameplay.tradeWindsWiring().enabled()) {
+            tree.useCargoHolds(gameplay.tradeWindsWiring().holds());
+        }
         if (gameplay.tradeWiring().enabled()) {
             tree.useTrades(gameplay.tradeWiring().trades());
         }

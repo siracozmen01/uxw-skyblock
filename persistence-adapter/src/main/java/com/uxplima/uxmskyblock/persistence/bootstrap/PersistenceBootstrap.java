@@ -143,6 +143,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter parkourAdapter;
     private final com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter brixPlotsAdapter;
     private final com.uxplima.uxmskyblock.persistence.tradewinds.SqlVesselsAdapter vesselsAdapter;
+    private final com.uxplima.uxmskyblock.persistence.inventory.VesselCargoJournalAdapter cargoJournal;
+    private final com.uxplima.uxmskyblock.persistence.island.RootAuthorityAdapter rootAuthority;
     private final PlayerIslandDimensionAdapter islandDimensionAdapter;
     private final com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter
             profileCosmeticStorageAdapter;
@@ -221,6 +223,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.brixPlotsAdapter = new com.uxplima.uxmskyblock.persistence.brix.SqlBrixPlotsAdapter(database.dataSource());
         this.vesselsAdapter =
                 new com.uxplima.uxmskyblock.persistence.tradewinds.SqlVesselsAdapter(database.dataSource());
+        this.cargoJournal = new com.uxplima.uxmskyblock.persistence.inventory.VesselCargoJournalAdapter(database);
+        this.rootAuthority = new com.uxplima.uxmskyblock.persistence.island.RootAuthorityAdapter(database);
         this.profileCosmeticStorageAdapter =
                 new com.uxplima.uxmskyblock.persistence.cosmetic.SqlProfileCosmeticStorageAdapter(database);
         this.islandRecycleStorageAdapter =
@@ -476,6 +480,16 @@ public final class PersistenceBootstrap implements AutoCloseable {
     /** Which islands are TradeWinds vessels. */
     public com.uxplima.uxmskyblock.core.application.tradewinds.VesselsPort vesselsPort() {
         return vesselsAdapter;
+    }
+
+    /** The journal of moves between a player's inventory and a vessel's cargo hold. */
+    public com.uxplima.uxmskyblock.core.application.tradewinds.CargoJournalPort cargoJournalPort() {
+        return cargoJournal;
+    }
+
+    /** Who writes a root that is not an island, such as a vessel's hold. */
+    public com.uxplima.uxmskyblock.core.application.gamemode.RootAuthorityPort rootAuthorityPort() {
+        return rootAuthority;
     }
 
     /** Which islands are Boxed islands, and the advancements each has earned. */
