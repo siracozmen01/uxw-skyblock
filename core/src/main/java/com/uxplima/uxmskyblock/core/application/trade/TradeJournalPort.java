@@ -76,7 +76,10 @@ public interface TradeJournalPort {
         }
     }
 
-    /** One side's inventory as the trade leaves it, written by {@link #commit}. */
+    /**
+     * One side's inventory as the trade leaves it, written by {@link #commit} over {@code expectedVersion}:
+     * the version the intent moved the side to, one past the version it recorded.
+     */
     @SuppressWarnings("ArrayRecordComponent")
     record Outcome(Holder holder, long expectedVersion, byte[] inventory) {
         public Outcome {
@@ -116,10 +119,12 @@ public interface TradeJournalPort {
     }
 
     /**
-     * Records the intent of a trade, every side at once, in index order.
+     * Records the intent of a trade, every side at once, in index order, and writes each side's inventory
+     * as the trade found it one version on.
      *
      * <p>The sessions are locked in the order of their player ids read as unsigned 128-bit numbers, so
-     * two trades over the same players never wait on each other.
+     * two trades over the same players never wait on each other. From the intent on, only the trade
+     * writes its sides: a write at the version a session knew before is refused.
      */
     InventoryMutationJournalOutcome recordIntent(
             InventoryMutationOperationId operationId,

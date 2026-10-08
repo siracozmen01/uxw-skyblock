@@ -52,8 +52,8 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
                         "apply bo",
                         "applied 1",
                         "commit",
-                        "committed ada at 8",
-                        "committed bo at 4");
+                        "durable ada at 9",
+                        "durable bo at 5");
     }
 
     @Test
@@ -85,7 +85,16 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
                 .isEqualTo(TradeExchange.CHANGED);
         assertThat(events)
                 .containsExactly(
-                        "read ada", "read bo", "intent", "apply ada", "applied 0", "apply bo", "abort", "put back ada");
+                        "read ada",
+                        "read bo",
+                        "intent",
+                        "apply ada",
+                        "applied 0",
+                        "apply bo",
+                        "abort",
+                        "put back ada",
+                        "durable ada at 8",
+                        "durable bo at 4");
     }
 
     @Test
@@ -95,7 +104,8 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
                 .isEqualTo(TradeExchange.NOT_SAVED);
-        assertThat(events).endsWith("commit", "abort", "put back ada", "put back bo");
+        assertThat(events)
+                .endsWith("commit", "abort", "put back ada", "put back bo", "durable ada at 8", "durable bo at 4");
     }
 
     @Test
@@ -107,7 +117,7 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).isOk())
                 .isTrue();
-        assertThat(events).endsWith("commit", "abort", "committed ada at 8", "committed bo at 4");
+        assertThat(events).endsWith("commit", "abort", "durable ada at 9", "durable bo at 5");
         assertThat(events).noneMatch(event -> event.startsWith("put back"));
     }
 
@@ -131,7 +141,8 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
                 .isEqualTo(TradeExchange.CHANGED);
-        assertThat(events).endsWith("apply ada", "applied 0", "abort", "put back ada");
+        assertThat(events)
+                .endsWith("apply ada", "applied 0", "abort", "put back ada", "durable ada at 8", "durable bo at 4");
         assertThat(events).doesNotContain("apply bo");
     }
 
@@ -152,7 +163,8 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
                 .isEqualTo(TradeExchange.NOT_SAVED);
-        assertThat(events).endsWith("commit", "abort", "put back ada", "put back bo");
+        assertThat(events)
+                .endsWith("commit", "abort", "put back ada", "put back bo", "durable ada at 8", "durable bo at 4");
     }
 
     private final class Trader implements TradeExchange.LiveSide {
@@ -195,8 +207,8 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
         }
 
         @Override
-        public void committed(long version) {
-            events.add("committed " + name + " at " + version);
+        public void durableAt(long version) {
+            events.add("durable " + name + " at " + version);
         }
 
         @Override

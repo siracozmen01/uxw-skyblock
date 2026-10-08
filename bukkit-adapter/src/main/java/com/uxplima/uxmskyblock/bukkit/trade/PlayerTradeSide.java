@@ -159,7 +159,7 @@ final class PlayerTradeSide implements TradeExchange.LiveSide {
     }
 
     @Override
-    public void committed(long version) {
+    public void durableAt(long version) {
         session.setLastDurableVersion(version);
     }
 

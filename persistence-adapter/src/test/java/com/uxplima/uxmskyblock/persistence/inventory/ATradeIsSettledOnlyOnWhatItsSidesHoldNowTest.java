@@ -129,7 +129,31 @@ class ATradeIsSettledOnlyOnWhatItsSidesHoldNowTest {
         assertThat(scene.intentOnA().isSuccess()).isTrue();
 
         assertThat(scene.ada.inventory()).isEqualTo(ADA_BEFORE);
-        assertThat(scene.ada.version()).isEqualTo(version);
+        assertThat(scene.ada.version()).isEqualTo(version + 1);
+    }
+
+    @Test
+    @DisplayName("A player who leaves mid-trade cannot write their half over it: only the trade writes its sides")
+    void aLastWriteMidTradeIsRefused() {
+        long known = scene.ada.version();
+        assertThat(scene.intentOnA().isSuccess()).isTrue();
+        assertThat(scene.sessions
+                        .drain(scene.ada.player, NODE_A, scene.ada.epoch)
+                        .isSuccess())
+                .isTrue();
+
+        assertThat(new PlayerProfileHandoffFinalizationAdapter(scene.database)
+                        .finalizeHandoffFlush(
+                                scene.ada.player,
+                                scene.ada.profile,
+                                NODE_A,
+                                scene.ada.epoch,
+                                known,
+                                com.uxplima.uxmskyblock.core.domain.inventory.ProfileInventoryRecord.createDefault(
+                                        scene.ada.profile, TradeCrashScene.bytes(ADA_AFTER), new byte[0]))
+                        .isSuccess())
+                .isFalse();
+        assertThat(scene.ada.inventory()).isEqualTo(ADA_BEFORE);
     }
 
     @Test

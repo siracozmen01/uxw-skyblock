@@ -122,7 +122,7 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
         assertThat(journal.events).containsExactly("intent", "applied 0", "applied 1", "commit");
         assertThat(java.util.Objects.requireNonNull(sessions.get(ada.getUniqueId()))
                         .lastDurableVersion())
-                .isEqualTo(8L);
+                .isEqualTo(9L);
         assertThat(window(ada)).isNull();
         assertThat(window(bo)).isNull();
         assertThat(trades.trading(ada.getUniqueId())).isFalse();

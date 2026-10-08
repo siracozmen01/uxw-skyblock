@@ -48,7 +48,6 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
     private final String selectParticipants;
     private final String updateParticipantsState;
     private final String selectDurableInventory;
-    private final String asItStands;
 
     public PlayerTradeJournalAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -72,7 +71,6 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
                 + "after_fingerprint, durable_apply_state, mutation_delta_payload "
                 + "FROM inventory_mutation_participants WHERE operation_id = ? ORDER BY participant_index";
         this.selectParticipants = dialect == Dialect.SQLITE ? participants : participants + " FOR UPDATE";
-        this.asItStands = sql.writeInventoryAsItStands();
         String durable = "SELECT inventory_nbt FROM profile_inventories WHERE profile_id = ?";
         this.selectDurableInventory = dialect == Dialect.SQLITE ? durable : durable + " FOR UPDATE";
         this.updateParticipantsState = "UPDATE inventory_mutation_participants "
@@ -113,14 +111,13 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
                         }
                     }
                 }
-                // The side as the trade found it is written down with the intent, at the version it
-                // already has. A checkpoint may be a minute old; from here on what durable storage holds
-                // is the trade's before, so recovery and the abort read the trade, not the minute.
-                try (PreparedStatement ps = conn.prepareStatement(asItStands)) {
-                    ps.setBytes(1, side.beforeInventory());
-                    ps.setString(2, side.holder().profile().value().toString());
-                    ps.setLong(3, side.expectedVersion());
-                    ps.executeUpdate();
+                // The side as the trade found it is written down with the intent, one version on. A
+                // checkpoint may be a minute old; from here on durable storage holds the trade's before,
+                // so recovery and the abort read the trade, not the minute. The version moves so that
+                // nothing written at the version the session knew, a player's last write as they leave
+                // mid-trade, lands over the trade: only the trade's own commit writes this side now.
+                if (!writeInventory(conn, side.holder(), side.beforeInventory(), side.expectedVersion())) {
+                    return InventoryMutationJournalOutcome.rejected("OCC_VERSION_MISMATCH");
                 }
             }
             try (PreparedStatement ps = conn.prepareStatement(insertJournal)) {
@@ -202,8 +199,9 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
             for (int index = 0; index < sides.size(); index++) {
                 Outcome side = sides.get(index);
                 Participant participant = recorded.get(index);
+                // The intent moved every side one version on; the commit writes over that one.
                 if (!participant.profile().equals(side.holder().profile())
-                        || participant.expectedVersion() != side.expectedVersion()) {
+                        || participant.expectedVersion() + 1 != side.expectedVersion()) {
                     return InventoryMutationJournalOutcome.rejected("PARTICIPANT_MISMATCH");
                 }
                 if (!writeInventory(conn, side.holder(), side.inventory(), side.expectedVersion())) {

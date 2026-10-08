@@ -60,8 +60,12 @@ public final class TradeExchange {
         /** Puts the side back as {@link #read} found it. */
         void putBack(Snapshot snapshot);
 
-        /** The trade is written: the side's inventory is at {@code version} now. */
-        void committed(long version);
+        /**
+         * The side's inventory is at {@code version} in durable storage now: one past where it was when
+         * the trade was called off, two once it was written. The session learns it only when the trade is
+         * over, so nothing it writes in between lands over the trade.
+         */
+        void durableAt(long version);
 
         /**
          * Nobody can tell whether the trade was written. What the side holds now must not be played
@@ -146,7 +150,9 @@ public final class TradeExchange {
         for (int index = 0; index < sides.size(); index++) {
             LiveSide side = sides.get(index);
             outcomes.add(new TradeJournalPort.Outcome(
-                    side.holder(), side.expectedVersion(), snapshots.get(index).after()));
+                    side.holder(),
+                    side.expectedVersion() + 1,
+                    snapshots.get(index).after()));
         }
         boolean committed;
         try {
@@ -165,7 +171,7 @@ public final class TradeExchange {
     private Result<InventoryMutationOperationId, String> done(
             InventoryMutationOperationId trade, List<? extends LiveSide> sides) {
         for (LiveSide side : sides) {
-            side.committed(side.expectedVersion() + 1);
+            side.durableAt(side.expectedVersion() + 2);
         }
         return Result.ok(trade);
     }
@@ -196,6 +202,9 @@ public final class TradeExchange {
         if (aborted) {
             for (int index : changed) {
                 sides.get(index).putBack(snapshots.get(index));
+            }
+            for (LiveSide side : sides) {
+                side.durableAt(side.expectedVersion() + 1);
             }
             return Result.err(why);
         }

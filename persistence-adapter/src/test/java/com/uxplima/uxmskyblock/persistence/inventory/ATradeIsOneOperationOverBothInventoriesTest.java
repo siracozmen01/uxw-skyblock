@@ -43,7 +43,7 @@ class ATradeIsOneOperationOverBothInventoriesTest {
     }
 
     @Test
-    @DisplayName("One operation goes from INTENT to COMMITTED and moves both inventory versions by one")
+    @DisplayName("One operation goes from INTENT to COMMITTED, its intent and its commit each moving both versions")
     void oneOperationMovesBoth() throws Exception {
         long ada = scene.ada.version();
         long bo = scene.bo.version();
@@ -63,8 +63,8 @@ class ATradeIsOneOperationOverBothInventoriesTest {
         assertThat(scene.journal.state(scene.trade)).hasValue(InventoryMutationJournalState.COMMITTED);
         assertThat(scene.journal.participants(scene.trade))
                 .allSatisfy(side -> assertThat(side.applyState()).isEqualTo(ParticipantApplyState.APPLIED));
-        assertThat(scene.ada.version()).isEqualTo(ada + 1);
-        assertThat(scene.bo.version()).isEqualTo(bo + 1);
+        assertThat(scene.ada.version()).isEqualTo(ada + 2);
+        assertThat(scene.bo.version()).isEqualTo(bo + 2);
         assertThat(scene.ada.inventory()).isEqualTo(ADA_AFTER);
         assertThat(scene.bo.inventory()).isEqualTo(BO_AFTER);
         assertThat(scene.journal.findOpenTrades(scene.ada.profile)).isEmpty();

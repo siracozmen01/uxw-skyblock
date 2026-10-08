@@ -25,7 +25,6 @@ final class InventoryMutationJournalSql {
     private final String insertJournal;
     private final String insertParticipant;
     private final String updateInventoryOcc;
-    private final String writeInventoryAsItStands;
     private final String updateSessionLastDurableVersion;
     private final String updateJournalState;
     private final String updateParticipantState;
@@ -58,11 +57,6 @@ final class InventoryMutationJournalSql {
                 + "updated_at = CURRENT_TIMESTAMP "
                 + "WHERE profile_id = ? "
                 + "AND profile_inventory_version = ?";
-
-        // The inventory as an operation found it, written at the version it already has.
-        this.writeInventoryAsItStands = "UPDATE profile_inventories "
-                + "SET inventory_nbt = ?, updated_at = CURRENT_TIMESTAMP "
-                + "WHERE profile_id = ? AND profile_inventory_version = ?";
 
         this.updateSessionLastDurableVersion = "UPDATE player_sessions "
                 + "SET last_durable_inventory_version = ?, "
@@ -159,10 +153,6 @@ final class InventoryMutationJournalSql {
 
     String updateInventoryOcc() {
         return updateInventoryOcc;
-    }
-
-    String writeInventoryAsItStands() {
-        return writeInventoryAsItStands;
     }
 
     String updateSessionLastDurableVersion() {
