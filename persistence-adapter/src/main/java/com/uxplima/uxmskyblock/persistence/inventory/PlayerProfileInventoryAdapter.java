@@ -227,11 +227,14 @@ public final class PlayerProfileInventoryAdapter implements ProfileInventoryChec
      * again. The journal owns the inventory until its intent settles; the checkpoint waits for the
      * next interval. It reads under the session row lock the intent also takes, so the two cannot
      * pass each other.
+     *
+     * <p>A side of a trade that recovery already put back is the player's again, though the trade
+     * stays open until its other side is put back too.
      */
     private static boolean journalOwns(Connection conn, ProfileId profileId) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM inventory_mutation_journals j "
                 + "JOIN inventory_mutation_participants p ON p.operation_id = j.operation_id "
-                + "WHERE p.owner_root_id = ? AND j.state = 'INTENT'")) {
+                + "WHERE p.owner_root_id = ? AND j.state = 'INTENT' AND p.durable_apply_state <> 'REVERTED'")) {
             ps.setString(1, profileId.value().toString());
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();

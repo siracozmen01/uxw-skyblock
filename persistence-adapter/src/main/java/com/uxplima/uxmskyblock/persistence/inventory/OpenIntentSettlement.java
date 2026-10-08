@@ -28,7 +28,7 @@ final class OpenIntentSettlement {
     private static final String FIND_OPEN = "SELECT j.operation_id FROM inventory_mutation_journals j "
             + "JOIN inventory_mutation_participants p "
             + "ON p.operation_id = j.operation_id AND p.participant_index = 0 "
-            + "WHERE p.owner_root_id = ? AND j.state = 'INTENT' "
+            + "WHERE p.owner_root_id = ? AND j.state = 'INTENT' AND j.participant_count = 1 "
             + "ORDER BY j.created_at, j.operation_id";
 
     private final Database database;
