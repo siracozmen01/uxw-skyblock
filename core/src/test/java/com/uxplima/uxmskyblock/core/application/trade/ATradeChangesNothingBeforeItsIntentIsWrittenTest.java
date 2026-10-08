@@ -135,6 +135,18 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
     }
 
     @Test
+    @DisplayName("Before any side changed, a trade that can be neither aborted nor read still takes every side off")
+    void anUnreadableTradeBeforeAnyChangeTakesEverySideOff() {
+        ada.applies = false;
+        journal.abortThrows = true;
+        journal.stateThrows = true;
+
+        assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
+                .isEqualTo(TradeExchange.IN_DOUBT);
+        assertThat(events).endsWith("apply ada", "abort", "in doubt ada", "in doubt bo");
+    }
+
+    @Test
     @DisplayName("A journal that fails after a side changed calls the trade off and puts the side back")
     void aFailureAfterASideChangedPutsItBack() {
         journal.markAppliedThrows = true;

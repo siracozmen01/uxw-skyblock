@@ -211,10 +211,13 @@ public final class TradeExchange {
         if (landed(trade)) {
             return done(trade, sides);
         }
-        for (int index : changed) {
-            sides.get(index).inDoubt();
+        // Neither aborted nor read. The intent moved every side's durable version past the one its session
+        // knows, so whatever its player does next would never be written: every side leaves, and recovery
+        // settles the trade from durable storage when they come back.
+        for (LiveSide side : sides) {
+            side.inDoubt();
         }
-        return Result.err(changed.isEmpty() ? why : IN_DOUBT);
+        return Result.err(IN_DOUBT);
     }
 
     private boolean landed(InventoryMutationOperationId trade) {
