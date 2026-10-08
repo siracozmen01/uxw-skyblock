@@ -48,6 +48,7 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
     private final String selectParticipants;
     private final String updateParticipantsState;
     private final String selectDurableInventory;
+    private final String asItStands;
 
     public PlayerTradeJournalAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -71,6 +72,7 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
                 + "after_fingerprint, durable_apply_state, mutation_delta_payload "
                 + "FROM inventory_mutation_participants WHERE operation_id = ? ORDER BY participant_index";
         this.selectParticipants = dialect == Dialect.SQLITE ? participants : participants + " FOR UPDATE";
+        this.asItStands = sql.writeInventoryAsItStands();
         String durable = "SELECT inventory_nbt FROM profile_inventories WHERE profile_id = ?";
         this.selectDurableInventory = dialect == Dialect.SQLITE ? durable : durable + " FOR UPDATE";
         this.updateParticipantsState = "UPDATE inventory_mutation_participants "
@@ -110,6 +112,15 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
                             return InventoryMutationJournalOutcome.rejected("OCC_VERSION_MISMATCH");
                         }
                     }
+                }
+                // The side as the trade found it is written down with the intent, at the version it
+                // already has. A checkpoint may be a minute old; from here on what durable storage holds
+                // is the trade's before, so recovery and the abort read the trade, not the minute.
+                try (PreparedStatement ps = conn.prepareStatement(asItStands)) {
+                    ps.setBytes(1, side.beforeInventory());
+                    ps.setString(2, side.holder().profile().value().toString());
+                    ps.setLong(3, side.expectedVersion());
+                    ps.executeUpdate();
                 }
             }
             try (PreparedStatement ps = conn.prepareStatement(insertJournal)) {
@@ -226,6 +237,15 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
                 Optional<String> refusal = refusal(conn, holder, node, false);
                 if (refusal.isPresent()) {
                     return InventoryMutationJournalOutcome.rejected(refusal.get());
+                }
+            }
+            // An abort says no side was given anything. A side whose durable inventory holds anything but
+            // what the trade found, a player who left mid-trade with their half, is not aborted over: it
+            // stays open for recovery to put back.
+            for (Participant side : participants(conn, operationId)) {
+                if (side.applyState() != ParticipantApplyState.REVERTED
+                        && !durableFingerprint(conn, side.profile()).equals(side.beforeFingerprint())) {
+                    return InventoryMutationJournalOutcome.rejected("SIDE_WRITTEN");
                 }
             }
             setEveryParticipant(conn, operationId, ParticipantApplyState.REVERTED);

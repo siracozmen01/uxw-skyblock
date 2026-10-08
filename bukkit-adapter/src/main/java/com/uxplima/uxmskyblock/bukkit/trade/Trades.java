@@ -97,6 +97,12 @@ public final class Trades {
         this.commandLine = word -> messages.provider().commandLine(word);
     }
 
+    /** Whether {@code player}'s trade is being carried out now, when nothing may change their inventory. */
+    public boolean exchanging(UUID player) {
+        Trade trade = trades.get(player);
+        return trade != null && trade.stage() == Trade.Stage.EXCHANGING;
+    }
+
     /** Whether {@code player} is in a trade now. */
     public boolean trading(UUID player) {
         return trades.containsKey(player);
@@ -198,6 +204,11 @@ public final class Trades {
 
     /** Answers a click in a trade window. Nothing in a trade window moves an item. */
     public void onClick(InventoryClickEvent event) {
+        if (exchanging(event.getWhoClicked().getUniqueId())) {
+            // In whatever window: an inventory being traded holds still until the trade is written.
+            event.setCancelled(true);
+            return;
+        }
         TradeWindow.View view = viewOf(event.getView());
         if (view == null || !(event.getWhoClicked() instanceof Player player)) {
             return;
@@ -231,7 +242,7 @@ public final class Trades {
 
     /** A drag in a trade window would move items; it does nothing. */
     public void onDrag(InventoryDragEvent event) {
-        if (viewOf(event.getView()) != null) {
+        if (viewOf(event.getView()) != null || exchanging(event.getWhoClicked().getUniqueId())) {
             event.setCancelled(true);
         }
     }

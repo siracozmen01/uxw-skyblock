@@ -119,4 +119,33 @@ class ATradeIsSettledOnlyOnWhatItsSidesHoldNowTest {
                         .rejectionReason())
                 .hasValue("SIDE_MOVED");
     }
+
+    @Test
+    @DisplayName("The intent writes each side down as the trade found it, at the version it has")
+    void theIntentWritesTheSidesAsTheyStand() {
+        assertThat(scene.ada.checkpoint(NODE_A, "a minute old").isSuccess()).isTrue();
+        long version = scene.ada.version();
+
+        assertThat(scene.intentOnA().isSuccess()).isTrue();
+
+        assertThat(scene.ada.inventory()).isEqualTo(ADA_BEFORE);
+        assertThat(scene.ada.version()).isEqualTo(version);
+    }
+
+    @Test
+    @DisplayName("A trade is not aborted over a side that left holding its half: recovery puts it back")
+    void anAbortLeavesAWrittenSideToRecovery() throws Exception {
+        assertThat(scene.intentOnA().isSuccess()).isTrue();
+        scene.ada.leavesWith(ADA_AFTER);
+
+        assertThat(scene.journal
+                        .abort(scene.trade, NODE_A, List.of(scene.ada.holder(), scene.bo.holder()))
+                        .rejectionReason())
+                .hasValue("SIDE_WRITTEN");
+        assertThat(scene.journal.state(scene.trade)).hasValue(InventoryMutationJournalState.INTENT);
+
+        scene.ada.comesToNodeB();
+        assertThat(scene.ada.recoversOnNodeB()).containsExactly(new Settled(scene.trade, Settlement.ABORTED));
+        assertThat(scene.ada.inventory()).isEqualTo(ADA_BEFORE);
+    }
 }

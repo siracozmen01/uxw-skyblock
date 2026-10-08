@@ -245,6 +245,66 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
         assertThat(count(ada, Material.IRON_HELMET)).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("While a trade is carried out nothing changes what its players carry: no throw, no pickup, no click")
+    @SuppressWarnings({"deprecation", "removal"})
+    void anInventoryHoldsStillWhileItIsTraded() {
+        Trades trades = open();
+        TradeListener listener = new TradeListener(trades);
+        List<Boolean> held = new ArrayList<>();
+        journal.whileCommitting = () -> {
+            org.bukkit.event.player.PlayerDropItemEvent thrown = new org.bukkit.event.player.PlayerDropItemEvent(
+                    bo, org.mockito.Mockito.mock(org.bukkit.entity.Item.class));
+            listener.onDrop(thrown);
+            held.add(thrown.isCancelled());
+            org.bukkit.event.entity.EntityDamageEvent hurt = new org.bukkit.event.entity.EntityDamageEvent(
+                    ada, org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL, 4.0);
+            listener.onHurt(hurt);
+            held.add(hurt.isCancelled());
+            // Ada opens another chest while the trade is carried out and reaches into it.
+            ada.openInventory(server.createInventory(null, 9));
+            InventoryClickEvent moved = new InventoryClickEvent(
+                    ada.getOpenInventory(),
+                    InventoryType.SlotType.CONTAINER,
+                    0,
+                    ClickType.LEFT,
+                    InventoryAction.PICKUP_ALL);
+            listener.onClick(moved);
+            held.add(moved.isCancelled());
+        };
+
+        offer(ada, 4);
+        offer(bo, 0);
+        agree(ada);
+        agree(bo);
+
+        assertThat(held).containsExactly(true, true, true);
+        assertThat(trades.exchanging(ada.getUniqueId())).isFalse();
+        org.bukkit.event.player.PlayerDropItemEvent after = new org.bukkit.event.player.PlayerDropItemEvent(
+                bo, org.mockito.Mockito.mock(org.bukkit.entity.Item.class));
+        listener.onDrop(after);
+        assertThat(after.isCancelled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("A side that changed while the commit was refused is not written back over: its player leaves")
+    void aChangedSideIsNotPutBackOver() {
+        open();
+        journal.commit = InventoryMutationJournalOutcome.rejected("OCC_VERSION_MISMATCH");
+        journal.whileCommitting = () -> bo.getInventory().setItem(20, new ItemStack(Material.GOLD_INGOT, 1));
+
+        offer(ada, 4);
+        offer(bo, 0);
+        agree(ada);
+        agree(bo);
+
+        assertThat(fenced).containsExactly(bo.getUniqueId());
+        assertThat(count(ada, Material.EMERALD)).describedAs("Ada is put back").isEqualTo(16);
+        assertThat(count(bo, Material.GOLD_INGOT))
+                .describedAs("Bo is left as he is, for recovery to settle")
+                .isEqualTo(1);
+    }
+
     private Trades open() {
         Trades trades = trades(TradeConfiguration.defaultConfiguration());
         trades.ask(ada, bo);
@@ -384,6 +444,7 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
     private static final class Journal implements TradeJournalPort {
         private final List<String> events = new ArrayList<>();
         private InventoryMutationJournalOutcome commit = InventoryMutationJournalOutcome.success();
+        private Runnable whileCommitting = () -> {};
 
         @Override
         public InventoryMutationJournalOutcome recordIntent(
@@ -406,6 +467,7 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
         public InventoryMutationJournalOutcome commit(
                 InventoryMutationOperationId operationId, ServerNodeId node, List<Outcome> sides) {
             events.add("commit");
+            whileCommitting.run();
             return commit;
         }
 

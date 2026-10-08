@@ -123,20 +123,39 @@ final class PlayerTradeSide implements TradeExchange.LiveSide {
                 false);
     }
 
+    /**
+     * Puts the side back, but only from exactly what the trade left it. Anything else means the player
+     * moved something since, and writing the whole inventory back over it could hand them twice what
+     * they moved: they are taken off the server instead, and durable storage, which holds the inventory
+     * as the trade found it, is what they come back to.
+     */
     @Override
     public void putBack(TradeExchange.Snapshot snapshot) {
         ItemStack[] found = before;
         if (found == null) {
             return;
         }
-        thread.run(
+        boolean putBack = thread.run(
                 player.getUniqueId(),
                 () -> {
+                    if (!player.isOnline()) {
+                        // Gone: nothing is in play, and what they come back to is durable storage.
+                        return true;
+                    }
+                    if (!Arrays.equals(
+                            BukkitInventorySerializer.serializeItemStacks(
+                                    player.getInventory().getContents()),
+                            snapshot.after())) {
+                        return false;
+                    }
                     player.getInventory().setContents(copy(found));
                     player.updateInventory();
-                    return Boolean.TRUE;
+                    return true;
                 },
-                Boolean.FALSE);
+                false);
+        if (!putBack) {
+            fence.run();
+        }
     }
 
     @Override
