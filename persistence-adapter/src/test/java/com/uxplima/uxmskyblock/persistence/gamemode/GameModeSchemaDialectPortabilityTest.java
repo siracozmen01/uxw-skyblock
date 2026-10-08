@@ -305,6 +305,80 @@ class GameModeSchemaDialectPortabilityTest {
             vessels.add(islandId);
             assertThat(vessels.exists(islandId)).isTrue();
             assertThat(vessels.findAll()).containsExactly(islandId);
+            // Its hold, a sale and a purchase at a port's market and a voyage, under its lease.
+            long lease = ((com.uxplima.uxmskyblock.core.domain.island.IslandAuthorityOutcome.Success)
+                            new com.uxplima.uxmskyblock.persistence.island.RootAuthorityAdapter(database)
+                                    .acquire(
+                                            com.uxplima.uxmskyblock.core.application.tradewinds.VesselLease.rootOf(
+                                                    islandId),
+                                            com.uxplima.uxmskyblock.core.domain.session.ServerNodeId.of("node-a"),
+                                            30))
+                    .epoch();
+            com.uxplima.uxmskyblock.persistence.tradewinds.SqlMarketOrdersAdapter market =
+                    new com.uxplima.uxmskyblock.persistence.tradewinds.SqlMarketOrdersAdapter(database);
+            var node = com.uxplima.uxmskyblock.core.domain.session.ServerNodeId.of("node-a");
+            var sale = new com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.Order(
+                    UUID.randomUUID(),
+                    islandId,
+                    "bay",
+                    com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.Kind.SALE,
+                    "WHEAT",
+                    10,
+                    200,
+                    owner,
+                    com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.State.OWED,
+                    0);
+            assertThat(market.recordSale(
+                            sale,
+                            new com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.HoldWrite(
+                                    lease, node, 1, new byte[] {1, 2, 3})))
+                    .isTrue();
+            assertThat(vessels.cargo(islandId).orElseThrow().items()).containsExactly(1, 2, 3);
+            var purchase = new com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.Order(
+                    UUID.randomUUID(),
+                    islandId,
+                    "bay",
+                    com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.Kind.PURCHASE,
+                    "WHEAT",
+                    10,
+                    500,
+                    owner,
+                    com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.State.PAYING,
+                    0);
+            market.recordPurchase(purchase);
+            market.attempt(purchase.id(), 2);
+            assertThat(market.deliver(
+                            purchase.id(),
+                            new com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.HoldWrite(
+                                    lease, node, 2, new byte[] {4})))
+                    .isTrue();
+            assertThat(market.settle(
+                            sale.id(),
+                            com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.State.OWED,
+                            com.uxplima.uxmskyblock.core.application.tradewinds.MarketOrdersPort.State.REFUNDING))
+                    .isTrue();
+            assertThat(market.find(sale.id()).orElseThrow().attempts()).isZero();
+            assertThat(market.standing(islandId, "bay")).isEqualTo(700);
+            assertThat(market.tradeVolume(islandId)).isEqualTo(700);
+            assertThat(market.vesselsWithOpenOrders()).containsExactly(islandId);
+            assertThat(market.open(islandId)).hasSize(1);
+            var voyagesTable = new com.uxplima.uxmskyblock.persistence.tradewinds.SqlVoyagesAdapter(database);
+            java.time.Instant arrives = java.time.Instant.parse("2030-01-01T00:00:00Z");
+            assertThat(voyagesTable.setSail(
+                            islandId,
+                            lease,
+                            node,
+                            new com.uxplima.uxmskyblock.core.application.tradewinds.VoyagesPort.Voyage("bay", arrives)))
+                    .isTrue();
+            assertThat(voyagesTable.setSail(
+                            islandId,
+                            lease,
+                            node,
+                            new com.uxplima.uxmskyblock.core.application.tradewinds.VoyagesPort.Voyage(
+                                    "cove", arrives)))
+                    .isTrue();
+            assertThat(voyagesTable.voyage(islandId).orElseThrow().portId()).isEqualTo("cove");
+            assertThat(voyagesTable.voyage(islandId).orElseThrow().arrivesAt()).isEqualTo(arrives);
             // A Parkour course: recorded once, a runner's first finish and a faster and a slower one.
             com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter parkour =
                     new com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter(database.dataSource());
@@ -349,6 +423,8 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(brix.findAll()).isEmpty();
             assertThat(vessels.exists(islandId)).isFalse();
             assertThat(vessels.findAll()).isEmpty();
+            assertThat(market.vesselsWithOpenOrders()).isEmpty();
+            assertThat(voyagesTable.voyage(islandId)).isEmpty();
             assertThat(parkour.top(islandId, 5)).isEmpty();
             assertThat(parkour.mostRun(5)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();
