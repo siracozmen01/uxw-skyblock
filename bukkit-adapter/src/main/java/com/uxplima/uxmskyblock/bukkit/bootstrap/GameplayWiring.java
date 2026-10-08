@@ -117,6 +117,7 @@ public final class GameplayWiring {
     private final ParkourWiring parkourWiring;
     private final BrixWiring brixWiring;
     private final TradeWiring tradeWiring;
+    private final TradeWindsWiring tradeWindsWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -203,6 +204,7 @@ public final class GameplayWiring {
         this.parkourWiring = new ParkourWiring(config, persistence, scheduler, protectionListener);
         this.brixWiring = new BrixWiring(config, persistence, scheduler, protectionListener);
         this.tradeWiring = new TradeWiring(config, persistence, authority, scheduler);
+        this.tradeWindsWiring = new TradeWindsWiring(config, persistence, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -367,6 +369,7 @@ public final class GameplayWiring {
         this.cacheEviction.whenForgotten(this.strangerRealmsWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.parkourWiring.service()::forget);
         this.cacheEviction.whenForgotten(this.brixWiring.service()::forget);
+        this.cacheEviction.whenForgotten(this.tradeWindsWiring.service()::forget);
         // Three more that hold something for every island a player has merely walked on. Each of
         // them answers a question on the movement or interaction path, and each of them remembers
         // the answer so the path is not a query. An island id is a fresh uuid every time, so an
@@ -433,12 +436,18 @@ public final class GameplayWiring {
         actions.addAll(this.strangerRealmsWiring.startActions());
         actions.addAll(this.parkourWiring.startActions());
         actions.addAll(this.brixWiring.startActions());
+        actions.addAll(this.tradeWindsWiring.startActions());
         caveBlockStart(config, scheduler).forEach(actions::add);
         return actions;
     }
 
     public BrixWiring brixWiring() {
         return brixWiring;
+    }
+
+    /** The TradeWinds game mode. */
+    public TradeWindsWiring tradeWindsWiring() {
+        return tradeWindsWiring;
     }
 
     /** Trading between players. */

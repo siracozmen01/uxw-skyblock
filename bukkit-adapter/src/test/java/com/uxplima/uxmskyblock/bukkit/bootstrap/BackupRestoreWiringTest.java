@@ -294,6 +294,8 @@ class BackupRestoreWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration());
         when(config.tradeConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration());
+        when(config.tradeWindsConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.defaultConfiguration());
         when(config.strangerRealmsConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
         when(config.poseidonConfig())

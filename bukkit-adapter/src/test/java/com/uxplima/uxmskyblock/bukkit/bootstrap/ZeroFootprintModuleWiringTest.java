@@ -298,7 +298,8 @@ class ZeroFootprintModuleWiringTest {
                             .actions()
                             .knowsAll(java.util.List.of(
                                     com.uxplima.uxmskyblock.bukkit.parkour.CourseStart.ACTION,
-                                    com.uxplima.uxmskyblock.bukkit.brix.PlotStart.ACTION)))
+                                    com.uxplima.uxmskyblock.bukkit.brix.PlotStart.ACTION,
+                                    com.uxplima.uxmskyblock.bukkit.tradewinds.VesselStart.ACTION)))
                     .describedAs("every enabled mode's start action is known to the islands it starts")
                     .isTrue();
         }
@@ -420,6 +421,8 @@ class ZeroFootprintModuleWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration());
         when(config.tradeConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration());
+        when(config.tradeWindsConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.defaultConfiguration());
         when(config.strangerRealmsConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
         when(config.poseidonConfig())

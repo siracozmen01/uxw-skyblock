@@ -348,6 +348,12 @@ public final class ConfigurationLoader {
                 "trade.conf",
                 com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration tradeWindsConfig = loadConfig(
+                plugin,
+                dataDir,
+                "tradewinds.conf",
+                com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -394,6 +400,7 @@ public final class ConfigurationLoader {
                 parkourConfig,
                 brixConfig,
                 tradeConfig,
+                tradeWindsConfig,
                 presetConfig);
 
         wiring.validate();

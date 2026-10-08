@@ -298,6 +298,13 @@ class GameModeSchemaDialectPortabilityTest {
             brix.add(islandId);
             assertThat(brix.exists(islandId)).isTrue();
             assertThat(brix.findAll()).containsExactly(islandId);
+            // A TradeWinds vessel: recorded once, found, gone with the island.
+            com.uxplima.uxmskyblock.persistence.tradewinds.SqlVesselsAdapter vessels =
+                    new com.uxplima.uxmskyblock.persistence.tradewinds.SqlVesselsAdapter(database.dataSource());
+            vessels.add(islandId);
+            vessels.add(islandId);
+            assertThat(vessels.exists(islandId)).isTrue();
+            assertThat(vessels.findAll()).containsExactly(islandId);
             // A Parkour course: recorded once, a runner's first finish and a faster and a slower one.
             com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter parkour =
                     new com.uxplima.uxmskyblock.persistence.parkour.SqlParkourAdapter(database.dataSource());
@@ -340,6 +347,8 @@ class GameModeSchemaDialectPortabilityTest {
             assertThat(parkour.exists(islandId)).isFalse();
             assertThat(brix.exists(islandId)).isFalse();
             assertThat(brix.findAll()).isEmpty();
+            assertThat(vessels.exists(islandId)).isFalse();
+            assertThat(vessels.findAll()).isEmpty();
             assertThat(parkour.top(islandId, 5)).isEmpty();
             assertThat(parkour.mostRun(5)).isEmpty();
             assertThat(oneBlock.find(islandId)).isEmpty();

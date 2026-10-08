@@ -15,7 +15,8 @@ public enum GameModeType {
     POSEIDON,
     STRANGER_REALMS,
     PARKOUR,
-    BRIX;
+    BRIX,
+    TRADEWINDS;
 
     /** Whether the mode is played under water, so that water is room to arrive in rather than a danger. */
     public boolean playedUnderwater() {
