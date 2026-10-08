@@ -21,6 +21,7 @@ public final class TradeWiring {
     private final TradeConfiguration config;
     private final Trades trades;
     private final TradeListener listener;
+    private final com.uxplima.uxmskyblock.bukkit.inventory.HoldStillListener holdStill;
 
     public TradeWiring(
             ConfigurationWiring configuration,
@@ -49,6 +50,7 @@ public final class TradeWiring {
                 SealedInventory::holds,
                 System::nanoTime);
         this.listener = new TradeListener(trades);
+        this.holdStill = new com.uxplima.uxmskyblock.bukkit.inventory.HoldStillListener(trades::exchanging);
     }
 
     public boolean enabled() {
@@ -61,5 +63,10 @@ public final class TradeWiring {
 
     public TradeListener listener() {
         return listener;
+    }
+
+    /** Holds an inventory still while its trade is carried out. */
+    public com.uxplima.uxmskyblock.bukkit.inventory.HoldStillListener holdStill() {
+        return holdStill;
     }
 }

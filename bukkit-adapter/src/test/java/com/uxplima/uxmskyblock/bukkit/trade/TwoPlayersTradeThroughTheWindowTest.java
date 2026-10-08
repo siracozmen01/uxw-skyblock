@@ -266,7 +266,8 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
     @SuppressWarnings({"deprecation", "removal"})
     void anInventoryHoldsStillWhileItIsTraded() {
         Trades trades = open();
-        TradeListener listener = new TradeListener(trades);
+        com.uxplima.uxmskyblock.bukkit.inventory.HoldStillListener listener =
+                new com.uxplima.uxmskyblock.bukkit.inventory.HoldStillListener(trades::exchanging);
         List<Boolean> held = new ArrayList<>();
         journal.whileCommitting = () -> {
             org.bukkit.event.player.PlayerDropItemEvent thrown = new org.bukkit.event.player.PlayerDropItemEvent(

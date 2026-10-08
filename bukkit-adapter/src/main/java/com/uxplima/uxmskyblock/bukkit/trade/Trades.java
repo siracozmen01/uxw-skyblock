@@ -336,7 +336,9 @@ public final class Trades {
                 sides.add(new PlayerTradeSide(
                         online,
                         held.get(i),
-                        trade.offers(player),
+                        trade.offers(player).stream()
+                                .map(offer -> new PlayerTradeSide.Given(offer.slot(), offer.item()))
+                                .toList(),
                         trade.offers(other).stream().map(Trade.Offer::item).toList(),
                         thread,
                         () -> sessions.fence(player, "a trade nobody can tell was written")));

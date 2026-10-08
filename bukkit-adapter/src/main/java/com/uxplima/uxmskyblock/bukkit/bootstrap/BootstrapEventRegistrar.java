@@ -45,6 +45,7 @@ public final class BootstrapEventRegistrar {
         }
         if (gameplayWiring.tradeWiring().enabled()) {
             pm.registerEvents(gameplayWiring.tradeWiring().listener(), plugin);
+            pm.registerEvents(gameplayWiring.tradeWiring().holdStill(), plugin);
         }
         if (gameplayWiring.parkourWiring().enabled()) {
             pm.registerEvents(gameplayWiring.parkourWiring().runs(), plugin);

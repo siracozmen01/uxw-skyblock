@@ -20,13 +20,13 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
  * be changed and not journaled. When the player leaves first, or their thread does not get to it in
  * time, {@code gone} is the answer and nothing was done.
  */
-final class OnThePlayersThread {
+public final class OnThePlayersThread {
 
     private static final long WAIT_SECONDS = 10;
 
     private final SchedulerPort scheduler;
 
-    OnThePlayersThread(SchedulerPort scheduler) {
+    public OnThePlayersThread(SchedulerPort scheduler) {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
     }
 
