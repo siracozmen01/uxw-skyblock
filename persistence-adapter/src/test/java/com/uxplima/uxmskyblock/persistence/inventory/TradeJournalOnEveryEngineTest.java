@@ -147,6 +147,8 @@ class TradeJournalOnEveryEngineTest {
                             .isSuccess())
                     .isTrue();
             assertThat(journal.findOpenTrades(bo.profile())).containsExactly(second);
+            // Ada left holding her half, and the last write of her inventory kept it.
+            keptOnLeaving(database, ada, "nothing");
             byte[] kept = journal.participants(second).get(0).beforeInventory();
             assertThat(journal.settleSide(second, 0, NODE, ada, kept, version(inventories, ada), true)
                             .isSuccess())
@@ -180,6 +182,18 @@ class TradeJournalOnEveryEngineTest {
                                 ProfileInventoryRecord.createDefault(holder.profile(), bytes(text), new byte[0]))
                         .isSuccess())
                 .isTrue();
+    }
+
+    private static void keptOnLeaving(Database database, TradeJournalPort.Holder holder, String text) {
+        try (java.sql.Connection conn = database.connection();
+                java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "UPDATE profile_inventories SET inventory_nbt = ? WHERE profile_id = ?")) {
+            ps.setBytes(1, bytes(text));
+            ps.setString(2, holder.profile().value().toString());
+            assertThat(ps.executeUpdate()).isEqualTo(1);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static TradeJournalPort.Side side(

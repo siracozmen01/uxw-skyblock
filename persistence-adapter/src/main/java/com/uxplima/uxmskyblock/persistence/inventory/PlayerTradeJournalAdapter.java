@@ -20,6 +20,7 @@ import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmlib.storage.sql.Dialect;
 import com.uxplima.uxmskyblock.core.application.trade.TradeJournalPort;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
+import com.uxplima.uxmskyblock.core.domain.inventory.InventoryFingerprint;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalOutcome;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationJournalState;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
@@ -46,6 +47,7 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
     private final String insertParticipant;
     private final String selectParticipants;
     private final String updateParticipantsState;
+    private final String selectDurableInventory;
 
     public PlayerTradeJournalAdapter(Database database) {
         this.database = Objects.requireNonNull(database, "database");
@@ -69,6 +71,8 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
                 + "after_fingerprint, durable_apply_state, mutation_delta_payload "
                 + "FROM inventory_mutation_participants WHERE operation_id = ? ORDER BY participant_index";
         this.selectParticipants = dialect == Dialect.SQLITE ? participants : participants + " FOR UPDATE";
+        String durable = "SELECT inventory_nbt FROM profile_inventories WHERE profile_id = ?";
+        this.selectDurableInventory = dialect == Dialect.SQLITE ? durable : durable + " FOR UPDATE";
         this.updateParticipantsState = "UPDATE inventory_mutation_participants "
                 + "SET durable_apply_state = ?, updated_at = CURRENT_TIMESTAMP WHERE operation_id = ?";
     }
@@ -173,6 +177,10 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
             List<Participant> recorded = participants(conn, operationId);
             if (recorded.size() != sides.size()) {
                 return InventoryMutationJournalOutcome.rejected("PARTICIPANT_MISMATCH");
+            }
+            if (recorded.stream().anyMatch(side -> side.applyState() == ParticipantApplyState.REVERTED)) {
+                // Recovery put a side back already: committing over it would give that side's half twice.
+                return InventoryMutationJournalOutcome.rejected("SIDE_PUT_BACK");
             }
             for (Outcome side : inLockOrder(sides, Outcome::holder)) {
                 Optional<String> refusal = refusal(conn, side.holder(), node, true);
@@ -298,6 +306,21 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
             if (refusal.isPresent()) {
                 return InventoryMutationJournalOutcome.rejected(refusal.get());
             }
+            // Recovery decided from what it read before this transaction. What it decided is checked
+            // again here, under the locks, against what the inventories hold now: two players' recoveries
+            // running at once must not each act on a picture the other just changed.
+            Participant mine = recorded.get(index);
+            boolean putBack = mine.applyState() == ParticipantApplyState.REVERTED;
+            String holds = durableFingerprint(conn, mine.profile());
+            if (restore != null && (putBack || !holds.equals(mine.afterFingerprint()))) {
+                return InventoryMutationJournalOutcome.rejected("SIDE_MOVED");
+            }
+            if (restore == null && !putBack && !holds.equals(mine.beforeFingerprint())) {
+                return InventoryMutationJournalOutcome.rejected("SIDE_MOVED");
+            }
+            if (closeTrade && anotherHoldsItsHalf(conn, recorded, index)) {
+                return InventoryMutationJournalOutcome.rejected("ANOTHER_SIDE_HOLDS_ITS_HALF");
+            }
             if (restore != null && !writeInventory(conn, holder, restore, restoreOver)) {
                 return InventoryMutationJournalOutcome.rejected("OCC_VERSION_MISMATCH");
             }
@@ -339,13 +362,22 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
             if (!"INTENT".equals(state.get())) {
                 return InventoryMutationJournalOutcome.rejected("INVALID_JOURNAL_STATE");
             }
-            if (participants(conn, operationId).stream()
-                    .noneMatch(side -> side.profile().equals(holder.profile()))) {
+            List<Participant> recorded = participants(conn, operationId);
+            if (recorded.stream().noneMatch(side -> side.profile().equals(holder.profile()))) {
                 return InventoryMutationJournalOutcome.rejected("CROSS_PROFILE_MISMATCH");
             }
             Optional<String> refusal = refusal(conn, holder, node, true);
             if (refusal.isPresent()) {
                 return InventoryMutationJournalOutcome.rejected(refusal.get());
+            }
+            if (settledAs == InventoryMutationJournalState.COMMITTED) {
+                // A trade is committed as it stands only while every side still holds its outcome.
+                for (Participant side : recorded) {
+                    if (side.applyState() == ParticipantApplyState.REVERTED
+                            || !durableFingerprint(conn, side.profile()).equals(side.afterFingerprint())) {
+                        return InventoryMutationJournalOutcome.rejected("NOT_EVERY_SIDE_HOLDS_IT");
+                    }
+                }
             }
             if (settledAs == InventoryMutationJournalState.COMMITTED) {
                 setEveryParticipant(conn, operationId, ParticipantApplyState.APPLIED);
@@ -369,6 +401,28 @@ public final class PlayerTradeJournalAdapter implements TradeJournalPort {
         List<T> ordered = new ArrayList<>(items);
         ordered.sort(Comparator.comparing(item -> holder.apply(item).player().value(), unsigned));
         return ordered;
+    }
+
+    /** Whether a side other than {@code index}, not put back yet, holds what the trade gives it. */
+    private boolean anotherHoldsItsHalf(Connection conn, List<Participant> recorded, int index) throws SQLException {
+        for (Participant side : recorded) {
+            if (side.index() != index
+                    && side.applyState() != ParticipantApplyState.REVERTED
+                    && durableFingerprint(conn, side.profile()).equals(side.afterFingerprint())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** What {@code profile}'s durable inventory holds, as the journal fingerprints it, its row locked. */
+    private String durableFingerprint(Connection conn, ProfileId profile) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(selectDurableInventory)) {
+            ps.setString(1, profile.value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return InventoryFingerprint.of(rs.next() ? rs.getBytes(1) : null);
+            }
+        }
     }
 
     private Optional<String> refusal(Connection conn, Holder holder, ServerNodeId node, boolean requireActive)

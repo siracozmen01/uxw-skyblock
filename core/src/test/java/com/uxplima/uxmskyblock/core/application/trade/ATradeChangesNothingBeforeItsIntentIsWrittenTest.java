@@ -85,7 +85,7 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
                 .isEqualTo(TradeExchange.CHANGED);
         assertThat(events)
                 .containsExactly(
-                        "read ada", "read bo", "intent", "apply ada", "applied 0", "apply bo", "put back ada", "abort");
+                        "read ada", "read bo", "intent", "apply ada", "applied 0", "apply bo", "abort", "put back ada");
     }
 
     @Test
@@ -95,7 +95,7 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
                 .isEqualTo(TradeExchange.NOT_SAVED);
-        assertThat(events).endsWith("commit", "put back ada", "put back bo", "abort");
+        assertThat(events).endsWith("commit", "abort", "put back ada", "put back bo");
     }
 
     @Test
@@ -103,10 +103,46 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
     void anUnansweredCommitThatLanded() {
         journal.commitThrows = true;
         journal.landed = InventoryMutationJournalState.COMMITTED;
+        journal.abort = InventoryMutationJournalOutcome.rejected("INVALID_JOURNAL_STATE");
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).isOk())
                 .isTrue();
-        assertThat(events).endsWith("commit", "committed ada at 8", "committed bo at 4");
+        assertThat(events).endsWith("commit", "abort", "committed ada at 8", "committed bo at 4");
+        assertThat(events).noneMatch(event -> event.startsWith("put back"));
+    }
+
+    @Test
+    @DisplayName("A trade that can be neither aborted nor read puts nothing back and leaves its sides in doubt")
+    void aTradeNobodyCanReadIsInDoubt() {
+        journal.commitThrows = true;
+        journal.abortThrows = true;
+        journal.stateThrows = true;
+
+        assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
+                .isEqualTo(TradeExchange.IN_DOUBT);
+        assertThat(events).endsWith("commit", "abort", "in doubt ada", "in doubt bo");
+        assertThat(events).noneMatch(event -> event.startsWith("put back"));
+    }
+
+    @Test
+    @DisplayName("A journal that fails after a side changed calls the trade off and puts the side back")
+    void aFailureAfterASideChangedPutsItBack() {
+        journal.markAppliedThrows = true;
+
+        assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
+                .isEqualTo(TradeExchange.CHANGED);
+        assertThat(events).endsWith("apply ada", "applied 0", "abort", "put back ada");
+        assertThat(events).doesNotContain("apply bo");
+    }
+
+    @Test
+    @DisplayName("An intent the database never answered changes no inventory")
+    void anUnansweredIntentChangesNothing() {
+        journal.intentThrows = true;
+
+        assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
+                .isEqualTo(TradeExchange.BUSY);
+        assertThat(events).containsExactly("read ada", "read bo", "intent");
     }
 
     @Test
@@ -116,7 +152,7 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         assertThat(new TradeExchange(journal, NODE).exchange(List.of(ada, bo)).errorOrThrow())
                 .isEqualTo(TradeExchange.NOT_SAVED);
-        assertThat(events).endsWith("commit", "put back ada", "put back bo", "abort");
+        assertThat(events).endsWith("commit", "abort", "put back ada", "put back bo");
     }
 
     private final class Trader implements TradeExchange.LiveSide {
@@ -162,12 +198,22 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
         public void committed(long version) {
             events.add("committed " + name + " at " + version);
         }
+
+        @Override
+        public void inDoubt() {
+            events.add("in doubt " + name);
+        }
     }
 
     private final class FakeJournal implements TradeJournalPort {
         private InventoryMutationJournalOutcome intent = InventoryMutationJournalOutcome.success();
         private InventoryMutationJournalOutcome commit = InventoryMutationJournalOutcome.success();
+        private InventoryMutationJournalOutcome abort = InventoryMutationJournalOutcome.success();
+        private boolean intentThrows;
+        private boolean markAppliedThrows;
         private boolean commitThrows;
+        private boolean abortThrows;
+        private boolean stateThrows;
         private @Nullable InventoryMutationJournalState landed;
 
         @Override
@@ -178,12 +224,18 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
                 String payload,
                 Duration expiry) {
             events.add("intent");
+            if (intentThrows) {
+                throw new IllegalStateException("the database did not answer");
+            }
             return intent;
         }
 
         @Override
         public InventoryMutationJournalOutcome markApplied(InventoryMutationOperationId operationId, int index) {
             events.add("applied " + index);
+            if (markAppliedThrows) {
+                throw new IllegalStateException("the database did not answer");
+            }
             return InventoryMutationJournalOutcome.success();
         }
 
@@ -201,7 +253,10 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
         public InventoryMutationJournalOutcome abort(
                 InventoryMutationOperationId operationId, ServerNodeId node, List<Holder> holders) {
             events.add("abort");
-            return InventoryMutationJournalOutcome.success();
+            if (abortThrows) {
+                throw new IllegalStateException("the database did not answer");
+            }
+            return abort;
         }
 
         @Override
@@ -216,6 +271,9 @@ class ATradeChangesNothingBeforeItsIntentIsWrittenTest {
 
         @Override
         public Optional<InventoryMutationJournalState> state(InventoryMutationOperationId operationId) {
+            if (stateThrows) {
+                throw new IllegalStateException("the database did not answer");
+            }
             return Optional.ofNullable(landed);
         }
 
