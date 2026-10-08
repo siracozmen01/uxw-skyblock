@@ -35,6 +35,7 @@ import com.uxplima.uxmskyblock.core.application.tradewinds.PortMarket;
 import com.uxplima.uxmskyblock.core.application.tradewinds.VesselsPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import org.jspecify.annotations.Nullable;
 
@@ -102,7 +103,7 @@ public final class Harbour {
 
     /** Opens the market of the port {@code player}'s vessel lies in. */
     public void market(Player player) {
-        Result<IslandId, String> aboard = crew.aboard(player);
+        Result<IslandId, String> aboard = crew.aboard(player, IslandPermission.SHOP_ACCESS);
         if (!aboard.isOk()) {
             messages.send(player, aboard.errorOrThrow());
             return;
@@ -186,7 +187,8 @@ public final class Harbour {
     }
 
     void setSail(Player player, IslandId vessel, Port port) {
-        Result<IslandId, String> still = crew.aboard(player, vessel);
+        // Steering the vessel decides for the whole crew, as an island setting does.
+        Result<IslandId, String> still = crew.aboard(player, vessel, IslandPermission.SETTINGS_MODIFY);
         if (!still.isOk()) {
             messages.send(player, still.errorOrThrow());
             return;
@@ -257,7 +259,12 @@ public final class Harbour {
     }
 
     void trade(Player player, IslandId vessel, Port port, Port.Good good, boolean buying) {
-        Result<IslandId, String> still = crew.aboard(player, vessel);
+        // Buying spends the island bank; selling takes the island's goods out of the hold.
+        Result<IslandId, String> still = crew.aboard(
+                player,
+                vessel,
+                IslandPermission.SHOP_ACCESS,
+                buying ? IslandPermission.BANK_WITHDRAW : IslandPermission.VAULT_WITHDRAW);
         if (!still.isOk()) {
             messages.send(player, still.errorOrThrow());
             player.closeInventory();

@@ -10,11 +10,14 @@ import org.bukkit.entity.Player;
 import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.core.application.tradewinds.VesselService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
+import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 
 /**
- * Whether a player crews the vessel they stand on: aboard it, and of its island's team.
+ * Whether a player crews the vessel they stand on: aboard it, of its island's team, and allowed by their
+ * role on the island what they ask to do.
  *
  * <p>Asked on the player's own thread, from the island as it stands, every time a player works a vessel:
  * a window stays open after its player left the crew or the vessel.
@@ -31,8 +34,11 @@ public final class Crew {
         this.sessions = Objects.requireNonNull(sessions, "sessions");
     }
 
-    /** The vessel {@code player} crews and stands on, or the key of why they do not. */
-    public Result<IslandId, String> aboard(Player player) {
+    /**
+     * The vessel {@code player} crews and stands on, while their role on its island grants every one of
+     * {@code needs}, or the key of why not. The island's owner is granted everything.
+     */
+    public Result<IslandId, String> aboard(Player player, IslandPermission... needs) {
         Location at = player.getLocation();
         Optional<Island> island = at == null ? Optional.empty() : islandAt.apply(at);
         if (island.isEmpty() || !vessels.isVessel(island.get().id())) {
@@ -42,15 +48,24 @@ public final class Crew {
         if (session == null) {
             return Result.err("tradewinds.hold.busy");
         }
-        if (!island.get().isOwner(session.activeProfileId()) && !island.get().isMember(session.activeProfileId())) {
+        ProfileId profile = session.activeProfileId();
+        if (island.get().isOwner(profile)) {
+            return Result.ok(island.get().id());
+        }
+        if (!island.get().isMember(profile)) {
             return Result.err("tradewinds.hold.not_crew");
+        }
+        for (IslandPermission need : needs) {
+            if (!island.get().hasPermission(profile, need)) {
+                return Result.err("tradewinds.hold.not_allowed");
+            }
         }
         return Result.ok(island.get().id());
     }
 
-    /** Whether {@code player} still crews {@code vessel} and stands on it, or the key of why not. */
-    public Result<IslandId, String> aboard(Player player, IslandId vessel) {
-        Result<IslandId, String> found = aboard(player);
+    /** As {@link #aboard(Player, IslandPermission...)}, on {@code vessel} and no other. */
+    public Result<IslandId, String> aboard(Player player, IslandId vessel, IslandPermission... needs) {
+        Result<IslandId, String> found = aboard(player, needs);
         return !found.isOk() || found.orElseThrow().equals(vessel) ? found : Result.err("tradewinds.hold.not_vessel");
     }
 }

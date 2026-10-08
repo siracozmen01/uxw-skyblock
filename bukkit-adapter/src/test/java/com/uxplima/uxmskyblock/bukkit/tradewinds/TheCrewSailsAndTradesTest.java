@@ -73,19 +73,37 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
     private PlayerMock ada;
 
     @SuppressWarnings("NullAway.Init")
+    private PlayerMock bo;
+
+    @SuppressWarnings("NullAway.Init")
     private Harbour harbour;
 
     @BeforeEach
     void setUpTheVessel() {
         ada = createPlayer("Ada");
+        bo = createPlayer("Bo");
         ActiveSession session =
                 new ActiveSession(new PlayerUuid(ada.getUniqueId()), ProfileId.of(UUID.randomUUID()), 3L, 7L);
+        ActiveSession boSession =
+                new ActiveSession(new PlayerUuid(bo.getUniqueId()), ProfileId.of(UUID.randomUUID()), 3L, 7L);
+        // Bo may trade at a market and look into the hold, and neither spend the bank nor take goods out.
+        com.uxplima.uxmskyblock.core.domain.island.IslandRole trader =
+                new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                        "TRADER",
+                        10,
+                        "Trader",
+                        Set.of(
+                                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.SHOP_ACCESS,
+                                com.uxplima.uxmskyblock.core.domain.island.IslandPermission.VAULT_VIEW),
+                        false);
         Island island = Island.create(
-                vessel,
-                IslandBounds.fromCenterAndRadius(0, 0, 100),
-                PlayerUuid.of(ada.getUniqueId()),
-                session.activeProfileId(),
-                NOW);
+                        vessel,
+                        IslandBounds.fromCenterAndRadius(0, 0, 100),
+                        PlayerUuid.of(ada.getUniqueId()),
+                        session.activeProfileId(),
+                        NOW)
+                .addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                        PlayerUuid.of(bo.getUniqueId()), boSession.activeProfileId(), trader, NOW));
         VesselsPort holds = new VesselsPort() {
             @Override
             public Set<IslandId> findAll() {
@@ -121,7 +139,9 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
                         new CargoHolds.Sessions() {
                             @Override
                             public @Nullable ActiveSession session(UUID player) {
-                                return player.equals(ada.getUniqueId()) ? session : null;
+                                return player.equals(ada.getUniqueId())
+                                        ? session
+                                        : player.equals(bo.getUniqueId()) ? boSession : null;
                             }
 
                             @Override
@@ -215,6 +235,30 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
         aboard = false;
         harbour.trade(ada, vessel, BAY, wheat, true);
         verify(market, org.mockito.Mockito.times(1)).buy(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A member's role decides: this trader opens the market, and neither buys, sells nor steers")
+    void theRoleDecides() {
+        Port.Good wheat = BAY.goods().get(0);
+        when(market.where(vessel)).thenReturn(new PortMarket.Where.Docked(BAY.id()));
+
+        harbour.market(bo);
+        assertThat(bo.getOpenInventory().getTopInventory().getItem(0)).isNotNull();
+
+        harbour.trade(bo, vessel, BAY, wheat, true);
+        harbour.trade(bo, vessel, BAY, wheat, false);
+        harbour.setSail(bo, vessel, SALTMARSH);
+
+        verify(market, never()).buy(any(), any(), any(), any());
+        verify(market, never()).sell(any(), any(), any(), any());
+        verify(market, never()).sail(any(), any());
+        StringBuilder all = new StringBuilder();
+        Component line;
+        while ((line = bo.nextComponentMessage()) != null) {
+            all.append(text(line)).append('\n');
+        }
+        assertThat(all.toString()).contains("does not allow");
     }
 
     @Test

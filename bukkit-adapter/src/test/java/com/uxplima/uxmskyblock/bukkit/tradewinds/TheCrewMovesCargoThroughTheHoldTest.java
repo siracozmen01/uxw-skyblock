@@ -64,6 +64,17 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
 
     private static final int ROWS = 3;
 
+    /** A role that may look into the hold and stow in it, and take nothing out. */
+    private static final com.uxplima.uxmskyblock.core.domain.island.IslandRole DECKHAND =
+            new com.uxplima.uxmskyblock.core.domain.island.IslandRole(
+                    "DECKHAND",
+                    10,
+                    "Deckhand",
+                    Set.of(
+                            com.uxplima.uxmskyblock.core.domain.island.IslandPermission.VAULT_VIEW,
+                            com.uxplima.uxmskyblock.core.domain.island.IslandPermission.VAULT_DEPOSIT),
+                    false);
+
     private final IslandId vessel = IslandId.of(UUID.randomUUID());
     private final Map<UUID, ActiveSession> sessions = new HashMap<>();
     private final Set<UUID> fenced = new HashSet<>();
@@ -145,11 +156,34 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A member's role decides what they may move: this deckhand stows and takes nothing out")
+    void theRoleDecides() {
+        bo.getInventory().setItem(4, new ItemStack(Material.EMERALD, 16));
+        stow(new ItemStack(Material.DIAMOND, 5));
+        holds.open(bo);
+        assertThat(window(bo)).isNotNull();
+
+        click(bo, 0);
+        assertThat(said(bo)).contains("does not allow");
+        assertThat(count(bo, Material.DIAMOND)).isZero();
+        assertThat(journal.events).isEmpty();
+        assertThat(window(bo)).describedAs("a refused role keeps the window").isNotNull();
+
+        click(bo, ROWS * 9 + slotInView(4));
+        assertThat(count(bo, Material.EMERALD)).isZero();
+        assertThat(held(Material.EMERALD)).isEqualTo(16);
+    }
+
+    @Test
     @DisplayName("Only the crew aboard opens the hold, and not while what they hold was made in a creative place")
     void onlyTheCrewAboard() {
-        holds.open(bo);
-        assertThat(said(bo)).contains("Only the vessel's own crew");
-        assertThat(window(bo)).isNull();
+        PlayerMock cy = createPlayer("Cy");
+        sessions.put(
+                cy.getUniqueId(),
+                new ActiveSession(new PlayerUuid(cy.getUniqueId()), ProfileId.of(UUID.randomUUID()), 3L, 7L));
+        holds.open(cy);
+        assertThat(said(cy)).contains("Only the vessel's own crew");
+        assertThat(window(cy)).isNull();
 
         aboard = false;
         holds.open(ada);
@@ -273,11 +307,17 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
         ProfileId adaProfile = java.util.Objects.requireNonNull(sessions.get(ada.getUniqueId()))
                 .activeProfileId();
         Island island = Island.create(
-                vessel,
-                IslandBounds.fromCenterAndRadius(0, 0, 100),
-                PlayerUuid.of(ada.getUniqueId()),
-                adaProfile,
-                Instant.now());
+                        vessel,
+                        IslandBounds.fromCenterAndRadius(0, 0, 100),
+                        PlayerUuid.of(ada.getUniqueId()),
+                        adaProfile,
+                        Instant.now())
+                .addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                        PlayerUuid.of(bo.getUniqueId()),
+                        java.util.Objects.requireNonNull(sessions.get(bo.getUniqueId()))
+                                .activeProfileId(),
+                        DECKHAND,
+                        Instant.now()));
         VesselsPort port = new VesselsPort() {
             @Override
             public Set<IslandId> findAll() {

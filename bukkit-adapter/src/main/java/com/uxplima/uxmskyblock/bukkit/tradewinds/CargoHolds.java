@@ -41,6 +41,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.inventory.InventoryMutationOperationId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
+import com.uxplima.uxmskyblock.core.domain.island.IslandPermission;
 import com.uxplima.uxmskyblock.core.domain.result.Result;
 import org.jspecify.annotations.Nullable;
 
@@ -102,6 +103,7 @@ public final class CargoHolds {
     private final Predicate<Player> sealed;
     private final int slots;
     private final OnThePlayersThread thread;
+    private final Crew crew;
     private final Set<UUID> moving = ConcurrentHashMap.newKeySet();
     private final Map<IslandId, Set<UUID>> viewers = new ConcurrentHashMap<>();
 
@@ -131,6 +133,7 @@ public final class CargoHolds {
         }
         this.slots = rows * 9;
         this.thread = new OnThePlayersThread(scheduler);
+        this.crew = new Crew(vessels, islandAt, sessions);
     }
 
     /** Whether a move of {@code player}'s is being carried out now, when nothing may change their inventory. */
@@ -151,9 +154,9 @@ public final class CargoHolds {
             return;
         }
         IslandId vessel = island.get().id();
-        String refused = crewAboard(player, vessel);
-        if (refused != null) {
-            messages.send(player, refused);
+        Result<IslandId, String> allowed = crew.aboard(player, vessel, IslandPermission.VAULT_VIEW);
+        if (!allowed.isOk()) {
+            messages.send(player, allowed.errorOrThrow());
             return;
         }
         PlayerUuid who = PlayerUuid.of(player.getUniqueId());
@@ -202,15 +205,19 @@ public final class CargoHolds {
             messages.send(player, "tradewinds.hold.sealed");
             return;
         }
+        int slot = event.getSlot();
+        boolean taking = clicked.getHolder() instanceof View;
         // Asked again on every click: a window stays open after its player left the crew or the vessel.
-        String refused = crewAboard(player, view.vessel());
-        if (refused != null) {
-            messages.send(player, refused);
-            player.closeInventory();
+        Result<IslandId, String> allowed = crew.aboard(
+                player, view.vessel(), taking ? IslandPermission.VAULT_WITHDRAW : IslandPermission.VAULT_DEPOSIT);
+        if (!allowed.isOk()) {
+            messages.send(player, allowed.errorOrThrow());
+            if (!"tradewinds.hold.not_allowed".equals(allowed.errorOrThrow())) {
+                player.closeInventory();
+            }
             return;
         }
-        int slot = event.getSlot();
-        if (clicked.getHolder() instanceof View) {
+        if (taking) {
             ItemStack shown = clicked.getItem(slot);
             if (shown != null && !shown.getType().isAir()) {
                 move(player, view.vessel(), Direction.TAKE, slot, shown.clone());
@@ -245,26 +252,6 @@ public final class CargoHolds {
     /** A player who leaves sees no hold. */
     public void onLeave(UUID player) {
         viewers.values().forEach(watching -> watching.remove(player));
-    }
-
-    /**
-     * Why {@code player} may not work the hold of {@code vessel} now, or null while they are of its crew and
-     * aboard it. Read on the player's thread, from the island as it stands.
-     */
-    private @Nullable String crewAboard(Player player, IslandId vessel) {
-        Location at = player.getLocation();
-        Optional<Island> island = at == null ? Optional.empty() : islandAt.apply(at);
-        if (island.isEmpty() || !island.get().id().equals(vessel)) {
-            return "tradewinds.hold.not_vessel";
-        }
-        ActiveSession session = sessions.session(player.getUniqueId());
-        if (session == null) {
-            return "tradewinds.hold.busy";
-        }
-        if (!island.get().isOwner(session.activeProfileId()) && !island.get().isMember(session.activeProfileId())) {
-            return "tradewinds.hold.not_crew";
-        }
-        return null;
     }
 
     private enum Direction {
