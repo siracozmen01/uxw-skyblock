@@ -29,6 +29,11 @@ class VesselServiceTest {
         public void add(IslandId islandId) {
             table.add(islandId);
         }
+
+        @Override
+        public java.util.Optional<VesselsPort.Cargo> cargo(IslandId islandId) {
+            return java.util.Optional.empty();
+        }
     });
 
     @Test
@@ -73,6 +78,11 @@ class VesselServiceTest {
                             @Override
                             public void add(IslandId islandId) {
                                 table.add(islandId);
+                            }
+
+                            @Override
+                            public java.util.Optional<VesselsPort.Cargo> cargo(IslandId islandId) {
+                                return java.util.Optional.empty();
                             }
                         })
                         .prime())

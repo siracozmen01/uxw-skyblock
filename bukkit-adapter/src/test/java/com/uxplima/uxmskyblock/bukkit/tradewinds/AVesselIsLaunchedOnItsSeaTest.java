@@ -74,6 +74,11 @@ class AVesselIsLaunchedOnItsSeaTest extends MockBukkitHarness {
             public void add(IslandId islandId) {
                 vessels.add(islandId);
             }
+
+            @Override
+            public java.util.Optional<VesselsPort.Cargo> cargo(IslandId islandId) {
+                return java.util.Optional.empty();
+            }
         });
         scheduler = mock(SchedulerPort.class);
         doAnswer(call -> {

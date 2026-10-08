@@ -68,4 +68,23 @@ public final class SqlVesselsAdapter implements VesselsPort {
             throw new IllegalStateException("Could not record island " + islandId + " as a TradeWinds vessel", e);
         }
     }
+
+    @Override
+    public java.util.Optional<Cargo> cargo(IslandId islandId) {
+        Objects.requireNonNull(islandId, "islandId must not be null");
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement ps = conn.prepareStatement(
+                        "SELECT cargo, cargo_version FROM tradewinds_vessels WHERE island_id = ?")) {
+            ps.setString(1, islandId.value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return java.util.Optional.empty();
+                }
+                byte[] items = rs.getBytes(1);
+                return java.util.Optional.of(new Cargo(items == null ? new byte[0] : items, rs.getLong(2)));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read the cargo hold of vessel " + islandId, e);
+        }
+    }
 }
