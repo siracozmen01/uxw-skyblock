@@ -5,7 +5,7 @@ paper          = "26.2.build.112-stable"
 adventure      = "5.2.0"
 
 # UXPLIMA Toolkit
-uxmlib         = "0.141.0"
+uxmlib         = "0.148.0"
 
 # Usage statistics, shaded and relocated into the plugin jar
 bstats         = "3.0.2"
