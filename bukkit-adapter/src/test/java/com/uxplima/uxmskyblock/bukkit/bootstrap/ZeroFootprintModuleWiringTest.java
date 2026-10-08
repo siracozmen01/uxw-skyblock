@@ -178,6 +178,11 @@ class ZeroFootprintModuleWiringTest {
                         com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.Markers.SHIPPED,
                         com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.Runs.SHIPPED,
                         com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.Modes.SHIPPED));
+        com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration shipped =
+                com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.defaultConfiguration();
+        when(config.tradeWindsConfig())
+                .thenReturn(new com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration(
+                        false, shipped.sea(), shipped.ranks(), shipped.ports(), shipped.icons(), shipped.standing()));
         try (PersistenceWiring persistenceWiring = PersistenceWiring.resolve(null, tempDir)) {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();
             AuthorityWiring authority = mock(AuthorityWiring.class);
@@ -230,7 +235,9 @@ class ZeroFootprintModuleWiringTest {
             assertThat(gameplay.oreGeneratorListener()).isNull();
             assertThat(gameplay.chatListener()).isNull();
             assertThat(gameplay.leaderboardMetrics().metrics())
-                    .doesNotContain(com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID);
+                    .doesNotContain(
+                            com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID,
+                            com.uxplima.uxmskyblock.core.application.tradewinds.TradeVolumeMetric.ID);
         }
     }
 
@@ -293,7 +300,9 @@ class ZeroFootprintModuleWiringTest {
             assertThat(gameplay.oreGeneratorListener()).isNotNull();
             assertThat(gameplay.chatListener()).isNotNull();
             assertThat(gameplay.leaderboardMetrics().metrics())
-                    .contains(com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID);
+                    .contains(
+                            com.uxplima.uxmskyblock.core.application.parkour.ParkourRunsMetric.ID,
+                            com.uxplima.uxmskyblock.core.application.tradewinds.TradeVolumeMetric.ID);
             assertThat(gameplay.schematicEngine()
                             .actions()
                             .knowsAll(java.util.List.of(

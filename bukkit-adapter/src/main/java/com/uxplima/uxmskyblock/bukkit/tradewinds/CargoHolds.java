@@ -34,6 +34,7 @@ import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.trade.TradeExchange;
 import com.uxplima.uxmskyblock.core.application.tradewinds.CargoJournalPort;
 import com.uxplima.uxmskyblock.core.application.tradewinds.CargoTransfer;
+import com.uxplima.uxmskyblock.core.application.tradewinds.Ranks;
 import com.uxplima.uxmskyblock.core.application.tradewinds.VesselLease;
 import com.uxplima.uxmskyblock.core.application.tradewinds.VesselService;
 import com.uxplima.uxmskyblock.core.application.tradewinds.VesselsPort;
@@ -101,7 +102,7 @@ public final class CargoHolds {
     private final SchedulerPort scheduler;
     private final Messages messages;
     private final Predicate<Player> sealed;
-    private final int slots;
+    private final Function<IslandId, Ranks.Rank> rankOf;
     private final OnThePlayersThread thread;
     private final Crew crew;
     private final Set<UUID> moving = ConcurrentHashMap.newKeySet();
@@ -118,7 +119,7 @@ public final class CargoHolds {
             SchedulerPort scheduler,
             Messages messages,
             Predicate<Player> sealed,
-            int rows) {
+            Function<IslandId, Ranks.Rank> rankOf) {
         this.vessels = Objects.requireNonNull(vessels, "vessels");
         this.holds = Objects.requireNonNull(holds, "holds");
         this.lease = Objects.requireNonNull(lease, "lease");
@@ -128,10 +129,7 @@ public final class CargoHolds {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.sealed = Objects.requireNonNull(sealed, "sealed");
-        if (rows < 1 || rows > 6) {
-            throw new IllegalArgumentException("a hold has from 1 to 6 rows");
-        }
-        this.slots = rows * 9;
+        this.rankOf = Objects.requireNonNull(rankOf, "rankOf");
         this.thread = new OnThePlayersThread(scheduler);
         this.crew = new Crew(vessels, islandAt, sessions);
     }
@@ -162,23 +160,32 @@ public final class CargoHolds {
         PlayerUuid who = PlayerUuid.of(player.getUniqueId());
         scheduler.async(() -> {
             Optional<VesselsPort.Cargo> cargo;
+            Ranks.Rank found;
             try {
                 cargo = holds.cargo(vessel);
+                found = rankOf.apply(vessel);
             } catch (RuntimeException e) {
                 LOGGER.log(Level.WARNING, e, () -> "The cargo hold of vessel " + vessel + " could not be read.");
-                cargo = Optional.empty();
+                scheduler.onEntity(who, () -> messages.send(player, "tradewinds.hold.busy"));
+                return;
             }
             Optional<VesselsPort.Cargo> read = cargo;
+            Ranks.Rank rank = found;
             scheduler.onEntity(who, () -> {
                 if (read.isEmpty()) {
                     messages.send(player, "tradewinds.hold.busy");
                     return;
                 }
                 View view = new View(vessel);
-                Inventory window =
-                        Bukkit.createInventory(view, slots, messages.renderPlain(player, "tradewinds.hold.title"));
+                Inventory window = Bukkit.createInventory(
+                        view,
+                        rank.holdSlots(),
+                        messages.renderPlain(
+                                player,
+                                "tradewinds.hold.title",
+                                Names.of(messages, player, "rank", "ranks", rank.id())));
                 view.inventory = window;
-                window.setContents(shown(read.get().items()));
+                window.setContents(window(read.get().items(), rank.holdSlots()));
                 viewers.computeIfAbsent(vessel, key -> ConcurrentHashMap.newKeySet())
                         .add(player.getUniqueId());
                 player.openInventory(window);
@@ -301,7 +308,7 @@ public final class CargoHolds {
                 return Result.err("tradewinds.hold.not_vessel");
             }
             byte[] stored = cargo.get().items();
-            ItemStack[] hold = shown(stored);
+            ItemStack[] hold = stacks(stored, rankOf.apply(vessel).holdSlots());
             List<PlayerTradeSide.Given> gives;
             List<ItemStack> receives;
             CargoTransfer.Cargo after;
@@ -372,7 +379,7 @@ public final class CargoHolds {
                 if (top != null
                         && top.getHolder() instanceof View view
                         && view.vessel().equals(vessel)) {
-                    top.setContents(shown(items));
+                    top.setContents(window(items, top.getSize()));
                 } else {
                     forget(vessel, viewer);
                 }
@@ -387,11 +394,16 @@ public final class CargoHolds {
         }
     }
 
-    /** The hold's items, as many slots as the window has, or more when it holds more. */
-    private ItemStack[] shown(byte[] stored) {
+    /** The hold's items, at least {@code slots} of them: more when it holds more than its rank shows. */
+    private static ItemStack[] stacks(byte[] stored, int slots) {
         ItemStack[] items =
                 stored.length == 0 ? new ItemStack[0] : BukkitInventorySerializer.deserializeItemStacks(stored);
         return items.length >= slots ? items : Arrays.copyOf(items, slots);
+    }
+
+    /** The hold's items as a window of {@code size} slots shows them. */
+    private static ItemStack[] window(byte[] stored, int size) {
+        return Arrays.copyOf(stacks(stored, size), size);
     }
 
     /** The message key of a move that did not happen: a trade's reasons are the hold's own. */

@@ -112,7 +112,7 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
         holds.open(ada);
         assertThat(PlainTextComponentSerializer.plainText()
                         .serialize(ada.getOpenInventory().title()))
-                .isEqualTo("Cargo hold");
+                .isEqualTo("Cargo hold: Dinghy");
 
         click(ada, ROWS * 9 + slotInView(4));
 
@@ -286,21 +286,29 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("The shipped file gives the hold three rows, and a hold that fits no chest falls back")
+    @DisplayName("Ranks are read as written, a ladder that cannot be falls back, and a dinghy's hold has three rows")
     void theHoldRows() throws Exception {
-        assertThat(rows("hold { rows = 6 }")).isEqualTo(6);
-        assertThat(rows("hold { rows = 7 }")).isEqualTo(3);
-        assertThat(rows("hold { rows = 0 }")).isEqualTo(3);
-        assertThat(rows("")).isEqualTo(3);
+        var shipped = com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.SHIPPED_RANKS;
+        assertThat(ranks("")).isEqualTo(shipped);
+        assertThat(ranks("ranks = [ { id = \"raft\", volume = 0, hold-rows = 6 } ]")
+                        .of(1_000_000)
+                        .holdRows())
+                .isEqualTo(6);
+        assertThat(ranks("ranks = [ { id = \"raft\", volume = 0, hold-rows = 7 } ]"))
+                .isEqualTo(shipped);
+        assertThat(ranks("ranks = [ { id = \"raft\", volume = 5, hold-rows = 3 } ]"))
+                .isEqualTo(shipped);
+        assertThat(ranks("ranks = []")).isEqualTo(shipped);
+        assertThat(shipped.of(0).holdRows()).isEqualTo(3);
         assertThat(CargoHolds.keyOf("trade.not_saved")).isEqualTo("tradewinds.hold.not_saved");
         assertThat(CargoHolds.keyOf("tradewinds.hold.full")).isEqualTo("tradewinds.hold.full");
     }
 
-    private static int rows(String hocon) throws Exception {
+    private static com.uxplima.uxmskyblock.core.application.tradewinds.Ranks ranks(String hocon) throws Exception {
         return com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.load(
                         org.spongepowered.configurate.hocon.HoconConfigurationLoader.builder()
                                 .buildAndLoadString(hocon))
-                .holdRows();
+                .ranks();
     }
 
     private CargoHolds holds(int rows) {
@@ -362,7 +370,7 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
                 inline(),
                 Messages.bundled(),
                 player -> sealed.contains(player.getUniqueId()),
-                rows);
+                found -> new com.uxplima.uxmskyblock.core.application.tradewinds.Ranks.Rank("dinghy", 0, rows));
     }
 
     private void stow(ItemStack item) {

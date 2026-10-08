@@ -40,6 +40,8 @@ class AnOrderMovesMoneyOnceTest {
     private static final Port.Good SILK = new Port.Good("SILK", 5, 0, 300);
     private static final Port BAY = new Port("emerald-bay", 60, List.of(WHEAT, SILK));
     private static final Port COVE = new Port("cove", 0, List.of(WHEAT));
+    private static final Ranks RANKS =
+            new Ranks(List.of(new Ranks.Rank("dinghy", 0, 1), new Ranks.Rank("sloop", 1_000, 2)));
 
     private final IslandId vessel = IslandId.of(UUID.randomUUID());
     private final PlayerUuid ada = PlayerUuid.of(UUID.randomUUID());
@@ -194,6 +196,50 @@ class AnOrderMovesMoneyOnceTest {
     }
 
     @Test
+    @DisplayName("Trade raises a vessel's rank, and a higher rank's hold has room for more")
+    void aRankGrowsTheHold() {
+        docked();
+        hold.items.put("WHEAT", 50);
+        PortMarket market = market();
+        assertThat(market.rank(vessel).id()).isEqualTo("dinghy");
+
+        for (int sale = 0; sale < 5; sale++) {
+            assertThat(market.sell(vessel, ada, BAY, WHEAT).isOk()).isTrue();
+        }
+        assertThat(market.rank(vessel).id()).isEqualTo("sloop");
+
+        hold.items.put("STONE", Hold.ROOM - 5);
+        bank.balance = 500;
+        assertThat(market.buy(vessel, ada, BAY, WHEAT).isOk())
+                .describedAs("a dinghy's hold would have no room for it")
+                .isTrue();
+        assertThat(new TradeVolumeMetric(orders).read(5))
+                .singleElement()
+                .satisfies(reading -> assertThat(reading.value()).isEqualTo(1_500));
+    }
+
+    @Test
+    @DisplayName("Ranks start from no trade, each takes more trade than the last, and none shrinks the hold")
+    void ranksAreChecked() {
+        assertThat(RANKS.of(999).id()).isEqualTo("dinghy");
+        assertThat(RANKS.of(1_000).id()).isEqualTo("sloop");
+        assertThat(RANKS.after(RANKS.of(0))).contains(RANKS.of(1_000));
+        assertThat(RANKS.after(RANKS.of(1_000))).isEmpty();
+        assertThat(RANKS.of(0).holdSlots()).isEqualTo(9);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new Ranks(List.of(new Ranks.Rank("a", 5, 1))))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new Ranks(List.of(new Ranks.Rank("a", 0, 1), new Ranks.Rank("b", 0, 2))))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new Ranks(List.of(new Ranks.Rank("a", 0, 3), new Ranks.Rank("b", 10, 2))))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new Ranks(List.of(new Ranks.Rank("a", 0, 1), new Ranks.Rank("a", 10, 2))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("Standing lowers what a port asks and raises what it pays, closing at most half the gap")
     void standingMovesPrices() {
         Standing standing = new Standing(1000, 5, 4);
@@ -237,6 +283,7 @@ class AnOrderMovesMoneyOnceTest {
                 bank,
                 hold,
                 Standing.NONE,
+                RANKS,
                 NODE,
                 Clock.fixed(now, ZoneOffset.UTC));
     }
@@ -286,10 +333,10 @@ class AnOrderMovesMoneyOnceTest {
         }
 
         @Override
-        public Optional<byte[]> stow(byte[] stored, String item, int count) {
+        public Optional<byte[]> stow(byte[] stored, int slots, String item, int count) {
             Map<String, Integer> now = read(stored);
             int total = now.values().stream().mapToInt(Integer::intValue).sum();
-            if (total + count > ROOM) {
+            if (total + count > ROOM * slots / 9) {
                 return Optional.empty();
             }
             now.merge(item, count, Integer::sum);
@@ -400,6 +447,11 @@ class AnOrderMovesMoneyOnceTest {
         @Override
         public long tradeVolume(IslandId islandId) {
             return volume;
+        }
+
+        @Override
+        public List<Traded> mostTraded(int limit) {
+            return volume == 0 ? List.of() : List.of(new Traded(vessel, "vessel", volume));
         }
 
         private void grow(Order order) {

@@ -138,4 +138,15 @@ public interface MarketOrdersPort {
 
     /** All the trade the vessel did. */
     long tradeVolume(IslandId vessel);
+
+    /** A vessel and all the trade it did, with the name its island goes by. */
+    record Traded(IslandId vessel, String name, long volume) {
+        public Traded {
+            Objects.requireNonNull(vessel, "vessel");
+            Objects.requireNonNull(name, "name");
+        }
+    }
+
+    /** The vessels that did the most trade, most first, at most {@code limit} of them. */
+    List<Traded> mostTraded(int limit);
 }

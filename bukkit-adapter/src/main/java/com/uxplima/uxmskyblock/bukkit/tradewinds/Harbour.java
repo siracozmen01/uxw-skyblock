@@ -32,6 +32,7 @@ import com.uxplima.uxmskyblock.bukkit.i18n.MoneyText;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.tradewinds.Port;
 import com.uxplima.uxmskyblock.core.application.tradewinds.PortMarket;
+import com.uxplima.uxmskyblock.core.application.tradewinds.Ranks;
 import com.uxplima.uxmskyblock.core.application.tradewinds.VesselsPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -117,6 +118,9 @@ public final class Harbour {
             openMarket(player, vessel, found.orElseThrow());
         });
     }
+
+    /** What a trade made, and the vessel's rank before and after it. */
+    private record Trade(Result<PortMarket.Deal, String> made, Ranks.Rank before, Ranks.Rank after) {}
 
     /** One good of the market as a vessel sees it: its prices to that vessel and how many its hold has. */
     private record Offer(Port.Good good, long pays, long asks, int held) {}
@@ -273,8 +277,14 @@ public final class Harbour {
         PlayerUuid actor = PlayerUuid.of(player.getUniqueId());
         off(
                 player,
-                () -> buying ? market.buy(vessel, actor, port, good) : market.sell(vessel, actor, port, good),
-                done -> {
+                () -> {
+                    Ranks.Rank before = market.rank(vessel);
+                    Result<PortMarket.Deal, String> made =
+                            buying ? market.buy(vessel, actor, port, good) : market.sell(vessel, actor, port, good);
+                    return new Trade(made, before, market.rank(vessel));
+                },
+                trade -> {
+                    Result<PortMarket.Deal, String> done = trade.made();
                     if (!done.isOk()) {
                         messages.send(player, done.errorOrThrow(), ItemNames.placeholder("item", good.item()));
                         return;
@@ -286,6 +296,19 @@ public final class Harbour {
                             ItemNames.placeholder("item", deal.item()),
                             Placeholder.unparsed("count", Integer.toString(deal.count())),
                             Placeholder.unparsed("price", MoneyText.of(deal.amount())));
+                    if (!trade.after().equals(trade.before())) {
+                        messages.send(
+                                player,
+                                "tradewinds.market.ranked_up",
+                                Names.of(
+                                        messages,
+                                        player,
+                                        "rank",
+                                        "ranks",
+                                        trade.after().id()),
+                                Placeholder.unparsed(
+                                        "rows", Integer.toString(trade.after().holdRows())));
+                    }
                     // Prices and the hold moved: the window shows them as they are now.
                     if (forms == null || !Objects.requireNonNull(forms).isBedrock(player)) {
                         market(player);
@@ -343,10 +366,7 @@ public final class Harbour {
 
     /** {@code <port>}, the port's name in the reader's language, or its key when no file names it. */
     private TagResolver name(Player player, Port port) {
-        String written = messages.raw(player, "tradewinds.ports." + port.id());
-        return written == null
-                ? Placeholder.unparsed("port", port.id())
-                : Placeholder.component("port", messages.renderPlain(player, "tradewinds.ports." + port.id()));
+        return Names.of(messages, player, "port", "ports", port.id());
     }
 
     private String time(Player player, Instant until) {

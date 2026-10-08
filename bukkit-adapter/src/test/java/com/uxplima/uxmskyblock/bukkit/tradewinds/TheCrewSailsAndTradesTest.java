@@ -132,7 +132,7 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
                 market,
                 CONFIG,
                 holds,
-                new HoldGoods(27),
+                new HoldGoods(),
                 new Crew(
                         vessels,
                         location -> aboard ? Optional.of(island) : Optional.empty(),
@@ -151,6 +151,7 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
                 Messages.bundled(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         harbour.useForms(new BedrockFormService(bedrock::contains, new Screen(), Messages.bundled()));
+        when(market.rank(any())).thenReturn(CONFIG.ranks().of(0));
         when(market.pays(any(), any(), any()))
                 .thenAnswer(call -> call.getArgument(2, Port.Good.class).pays());
         when(market.asks(any(), any(), any()))
@@ -235,6 +236,19 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
         aboard = false;
         harbour.trade(ada, vessel, BAY, wheat, true);
         verify(market, org.mockito.Mockito.times(1)).buy(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A trade that lifts the vessel's rank says so, with the rows its hold has now")
+    void aRankUpIsTold() {
+        when(market.rank(vessel))
+                .thenReturn(CONFIG.ranks().of(0), CONFIG.ranks().of(500_000));
+        when(market.sell(any(), any(), any(), any())).thenReturn(Result.ok(new PortMarket.Deal("WHEAT", 16, 2_400)));
+        when(market.where(vessel)).thenReturn(new PortMarket.Where.Docked(BAY.id()));
+
+        harbour.trade(ada, vessel, BAY, BAY.goods().get(0), false);
+
+        assertThat(said()).contains("now a Sloop").contains("4 rows");
     }
 
     @Test

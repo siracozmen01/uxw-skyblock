@@ -74,8 +74,8 @@ public final class PortMarket {
         /** The hold with {@code count} plain {@code item}s taken out, or empty when it holds fewer. */
         Optional<byte[]> take(byte[] hold, String item, int count);
 
-        /** The hold with {@code count} {@code item}s stowed, or empty when they do not fit. */
-        Optional<byte[]> stow(byte[] hold, String item, int count);
+        /** The hold of {@code slots} slots with {@code count} {@code item}s stowed, or empty when they do not fit. */
+        Optional<byte[]> stow(byte[] hold, int slots, String item, int count);
     }
 
     /** Where a vessel is. */
@@ -101,6 +101,7 @@ public final class PortMarket {
     private final Bank bank;
     private final Goods goods;
     private final Standing standing;
+    private final Ranks ranks;
     private final ServerNodeId node;
     private final Clock clock;
     private final Map<IslandId, ReentrantLock> locks = new ConcurrentHashMap<>();
@@ -114,6 +115,7 @@ public final class PortMarket {
             Bank bank,
             Goods goods,
             Standing standing,
+            Ranks ranks,
             ServerNodeId node,
             Clock clock) {
         this.vessels = Objects.requireNonNull(vessels, "vessels");
@@ -123,6 +125,7 @@ public final class PortMarket {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.goods = Objects.requireNonNull(goods, "goods");
         this.standing = Objects.requireNonNull(standing, "standing");
+        this.ranks = Objects.requireNonNull(ranks, "ranks");
         this.node = Objects.requireNonNull(node, "node");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -152,6 +155,11 @@ public final class PortMarket {
         return voyages.setSail(vessel, epoch.getAsLong(), node, new VoyagesPort.Voyage(port.id(), arrives))
                 ? Result.ok(arrives)
                 : Result.err("tradewinds.hold.elsewhere");
+    }
+
+    /** The rank {@code vessel} holds by the trade it did. */
+    public Ranks.Rank rank(IslandId vessel) {
+        return ranks.of(orders.tradeVolume(vessel));
     }
 
     /** What {@code port} pays the crew of {@code vessel} for one {@code good}. */
@@ -235,7 +243,8 @@ public final class PortMarket {
             if (cargo.isEmpty()) {
                 return Result.err("tradewinds.hold.not_vessel");
             }
-            if (goods.stow(cargo.get().items(), good.item(), good.lot()).isEmpty()) {
+            if (goods.stow(cargo.get().items(), rank(vessel).holdSlots(), good.item(), good.lot())
+                    .isEmpty()) {
                 return Result.err("tradewinds.hold.full");
             }
             long amount = Math.multiplyExact(asks(vessel, port, good), (long) good.lot());
@@ -321,7 +330,8 @@ public final class PortMarket {
             if (epoch.isEmpty() || cargo.isEmpty()) {
                 return Result.err("tradewinds.market.pending");
             }
-            Optional<byte[]> after = goods.stow(cargo.get().items(), order.item(), order.count());
+            Optional<byte[]> after =
+                    goods.stow(cargo.get().items(), rank(order.vessel()).holdSlots(), order.item(), order.count());
             if (after.isEmpty()) {
                 if (orders.settle(order.id(), MarketOrdersPort.State.PAYING, MarketOrdersPort.State.REFUNDING)) {
                     refund(order);

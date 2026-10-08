@@ -48,6 +48,20 @@ public final class TradeWindsWiring {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
         this.service = new VesselService(persistence.vesselsPort());
         com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator coordinator = authority.sessionCoordinator();
+        java.time.Clock clock = java.time.Clock.systemUTC();
+        VesselLease lease = new VesselLease(persistence.rootAuthorityPort(), authority.serverNodeId(), clock);
+        HoldGoods goods = new HoldGoods();
+        this.market = new PortMarket(
+                persistence.vesselsPort(),
+                persistence.voyagesPort(),
+                persistence.marketOrdersPort(),
+                lease,
+                new IslandBankMarket(bank, persistence.islandAuthorityPort(), authority.serverNodeId(), clock),
+                goods,
+                config.standing(),
+                config.ranks(),
+                authority.serverNodeId(),
+                clock);
         this.holds = new CargoHolds(
                 service,
                 persistence.vesselsPort(),
@@ -58,20 +72,7 @@ public final class TradeWindsWiring {
                 scheduler,
                 configuration.messages(),
                 com.uxplima.uxmskyblock.bukkit.creative.SealedInventory::holds,
-                config.holdRows());
-        java.time.Clock clock = java.time.Clock.systemUTC();
-        VesselLease lease = new VesselLease(persistence.rootAuthorityPort(), authority.serverNodeId(), clock);
-        HoldGoods goods = new HoldGoods(config.holdRows() * 9);
-        this.market = new PortMarket(
-                persistence.vesselsPort(),
-                persistence.voyagesPort(),
-                persistence.marketOrdersPort(),
-                lease,
-                new IslandBankMarket(bank, persistence.islandAuthorityPort(), authority.serverNodeId(), clock),
-                goods,
-                config.standing(),
-                authority.serverNodeId(),
-                clock);
+                market::rank);
         this.harbour = new Harbour(
                 market,
                 config,

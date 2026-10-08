@@ -11,6 +11,7 @@ import java.util.logging.Logger;
 import org.bukkit.Material;
 
 import com.uxplima.uxmskyblock.core.application.tradewinds.Port;
+import com.uxplima.uxmskyblock.core.application.tradewinds.Ranks;
 import com.uxplima.uxmskyblock.core.application.tradewinds.Standing;
 import org.spongepowered.configurate.ConfigurationNode;
 
@@ -20,13 +21,13 @@ import org.spongepowered.configurate.ConfigurationNode;
  *
  * @param enabled whether islands can be made as TradeWinds vessels
  * @param sea the sea a new vessel is launched on
- * @param holdRows how many rows of nine slots a vessel's cargo hold has, from 1 to 6
+ * @param ranks the ranks a vessel climbs as it trades, which set how many rows its hold has
  * @param ports the ports vessels sail between, in the order the file writes them
  * @param icons the item each port is shown as, by its key
  * @param standing how a vessel's standing in a port moves its prices there
  */
 public record TradeWindsConfiguration(
-        boolean enabled, Sea sea, int holdRows, List<Port> ports, Map<String, String> icons, Standing standing) {
+        boolean enabled, Sea sea, Ranks ranks, List<Port> ports, Map<String, String> icons, Standing standing) {
 
     /** The standing a file that writes none has: one percent for every 500.00 of trade, up to ten. */
     public static final Standing SHIPPED_STANDING = new Standing(50_000, 1, 10);
@@ -60,17 +61,19 @@ public record TradeWindsConfiguration(
     public static final Map<String, String> SHIPPED_ICONS =
             Map.of("emerald-bay", "EMERALD", "saltmarsh", "PRISMARINE_SHARD", "ironhaven", "IRON_INGOT");
 
-    /** The rows of a hold when the file names none, or none that fits a chest. */
-    public static final int SHIPPED_HOLD_ROWS = 3;
+    /** The ranks a file that writes none has, from a dinghy's three rows to a galleon's six. */
+    public static final Ranks SHIPPED_RANKS = new Ranks(List.of(
+            new Ranks.Rank("dinghy", 0, 3),
+            new Ranks.Rank("sloop", 500_000, 4),
+            new Ranks.Rank("brigantine", 2_500_000, 5),
+            new Ranks.Rank("galleon", 10_000_000, 6)));
 
     private static final Logger LOGGER = Logger.getLogger(TradeWindsConfiguration.class.getName());
 
     public TradeWindsConfiguration {
         Objects.requireNonNull(sea, "sea must not be null");
         Objects.requireNonNull(standing, "standing must not be null");
-        if (holdRows < 1 || holdRows > 6) {
-            throw new IllegalArgumentException("a hold has from 1 to 6 rows");
-        }
+        Objects.requireNonNull(ranks, "ranks must not be null");
         ports = List.copyOf(ports);
         icons = Map.copyOf(icons);
     }
@@ -115,7 +118,7 @@ public record TradeWindsConfiguration(
 
     public static TradeWindsConfiguration defaultConfiguration() {
         return new TradeWindsConfiguration(
-                true, Sea.SHIPPED, SHIPPED_HOLD_ROWS, SHIPPED_PORTS, SHIPPED_ICONS, SHIPPED_STANDING);
+                true, Sea.SHIPPED, SHIPPED_RANKS, SHIPPED_PORTS, SHIPPED_ICONS, SHIPPED_STANDING);
     }
 
     public static TradeWindsConfiguration load(ConfigurationNode root) {
@@ -130,17 +133,38 @@ public record TradeWindsConfiguration(
             LOGGER.warning(() -> "modules/tradewinds.conf sea: " + e.getMessage() + ". The shipped sea is used.");
             sea = Sea.SHIPPED;
         }
-        int written = root.node("hold", "rows").getInt(SHIPPED_HOLD_ROWS);
-        int rows = written;
-        if (rows < 1 || rows > 6) {
-            LOGGER.warning(() -> "modules/tradewinds.conf hold.rows is " + written + ", not from 1 to 6. The hold has "
-                    + SHIPPED_HOLD_ROWS + " rows.");
-            rows = SHIPPED_HOLD_ROWS;
-        }
         Map<String, String> icons = new LinkedHashMap<>();
         List<Port> ports = ports(root.node("ports"), icons);
         return new TradeWindsConfiguration(
-                root.node("enabled").getBoolean(true), sea, rows, ports, icons, standing(root.node("standing")));
+                root.node("enabled").getBoolean(true),
+                sea,
+                ranks(root.node("ranks")),
+                ports,
+                icons,
+                standing(root.node("standing")));
+    }
+
+    /**
+     * The ranks the file writes, or the shipped ones when it writes none or any that cannot be: each rank
+     * leans on the one before it, so one that cannot be leaves no ladder to climb.
+     */
+    private static Ranks ranks(ConfigurationNode node) {
+        if (node.virtual()) {
+            return SHIPPED_RANKS;
+        }
+        try {
+            List<Ranks.Rank> ranks = new ArrayList<>();
+            for (ConfigurationNode rank : node.childrenList()) {
+                ranks.add(new Ranks.Rank(
+                        rank.node("id").getString(""),
+                        rank.node("volume").getLong(0),
+                        rank.node("hold-rows").getInt(3)));
+            }
+            return new Ranks(ranks);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warning(() -> "modules/tradewinds.conf ranks: " + e.getMessage() + ". The shipped ranks are used.");
+            return SHIPPED_RANKS;
+        }
     }
 
     /** The standing the file writes, or the shipped one when it writes one that cannot be. */

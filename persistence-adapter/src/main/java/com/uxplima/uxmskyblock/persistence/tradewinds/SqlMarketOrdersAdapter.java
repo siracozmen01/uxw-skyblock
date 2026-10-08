@@ -178,6 +178,31 @@ public final class SqlMarketOrdersAdapter implements MarketOrdersPort {
                 vessel.value().toString());
     }
 
+    @Override
+    public List<Traded> mostTraded(int limit) {
+        try (Connection conn = database.connection();
+                PreparedStatement ps = conn.prepareStatement("SELECT v.island_id, i.custom_name, v.trade_volume"
+                        + " FROM tradewinds_vessels v JOIN islands i ON i.id = v.island_id"
+                        + " WHERE v.trade_volume > 0 ORDER BY v.trade_volume DESC, v.island_id")) {
+            ps.setMaxRows(Math.max(0, limit));
+            List<Traded> most = new ArrayList<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next() && most.size() < limit) {
+                    String id = rs.getString(1);
+                    String name = rs.getString(2);
+                    // A vessel nobody named is shown by the start of its id, which reads the same in every language.
+                    most.add(new Traded(
+                            IslandId.of(UUID.fromString(id)),
+                            name == null || name.isBlank() ? id.substring(0, 8) : name,
+                            rs.getLong(3)));
+                }
+            }
+            return List.copyOf(most);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not read the vessels that traded most", e);
+        }
+    }
+
     /** Writes the hold over the version it was read at; says whether the version still stood. */
     private static boolean writeHold(Connection conn, Order order, HoldWrite hold) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement("UPDATE tradewinds_vessels SET cargo = ?, "

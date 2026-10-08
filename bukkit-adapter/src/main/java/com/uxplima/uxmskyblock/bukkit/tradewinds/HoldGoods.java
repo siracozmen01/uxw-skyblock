@@ -16,16 +16,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class HoldGoods implements PortMarket.Goods {
 
-    private final int slots;
-
-    /** @param slots how many slots a hold has */
-    public HoldGoods(int slots) {
-        if (slots < 1) {
-            throw new IllegalArgumentException("a hold has at least one slot");
-        }
-        this.slots = slots;
-    }
-
     @Override
     public int count(byte[] hold, String item) {
         ItemStack plain = plain(item);
@@ -33,7 +23,7 @@ public final class HoldGoods implements PortMarket.Goods {
             return 0;
         }
         int count = 0;
-        for (ItemStack stack : read(hold)) {
+        for (ItemStack stack : read(hold, 0)) {
             if (stack != null && stack.isSimilar(plain)) {
                 count += stack.getAmount();
             }
@@ -47,7 +37,7 @@ public final class HoldGoods implements PortMarket.Goods {
         if (plain == null || count(hold, item) < count) {
             return Optional.empty();
         }
-        ItemStack[] stacks = read(hold);
+        ItemStack[] stacks = read(hold, 0);
         int left = count;
         for (int i = stacks.length - 1; i >= 0 && left > 0; i--) {
             ItemStack stack = stacks[i];
@@ -65,20 +55,20 @@ public final class HoldGoods implements PortMarket.Goods {
     }
 
     @Override
-    public Optional<byte[]> stow(byte[] hold, String item, int count) {
+    public Optional<byte[]> stow(byte[] hold, int slots, String item, int count) {
         ItemStack plain = plain(item);
         if (plain == null) {
             return Optional.empty();
         }
-        ItemStack[] stacks = read(hold);
+        ItemStack[] stacks = read(hold, slots);
         plain.setAmount(count);
         return CargoHolds.stow(stacks, plain)
                 ? Optional.of(BukkitInventorySerializer.serializeItemStacks(stacks))
                 : Optional.empty();
     }
 
-    /** The hold's stacks, as many slots as a hold has, or more when it holds more. */
-    private ItemStack[] read(byte[] hold) {
+    /** The hold's stacks, at least {@code slots} of them. */
+    private static ItemStack[] read(byte[] hold, int slots) {
         ItemStack[] items = hold.length == 0 ? new ItemStack[0] : BukkitInventorySerializer.deserializeItemStacks(hold);
         return items.length >= slots ? items : Arrays.copyOf(items, slots);
     }

@@ -34,7 +34,7 @@ class TheMarketReadsTheHoldAndTheBankTest extends MockBukkitHarness {
         named.setItemMeta(meta);
         byte[] hold = BukkitInventorySerializer.serializeItemStacks(
                 new ItemStack[] {new ItemStack(Material.WHEAT, 40), named, new ItemStack(Material.WHEAT, 30)});
-        HoldGoods goods = new HoldGoods(3);
+        HoldGoods goods = new HoldGoods();
 
         assertThat(goods.count(hold, "WHEAT")).isEqualTo(70);
         assertThat(goods.take(hold, "WHEAT", 71)).isEmpty();
@@ -45,11 +45,11 @@ class TheMarketReadsTheHoldAndTheBankTest extends MockBukkitHarness {
                         .displayName())
                 .describedAs("the crew's own wheat stays theirs")
                 .isNotNull();
-        assertThat(goods.stow(taken, "WHEAT", 44 + 64)).isPresent();
-        assertThat(goods.stow(taken, "WHEAT", 44 + 64 + 1)).isEmpty();
+        assertThat(goods.stow(taken, 3, "WHEAT", 44 + 64)).isPresent();
+        assertThat(goods.stow(taken, 3, "WHEAT", 44 + 64 + 1)).isEmpty();
         assertThat(goods.count(hold, "NOT_AN_ITEM")).isZero();
-        assertThat(goods.stow(new byte[0], "WHEAT", 64 * 3)).isPresent();
-        assertThat(goods.stow(new byte[0], "WHEAT", 64 * 3 + 1)).isEmpty();
+        assertThat(goods.stow(new byte[0], 3, "WHEAT", 64 * 3)).isPresent();
+        assertThat(goods.stow(new byte[0], 3, "WHEAT", 64 * 3 + 1)).isEmpty();
     }
 
     @Test

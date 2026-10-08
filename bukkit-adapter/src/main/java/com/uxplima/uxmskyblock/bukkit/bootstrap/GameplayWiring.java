@@ -216,6 +216,13 @@ public final class GameplayWiring {
                 this.economicWiring.rewardInboxService(),
                 this.economicWiring.upgradeService(),
                 modeStartActions(config, scheduler));
+        if (this.tradeWindsWiring.enabled()) {
+            // The vessels that traded most, on the boards and to every plugin that reads them.
+            creationWiring
+                    .leaderboardMetrics()
+                    .register(new com.uxplima.uxmskyblock.core.application.tradewinds.TradeVolumeMetric(
+                            persistence.marketOrdersPort()));
+        }
         if (this.parkourWiring.enabled()) {
             // The courses run most, on the boards and to every plugin that reads them.
             creationWiring
