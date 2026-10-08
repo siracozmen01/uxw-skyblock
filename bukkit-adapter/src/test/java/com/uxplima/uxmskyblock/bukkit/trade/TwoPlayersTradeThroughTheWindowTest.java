@@ -90,6 +90,22 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("The window's title and buttons are written as they are, without the chat prefix")
+    void theWindowSpeaksWithoutThePrefix() {
+        open();
+
+        ItemStack ready = ada.getOpenInventory().getTopInventory().getItem(TradeWindow.READY);
+        assertThat(ready).isNotNull();
+        assertThat(PlainTextComponentSerializer.plainText()
+                        .serialize(java.util.Objects.requireNonNull(
+                                ready.getItemMeta().displayName())))
+                .isEqualTo("Click to agree to this trade.");
+        assertThat(PlainTextComponentSerializer.plainText()
+                        .serialize(ada.getOpenInventory().title()))
+                .isEqualTo("Trade with Bo");
+    }
+
+    @Test
     @DisplayName("Both agree and the trade happens: each gets what the other offered, and the windows close")
     void bothAgreeAndTheTradeHappens() {
         Trades trades = open();

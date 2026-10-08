@@ -75,7 +75,7 @@ final class TradeWindow {
         Inventory window = Bukkit.createInventory(
                 new View(trade, viewer.getUniqueId()),
                 ROWS * 9,
-                messages.render(viewer, "trade.window.title", Placeholder.unparsed("player", otherName)));
+                messages.renderPlain(viewer, "trade.window.title", Placeholder.unparsed("player", otherName)));
         draw(viewer, window, trade);
         viewer.openInventory(window);
     }
@@ -122,7 +122,7 @@ final class TradeWindow {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            Component name = messages.render(viewer, key);
+            Component name = messages.renderPlain(viewer, key);
             meta.displayName(name);
             item.setItemMeta(meta);
         }
