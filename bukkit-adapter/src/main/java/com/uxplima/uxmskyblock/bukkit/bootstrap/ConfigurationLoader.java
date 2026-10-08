@@ -342,6 +342,12 @@ public final class ConfigurationLoader {
                 "brix.conf",
                 com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration tradeConfig = loadConfig(
+                plugin,
+                dataDir,
+                "trade.conf",
+                com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -387,6 +393,7 @@ public final class ConfigurationLoader {
                 strangerRealmsConfig,
                 parkourConfig,
                 brixConfig,
+                tradeConfig,
                 presetConfig);
 
         wiring.validate();

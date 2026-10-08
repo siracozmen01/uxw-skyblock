@@ -292,6 +292,8 @@ class BackupRestoreWiringTest {
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.defaultConfiguration());
         when(config.brixConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration());
+        when(config.tradeConfig())
+                .thenReturn(com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration());
         when(config.strangerRealmsConfig())
                 .thenReturn(com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration());
         when(config.poseidonConfig())
@@ -310,6 +312,8 @@ class BackupRestoreWiringTest {
             PersistenceBootstrap persistence = persistenceWiring.bootstrap();
 
             AuthorityWiring authority = mock(AuthorityWiring.class);
+            when(authority.serverNodeId())
+                    .thenReturn(com.uxplima.uxmskyblock.core.domain.session.ServerNodeId.of("node-test"));
             when(authority.profileTypes())
                     .thenReturn(new com.uxplima.uxmskyblock.core.application.profile.ProfileTypes(
                             mock(com.uxplima.uxmskyblock.core.application.profile.ProfileTypePort.class)));

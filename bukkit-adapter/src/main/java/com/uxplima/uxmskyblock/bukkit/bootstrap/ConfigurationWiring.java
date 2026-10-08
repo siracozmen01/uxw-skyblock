@@ -112,6 +112,7 @@ public final class ConfigurationWiring {
     private final com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration parkourConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration tradeConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -194,6 +195,7 @@ public final class ConfigurationWiring {
             com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration strangerRealmsConfig,
             com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration parkourConfig,
             com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig,
+            com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration tradeConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -240,6 +242,7 @@ public final class ConfigurationWiring {
                 Objects.requireNonNull(strangerRealmsConfig, "strangerRealmsConfig must not be null");
         this.parkourConfig = Objects.requireNonNull(parkourConfig, "parkourConfig must not be null");
         this.brixConfig = Objects.requireNonNull(brixConfig, "brixConfig must not be null");
+        this.tradeConfig = Objects.requireNonNull(tradeConfig, "tradeConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -327,6 +330,7 @@ public final class ConfigurationWiring {
                 com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.ParkourConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -532,6 +536,11 @@ public final class ConfigurationWiring {
     /** Whether islands can be Brix plots, and the ground a plot is laid on. */
     public com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig() {
         return brixConfig;
+    }
+
+    /** Whether players may trade, and how a trade window looks. */
+    public com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration tradeConfig() {
+        return tradeConfig;
     }
 
     /** Whether islands can be Parkour courses, what marks a course and how a run is kept. */

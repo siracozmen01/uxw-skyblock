@@ -89,6 +89,9 @@ public final class AuthorityWiring implements AutoCloseable {
                 playerStateConfig.ambientCheckpointInterval(),
                 messages);
 
+        coordinator.settleTradesWith(new com.uxplima.uxmskyblock.core.application.inventory.TradeJournalRecovery(
+                persistenceBootstrap.tradeJournalPort(), persistenceBootstrap.inventoryPort()));
+
         PlayerSessionListener listener = new PlayerSessionListener(coordinator);
         com.uxplima.uxmskyblock.core.application.profile.ProfileTypes profileTypes =
                 new com.uxplima.uxmskyblock.core.application.profile.ProfileTypes(

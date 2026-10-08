@@ -181,6 +181,11 @@ public final class PlayerSessionCoordinator {
         return sessionAuthorityPort.findSession(new PlayerUuid(playerUuid)).map(PlayerSessionRecord::activeProfileId);
     }
 
+    /** Settles the trades a crash cut short too, each side as its player's session starts here. */
+    public void settleTradesWith(com.uxplima.uxmskyblock.core.application.inventory.TradeJournalRecovery recovery) {
+        cutShort.settleTradesWith(recovery);
+    }
+
     /**
      * Executes runtime self-fencing when lease renewal fails or is rejected:
      * transitions session to LOCAL_FENCED, cancels timers, and disconnects player fail-closed.

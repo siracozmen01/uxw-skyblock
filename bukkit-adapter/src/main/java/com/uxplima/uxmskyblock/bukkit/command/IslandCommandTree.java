@@ -330,6 +330,13 @@ public final class IslandCommandTree {
         this.poseidonLore = lore;
     }
 
+    private com.uxplima.uxmskyblock.bukkit.trade.@Nullable Trades trades;
+
+    /** What {@code /is trade} asks and answers, while the operator lets players trade. */
+    public void useTrades(com.uxplima.uxmskyblock.bukkit.trade.@Nullable Trades trades) {
+        this.trades = trades;
+    }
+
     /** What {@code /is oneblock} opens, while the operator lets islands be OneBlock islands. */
     public void useOneBlock(com.uxplima.uxmskyblock.bukkit.oneblock.@Nullable OneBlockPanel panel) {
         this.oneBlockPanel = panel;
@@ -601,6 +608,8 @@ public final class IslandCommandTree {
                 .then(groups.mechanicsCommands().buildChallenges())
                 .then(Cmd.literal("oneblock").executes(this::executeOneBlock))
                 .then(Cmd.literal("lore").executes(this::executeLore))
+                .then(Cmd.literal("trade")
+                        .then(Cmd.argument("player", StringArgumentType.word()).executes(this::executeTrade)))
                 .then(Cmd.literal("course").executes(this::executeCourse))
                 .then(Cmd.literal("chunks")
                         .executes(ctx -> executeChunks(ctx, false))
@@ -760,6 +769,21 @@ public final class IslandCommandTree {
             return Cmd.OK;
         }
         lore.open(player);
+        return Cmd.OK;
+    }
+
+    private int executeTrade(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        com.uxplima.uxmskyblock.bukkit.trade.Trades running = this.trades;
+        if (running == null) {
+            send(player, "trade.disabled");
+            return Cmd.OK;
+        }
+        String name = StringArgumentType.getString(ctx, "player");
+        running.ask(player, player.getServer().getPlayerExact(name));
         return Cmd.OK;
     }
 

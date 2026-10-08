@@ -137,6 +137,9 @@ final class IslandCommandWiring {
                     org.bukkit.entity.Player::openBook));
         }
         integration.placeholderExpansion().useOneBlock(oneBlockPanel);
+        if (gameplay.tradeWiring().enabled()) {
+            tree.useTrades(gameplay.tradeWiring().trades());
+        }
         tree.setActivityFeedService(gameplay.activityFeedService());
         tree.setNameService(gameplay.islandNameService());
         tree.setNetworkRouter(integration.networkRouter());

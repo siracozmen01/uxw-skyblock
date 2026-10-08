@@ -103,6 +103,7 @@ public final class PersistenceBootstrap implements AutoCloseable {
     private final PlayerSessionAuthorityAdapter sessionAuthorityAdapter;
     private final PlayerProfileInventoryAdapter inventoryAdapter;
     private final PlayerInventoryMutationJournalAdapter mutationJournalAdapter;
+    private final com.uxplima.uxmskyblock.persistence.inventory.PlayerTradeJournalAdapter tradeJournalAdapter;
     private final PlayerProfileHandoffFinalizationAdapter handoffFinalizationAdapter;
     private final PlayerProfileSwitchAdapter profileSwitchAdapter;
     private final com.uxplima.uxmskyblock.persistence.profile.SqlProfileTypeAdapter profileTypeAdapter;
@@ -168,6 +169,8 @@ public final class PersistenceBootstrap implements AutoCloseable {
         this.sessionAuthorityAdapter = new PlayerSessionAuthorityAdapter(database);
         this.inventoryAdapter = new PlayerProfileInventoryAdapter(database);
         this.mutationJournalAdapter = new PlayerInventoryMutationJournalAdapter(database);
+        this.tradeJournalAdapter =
+                new com.uxplima.uxmskyblock.persistence.inventory.PlayerTradeJournalAdapter(database);
         this.handoffFinalizationAdapter = new PlayerProfileHandoffFinalizationAdapter(database);
         this.profileSwitchAdapter = new PlayerProfileSwitchAdapter(database);
         this.profileTypeAdapter = new com.uxplima.uxmskyblock.persistence.profile.SqlProfileTypeAdapter(database);
@@ -321,6 +324,11 @@ public final class PersistenceBootstrap implements AutoCloseable {
 
     public InventoryMutationJournalPort mutationJournalPort() {
         return mutationJournalAdapter;
+    }
+
+    /** The journal of trades between players, one operation over every side's inventory. */
+    public com.uxplima.uxmskyblock.core.application.trade.TradeJournalPort tradeJournalPort() {
+        return tradeJournalAdapter;
     }
 
     public ProfileHandoffFinalizationPort handoffFinalizationPort() {

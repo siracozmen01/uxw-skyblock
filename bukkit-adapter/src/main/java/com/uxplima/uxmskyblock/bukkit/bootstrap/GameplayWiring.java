@@ -116,6 +116,7 @@ public final class GameplayWiring {
     private final StrangerRealmsWiring strangerRealmsWiring;
     private final ParkourWiring parkourWiring;
     private final BrixWiring brixWiring;
+    private final TradeWiring tradeWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
@@ -201,6 +202,7 @@ public final class GameplayWiring {
         this.strangerRealmsWiring = new StrangerRealmsWiring(config, persistence, scheduler, protectionListener);
         this.parkourWiring = new ParkourWiring(config, persistence, scheduler, protectionListener);
         this.brixWiring = new BrixWiring(config, persistence, scheduler, protectionListener);
+        this.tradeWiring = new TradeWiring(config, persistence, authority, scheduler);
         this.creationWiring = new GameplayCreationWiring(
                 config,
                 persistence,
@@ -437,6 +439,11 @@ public final class GameplayWiring {
 
     public BrixWiring brixWiring() {
         return brixWiring;
+    }
+
+    /** Trading between players. */
+    public TradeWiring tradeWiring() {
+        return tradeWiring;
     }
 
     public ParkourWiring parkourWiring() {
