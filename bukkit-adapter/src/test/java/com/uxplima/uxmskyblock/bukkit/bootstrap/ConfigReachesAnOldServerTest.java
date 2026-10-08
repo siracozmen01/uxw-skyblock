@@ -147,6 +147,42 @@ class ConfigReachesAnOldServerTest {
     }
 
     @Test
+    @DisplayName("A key the release adds is not taken for what a key the file already has was meant to be")
+    void aNewKeyMakesNoKeyAMisspelling() throws Exception {
+        Path file = dataDir.resolve("commands.conf");
+        Files.writeString(file, "verbs { rate = rate, trust = trust }");
+        try (URLClassLoader first = loader(release("verbs { rate = rate, trust = trust }"))) {
+            PluginSettings.bringUpToDate(dataDir, file, "missions.conf", first);
+        }
+        java.util.List<String> warned = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.logging.Logger merge = java.util.logging.Logger.getLogger("com.uxplima.uxmlib.config.HoconConfig");
+        java.util.logging.Handler listening = new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord record) {
+                warned.add(String.valueOf(record.getMessage()));
+            }
+
+            @Override
+            public void flush() {}
+
+            @Override
+            public void close() {}
+        };
+        merge.addHandler(listening);
+        try (URLClassLoader next = loader(release("verbs { rate = rate, trade = trade, trust = trust }"))) {
+            assertThat(PluginSettings.bringUpToDate(dataDir, file, "missions.conf", next))
+                    .isTrue();
+        } finally {
+            merge.removeHandler(listening);
+        }
+
+        assertThat(read(file).node("verbs", "trade").getString()).isEqualTo("trade");
+        assertThat(warned)
+                .describedAs("rate is a key the release ships, not a misspelling of trade")
+                .noneMatch(line -> line.contains("Did you mean"));
+    }
+
+    @Test
     @DisplayName("The boot brings the operator's files up to date before it reads them")
     void theBootMakesTheCall() throws Exception {
         Path config = dataDir.resolve("config.conf");

@@ -61,40 +61,38 @@ public final class PluginSettings {
                 Files.isRegularFile(baselineFile) ? parse(readFile(baselineFile), baselineFile.toString()) : null;
 
         HoconConfig live = HoconConfig.load(file);
-        CommentedConfigurationNode added = CommentedConfigurationNode.root();
-        addNewSince(shipped, baseline, live.root(), added);
-        boolean wrote = !added.childrenMap().isEmpty() && live.mergeDefaults(added);
+        // The whole shipped file goes to the merge, less what the operator took out. The merge adds only
+        // what the file lacks, and it also names a key of the file that looks like a misspelling of a
+        // shipped one: handed the new keys alone, it took every other key the file has for a misspelling.
+        boolean wrote = live.mergeDefaults(kept(shipped, baseline, live.root()));
         remember(baselineFile, shippedBytes);
         return wrote;
     }
 
     /**
-     * Copies into {@code into} each child of {@code shipped} that the last release did not ship. A child
-     * both releases ship is looked into only when the operator still has it: new keys under a section the
-     * operator took out would bring back half of it.
+     * {@code shipped} without what the operator deleted: a key the last release shipped and their file no
+     * longer has was taken out on purpose, so a mission, a preset or an upgrade tier taken out stays out.
+     * A section both hold is looked into for the same reason.
      */
-    private static void addNewSince(
-            ConfigurationNode shipped,
-            @Nullable ConfigurationNode baseline,
-            ConfigurationNode live,
-            CommentedConfigurationNode into) {
+    private static CommentedConfigurationNode kept(
+            ConfigurationNode shipped, @Nullable ConfigurationNode baseline, ConfigurationNode live) {
+        CommentedConfigurationNode kept = CommentedConfigurationNode.root();
         for (Map.Entry<Object, ? extends ConfigurationNode> child :
                 shipped.childrenMap().entrySet()) {
             Object key = child.getKey();
             ConfigurationNode was = baseline == null ? null : baseline.node(key);
             ConfigurationNode liveChild = live.node(key);
-            if (was == null || was.virtual()) {
-                into.node(key).from(child.getValue());
+            boolean shippedBefore = was != null && !was.virtual();
+            if (shippedBefore && liveChild.virtual()) {
                 continue;
             }
-            if (child.getValue().isMap() && was.isMap() && liveChild.isMap()) {
-                CommentedConfigurationNode nested = CommentedConfigurationNode.root();
-                addNewSince(child.getValue(), was, liveChild, nested);
-                if (!nested.childrenMap().isEmpty()) {
-                    into.node(key).from(nested);
-                }
+            if (was != null && shippedBefore && child.getValue().isMap() && was.isMap() && liveChild.isMap()) {
+                kept.node(key).from(kept(child.getValue(), was, liveChild));
+            } else {
+                kept.node(key).from(child.getValue());
             }
         }
+        return kept;
     }
 
     private static byte @Nullable [] readResource(String resource, ClassLoader resources) {
