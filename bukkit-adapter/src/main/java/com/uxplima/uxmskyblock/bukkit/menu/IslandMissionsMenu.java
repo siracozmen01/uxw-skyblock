@@ -57,6 +57,16 @@ public final class IslandMissionsMenu {
 
     private volatile @Nullable Consumer<Player> wayBack;
 
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
+
+    /** The menu file that lists the missions, and the list it draws a tile from for each one. */
+    static final String FILE = "island-mission-list";
+
+    static final String MISSIONS = "skyblock:mission-list";
+
+    /** One mission as a tile acts on it: what it asks for and how far the island had come when it was drawn. */
+    record Drawn(MissionDefinition definition, long counted, boolean completed) {}
+
     public IslandMissionsMenu(
             IslandMissionService missionService,
             IslandStoragePort islandStoragePort,
@@ -117,6 +127,19 @@ public final class IslandMissionsMenu {
                 BedrockFormService forms = this.bedrockFormService;
                 if (forms != null && forms.isBedrock(player)) {
                     openForm(forms, player, islandId, profileId, progressMap, all);
+                    return;
+                }
+                SkyblockMenuEngine engine = this.menuEngine;
+                if (engine != null
+                        && engine.open(
+                                player,
+                                FILE,
+                                Map.of(
+                                        "island",
+                                        islandId.value().toString(),
+                                        "profile",
+                                        profileId.value().toString()),
+                                Map.of(MISSIONS, rows(player, progressMap, all)))) {
                     return;
                 }
                 SimpleGui gui = buildGui(player, islandId, profileId, progressMap, all);
@@ -188,9 +211,7 @@ public final class IslandMissionsMenu {
             boolean completed = progress != null && progress.completed();
             boolean submits = !completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT;
 
-            Material icon = completed
-                    ? Material.ENCHANTED_BOOK
-                    : (def.triggerType() == MissionTriggerType.ITEM_SUBMIT ? Material.CHEST : Material.BOOK);
+            Material icon = iconOf(def, completed);
 
             Component status = completed
                     ? messages.renderPlain(player, "menu.missions.status_completed")
@@ -200,39 +221,19 @@ public final class IslandMissionsMenu {
                             Placeholder.unparsed("count", Long.toString(count)),
                             Placeholder.unparsed("required", Long.toString(def.requiredAmount())));
 
-            // A reward the mission does not pay is a row the tile leaves off, and a mission a click
-            // cannot advance says nothing about clicking.
-            StringBuilder line = new StringBuilder(completed ? "tile:good" : "tile:0")
-                    .append(" @menu.missions.tile branch progress");
-            if (def.reward().crystals() > 0) {
-                line.append(" crystals");
-            }
-            if (def.reward().currencyMinorUnits() > 0) {
-                line.append(" currency");
-            }
-            if (def.reward().islandExp() > 0) {
-                line.append(" exp");
-            }
-            if (!submits) {
-                line.append(" -action");
-            }
             String branch = def.branch().name();
             ItemStack item = tiles.item(
                     icon,
                     player,
-                    line.toString(),
-                    Placeholder.unparsed("argument_mission", messages.words(player, def.displayName())),
-                    Placeholder.unparsed("argument_description", messages.words(player, def.description())),
+                    "tile:" + colourOf(completed) + " @menu.missions.tile " + factsOf(def, completed),
+                    Placeholder.unparsed("entry_mission", messages.words(player, def.displayName())),
+                    Placeholder.unparsed("entry_description", messages.words(player, def.description())),
+                    Placeholder.unparsed("entry_branch", messages.named(player, "missions.branches", branch, branch)),
+                    Placeholder.component("entry_status", status),
                     Placeholder.unparsed(
-                            "argument_branch", messages.named(player, "missions.branches", branch, branch)),
-                    Placeholder.component("argument_status", status),
-                    Placeholder.unparsed(
-                            "argument_crystals", Long.toString(def.reward().crystals())),
-                    Placeholder.unparsed(
-                            "argument_currency",
-                            String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0)),
-                    Placeholder.unparsed(
-                            "argument_exp", Long.toString(def.reward().islandExp())));
+                            "entry_crystals", Long.toString(def.reward().crystals())),
+                    Placeholder.unparsed("entry_currency", money(def.reward().currencyMinorUnits())),
+                    Placeholder.unparsed("entry_exp", Long.toString(def.reward().islandExp())));
 
             GuiItem guiItem = GuiItem.button(item, event -> {
                 event.setCancelled(true);
@@ -252,6 +253,101 @@ public final class IslandMissionsMenu {
             }));
         }
         return gui;
+    }
+
+    /**
+     * Hands this window the engine that reads {@code menus/island-mission-list.conf}, and teaches the
+     * engine what a click on a mission does. The window built here stays as the answer to a file that is
+     * missing or will not parse.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine engine) {
+        this.menuEngine = engine;
+        if (engine == null) {
+            return;
+        }
+        engine.handedList(MISSIONS);
+        engine.action(
+                "skyblock:mission-submit",
+                ctx -> MenuRow.handle(ctx.context(), Drawn.class)
+                        .filter(drawn -> !drawn.completed()
+                                && drawn.definition().triggerType() == MissionTriggerType.ITEM_SUBMIT)
+                        .ifPresent(drawn -> {
+                            Map<String, String> opened = ctx.context().arguments();
+                            String island = opened.getOrDefault("island", "");
+                            String profile = opened.getOrDefault("profile", "");
+                            if (!island.isEmpty() && !profile.isEmpty()) {
+                                handleManualItemSubmission(
+                                        ctx.player(),
+                                        IslandId.of(UUID.fromString(island)),
+                                        new ProfileId(UUID.fromString(profile)),
+                                        drawn.definition(),
+                                        drawn.counted());
+                            }
+                        }));
+    }
+
+    /** One row per mission, in the order the file lists them, with every word its tile asks for. */
+    List<MenuRow> rows(
+            Player player,
+            Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap,
+            List<MissionDefinition> all) {
+        List<MenuRow> rows = new ArrayList<>(all.size());
+        for (MissionDefinition def : all) {
+            MissionProgress progress = progressMap.get(def.id());
+            long count = progress != null ? progress.progressCount() : 0L;
+            boolean completed = progress != null && progress.completed();
+            String branch = def.branch().name();
+            Map<String, String> words = new java.util.HashMap<>();
+            words.put("material", iconOf(def, completed).name());
+            words.put("colour", colourOf(completed));
+            words.put("facts", factsOf(def, completed));
+            words.put("mission", messages.words(player, def.displayName()));
+            words.put("description", messages.words(player, def.description()));
+            words.put("branch", messages.named(player, "missions.branches", branch, branch));
+            words.put(
+                    "status",
+                    completed ? "<key:menu.missions.status_completed>" : count + " / " + def.requiredAmount());
+            words.put("crystals", Long.toString(def.reward().crystals()));
+            words.put("currency", money(def.reward().currencyMinorUnits()));
+            words.put("exp", Long.toString(def.reward().islandExp()));
+            rows.add(new MenuRow(words, new Drawn(def, count, completed)));
+        }
+        return List.copyOf(rows);
+    }
+
+    private static Material iconOf(MissionDefinition def, boolean completed) {
+        return completed
+                ? Material.ENCHANTED_BOOK
+                : (def.triggerType() == MissionTriggerType.ITEM_SUBMIT ? Material.CHEST : Material.BOOK);
+    }
+
+    private static String colourOf(boolean completed) {
+        return completed ? "good" : "0";
+    }
+
+    /**
+     * The facts a mission's tile lists: a reward it does not pay is a row the tile leaves off, and a
+     * mission a click cannot advance says nothing about clicking.
+     */
+    static String factsOf(MissionDefinition def, boolean completed) {
+        StringBuilder facts = new StringBuilder("branch progress");
+        if (def.reward().crystals() > 0) {
+            facts.append(" crystals");
+        }
+        if (def.reward().currencyMinorUnits() > 0) {
+            facts.append(" currency");
+        }
+        if (def.reward().islandExp() > 0) {
+            facts.append(" exp");
+        }
+        if (completed || def.triggerType() != MissionTriggerType.ITEM_SUBMIT) {
+            facts.append(" -action");
+        }
+        return facts.toString();
+    }
+
+    private static String money(long minorUnits) {
+        return String.format(Locale.US, "%.2f", minorUnits / 100.0);
     }
 
     /**

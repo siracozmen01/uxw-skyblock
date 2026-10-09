@@ -83,7 +83,9 @@ class EveryMenuWordIsTranslatableTest {
         List<String> keys = new ArrayList<>(List.of(block + ".title", block + ".description"));
         for (int at = 2; at < words.length; at++) {
             String word = words[at];
-            if (word.startsWith("-") || word.startsWith("action:")) {
+            // A placeholder names its facts when the tile is drawn, so the code that fills it answers for
+            // them: TheMissionsAreDrawnFromTheirFileTest reads every fact the missions list can name.
+            if (word.startsWith("-") || word.startsWith("action:") || word.startsWith("%")) {
                 continue;
             }
             String fact = word.startsWith("state:")

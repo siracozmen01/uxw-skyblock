@@ -36,6 +36,7 @@ final class WindowFiles {
         }
         if (gameplay.missionsMenu() != null) {
             gameplay.missionsMenu().useWayBack(wayBackTo(engine, island, "island-missions"));
+            gameplay.missionsMenu().useMenuEngine(engine);
         }
     }
 

@@ -93,6 +93,7 @@ public final class ConfigurationLoader {
             "island-warp-directory.conf",
             "island-reset.conf",
             "island-booster-cards.conf",
+            "island-mission-list.conf",
             "island-boosters.conf",
             "island-biome.conf",
             "island-homes.conf",
