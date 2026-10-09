@@ -55,7 +55,7 @@ public final class MessageProvider {
      */
     private volatile Styler styler = new Styler(Theme.defaults());
 
-    /** Each template as the pass left it, per language, for the theme it was styled with. */
+    /** Each template as the pass left it, in each kind of letters, for the theme it was styled with. */
     private final Map<String, String> styled = new ConcurrentHashMap<>();
 
     private volatile Theme styledWith = styler.theme();
@@ -366,6 +366,11 @@ public final class MessageProvider {
         this.styler = Objects.requireNonNull(styler, "styler must not be null");
     }
 
+    /** How many styled lines the catalogue keeps, which a client's language must not be able to grow. */
+    int styledLines() {
+        return styled.size();
+    }
+
     /** The style pass this catalogue paints with. */
     public Styler styler() {
         return styler;
@@ -388,7 +393,11 @@ public final class MessageProvider {
         }
         // A client may name its language with a region, en_us, and the letters follow the language.
         Locale reader = Locale.forLanguageTag(language.replace('_', '-'));
-        return styled.computeIfAbsent(language + '\u0000' + template, any -> styler.apply(template, reader));
+        // The language a client sends is any string it likes, so it is not part of the key: the pass
+        // depends on it only through whether its letters are small capitals, and that keeps the cache
+        // at two entries a line however many languages the players claim.
+        char letters = theme.smallCaps(reader) ? 'C' : 'P';
+        return styled.computeIfAbsent(letters + template, any -> styler.apply(template, reader));
     }
 
     /**

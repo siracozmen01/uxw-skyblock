@@ -119,6 +119,22 @@ class TheCatalogueIsPaintedFromTheThemeTest {
         assertThat(Files.readString(shared)).isEqualTo("roles { value = \"#444444\" }\n");
     }
 
+    @Test
+    @DisplayName("A language a client makes up does not grow what the catalogue keeps")
+    void aMadeUpLanguageKeepsNothingNew() throws IOException {
+        MessageProvider provider = provider();
+        provider.useStyler(new Styler(theme("small-caps { en = true }")));
+        provider.getComponent("bank.paid", "en");
+        provider.getComponent("bank.paid", "tr");
+        int kept = provider.styledLines();
+
+        for (int made = 0; made < 500; made++) {
+            provider.getComponent("bank.paid", "x" + made);
+        }
+
+        assertThat(provider.styledLines()).isEqualTo(kept);
+    }
+
     private MessageProvider provider() throws IOException {
         MessageProvider provider = new MessageProvider("en");
         read(provider, "en", SHIPPED);
