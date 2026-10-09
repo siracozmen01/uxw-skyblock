@@ -37,6 +37,15 @@ public final class IslandResetConfirmationMenu {
     private final SchedulerPort schedulerPort;
     private volatile @Nullable BedrockFormService bedrockFormService;
     private final Messages messages;
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
+
+    /** The menu file that asks, and what each viewer with it open would confirm or call off. */
+    static final String FILE = "island-reset";
+
+    private final Map<UUID, Pending> pending = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** One open question: whose reset it is, and what confirming it does. */
+    private record Pending(ProfileId profileId, Runnable onConfirm) {}
 
     public IslandResetConfirmationMenu(
             IslandRecycleService recycleService,
@@ -64,6 +73,33 @@ public final class IslandResetConfirmationMenu {
 
     public void setBedrockFormService(@Nullable BedrockFormService bedrockFormService) {
         this.bedrockFormService = bedrockFormService;
+    }
+
+    /**
+     * Hands this window the engine that reads {@code menus/island-reset.conf}, and teaches the engine
+     * what confirming and calling off do. The window built here stays as the answer to a file that is
+     * missing or will not parse.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine engine) {
+        this.menuEngine = engine;
+        if (engine == null) {
+            return;
+        }
+        engine.action("skyblock:reset-confirm", ctx -> {
+            Pending asked = pending.remove(ctx.player().getUniqueId());
+            ctx.player().closeInventory();
+            if (asked != null) {
+                asked.onConfirm().run();
+            }
+        });
+        engine.action("skyblock:reset-cancel", ctx -> {
+            Pending asked = pending.remove(ctx.player().getUniqueId());
+            ctx.player().closeInventory();
+            if (asked != null) {
+                recycleService.cancelResetChallenge(asked.profileId());
+                messages.send(ctx.player(), "menu.reset.cancelled");
+            }
+        });
     }
 
     /**
@@ -115,6 +151,14 @@ public final class IslandResetConfirmationMenu {
                                 messages.send(player, "menu.reset.cancelled");
                             });
                     return;
+                }
+                SkyblockMenuEngine engine = this.menuEngine;
+                if (engine != null) {
+                    pending.put(rawUuid, new Pending(profileId, onConfirm));
+                    if (engine.open(player, FILE, Map.of("code", verificationCode))) {
+                        return;
+                    }
+                    pending.remove(rawUuid);
                 }
                 SimpleGui gui = buildGui(player, profileId, islandId, verificationCode, onConfirm);
                 gui.open(player);

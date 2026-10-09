@@ -27,6 +27,9 @@ final class WindowFiles {
         if (gameplay.warpBrowseMenu() != null) {
             gameplay.warpBrowseMenu().useMenuEngine(engine);
         }
+        if (gameplay.resetConfirmationMenu() != null) {
+            gameplay.resetConfirmationMenu().useMenuEngine(engine);
+        }
         if (gameplay.boosterMenu() != null) {
             gameplay.boosterMenu().useWayBack(wayBackTo(engine, island, "island-boosters"));
         }

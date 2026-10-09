@@ -39,6 +39,27 @@ final class ShippedTemplates {
         }
     }
 
+    /** The engine a server builds, with the shipped {@code files} in its menus folder and read. */
+    static SkyblockMenuEngine engineWith(java.nio.file.Path dataDir, String... files) {
+        try {
+            java.nio.file.Path menus = java.nio.file.Files.createDirectories(dataDir.resolve("menus"));
+            for (String file : files) {
+                try (InputStream in = ShippedTemplates.class.getClassLoader().getResourceAsStream("menus/" + file)) {
+                    java.nio.file.Files.copy(
+                            Objects.requireNonNull(in, "menus/" + file + " is not shipped"),
+                            menus.resolve(file),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        } catch (IOException unwritable) {
+            throw new IllegalStateException(unwritable);
+        }
+        SkyblockMenuEngine engine = new SkyblockMenuEngine(
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
+        engine.loadSpecs();
+        return engine;
+    }
+
     /** The template the list of {@code item} in {@code file} stamps once per row. */
     static MenuItemSpec template(String file, String item) {
         MenuItemSpec list = Objects.requireNonNull(spec(file).items().get(item), item + " in " + file);
