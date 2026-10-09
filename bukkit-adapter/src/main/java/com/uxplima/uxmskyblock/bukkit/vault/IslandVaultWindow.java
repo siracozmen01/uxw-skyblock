@@ -16,6 +16,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
+import com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine;
 import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -69,6 +70,16 @@ public final class IslandVaultWindow {
      * page. They are read once, where the page is opened, and carried here so a click can ask the
      * holder rather than the database: that is the only way to answer on the thread a click arrives
      * on.
+     *
+     * <p>{@code pageSlots} names the window slot that shows each slot of the page, in page order. The
+     * window built in code shows the page from its first slot; a menu file shows it wherever its
+     * content region says. {@code beyond} is what the stored page holds past the slots the window
+     * shows. A page written when the page size was larger keeps it: the window cannot show it, and
+     * writing the page without it deleted it.
+     *
+     * <p>A window drawn from a menu file is the holder of nothing, so the menu carries this as its
+     * subject and {@link #of} finds it there. {@code written} is set by whichever write comes first,
+     * the close or the stop, so the page is never written twice.
      */
     public record VaultHolder(
             IslandId islandId,
@@ -77,7 +88,10 @@ public final class IslandVaultWindow {
             String sessionId,
             List<ItemStack> openedWith,
             boolean mayDeposit,
-            boolean mayWithdraw)
+            boolean mayWithdraw,
+            List<Integer> pageSlots,
+            List<ItemStack> beyond,
+            java.util.concurrent.atomic.AtomicBoolean written)
             implements InventoryHolder, com.uxplima.uxmskyblock.bukkit.session.WritesPlayerStateItself {
 
         public VaultHolder {
@@ -85,7 +99,81 @@ public final class IslandVaultWindow {
             Objects.requireNonNull(profileId, "profileId must not be null");
             Objects.requireNonNull(sessionId, "sessionId must not be null");
             Objects.requireNonNull(openedWith, "openedWith must not be null");
+            Objects.requireNonNull(pageSlots, "pageSlots must not be null");
+            Objects.requireNonNull(beyond, "beyond must not be null");
+            Objects.requireNonNull(written, "written must not be null");
             openedWith = List.copyOf(openedWith);
+            pageSlots = List.copyOf(pageSlots);
+            beyond = List.copyOf(beyond);
+            if (pageSlots.size() != openedWith.size()) {
+                throw new IllegalArgumentException(
+                        "the window shows " + pageSlots.size() + " slots of a page of " + openedWith.size());
+            }
+        }
+
+        /** The window built in code: the page from its first slot, nothing past it. */
+        public VaultHolder(
+                IslandId islandId,
+                int page,
+                ProfileId profileId,
+                String sessionId,
+                List<ItemStack> openedWith,
+                boolean mayDeposit,
+                boolean mayWithdraw) {
+            this(
+                    islandId,
+                    page,
+                    profileId,
+                    sessionId,
+                    openedWith,
+                    mayDeposit,
+                    mayWithdraw,
+                    java.util.stream.IntStream.range(0, openedWith.size())
+                            .boxed()
+                            .toList(),
+                    List.of(),
+                    new java.util.concurrent.atomic.AtomicBoolean());
+        }
+
+        /** The vault page {@code window} shows, whether the window was built in code or drawn from a file. */
+        public static Optional<VaultHolder> of(@Nullable Inventory window) {
+            if (window == null) {
+                return Optional.empty();
+            }
+            InventoryHolder holder = window.getHolder();
+            if (holder instanceof VaultHolder vault) {
+                return Optional.of(vault);
+            }
+            if (holder instanceof com.uxplima.uxmlib.menu.runtime.MenuHolder menu
+                    && menu.ctx().subjectRaw().orElse(null) instanceof VaultHolder vault) {
+                return Optional.of(vault);
+            }
+            return Optional.empty();
+        }
+
+        /** The page as {@code window} holds it, one entry per page slot, null where the slot is empty. */
+        public @Nullable ItemStack[] pageOf(Inventory window) {
+            @Nullable ItemStack[] shown = new ItemStack[pageSlots.size()];
+            for (int index = 0; index < pageSlots.size(); index++) {
+                int slot = pageSlots.get(index);
+                shown[index] = slot < window.getSize() ? window.getItem(slot) : null;
+            }
+            return shown;
+        }
+
+        /** What the stored page is written as: {@code shown}, and after it what the window could not show. */
+        public @Nullable ItemStack[] stored(@Nullable ItemStack[] shown) {
+            @Nullable ItemStack[] stored = java.util.Arrays.copyOf(shown, shown.length + beyond.size());
+            for (int index = 0; index < beyond.size(); index++) {
+                ItemStack kept = beyond.get(index);
+                stored[shown.length + index] = kept.getType().isAir() ? null : kept.clone();
+            }
+            return stored;
+        }
+
+        /** Whether this call is the one that writes the page: true once, for the close or the stop. */
+        boolean takeTheWrite() {
+            return written.compareAndSet(false, true);
         }
 
         @Override
@@ -99,9 +187,18 @@ public final class IslandVaultWindow {
             return WhatThePageOwes.asStored(
                     player.getInventory().getContents(),
                     player.getItemOnCursor(),
-                    WhatThePageOwes.between(openedWith, window.getContents()));
+                    WhatThePageOwes.between(openedWith, pageOf(window)));
         }
     }
+
+    /** The menu file a page is drawn from. */
+    public static final String FILE = "island-vault-page";
+
+    /** The region of that file that holds the page. */
+    public static final String PAGE = "skyblock:vault-page";
+
+    /** The verb that writes the page and opens the one it names. */
+    public static final String TURN = "skyblock:vault-open";
 
     private final IslandVaultService vaultService;
     private final IslandStoragePort islandStoragePort;
@@ -109,6 +206,11 @@ public final class IslandVaultWindow {
     private final VaultConfiguration configuration;
     private final Messages messages;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
+    private @Nullable SkyblockMenuEngine engine;
+
+    /** Whether the file was found unable to hold a page, said once rather than on every open. */
+    private final java.util.concurrent.atomic.AtomicBoolean saidTheFileCannotHoldAPage =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     public IslandVaultWindow(
             IslandVaultService vaultService,
@@ -123,6 +225,26 @@ public final class IslandVaultWindow {
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
         this.sessionCoordinator = sessionCoordinator;
+    }
+
+    /**
+     * Draws a page from {@code menus/island-vault-page.conf} from now on: the window around the page
+     * is the operator's, and the page is the region the file names. The window built in code stays
+     * for a server whose file is gone or cannot hold a page.
+     */
+    public void useMenuEngine(SkyblockMenuEngine engine) {
+        this.engine = Objects.requireNonNull(engine, "engine must not be null");
+        engine.bindings().content(PAGE, new VaultPageContent(this));
+        engine.action(TURN, ctx -> {
+            try {
+                int page = Integer.parseInt(ctx.arg().strip());
+                // Closing writes the page this window holds; the one named is another page, under its own lease.
+                ctx.player().closeInventory();
+                open(ctx.player(), page);
+            } catch (NumberFormatException notAPage) {
+                LOGGER.warning(() -> FILE + ": " + TURN + " names no page: " + ctx.arg());
+            }
+        });
     }
 
     /** Opens {@code page} of the island's vault for {@code player}, or says why it cannot. */
@@ -159,8 +281,16 @@ public final class IslandVaultWindow {
                         island, profileId, role, page, player.getUniqueId(), configuration.leaseDuration());
                 boolean mayDeposit = role.hasPermission(IslandPermission.VAULT_DEPOSIT);
                 boolean mayWithdraw = role.hasPermission(IslandPermission.VAULT_WITHDRAW);
+                int pages = vaultService.getMaxAllowedPages(island.id());
                 schedulerPort.onEntity(
-                        playerUuid, () -> show(player, island.id(), page, profileId, opened, mayDeposit, mayWithdraw));
+                        playerUuid,
+                        () -> show(
+                                player,
+                                island.id(),
+                                new Opened(page, pages, opened),
+                                profileId,
+                                mayDeposit,
+                                mayWithdraw));
             } catch (VaultPermissionDeniedException denied) {
                 schedulerPort.onEntity(playerUuid, () -> messages.send(player, "vault.no_permission"));
             } catch (VaultPageLimitExceededException limit) {
@@ -254,31 +384,52 @@ public final class IslandVaultWindow {
         return actorProfileId;
     }
 
+    /** A page the service leased, which page it is and how many the island has. */
+    private record Opened(int page, int pages, IslandVaultService.VaultOpenResult result) {}
+
     private void show(
             Player player,
             IslandId islandId,
-            int page,
+            Opened opened,
             ProfileId profileId,
-            IslandVaultService.VaultOpenResult opened,
             boolean mayDeposit,
             boolean mayWithdraw) {
         if (!player.isOnline()) {
-            vaultService.abortVaultPage(opened.session().sessionId());
+            vaultService.abortVaultPage(opened.result().session().sessionId());
             return;
         }
-        VaultPage vaultPage = opened.page();
-        ItemStack[] stored = BukkitInventorySerializer.deserializeItemStacks(vaultPage.contentsNbt());
+        int page = opened.page();
+        VaultPage vaultPage = opened.result().page();
+        @Nullable ItemStack[] stored = BukkitInventorySerializer.deserializeItemStacks(vaultPage.contentsNbt());
+        int shown = configuration.slotsPerPage();
+        SkyblockMenuEngine files = this.engine;
+        List<Integer> fileSlots = files == null ? null : pageSlotsOf(files);
         VaultHolder holder = new VaultHolder(
                 islandId,
                 page,
                 profileId,
-                opened.session().sessionId().value().toString(),
-                WhatThePageOwes.openedWith(stored, configuration.slotsPerPage()),
+                opened.result().session().sessionId().value().toString(),
+                WhatThePageOwes.openedWith(stored, shown),
                 mayDeposit,
-                mayWithdraw);
+                mayWithdraw,
+                fileSlots != null
+                        ? fileSlots
+                        : java.util.stream.IntStream.range(0, shown).boxed().toList(),
+                WhatThePageOwes.beyond(stored, shown),
+                new java.util.concurrent.atomic.AtomicBoolean());
+        if (!holder.beyond().isEmpty()) {
+            LOGGER.warning(() -> "Vault page " + page + " of island " + islandId + " holds items past the " + shown
+                    + " slots a page has now. They are kept, and shown again when slots-per-page is raised.");
+        }
+        if (files != null
+                && fileSlots != null
+                && files.openHolding(player, FILE, holder, valuesOf(holder, opened.pages()))) {
+            closeBeforeTheLeaseRunsOut(player, holder);
+            return;
+        }
         Inventory inventory = Bukkit.createInventory(
                 holder,
-                configuration.slotsPerPage(),
+                shown,
                 messages.renderPlain(player, "vault.title", Placeholder.unparsed("page", Integer.toString(page))));
 
         for (int slot = 0; slot < Math.min(stored.length, inventory.getSize()); slot++) {
@@ -286,6 +437,50 @@ public final class IslandVaultWindow {
         }
         player.openInventory(inventory);
         closeBeforeTheLeaseRunsOut(player, holder);
+    }
+
+    /**
+     * The slots of the file that hold a page, or null when the file is gone or holds a page of another
+     * size. A region of another size would show part of a page or leave slots that belong to none.
+     */
+    @Nullable List<Integer> pageSlotsOf(SkyblockMenuEngine files) {
+        Optional<com.uxplima.uxmlib.menu.spec.MenuSpec> spec = files.spec(FILE);
+        if (spec.isEmpty()) {
+            return null;
+        }
+        com.uxplima.uxmlib.menu.spec.ContentRegionSpec region =
+                spec.get().contents().get(PAGE);
+        int size = configuration.slotsPerPage();
+        if (region == null || region.slots().slots().size() != size) {
+            if (saidTheFileCannotHoldAPage.compareAndSet(false, true)) {
+                LOGGER.warning(() -> "menus/" + FILE + ".conf needs a content region \"" + PAGE + "\" of " + size
+                        + " slots, as many as slots-per-page in modules/vault.conf. The vault opens in the"
+                        + " window built in code until it has one.");
+            }
+            return null;
+        }
+        return region.slots().slots();
+    }
+
+    /** What the file is told about the page: which it is, how many there are and what the role allows. */
+    static java.util.Map<String, String> valuesOf(VaultHolder holder, int pages) {
+        String access;
+        if (holder.mayDeposit() && holder.mayWithdraw()) {
+            access = "<key:menu.vault_page.access_both>";
+        } else if (holder.mayWithdraw()) {
+            access = "<key:menu.vault_page.access_take>";
+        } else if (holder.mayDeposit()) {
+            access = "<key:menu.vault_page.access_put>";
+        } else {
+            access = "<key:menu.vault_page.access_look>";
+        }
+        return java.util.Map.of(
+                "page", Integer.toString(holder.page()),
+                "pages", Integer.toString(pages),
+                "previous_page", Integer.toString(holder.page() - 1),
+                "next_page", Integer.toString(holder.page() + 1),
+                "pages_after", Integer.toString(Math.max(0, pages - holder.page())),
+                "access", access);
     }
 
     /**
@@ -304,7 +499,9 @@ public final class IslandVaultWindow {
                 closeAt,
                 () -> schedulerPort.onEntity(playerUuid, () -> {
                     if (player.isOnline()
-                            && player.getOpenInventory().getTopInventory().getHolder() == holder) {
+                            && VaultHolder.of(player.getOpenInventory().getTopInventory())
+                                            .orElse(null)
+                                    == holder) {
                         messages.send(player, "vault.closed_to_save");
                         player.closeInventory();
                     }
@@ -328,7 +525,7 @@ public final class IslandVaultWindow {
      */
     public void commit(Player player, VaultHolder holder, ItemStack[] contents) {
         Objects.requireNonNull(holder, "holder must not be null");
-        byte[] serialized = BukkitInventorySerializer.serializeItemStacks(contents);
+        byte[] serialized = BukkitInventorySerializer.serializeItemStacks(holder.stored(contents));
         List<VaultAuditLogEntry> auditTrail = VaultAuditTrail.of(holder, contents);
         PlayerAtClose playerState = stateOf(player, holder);
         schedulerPort.async(() -> {
@@ -357,15 +554,16 @@ public final class IslandVaultWindow {
      */
     public void writeBeforeStop(Player player) {
         org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
-        if (top == null || !(top.getHolder() instanceof VaultHolder holder)) {
+        VaultHolder holder = VaultHolder.of(top).orElse(null);
+        if (top == null || holder == null || !holder.takeTheWrite()) {
             return;
         }
-        ItemStack[] contents = top.getContents();
+        @Nullable ItemStack[] contents = holder.pageOf(top);
         PlayerAtClose playerState = stateOf(player, holder);
         try {
             commitPage(
                     holder,
-                    BukkitInventorySerializer.serializeItemStacks(contents),
+                    BukkitInventorySerializer.serializeItemStacks(holder.stored(contents)),
                     playerState,
                     VaultAuditTrail.of(holder, contents));
         } catch (RuntimeException e) {

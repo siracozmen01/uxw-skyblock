@@ -26,4 +26,22 @@ public interface WritesPlayerStateItself {
     default ItemStack @Nullable [] inventoryAsStored(Player player, Inventory window) {
         return null;
     }
+
+    /**
+     * The window that writes itself behind {@code top}: its holder, or the subject of the menu drawn
+     * from a file, which is the holder of nothing of ours.
+     */
+    static java.util.Optional<WritesPlayerStateItself> of(@Nullable Inventory top) {
+        if (top == null) {
+            return java.util.Optional.empty();
+        }
+        if (top.getHolder() instanceof WritesPlayerStateItself window) {
+            return java.util.Optional.of(window);
+        }
+        if (top.getHolder() instanceof com.uxplima.uxmlib.menu.runtime.MenuHolder menu
+                && menu.ctx().subjectRaw().orElse(null) instanceof WritesPlayerStateItself window) {
+            return java.util.Optional.of(window);
+        }
+        return java.util.Optional.empty();
+    }
 }

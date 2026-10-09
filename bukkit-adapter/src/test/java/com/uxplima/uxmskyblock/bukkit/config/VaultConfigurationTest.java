@@ -22,7 +22,7 @@ class VaultConfigurationTest {
         assertThat(config.enabled()).isTrue();
         assertThat(config.basePages()).isEqualTo(1);
         assertThat(config.maxPages()).isEqualTo(10);
-        assertThat(config.slotsPerPage()).isEqualTo(54);
+        assertThat(config.slotsPerPage()).isEqualTo(45);
         assertThat(config.leaseDuration()).isEqualTo(Duration.ofSeconds(60));
         assertThat(config.auditLogLimit()).isEqualTo(50);
     }

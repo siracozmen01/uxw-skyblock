@@ -21,7 +21,7 @@ public record VaultConfiguration(
     public static final boolean DEFAULT_ENABLED = true;
     public static final int DEFAULT_BASE_PAGES = 1;
     public static final int DEFAULT_MAX_PAGES = 10;
-    public static final int DEFAULT_SLOTS_PER_PAGE = 54;
+    public static final int DEFAULT_SLOTS_PER_PAGE = 45;
     public static final Duration DEFAULT_LEASE_DURATION = Duration.ofSeconds(60);
     public static final int DEFAULT_AUDIT_LOG_LIMIT = 50;
 

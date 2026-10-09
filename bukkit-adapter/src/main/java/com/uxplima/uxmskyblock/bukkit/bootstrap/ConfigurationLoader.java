@@ -96,6 +96,7 @@ public final class ConfigurationLoader {
             "island-mission-list.conf",
             "tradewinds-sail.conf",
             "tradewinds-market.conf",
+            "island-vault-page.conf",
             "island-boosters.conf",
             "island-biome.conf",
             "island-homes.conf",

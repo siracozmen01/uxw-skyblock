@@ -41,7 +41,10 @@ public final class IslandVaultListener implements Listener {
         if (!(event.getPlayer() instanceof Player player)) {
             return;
         }
-        window.commit(player, holder, inventory.getContents());
+        // The stop may have written the page already, and a page is written once.
+        if (holder.takeTheWrite()) {
+            window.commit(player, holder, holder.pageOf(inventory));
+        }
     }
 
     /** Refuses a click that would move items the viewer's role does not let them move. */

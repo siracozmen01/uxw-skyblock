@@ -34,6 +34,9 @@ final class WindowFiles {
             gameplay.boosterMenu().useWayBack(wayBackTo(engine, island, "island-boosters"));
             gameplay.boosterMenu().useMenuEngine(engine);
         }
+        if (gameplay.vaultWindow() != null) {
+            gameplay.vaultWindow().useMenuEngine(engine);
+        }
         if (gameplay.missionsMenu() != null) {
             gameplay.missionsMenu().useWayBack(wayBackTo(engine, island, "island-missions"));
             gameplay.missionsMenu().useMenuEngine(engine);

@@ -39,6 +39,27 @@ final class WhatThePageOwes {
         return snapshot;
     }
 
+    /**
+     * What {@code stored} holds past its first {@code slots} slots, up to its last stack, air where a
+     * slot was empty. Empty when nothing lies past them. A page written when pages were larger keeps
+     * this, because writing the page without it deleted it.
+     */
+    static List<ItemStack> beyond(@Nullable ItemStack[] stored, int slots) {
+        int last = -1;
+        for (int slot = slots; slot < stored.length; slot++) {
+            ItemStack stack = stored[slot];
+            if (stack != null && !stack.getType().isAir()) {
+                last = slot;
+            }
+        }
+        List<ItemStack> kept = new ArrayList<>();
+        for (int slot = slots; slot <= last; slot++) {
+            ItemStack stack = stored[slot];
+            kept.add(stack == null ? new ItemStack(Material.AIR) : stack.clone());
+        }
+        return kept;
+    }
+
     /** What the window holding {@code window} has moved since it opened on {@code openedWith}. */
     static Moved between(List<ItemStack> openedWith, @Nullable ItemStack[] window) {
         List<ItemStack> stillInThePage = new ArrayList<>();

@@ -377,7 +377,9 @@ public final class PlayerSessionCoordinator {
             ProfileInventoryRecord taken = BukkitInventorySerializer.snapshotPlayer(
                     player, session.activeProfileId(), session.lastDurableVersion());
             org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
-            if (top != null && top.getHolder() instanceof WritesPlayerStateItself selfWriting) {
+            WritesPlayerStateItself selfWriting =
+                    WritesPlayerStateItself.of(top).orElse(null);
+            if (top != null && selfWriting != null) {
                 // The window writes what the player holds when it closes. Until then the player is
                 // written as the stored state leaves them, or not at all; see WritesPlayerStateItself.
                 org.bukkit.inventory.ItemStack[] asStored = selfWriting.inventoryAsStored(player, top);

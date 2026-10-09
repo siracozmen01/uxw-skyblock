@@ -330,6 +330,24 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         return open(viewer, specId, values);
     }
 
+    /**
+     * Opens a menu that carries {@code subject}: the record a window that holds items paints its
+     * regions from and hands them back to. The record stays with the window, so a click and the close
+     * read it without a lookup.
+     */
+    public boolean openHolding(Player viewer, String specId, Object subject, Map<String, String> values) {
+        Objects.requireNonNull(viewer, "viewer must not be null");
+        Objects.requireNonNull(specId, "specId must not be null");
+        Objects.requireNonNull(subject, "subject must not be null");
+        Objects.requireNonNull(values, "values must not be null");
+        if (!has(specId)) {
+            return false;
+        }
+        lastValues.put(viewer.getUniqueId(), Map.copyOf(values));
+        menus.open(viewer, specId, subject, 0, values);
+        return true;
+    }
+
     /** Registers one verb a skyblock menu file may name. */
     public void action(String id, java.util.function.Consumer<MenuActionContext> handler) {
         bindings.action(id, handler);
