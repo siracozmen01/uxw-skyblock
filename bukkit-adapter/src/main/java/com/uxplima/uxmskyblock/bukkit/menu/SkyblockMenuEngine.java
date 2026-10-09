@@ -365,6 +365,12 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         menus.redraw(viewer, specId);
     }
 
+    /** Whether {@code viewer} has the window of {@code specId} up. Call on the viewer's thread. */
+    public boolean showing(Player viewer, String specId) {
+        org.bukkit.inventory.Inventory top = viewer.getOpenInventory().getTopInventory();
+        return top != null && menus.menuIdOf(top).filter(specId::equals).isPresent();
+    }
+
     /** Registers one verb a skyblock menu file may name. */
     public void action(String id, java.util.function.Consumer<MenuActionContext> handler) {
         bindings.action(id, handler);

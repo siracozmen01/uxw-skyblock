@@ -158,6 +158,26 @@ class IslandUpgradeCommandsTest {
     }
 
     @org.junit.jupiter.api.Test
+    @DisplayName("A purchase written runs what comes after it, so the window is drawn again; a refusal does not")
+    void aPurchaseRunsWhatComesAfter() throws Exception {
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+        java.util.List<org.bukkit.entity.Player> after = new java.util.ArrayList<>();
+        IslandUpgradeCommands commands = new IslandUpgradeCommands(
+                () -> upgrades, locations, inlineScheduler(), NODE, Messages.bundled(), sessions);
+        commands.afterPurchase(after::add);
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.build());
+
+        run("upgrades buy island_size", player);
+        assertThat(after).containsExactly(player);
+
+        when(upgrades.purchaseUpgrade(any(), any(), any(), any(ServerNodeId.class)))
+                .thenReturn(new UpgradePurchaseOutcome.MaxTierReached(UpgradeId.SIZE, 5));
+        run("upgrades buy island_size", player);
+        assertThat(after).containsExactly(player);
+    }
+
+    @org.junit.jupiter.api.Test
     @DisplayName("A purchase is told with the upgrade's name and its price as money, not the key and a count")
     void aPurchaseIsToldAsThePlayerReadsIt() throws Exception {
         callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);

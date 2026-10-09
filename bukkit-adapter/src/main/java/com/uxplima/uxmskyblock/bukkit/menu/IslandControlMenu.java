@@ -227,10 +227,29 @@ public final class IslandControlMenu {
                 Map.entry("crop_tier", String.valueOf(tiers.getOrDefault(UpgradeId.CROP_GROWTH, 0))));
     }
 
+    /** The upgrades window, opened from this menu and drawn from the values it gathers. */
+    public static final String UPGRADES = "island-upgrades";
+
     public void open(Player player) {
+        show(player, "island-main", false);
+    }
+
+    /**
+     * Opens {@code specId} again with the island's values as they stand now, when the player still has
+     * it up. A window opened from this menu reads the values this menu gathered, so a tier bought from
+     * one would otherwise show the tier it had before.
+     */
+    public void refresh(Player player, String specId) {
+        show(player, specId, true);
+    }
+
+    private void show(Player player, String specId, boolean refresh) {
         Objects.requireNonNull(player, "player must not be null");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> activeOpt = activeProfileProvider.apply(player.getUniqueId());
+        if (refresh && (activeOpt.isEmpty() || menuEngine == null)) {
+            return;
+        }
         if (activeOpt.isEmpty()) {
             schedulerPort.onEntity(playerUuid, () -> {
                 if (player.isOnline()) {
@@ -244,6 +263,9 @@ public final class IslandControlMenu {
         schedulerPort.async(() -> {
             Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
             if (optIslandId.isEmpty()) {
+                if (refresh) {
+                    return;
+                }
                 schedulerPort.onEntity(playerUuid, () -> {
                     if (player.isOnline()) {
                         player.sendMessage(messages.render(player, "menu.control.no_island"));
@@ -269,6 +291,13 @@ public final class IslandControlMenu {
 
             schedulerPort.onEntity(playerUuid, () -> {
                 if (!player.isOnline()) {
+                    return;
+                }
+                if (refresh) {
+                    SkyblockMenuEngine engine = this.menuEngine;
+                    if (engine != null && engine.showing(player, specId)) {
+                        engine.open(player, specId, liveValues(island, bank, upgrades, pages));
+                    }
                     return;
                 }
                 if (bedrockFormService != null && bedrockFormService.isBedrock(player)) {

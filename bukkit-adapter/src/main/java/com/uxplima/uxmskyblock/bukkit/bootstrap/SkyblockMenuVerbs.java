@@ -60,9 +60,10 @@ final class SkyblockMenuVerbs {
                 ctx.player().performCommand(typed.apply(line));
             }
         });
+        // The window stays up: once the purchase is written it is drawn again with the new tier, and a
+        // refusal is said in chat while the player still sees what they could afford.
         engine.action("skyblock:buy-upgrade", ctx -> {
             String upgradeKey = ctx.arg().strip();
-            ctx.player().closeInventory();
             if (upgradeKey.isEmpty()) {
                 messages.send(ctx.player(), "menu.control.upgrade_unnamed");
                 return;

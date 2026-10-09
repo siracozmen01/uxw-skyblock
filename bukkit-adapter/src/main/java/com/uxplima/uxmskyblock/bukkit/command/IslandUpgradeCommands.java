@@ -74,6 +74,16 @@ public final class IslandUpgradeCommands {
         this.effectPlayer = player;
     }
 
+    private java.util.function.Consumer<Player> afterPurchase = player -> {};
+
+    /**
+     * What happens once a purchase is written, on the buyer's thread: the window the tier was bought
+     * from is drawn again with the tier it has now.
+     */
+    public void afterPurchase(java.util.function.Consumer<Player> then) {
+        this.afterPurchase = Objects.requireNonNull(then, "then must not be null");
+    }
+
     /** Fires one milestone for one player, when the operator wrote anything for it. */
     private void fireMilestone(String interaction, org.bukkit.entity.Player player) {
         com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects written = this.effects;
@@ -331,6 +341,7 @@ public final class IslandUpgradeCommands {
                         Placeholder.unparsed("tier", Integer.toString(success.newTier())),
                         Placeholder.unparsed("cost", MoneyText.of(success.costPaid())));
                 fireMilestone("upgrade-bought", player);
+                afterPurchase.accept(player);
             }
             case UpgradePurchaseOutcome.MaxTierReached maxed ->
                 send(

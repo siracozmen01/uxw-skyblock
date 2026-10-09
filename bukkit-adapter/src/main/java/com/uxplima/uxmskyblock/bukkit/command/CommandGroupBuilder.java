@@ -74,6 +74,12 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         upgradeCommands.useEffects(tree.interactionEffects, effectPlayer);
+        upgradeCommands.afterPurchase(player -> {
+            com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu menu = tree.features.controlMenu();
+            if (menu != null) {
+                menu.refresh(player, com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu.UPGRADES);
+            }
+        });
 
         IslandTrustCommands trustCommands = new IslandTrustCommands(
                 () -> tree.features.temporaryAccessService(),

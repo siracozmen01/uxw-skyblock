@@ -113,6 +113,62 @@ class IslandControlMenuTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A refresh draws the upgrades window again with the tier bought, and opens nothing the player left")
+    void aRefreshDrawsTheTierBought(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+        when(mockBank.findBankByIslandId(eq(islandId))).thenReturn(Optional.empty());
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+        when(mockLocations.resolveHome(eq(profileId))).thenReturn(Optional.empty());
+        SkyblockMenuEngine engine = ShippedTemplates.engineWith(dataDir, "island-upgrades.conf");
+        engine.install();
+        menu.useMenuEngine(engine);
+        engine.open(player, IslandControlMenu.UPGRADES, Map.of("size_tier", "0"));
+        settle(() -> engine.showing(player, IslandControlMenu.UPGRADES));
+        assertThat(tierOnTheSizeTile()).isEqualTo("0");
+
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of(UpgradeId.SIZE, 2));
+        menu.refresh(player, IslandControlMenu.UPGRADES);
+        settle(() -> "2".equals(tierOnTheSizeTile()));
+
+        player.closeInventory();
+        menu.refresh(player, IslandControlMenu.UPGRADES);
+        for (int tick = 0; tick < 5; tick++) {
+            server.getScheduler().performOneTick();
+            server.getScheduler().waitAsyncTasksFinished();
+        }
+        assertThat(engine.showing(player, IslandControlMenu.UPGRADES)).isFalse();
+    }
+
+    /** The tier the size tile of the open window reads, or nothing when there is no such line. */
+    private @org.jspecify.annotations.Nullable String tierOnTheSizeTile() {
+        org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+        org.bukkit.inventory.ItemStack tile = top == null ? null : top.getItem(11);
+        if (tile == null || tile.lore() == null) {
+            return null;
+        }
+        return java.util.Objects.requireNonNull(tile.lore()).stream()
+                .map(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
+                .filter(line -> line.contains("Tier"))
+                .map(line -> line.strip().substring(line.strip().lastIndexOf(' ') + 1))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void settle(java.util.function.BooleanSupplier done) {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < deadline) {
+            server.getScheduler().performOneTick();
+            if (done.getAsBoolean()) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("the window never settled, the size tile reads tier " + tierOnTheSizeTile());
+    }
+
+    @Test
     @DisplayName("open warns player when no island exists")
     void openWarnsPlayerWithoutIsland() {
         when(mockStorage.findIslandIdByProfileId(eq(new ProfileId(player.getUniqueId()))))
