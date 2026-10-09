@@ -78,10 +78,14 @@ class ShippedMenuFilesAreReadTest {
             assertThat(item.slots().slots())
                     .describedAs("item %s in %s must claim a slot", id, file.getFileName())
                     .isNotEmpty();
-            assertThat(item.material())
+            // A list stamps its template once per entry, so the template is what a player sees and clicks.
+            com.uxplima.uxmlib.menu.spec.MenuItemSpec drawn = item.list()
+                    .map(com.uxplima.uxmlib.menu.spec.ListSpec::template)
+                    .orElse(item);
+            assertThat(drawn.material())
                     .describedAs("item %s in %s must name a material", id, file.getFileName())
                     .isNotBlank();
-            assertThat(item.click().hasAnyAction())
+            assertThat(drawn.click().hasAnyAction())
                     .describedAs("item %s in %s must do something when clicked", id, file.getFileName())
                     .isTrue();
         });

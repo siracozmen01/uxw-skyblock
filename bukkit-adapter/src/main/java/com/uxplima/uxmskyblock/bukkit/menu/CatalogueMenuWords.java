@@ -72,7 +72,8 @@ public final class CatalogueMenuWords implements GuiText {
      * with. The line a menu file writes is only {@code @key}, so the engine hands over no values for
      * it up front; it answers a name it is asked for through its placeholders, where
      * {@link SkyblockMenuEngine#answerArguments} puts the menu's values. Only {@code argument_} names
-     * are asked, so a colour tag is never taken for a placeholder.
+     * are asked, so a colour tag is never taken for a placeholder. A tile a list stamps once per entry asks
+     * for that entry's values the same way, as {@code <entry_<name>>}.
      */
     private static TagResolver[] resolvers(Map<String, String> placeholders) {
         TagResolver[] spelled = placeholders.entrySet().stream()
@@ -88,6 +89,9 @@ public final class CatalogueMenuWords implements GuiText {
 
         private static final String PREFIX = "argument_";
 
+        /** A value of the list entry a tile is drawn for, such as one member of the island. */
+        private static final String ENTRY = "entry_";
+
         @Override
         public @org.jspecify.annotations.Nullable Tag resolve(
                 String name, ArgumentQueue arguments, net.kyori.adventure.text.minimessage.Context ctx) {
@@ -101,7 +105,7 @@ public final class CatalogueMenuWords implements GuiText {
         }
 
         private @org.jspecify.annotations.Nullable String valueOf(String name) {
-            return name.startsWith(PREFIX) ? placeholders.get(name) : null;
+            return name.startsWith(PREFIX) || name.startsWith(ENTRY) ? placeholders.get(name) : null;
         }
     }
 }
