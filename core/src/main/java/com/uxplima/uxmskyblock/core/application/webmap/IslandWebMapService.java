@@ -15,12 +15,22 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandWebMapService {
 
-    public static final String COLOR_GOLD_BORDER = "#FFD700";
-    public static final String COLOR_GOLD_FILL = "#FFE87C";
-    public static final String COLOR_DEFAULT_BORDER = "#00BFFF";
-    public static final String COLOR_DEFAULT_FILL = "#E0F7FA";
-    public static final String COLOR_ALLIANCE_BORDER = "#32CD32";
-    public static final String COLOR_ALLIANCE_FILL = "#90EE90";
+    private final MarkerLook look;
+
+    /** A service drawing in the shipped palette. */
+    public IslandWebMapService() {
+        this(MarkerLook.palette());
+    }
+
+    /** A service drawing in the look an operator wrote. */
+    public IslandWebMapService(MarkerLook look) {
+        this.look = Objects.requireNonNull(look, "look must not be null");
+    }
+
+    /** The look this service draws in. */
+    public MarkerLook look() {
+        return look;
+    }
 
     /**
      * Contextual metadata for generating an island's web map marker.
@@ -57,50 +67,39 @@ public final class IslandWebMapService {
 
             String displayName = (ctx.customName() != null && !ctx.customName().isBlank())
                     ? ctx.customName()
-                    : "Island " + islandIdStr.substring(0, 8);
+                    : look.words().nameOf(islandIdStr);
 
-            String borderColor;
-            String fillColor;
-            double fillOpacity;
-            int lineWeight;
-
-            if (ctx.rank() > 0 && ctx.rank() <= 10) {
-                // Top 10 Leaderboard: Gold highlights
-                borderColor = COLOR_GOLD_BORDER;
-                fillColor = COLOR_GOLD_FILL;
-                fillOpacity = 0.35;
-                lineWeight = 3;
-            } else if (ctx.isAllied()) {
-                // Allied territory: Green highlights
-                borderColor = COLOR_ALLIANCE_BORDER;
-                fillColor = COLOR_ALLIANCE_FILL;
-                fillOpacity = 0.25;
-                lineWeight = 2;
-            } else {
-                // Standard operational island
-                borderColor = COLOR_DEFAULT_BORDER;
-                fillColor = COLOR_DEFAULT_FILL;
-                fillOpacity = 0.15;
-                lineWeight = 1;
-            }
+            // The leaders first, then allies, then everyone else, each in the colour the operator gave it.
+            MarkerLook.Shade shade =
+                    ctx.rank() > 0 && ctx.rank() <= 10 ? look.top() : ctx.isAllied() ? look.allied() : look.other();
+            String borderColor = shade.border();
+            String fillColor = shade.fill();
+            double fillOpacity = shade.opacity();
+            int lineWeight = shade.weight();
 
             double netWorth = ctx.netWorthMinorUnits() / 100.0;
             double bank = ctx.bankBalanceMinorUnits() / 100.0;
 
+            MarkerLook.Words words = look.words();
             String htmlTooltip = String.format(
                     "<div class=\"skyblock-tooltip\" style=\"padding:5px;font-family:sans-serif;\">"
                             + "<h3 style=\"margin:0 0 5px 0;\">%s</h3>"
-                            + "<div><b>Owner:</b> %s</div>"
-                            + "<div><b>Level:</b> %,d</div>"
-                            + "<div><b>Rank:</b> %s</div>"
-                            + "<div><b>Net Worth:</b> $%,.2f</div>"
-                            + "<div><b>Bank:</b> $%,.2f</div>"
+                            + "<div><b>%s:</b> %s</div>"
+                            + "<div><b>%s:</b> %,d</div>"
+                            + "<div><b>%s:</b> %s</div>"
+                            + "<div><b>%s:</b> $%,.2f</div>"
+                            + "<div><b>%s:</b> $%,.2f</div>"
                             + "</div>",
                     escapeHtml(displayName),
+                    escapeHtml(words.owner()),
                     island.ownerPlayerUuid().value().toString().substring(0, 8),
+                    escapeHtml(words.level()),
                     ctx.levelScore(),
-                    ctx.rank() > 0 ? "#" + ctx.rank() : "Unranked",
+                    escapeHtml(words.rank()),
+                    ctx.rank() > 0 ? "#" + ctx.rank() : escapeHtml(words.unranked()),
+                    escapeHtml(words.worth()),
                     netWorth,
+                    escapeHtml(words.bank()),
                     bank);
 
             markers.add(new WebMapMarker(

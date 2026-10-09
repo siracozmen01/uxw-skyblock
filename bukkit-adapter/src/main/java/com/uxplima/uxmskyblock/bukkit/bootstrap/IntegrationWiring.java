@@ -138,13 +138,18 @@ public final class IntegrationWiring implements AutoCloseable {
         }
 
         this.worldDimensionSnapshotAdapter = new WorldDimensionSnapshotAdapter(plugin, persistence.islandStoragePort());
-        this.webMapAdapter = new CompositeWebMapAdapter(
-                List.of(new DynmapAdapter(plugin), new BlueMapAdapter(plugin), new Pl3xMapAdapter(plugin)));
-        this.islandWebMapService = new IslandWebMapService();
+        this.webMapAdapter = new CompositeWebMapAdapter(List.of(
+                new DynmapAdapter(plugin, config.webMapConfig().layer()),
+                new BlueMapAdapter(plugin),
+                new Pl3xMapAdapter(plugin)));
+        this.islandWebMapService = new IslandWebMapService(config.webMapConfig().look());
         // Dynmap, BlueMap and Pl3xMap were all built, all wired into a composite, and nothing ever
         // called one. Every server running this with Dynmap installed had a map with no islands.
-        this.markerSynchroniser =
-                new IslandMarkerSynchroniser(this.webMapAdapter, gameplay.locationService(), gameplay.scheduler());
+        this.markerSynchroniser = new IslandMarkerSynchroniser(
+                this.webMapAdapter,
+                gameplay.locationService(),
+                gameplay.scheduler(),
+                config.webMapConfig().look().words());
 
         this.controlMenu = new IslandControlMenu(
                 persistence.islandStoragePort(),

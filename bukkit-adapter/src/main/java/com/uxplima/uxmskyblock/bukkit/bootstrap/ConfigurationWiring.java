@@ -114,6 +114,7 @@ public final class ConfigurationWiring {
     private final com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration tradeConfig;
     private final com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration tradeWindsConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration webMapConfig;
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
@@ -197,6 +198,7 @@ public final class ConfigurationWiring {
             com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration brixConfig,
             com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration tradeConfig,
             com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration tradeWindsConfig,
+            com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration webMapConfig,
             PresetConfiguration presetConfig) {
         this.dataDir = Objects.requireNonNull(dataDir, "dataDir must not be null");
         this.rootNode = rootNode;
@@ -245,6 +247,7 @@ public final class ConfigurationWiring {
         this.brixConfig = Objects.requireNonNull(brixConfig, "brixConfig must not be null");
         this.tradeConfig = Objects.requireNonNull(tradeConfig, "tradeConfig must not be null");
         this.tradeWindsConfig = Objects.requireNonNull(tradeWindsConfig, "tradeWindsConfig must not be null");
+        this.webMapConfig = Objects.requireNonNull(webMapConfig, "webMapConfig must not be null");
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
@@ -334,6 +337,7 @@ public final class ConfigurationWiring {
                 com.uxplima.uxmskyblock.bukkit.config.BrixConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration.defaultConfiguration(),
                 com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.defaultConfiguration(),
+                com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration.defaultConfiguration(),
                 presetConfig);
         wiring.validate();
         return wiring;
@@ -544,6 +548,10 @@ public final class ConfigurationWiring {
     /** Whether islands can be TradeWinds vessels, and the sea a vessel is launched on. */
     public com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration tradeWindsConfig() {
         return tradeWindsConfig;
+    }
+
+    public com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration webMapConfig() {
+        return webMapConfig;
     }
 
     /** Whether players may trade, and how a trade window looks. */

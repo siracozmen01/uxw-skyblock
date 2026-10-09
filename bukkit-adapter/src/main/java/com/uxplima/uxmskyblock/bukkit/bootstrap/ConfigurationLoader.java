@@ -356,6 +356,12 @@ public final class ConfigurationLoader {
                 "tradewinds.conf",
                 com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration::load,
                 com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.defaultConfiguration());
+        com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration webMapConfig = loadConfig(
+                plugin,
+                dataDir,
+                "webmap.conf",
+                com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration::load,
+                com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration.defaultConfiguration());
 
         ConfigurationWiring wiring = new ConfigurationWiring(
                 dataDir,
@@ -403,6 +409,7 @@ public final class ConfigurationLoader {
                 brixConfig,
                 tradeConfig,
                 tradeWindsConfig,
+                webMapConfig,
                 presetConfig);
 
         wiring.validate();

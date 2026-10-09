@@ -54,8 +54,8 @@ class IslandWebMapServiceTest {
 
         assertThat(markers).hasSize(1);
         WebMapMarker marker = markers.get(0);
-        assertThat(marker.borderColorHex()).isEqualTo(IslandWebMapService.COLOR_GOLD_BORDER);
-        assertThat(marker.fillColorHex()).isEqualTo(IslandWebMapService.COLOR_GOLD_FILL);
+        assertThat(marker.borderColorHex()).isEqualTo(MarkerLook.palette().top().border());
+        assertThat(marker.fillColorHex()).isEqualTo(MarkerLook.palette().top().fill());
         assertThat(marker.lineWeight()).isEqualTo(3);
         assertThat(marker.htmlTooltip()).contains("GoldCitadel");
         assertThat(marker.htmlTooltip()).contains("#1");
@@ -79,8 +79,10 @@ class IslandWebMapServiceTest {
 
         assertThat(markers).hasSize(1);
         WebMapMarker marker = markers.get(0);
-        assertThat(marker.borderColorHex()).isEqualTo(IslandWebMapService.COLOR_ALLIANCE_BORDER);
-        assertThat(marker.fillColorHex()).isEqualTo(IslandWebMapService.COLOR_ALLIANCE_FILL);
+        assertThat(marker.borderColorHex())
+                .isEqualTo(MarkerLook.palette().allied().border());
+        assertThat(marker.fillColorHex())
+                .isEqualTo(MarkerLook.palette().allied().fill());
         assertThat(marker.lineWeight()).isEqualTo(2);
     }
 
@@ -96,8 +98,35 @@ class IslandWebMapServiceTest {
 
         assertThat(markers).hasSize(1);
         WebMapMarker marker = markers.get(0);
-        assertThat(marker.borderColorHex()).isEqualTo(IslandWebMapService.COLOR_DEFAULT_BORDER);
+        assertThat(marker.borderColorHex())
+                .isEqualTo(MarkerLook.palette().other().border());
         assertThat(marker.displayName()).startsWith("Island ");
         assertThat(marker.htmlTooltip()).contains("Unranked");
+    }
+
+    @Test
+    @DisplayName("The look an operator wrote is the look drawn: colours, line and every word of the tooltip")
+    void theOperatorsLookIsDrawn() {
+        MarkerLook.Shade plain = new MarkerLook.Shade("#123456", "#654321", 0.5, 4);
+        MarkerLook look = new MarkerLook(
+                plain,
+                plain,
+                plain,
+                new MarkerLook.Words("Ada <island>", "Sahip", "Seviye", "Sıra", "Sırasız", "Değer", "Banka"));
+        IslandMapContext ctx = new IslandMapContext(createTestIsland(0, 0), null, 7L, 0L, 0L, -1, false);
+
+        WebMapMarker marker =
+                new IslandWebMapService(look).generateMarkers(List.of(ctx)).get(0);
+
+        assertThat(marker.borderColorHex()).isEqualTo("#123456");
+        assertThat(marker.fillColorHex()).isEqualTo("#654321");
+        assertThat(marker.lineWeight()).isEqualTo(4);
+        assertThat(marker.displayName()).startsWith("Ada ").hasSize("Ada ".length() + 8);
+        assertThat(marker.htmlTooltip())
+                .contains("Sahip:")
+                .contains("Seviye:")
+                .contains("Sırasız")
+                .doesNotContain("Owner")
+                .doesNotContain("Unranked");
     }
 }

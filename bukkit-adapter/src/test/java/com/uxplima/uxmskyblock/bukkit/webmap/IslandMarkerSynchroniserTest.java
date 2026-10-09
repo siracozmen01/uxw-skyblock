@@ -81,6 +81,30 @@ class IslandMarkerSynchroniserTest {
     }
 
     @Test
+    @DisplayName("An island is labelled in the words the operator wrote, not in words of the code")
+    void theLabelIsTheOperators() {
+        WebMapAdapter map = mock(WebMapAdapter.class);
+        when(map.isAvailable()).thenReturn(true);
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIsland(ISLAND)).thenReturn(Optional.of(island(ISLAND)));
+        when(locations.findLocation(ISLAND)).thenReturn(Optional.of(location(ISLAND)));
+        com.uxplima.uxmskyblock.core.application.webmap.MarkerLook.Words words =
+                new com.uxplima.uxmskyblock.core.application.webmap.MarkerLook.Words(
+                        "Ada <island>", "Sahip", "Seviye", "Sıra", "Sırasız", "Değer", "Banka");
+
+        new IslandMarkerSynchroniser(map, locations, inlineScheduler(), words).onIslandCreated(ISLAND);
+
+        verify(map)
+                .registerIslandMarker(
+                        eq(ISLAND),
+                        eq("Ada " + ISLAND.value().toString().substring(0, 8)),
+                        eq("world"),
+                        anyDouble(),
+                        anyDouble(),
+                        anyDouble());
+    }
+
+    @Test
     @DisplayName("A deleted island is taken off the map")
     void aDeletedIslandIsRemoved() {
         WebMapAdapter map = mock(WebMapAdapter.class);

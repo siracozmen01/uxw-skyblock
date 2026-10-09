@@ -8,6 +8,7 @@ import java.util.logging.Logger;
 
 import com.uxplima.uxmskyblock.core.application.island.IslandLocationService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.application.webmap.MarkerLook;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
@@ -30,9 +31,20 @@ public final class IslandMarkerSynchroniser {
     private final WebMapAdapter webMap;
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
+    private final MarkerLook.Words words;
 
     public IslandMarkerSynchroniser(
             WebMapAdapter webMap, IslandLocationService islandLocationService, SchedulerPort schedulerPort) {
+        this(webMap, islandLocationService, schedulerPort, MarkerLook.palette().words());
+    }
+
+    /** A synchroniser labelling each island in the words {@code modules/webmap.conf} gives. */
+    public IslandMarkerSynchroniser(
+            WebMapAdapter webMap,
+            IslandLocationService islandLocationService,
+            SchedulerPort schedulerPort,
+            MarkerLook.Words words) {
+        this.words = Objects.requireNonNull(words, "words must not be null");
         this.webMap = Objects.requireNonNull(webMap, "webMap must not be null");
         this.islandLocationService =
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
@@ -113,7 +125,7 @@ public final class IslandMarkerSynchroniser {
         // The island record carries no display name: the custom name lives in its own table, read by
         // IslandNameService. A marker labelled by id is still a marker, and labelling it by a name
         // this class would have to fetch per island would turn a redraw into a query storm.
-        String name = "Island " + island.id().value().toString().substring(0, 8);
+        String name = words.nameOf(island.id().value().toString());
         try {
             if (update) {
                 webMap.updateIslandMarker(

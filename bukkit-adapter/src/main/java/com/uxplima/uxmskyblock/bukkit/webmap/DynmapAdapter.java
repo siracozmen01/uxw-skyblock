@@ -19,12 +19,18 @@ public final class DynmapAdapter implements WebMapAdapter {
 
     private static final Logger LOGGER = Logger.getLogger(DynmapAdapter.class.getName());
     private static final String MARKER_SET_ID = "uxmskyblock.islands";
-    private static final String MARKER_SET_LABEL = "Islands";
 
     private final Plugin plugin;
+    private final String layer;
 
     public DynmapAdapter(Plugin plugin) {
+        this(plugin, com.uxplima.uxmskyblock.bukkit.config.WebMapConfiguration.DEFAULT_LAYER);
+    }
+
+    /** An adapter drawing its islands on a layer of the name {@code modules/webmap.conf} gives. */
+    public DynmapAdapter(Plugin plugin, String layer) {
         this.plugin = Objects.requireNonNull(plugin, "plugin must not be null");
+        this.layer = Objects.requireNonNull(layer, "layer must not be null");
     }
 
     public Plugin plugin() {
@@ -127,7 +133,7 @@ public final class DynmapAdapter implements WebMapAdapter {
                 set = markerApi
                         .getClass()
                         .getMethod("createMarkerSet", String.class, String.class, java.util.Set.class, boolean.class)
-                        .invoke(markerApi, MARKER_SET_ID, MARKER_SET_LABEL, null, false);
+                        .invoke(markerApi, MARKER_SET_ID, layer, null, false);
             }
             return set;
         } catch (Exception e) {
