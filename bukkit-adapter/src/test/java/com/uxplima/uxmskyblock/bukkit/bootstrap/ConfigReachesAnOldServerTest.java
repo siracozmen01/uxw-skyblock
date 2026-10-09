@@ -183,6 +183,76 @@ class ConfigReachesAnOldServerTest {
     }
 
     @Test
+    @DisplayName("A file nobody edited becomes what the new release ships, comments and order included")
+    void anUntouchedFileTakesTheNewRelease() throws Exception {
+        Path file = dataDir.resolve("missions.conf");
+        String first = "# the first words\nmissions { daily { goal = 10 } }\n";
+        String second = "# the second words\nmissions {\n  daily { goal = 20 }\n}\n";
+        Files.writeString(file, first);
+        try (URLClassLoader release = loader(release(first))) {
+            PluginSettings.bringUpToDate(dataDir, file, "missions.conf", release);
+        }
+
+        try (URLClassLoader next = loader(release(second))) {
+            assertThat(PluginSettings.bringUpToDate(dataDir, file, "missions.conf", next))
+                    .isTrue();
+        }
+        assertThat(file).hasContent(second);
+        assertThat(dataDir.resolve("missions.conf.bak")).hasContent(first);
+    }
+
+    @Test
+    @DisplayName("A value the operator never changed takes the new release's, and one they changed stays theirs")
+    void anUntouchedValueTakesTheNewRelease() throws Exception {
+        Path file = dataDir.resolve("missions.conf");
+        String first = "title = \"<red>Missions\", daily { goal = 10, icon = clock }, weekly { goal = 70 }, "
+                + "note = \"old\", good = \"<aqua>wheat\"";
+        Files.writeString(file, first);
+        try (URLClassLoader release = loader(release(first))) {
+            PluginSettings.bringUpToDate(dataDir, file, "missions.conf", release);
+        }
+        Files.writeString(file, first.replace("goal = 70", "goal = 75").replace("note = \"old\"", "note = \"mine\""));
+
+        try (URLClassLoader next =
+                loader(release("title = \"<accent>Missions\", daily { goal = 20, icon = clock }, weekly { goal = 80 }, "
+                        + "good { title = \"<item>\" }"))) {
+            assertThat(PluginSettings.bringUpToDate(dataDir, file, "missions.conf", next))
+                    .isTrue();
+        }
+        ConfigurationNode now = read(file);
+        assertThat(now.node("title").getString()).isEqualTo("<accent>Missions");
+        assertThat(now.node("daily", "goal").getInt()).isEqualTo(20);
+        assertThat(now.node("weekly", "goal").getInt())
+                .describedAs("the operator wrote 75, so 75 it stays")
+                .isEqualTo(75);
+        assertThat(now.node("note").getString())
+                .describedAs("a key the release dropped stays when the operator wrote it")
+                .isEqualTo("mine");
+        assertThat(now.node("good", "title").getString())
+                .describedAs("a line that became a block becomes the block")
+                .isEqualTo("<item>");
+        assertThat(Files.readString(dataDir.resolve("missions.conf.bak"))).contains("goal = 75");
+    }
+
+    @Test
+    @DisplayName("A key the operator never touched and the release dropped goes with it")
+    void anUntouchedDroppedKeyGoes() throws Exception {
+        Path file = dataDir.resolve("missions.conf");
+        Files.writeString(file, "keep = 1, gone = 2");
+        try (URLClassLoader release = loader(release("keep = 1, gone = 2"))) {
+            PluginSettings.bringUpToDate(dataDir, file, "missions.conf", release);
+        }
+        Files.writeString(file, "keep = 5, gone = 2");
+
+        try (URLClassLoader next = loader(release("keep = 1"))) {
+            assertThat(PluginSettings.bringUpToDate(dataDir, file, "missions.conf", next))
+                    .isTrue();
+        }
+        assertThat(read(file).node("gone").virtual()).isTrue();
+        assertThat(read(file).node("keep").getInt()).isEqualTo(5);
+    }
+
+    @Test
     @DisplayName("The boot brings the operator's files up to date before it reads them")
     void theBootMakesTheCall() throws Exception {
         Path config = dataDir.resolve("config.conf");
@@ -199,6 +269,12 @@ class ConfigReachesAnOldServerTest {
         assertThat(read(config).node("server-node", "clustered").virtual()).isFalse();
         assertThat(read(missions).childrenMap()).isNotEmpty();
         assertThat(dataDir.resolve(".defaults/commands.conf")).exists();
+        assertThat(dataDir.resolve(".defaults/messages/messages_en.conf"))
+                .describedAs("a catalogue is brought up to date too, so the next release can restyle it")
+                .exists();
+        assertThat(dataDir.resolve(".defaults/menus/island-main.conf"))
+                .describedAs("and so is a menu")
+                .exists();
     }
 
     private Path release(String missions) throws Exception {

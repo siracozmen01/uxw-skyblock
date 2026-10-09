@@ -119,10 +119,17 @@ public final class ConfigurationLoader {
 
         // 1. Unpack the shared theme, the messages catalog and the menus templates
         ThemeSource.saveShared(dataDir, ConfigurationLoader.class.getClassLoader());
-        unpackResource(plugin, "messages/messages_en.conf", dataDir.resolve("messages/messages_en.conf"));
-        unpackResource(plugin, "messages/messages_tr.conf", dataDir.resolve("messages/messages_tr.conf"));
+        // A catalogue or a menu a release restyles reaches the server that already has a copy: what the
+        // operator never edited takes this release's words and layout, and what they edited stays theirs.
+        for (String language : new String[] {"messages_en.conf", "messages_tr.conf"}) {
+            Path catalogue = dataDir.resolve("messages").resolve(language);
+            unpackResource(plugin, "messages/" + language, catalogue);
+            bringUpToDate(plugin, dataDir, catalogue, "messages/" + language);
+        }
         for (String menu : SHIPPED_MENUS) {
-            unpackResource(plugin, "menus/" + menu, dataDir.resolve("menus/" + menu));
+            Path file = dataDir.resolve("menus").resolve(menu);
+            unpackResource(plugin, "menus/" + menu, file);
+            bringUpToDate(plugin, dataDir, file, "menus/" + menu);
         }
 
         // 2. Load root config.conf

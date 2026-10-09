@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,6 +31,11 @@ import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
  * {@code .defaults/}, and a key that file already held and the operator's does not was deleted on
  * purpose: a mission, a preset or an upgrade tier taken out stays out. A server that has no such copy
  * yet, the first boot of a release that brings this in, gets every key it lacks, once.
+ *
+ * <p>The same copy says which values the operator never touched. A value their file still holds exactly
+ * as the last release shipped it was never theirs, so when this release ships it differently it takes
+ * the new one, and when this release ships it no more it goes. A file nobody edited at all is written
+ * out as this release ships it, comments and order included. A value the operator changed is kept.
  */
 public final class PluginSettings {
 
@@ -56,17 +62,84 @@ public final class PluginSettings {
             return false;
         }
         Path baselineFile = dataDir.resolve(BASELINE_DIRECTORY).resolve(resource);
+        byte[] baselineBytes = Files.isRegularFile(baselineFile) ? readFile(baselineFile) : null;
+        if (baselineBytes != null && Arrays.equals(readFile(file), baselineBytes)) {
+            // Nobody edited the file: it becomes what this release ships, comments and order included.
+            if (Arrays.equals(baselineBytes, shippedBytes)) {
+                return false;
+            }
+            keepAsItWas(file);
+            write(file, shippedBytes);
+            remember(baselineFile, shippedBytes);
+            return true;
+        }
         CommentedConfigurationNode shipped = parse(shippedBytes, resource);
         CommentedConfigurationNode baseline =
-                Files.isRegularFile(baselineFile) ? parse(readFile(baselineFile), baselineFile.toString()) : null;
+                baselineBytes == null ? null : parse(baselineBytes, baselineFile.toString());
 
         HoconConfig live = HoconConfig.load(file);
+        boolean upgraded = baseline != null && upgradeUntouched(shipped, baseline, live.root());
+        if (upgraded) {
+            keepAsItWas(file);
+        }
         // The whole shipped file goes to the merge, less what the operator took out. The merge adds only
         // what the file lacks, and it also names a key of the file that looks like a misspelling of a
         // shipped one: handed the new keys alone, it took every other key the file has for a misspelling.
-        boolean wrote = live.mergeDefaults(kept(shipped, baseline, live.root()));
+        boolean merged = live.mergeDefaults(kept(shipped, baseline, live.root()));
+        if (upgraded && !merged) {
+            live.save();
+        }
         remember(baselineFile, shippedBytes);
-        return wrote;
+        return upgraded || merged;
+    }
+
+    /**
+     * Gives every value of {@code live} that still reads as {@code baseline} shipped it the value
+     * {@code shipped} has now, and takes out one {@code shipped} no longer has. Returns whether any changed.
+     */
+    private static boolean upgradeUntouched(
+            ConfigurationNode shipped, ConfigurationNode baseline, ConfigurationNode live) {
+        boolean changed = false;
+        for (Map.Entry<Object, ? extends ConfigurationNode> child :
+                baseline.childrenMap().entrySet()) {
+            Object key = child.getKey();
+            ConfigurationNode was = child.getValue();
+            ConfigurationNode now = shipped.node(key);
+            ConfigurationNode theirs = live.node(key);
+            if (theirs.virtual()) {
+                continue;
+            }
+            if (was.isMap() && theirs.isMap() && now.isMap()) {
+                changed |= upgradeUntouched(now, was, theirs);
+            } else if (Objects.equals(theirs.raw(), was.raw()) && !Objects.equals(now.raw(), was.raw())) {
+                if (now.virtual()) {
+                    live.removeChild(key);
+                } else {
+                    theirs.from(now);
+                }
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** Copies {@code file} beside itself as {@code .bak}, before it is written again. */
+    private static void keepAsItWas(Path file) {
+        try {
+            Files.copy(file, file.resolveSibling(file.getFileName() + ".bak"), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException unwritable) {
+            throw new IllegalStateException("Could not keep a copy of " + file, unwritable);
+        }
+    }
+
+    private static void write(Path file, byte[] bytes) {
+        try {
+            Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
+            Files.write(temporary, bytes);
+            Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException unwritable) {
+            throw new IllegalStateException("Could not write " + file, unwritable);
+        }
     }
 
     /**
