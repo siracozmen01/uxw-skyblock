@@ -89,6 +89,10 @@ public final class CatalogueMenuWords implements GuiText {
 
         private static final String PREFIX = "argument_";
 
+        /** A value that is one translation and nothing else, such as an item's name, drawn in the reader's client. */
+        private static final java.util.regex.Pattern TRANSLATED =
+                java.util.regex.Pattern.compile("<lang:([a-z0-9_.-]+)>");
+
         /** A value of the list entry a tile is drawn for, such as one member of the island. */
         private static final String ENTRY = "entry_";
 
@@ -96,7 +100,12 @@ public final class CatalogueMenuWords implements GuiText {
         public @org.jspecify.annotations.Nullable Tag resolve(
                 String name, ArgumentQueue arguments, net.kyori.adventure.text.minimessage.Context ctx) {
             String value = valueOf(name);
-            return value == null ? null : Tag.selfClosingInserting(Component.text(value));
+            if (value == null) {
+                return null;
+            }
+            java.util.regex.Matcher translated = TRANSLATED.matcher(value);
+            return Tag.selfClosingInserting(
+                    translated.matches() ? Component.translatable(translated.group(1)) : Component.text(value));
         }
 
         @Override

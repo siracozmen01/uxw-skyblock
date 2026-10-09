@@ -74,6 +74,9 @@ public final class SkyblockMenuEngine implements AutoCloseable {
      */
     private final Map<UUID, Map<String, String>> lastValues = new ConcurrentHashMap<>();
 
+    /** The lists each viewer's last code-gathered window handed over, by the id its file names. */
+    private final Map<UUID, Map<String, List<?>>> lastLists = new ConcurrentHashMap<>();
+
     public SkyblockMenuEngine(Plugin plugin, Messages messages, Path dataDir) {
         Objects.requireNonNull(plugin, "plugin must not be null");
         Objects.requireNonNull(messages, "messages must not be null");
@@ -142,6 +145,7 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         // a verb that quietly changed meaning depending on wiring order would be worse.
         MenuBasics.register(bindings);
         answerArguments(bindings.placeholders());
+        answerEntries(bindings.placeholders());
         // message:@key says the catalogue line in the reader's language. The library's message verb
         // draws its words as written, and a file is one language.
         bindings.action("message", ctx -> {
@@ -176,6 +180,20 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     private static final String ARGUMENT = "argument_";
 
     /**
+     * Answers {@code entry_<name>} from the {@link MenuRow} a list stamped the tile for. A list whose
+     * rows are some other type registers its own {@code entry_} words, and an exact one is asked first.
+     */
+    static void answerEntries(PlaceholderRegistry placeholders) {
+        placeholders.fallback(
+                id -> id.startsWith(ENTRY),
+                (id, ctx) -> MenuRow.of(ctx)
+                        .map(row -> row.words().getOrDefault(id.substring(ENTRY.length()), ""))
+                        .orElse(""));
+    }
+
+    private static final String ENTRY = "entry_";
+
+    /**
      * {@code at-least:<value> <number>}: whether the value the menu was opened with is at least the
      * number, so a file can show a vault page an island has and a locked one in its place otherwise.
      *
@@ -205,6 +223,20 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     /** Forgets a viewer's values, for a quit or a profile switch. */
     public void forget(UUID viewer) {
         lastValues.remove(Objects.requireNonNull(viewer, "viewer must not be null"));
+        lastLists.remove(viewer);
+    }
+
+    /**
+     * Registers a list a window gathers in code and hands over when it opens, under the id its file names
+     * as {@code list { source = "<id>" }}.
+     */
+    public void handedList(String id) {
+        Objects.requireNonNull(id, "id must not be null");
+        bindings.list(
+                id,
+                ctx -> lastLists
+                        .getOrDefault(ctx.viewer().getUniqueId(), Map.of())
+                        .getOrDefault(id, List.of()));
     }
 
     /**
@@ -284,6 +316,20 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         return true;
     }
 
+    /**
+     * Opens a menu with live values and the lists the caller gathered, each under the id a
+     * {@link #handedList} registered. The rows were read off the player's thread, so drawing them reads
+     * nothing.
+     */
+    public boolean open(Player viewer, String specId, Map<String, String> values, Map<String, List<?>> lists) {
+        Objects.requireNonNull(lists, "lists must not be null");
+        if (!has(specId)) {
+            return false;
+        }
+        lastLists.put(viewer.getUniqueId(), Map.copyOf(lists));
+        return open(viewer, specId, values);
+    }
+
     /** Registers one verb a skyblock menu file may name. */
     public void action(String id, java.util.function.Consumer<MenuActionContext> handler) {
         bindings.action(id, handler);
@@ -296,6 +342,7 @@ public final class SkyblockMenuEngine implements AutoCloseable {
     @Override
     public void close() {
         lastValues.clear();
+        lastLists.clear();
         textInput.uninstall().run();
         anvilInput.uninstall();
         listener.uninstall();

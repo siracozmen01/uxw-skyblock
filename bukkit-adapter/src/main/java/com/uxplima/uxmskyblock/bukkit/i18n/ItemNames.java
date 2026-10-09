@@ -27,6 +27,16 @@ public final class ItemNames {
         return material == null ? Component.text(itemKey) : Component.translatable(material.translationKey());
     }
 
+    /**
+     * The item as a word a menu row carries: {@code <lang:key>} for an item this server knows, which a tile
+     * draws in the reader's own client language, and the key as written for one it does not.
+     */
+    public static String word(String itemKey) {
+        Objects.requireNonNull(itemKey, "itemKey must not be null");
+        Material material = Material.matchMaterial(itemKey);
+        return material == null ? itemKey : "<lang:" + material.translationKey() + ">";
+    }
+
     /** A {@code <tag>} filled with the item {@code itemKey} names. */
     public static TagResolver placeholder(String tag, String itemKey) {
         return Placeholder.component(tag, of(itemKey));

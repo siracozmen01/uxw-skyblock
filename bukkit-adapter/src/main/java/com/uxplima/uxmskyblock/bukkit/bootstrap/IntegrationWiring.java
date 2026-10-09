@@ -173,6 +173,7 @@ public final class IntegrationWiring implements AutoCloseable {
         // A window built in code goes back to the island menu, the way a menu file's back button does.
         if (gameplay.shopMenu() != null) {
             gameplay.shopMenu().useWayBack(this.controlMenu::open);
+            gameplay.shopMenu().useMenuEngine(this.menuEngine);
         }
         if (gameplay.boosterMenu() != null) {
             gameplay.boosterMenu().useWayBack(wayBackTo("island-boosters"));

@@ -141,13 +141,32 @@ class ShippedMenuFilesAreReadTest {
 
         for (Path file : menuFiles()) {
             String source = Files.readString(file, StandardCharsets.UTF_8);
+            // A file the island menu leads to reads the values the island menu was opened with. A file a
+            // window of its own opens reads the values that window hands it, so that window binds them.
+            String name = file.getFileName().toString();
+            String opener = openerOf(name.substring(0, name.length() - ".conf".length()));
             Matcher matcher = ARGUMENT.matcher(source);
             while (matcher.find()) {
                 String token = matcher.group(1);
-                assertThat(control)
+                assertThat(control + opener)
                         .describedAs("%s spells %%argument_%s%%, so the code must bind it", file.getFileName(), token)
                         .contains("\"" + token + "\"");
             }
         }
+    }
+
+    /** Every main source that names {@code menu} as a file it opens, joined, or nothing when none does. */
+    private static String openerOf(String menu) throws IOException {
+        StringBuilder openers = new StringBuilder();
+        try (java.util.stream.Stream<Path> sources = Files.walk(Path.of("src/main/java"))) {
+            for (Path source :
+                    sources.filter(path -> path.toString().endsWith(".java")).toList()) {
+                String text = Files.readString(source, StandardCharsets.UTF_8);
+                if (text.contains("\"" + menu + "\"")) {
+                    openers.append(text);
+                }
+            }
+        }
+        return openers.toString();
     }
 }

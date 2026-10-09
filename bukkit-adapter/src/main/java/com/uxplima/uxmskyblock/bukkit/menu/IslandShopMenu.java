@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.menu;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -69,6 +70,8 @@ public final class IslandShopMenu {
 
     private volatile @Nullable Consumer<Player> wayBack;
 
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
+
     public IslandShopMenu(
             IslandShopService shopService,
             IslandStoragePort islandStoragePort,
@@ -124,10 +127,76 @@ public final class IslandShopMenu {
                     openForm(forms, player, islandId, catalogue);
                     return;
                 }
+                SkyblockMenuEngine engine = this.menuEngine;
+                if (engine != null
+                        && engine.open(
+                                player,
+                                FILE,
+                                Map.of("island", islandId.value().toString(), "amount", Integer.toString(STACK)),
+                                Map.of(GOODS, rows(catalogue)))) {
+                    return;
+                }
                 buildGui(player, islandId, catalogue).open(player);
             });
         };
         schedulerPort.async(asyncTask);
+    }
+
+    /** The menu file that draws the shop, and the list it draws the goods from. */
+    static final String FILE = "island-shop";
+
+    static final String GOODS = "skyblock:shop-goods";
+
+    /**
+     * Hands this window the engine that reads {@code menus/island-shop.conf}, and teaches the engine what
+     * a click on a good does. The window built here stays as the answer to a file that is missing or will
+     * not parse.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine engine) {
+        this.menuEngine = engine;
+        if (engine == null) {
+            return;
+        }
+        engine.handedList(GOODS);
+        engine.action("skyblock:shop-buy", ctx -> tradeFromFile(ctx, true));
+        engine.action("skyblock:shop-sell", ctx -> tradeFromFile(ctx, false));
+    }
+
+    /** One row per good the shop knows the material of: its icon, its name, and its price now. */
+    static List<MenuRow> rows(List<ShopItemPrice> catalogue) {
+        List<MenuRow> rows = new ArrayList<>();
+        for (ShopItemPrice price : catalogue) {
+            Material material = Material.matchMaterial(price.itemKey());
+            if (material != null) {
+                rows.add(new MenuRow(
+                        Map.of(
+                                "material", material.name(),
+                                "item", ItemNames.word(price.itemKey()),
+                                "price", money(price.currentPrice())),
+                        price));
+            }
+        }
+        return List.copyOf(rows);
+    }
+
+    /**
+     * {@code skyblock:shop-buy:<amount>} and {@code skyblock:shop-sell:<amount>}: the file says how many a
+     * gesture trades, so a shift click can mean a stack on one server and ten on another.
+     */
+    private void tradeFromFile(com.uxplima.uxmlib.menu.runtime.MenuActionContext ctx, boolean buying) {
+        Optional<ShopItemPrice> price = MenuRow.handle(ctx.context(), ShopItemPrice.class);
+        String island = ctx.context().arguments().getOrDefault("island", "");
+        Material material = price.map(p -> Material.matchMaterial(p.itemKey())).orElse(null);
+        if (material == null || island.isEmpty()) {
+            return;
+        }
+        int amount;
+        try {
+            amount = Math.max(1, Integer.parseInt(ctx.arg().strip()));
+        } catch (NumberFormatException unwritten) {
+            amount = 1;
+        }
+        trade(ctx.player(), IslandId.of(UUID.fromString(island)), material, amount, buying);
     }
 
     /**
@@ -191,8 +260,8 @@ public final class IslandShopMenu {
                     material,
                     player,
                     "tile:money @menu.shop.tile price",
-                    ItemNames.placeholder("argument_item", price.itemKey()),
-                    Placeholder.unparsed("argument_price", money(price.currentPrice())),
+                    ItemNames.placeholder("entry_item", price.itemKey()),
+                    Placeholder.unparsed("entry_price", money(price.currentPrice())),
                     Placeholder.unparsed("argument_amount", Integer.toString(STACK)));
             gui.set(slot++, GuiItem.button(icon, event -> {
                 event.setCancelled(true);
