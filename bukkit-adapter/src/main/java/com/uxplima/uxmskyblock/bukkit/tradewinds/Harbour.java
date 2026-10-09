@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.logging.Level;
@@ -28,6 +29,8 @@ import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.i18n.MoneyText;
+import com.uxplima.uxmskyblock.bukkit.menu.MenuRow;
+import com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine;
 import com.uxplima.uxmskyblock.bukkit.menu.SkyblockTiles;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.tradewinds.Port;
@@ -61,6 +64,19 @@ public final class Harbour {
     private final Messages messages;
     private final Clock clock;
     private @Nullable BedrockFormService forms;
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
+
+    /** The menu files that draw the ports and the market, and the lists they draw them from. */
+    static final String SAIL_FILE = "tradewinds-sail";
+
+    static final String PORTS = "tradewinds:ports";
+
+    static final String MARKET_FILE = "tradewinds-market";
+
+    static final String GOODS = "tradewinds:goods";
+
+    /** One good of one port's market, which is what a buy or a sell in the file acts on. */
+    record Choice(Port port, Port.Good good) {}
 
     @SuppressWarnings("TooManyParameters")
     public Harbour(
@@ -80,6 +96,105 @@ public final class Harbour {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.clock = Objects.requireNonNull(clock, "clock");
+    }
+
+    /**
+     * Hands the harbour the engine that reads {@code menus/tradewinds-sail.conf} and
+     * {@code menus/tradewinds-market.conf}, and teaches it what choosing a port and trading a good do. The
+     * windows built here stay as the answer to a file that is missing or will not parse.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine engine) {
+        this.menuEngine = engine;
+        if (engine == null) {
+            return;
+        }
+        engine.handedList(PORTS);
+        engine.handedList(GOODS);
+        engine.action(
+                "tradewinds:set-sail",
+                ctx -> MenuRow.handle(ctx.context(), Port.class)
+                        .ifPresent(port -> vesselOf(ctx.context()).ifPresent(vessel -> {
+                            ctx.player().closeInventory();
+                            setSail(ctx.player(), vessel, port);
+                        })));
+        engine.action("tradewinds:buy", ctx -> tradeFromFile(ctx, true));
+        engine.action("tradewinds:sell", ctx -> tradeFromFile(ctx, false));
+    }
+
+    private void tradeFromFile(com.uxplima.uxmlib.menu.runtime.MenuActionContext ctx, boolean buying) {
+        MenuRow.handle(ctx.context(), Choice.class)
+                .filter(choice -> buying ? choice.good().sold() : choice.good().bought())
+                .ifPresent(choice -> vesselOf(ctx.context())
+                        .ifPresent(vessel -> trade(ctx.player(), vessel, choice.port(), choice.good(), buying)));
+    }
+
+    private static Optional<IslandId> vesselOf(com.uxplima.uxmlib.menu.runtime.MenuContext ctx) {
+        String vessel = ctx.arguments().getOrDefault("vessel", "");
+        return vessel.isEmpty() ? Optional.empty() : Optional.of(IslandId.of(java.util.UUID.fromString(vessel)));
+    }
+
+    /** The port's name as a row word: the language file's line for it, or its id when no file names it. */
+    private String portWord(Player player, Port port) {
+        String key = "tradewinds.ports." + port.id();
+        return messages.raw(player, key) == null ? port.id() : "<key:" + key + ">";
+    }
+
+    /** One row per port, in the order the file writes them, the one the vessel lies in marked. */
+    List<MenuRow> portRows(Player player, PortMarket.Where where) {
+        List<MenuRow> rows = new ArrayList<>();
+        for (Port port : config.ports()) {
+            String state = state(port, where);
+            rows.add(new MenuRow(
+                    Map.of(
+                            "material", material(config.icon(port)).name(),
+                            "port", portWord(player, port),
+                            "time", DurationText.of(messages, player, Duration.ofSeconds(port.voyageSeconds())),
+                            "left", time(player, arrivesAt(where)),
+                            "where", "<key:" + state + ">",
+                            // The port the vessel lies in is no voyage, so its tile says nothing about setting sail.
+                            "facts", "voyage state:where" + ("tradewinds.sail.here".equals(state) ? " -action" : "")),
+                    port));
+        }
+        return List.copyOf(rows);
+    }
+
+    /** One row per good the port trades: its prices for a lot, what the hold has, and the clicks it takes. */
+    private static List<MenuRow> goodRows(Stall stall) {
+        List<MenuRow> rows = new ArrayList<>();
+        for (Offer offer : stall.offers()) {
+            rows.add(new MenuRow(
+                    Map.of(
+                            "material", material(offer.good().item()).name(),
+                            "item", ItemNames.word(offer.good().item()),
+                            "lot", Integer.toString(offer.good().lot()),
+                            "buy", MoneyText.of(offer.asks() * offer.good().lot()),
+                            "sell", MoneyText.of(offer.pays() * offer.good().lot()),
+                            "held", Integer.toString(offer.held()),
+                            "facts", factsOf(offer)),
+                    new Choice(stall.port(), offer.good())));
+        }
+        return List.copyOf(rows);
+    }
+
+    /** A port that only sells, or only buys, draws the one price and the one click it has. */
+    private static String factsOf(Offer offer) {
+        boolean sold = offer.good().sold();
+        boolean bought = offer.good().bought();
+        StringBuilder facts = new StringBuilder();
+        if (sold) {
+            facts.append("buy ");
+        }
+        if (bought) {
+            facts.append("sell ");
+        }
+        facts.append("held");
+        if (sold != bought) {
+            facts.append(
+                    sold ? " action:@tradewinds.market.good.buy_only" : " action:@tradewinds.market.good.sell_only");
+        } else if (!sold) {
+            facts.append(" -action");
+        }
+        return facts.toString();
     }
 
     /** Draws a native form for a Bedrock player, while the server has Floodgate. */
@@ -167,6 +282,15 @@ public final class Harbour {
             bedrock.openChoiceForm(player, "tradewinds.sail.title", "tradewinds.sail.form_body", choices);
             return;
         }
+        SkyblockMenuEngine engine = this.menuEngine;
+        if (engine != null
+                && engine.open(
+                        player,
+                        SAIL_FILE,
+                        Map.of("vessel", vessel.value().toString()),
+                        Map.of(PORTS, portRows(player, where)))) {
+            return;
+        }
         int rows = Math.min(6, Math.max(1, (config.ports().size() + 8) / 9));
         SimpleGui gui = Guis.gui()
                 .title(MenuTitles.centre(messages.renderPlain(player, "tradewinds.sail.title")))
@@ -182,7 +306,7 @@ public final class Harbour {
             TagResolver[] tags = withTag(
                     portTags(player, port, where),
                     Placeholder.component(
-                            "argument_where", messages.renderPlain(player, state, portTags(player, port, where))));
+                            "entry_where", messages.renderPlain(player, state, portTags(player, port, where))));
             // The port the vessel lies in is no voyage, so its tile says nothing about setting sail.
             String line = "tile:3 @tradewinds.sail.port voyage state:where"
                     + ("tradewinds.sail.here".equals(state) ? " -action" : "");
@@ -234,10 +358,26 @@ public final class Harbour {
             bedrock.openChoiceForm(player, "tradewinds.market.form_title", "tradewinds.market.form_body", choices);
             return;
         }
+        SkyblockMenuEngine engine = this.menuEngine;
+        if (engine != null
+                && engine.open(
+                        player,
+                        MARKET_FILE,
+                        Map.of("vessel", vessel.value().toString(), "port", portWord(player, stall.port())),
+                        Map.of(GOODS, goodRows(stall)))) {
+            return;
+        }
         int rows = Math.min(6, Math.max(1, (stall.offers().size() + 8) / 9));
         SimpleGui gui = Guis.gui()
-                .title(MenuTitles.centre(
-                        messages.renderPlain(player, "tradewinds.market.title", name(player, stall.port()))))
+                .title(MenuTitles.centre(messages.renderPlain(
+                        player,
+                        "tradewinds.market.title",
+                        Names.of(
+                                messages,
+                                player,
+                                "argument_port",
+                                "ports",
+                                stall.port().id()))))
                 .rows(rows)
                 .build();
         SkyblockTiles tiles = new SkyblockTiles(messages);
@@ -246,26 +386,11 @@ public final class Harbour {
             if (slot >= rows * 9) {
                 break;
             }
-            // A port that only sells, or only buys, draws the one price and the one click it has.
-            boolean sold = offer.good().sold();
-            boolean bought = offer.good().bought();
-            StringBuilder line = new StringBuilder("tile:money @tradewinds.market.good");
-            if (sold) {
-                line.append(" buy");
-            }
-            if (bought) {
-                line.append(" sell");
-            }
-            line.append(" held");
-            if (sold != bought) {
-                line.append(
-                        sold
-                                ? " action:@tradewinds.market.good.buy_only"
-                                : " action:@tradewinds.market.good.sell_only");
-            } else if (!sold) {
-                line.append(" -action");
-            }
-            ItemStack icon = tiles.item(material(offer.good().item()), player, line.toString(), offerTags(offer));
+            ItemStack icon = tiles.item(
+                    material(offer.good().item()),
+                    player,
+                    "tile:money @tradewinds.market.good " + factsOf(offer),
+                    offerTags(offer));
             gui.set(slot++, GuiItem.button(icon, event -> {
                 event.setCancelled(true);
                 boolean buying = event.isLeftClick();
@@ -358,12 +483,22 @@ public final class Harbour {
     }
 
     private TagResolver[] portTags(Player player, Port port, PortMarket.Where where) {
-        Instant arrives = where instanceof PortMarket.Where.Sailing sailing ? sailing.arrivesAt() : clock.instant();
+        String voyage = DurationText.of(messages, player, Duration.ofSeconds(port.voyageSeconds()));
+        String left = time(player, arrivesAt(where));
+        // The chat lines name a port, a voyage and a time left as <port>, <time> and <left>; a tile names
+        // the same values as the entry it draws.
         return new TagResolver[] {
             name(player, port),
-            Placeholder.unparsed("time", DurationText.of(messages, player, Duration.ofSeconds(port.voyageSeconds()))),
-            Placeholder.unparsed("left", time(player, arrives))
+            Placeholder.unparsed("time", voyage),
+            Placeholder.unparsed("left", left),
+            Names.of(messages, player, "entry_port", "ports", port.id()),
+            Placeholder.unparsed("entry_time", voyage),
+            Placeholder.unparsed("entry_left", left)
         };
+    }
+
+    private Instant arrivesAt(PortMarket.Where where) {
+        return where instanceof PortMarket.Where.Sailing sailing ? sailing.arrivesAt() : clock.instant();
     }
 
     private static String state(Port port, PortMarket.Where where) {
@@ -375,13 +510,21 @@ public final class Harbour {
     }
 
     private static TagResolver[] offerTags(Offer offer) {
+        String lot = Integer.toString(offer.good().lot());
+        String buy = MoneyText.of(offer.asks() * offer.good().lot());
+        String sell = MoneyText.of(offer.pays() * offer.good().lot());
+        String held = Integer.toString(offer.held());
         return new TagResolver[] {
             ItemNames.placeholder("item", offer.good().item()),
-            Placeholder.unparsed("lot", Integer.toString(offer.good().lot())),
-            Placeholder.unparsed("buy", MoneyText.of(offer.asks() * offer.good().lot())),
-            Placeholder.unparsed(
-                    "sell", MoneyText.of(offer.pays() * offer.good().lot())),
-            Placeholder.unparsed("held", Integer.toString(offer.held()))
+            Placeholder.unparsed("lot", lot),
+            Placeholder.unparsed("buy", buy),
+            Placeholder.unparsed("sell", sell),
+            Placeholder.unparsed("held", held),
+            ItemNames.placeholder("entry_item", offer.good().item()),
+            Placeholder.unparsed("entry_lot", lot),
+            Placeholder.unparsed("entry_buy", buy),
+            Placeholder.unparsed("entry_sell", sell),
+            Placeholder.unparsed("entry_held", held)
         };
     }
 

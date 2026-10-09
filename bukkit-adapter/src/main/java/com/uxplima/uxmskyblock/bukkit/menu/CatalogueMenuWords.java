@@ -126,7 +126,8 @@ public final class CatalogueMenuWords implements GuiText {
                 net.kyori.adventure.text.TextComponent.Builder lines = Component.text();
                 java.util.regex.Matcher key = CATALOGUE_KEY.matcher(value);
                 while (key.find()) {
-                    lines.append(messages.renderPlain(viewer, key.group(1)));
+                    // The line may ask for a value of its own, such as how long a vessel has left to go.
+                    lines.append(messages.renderPlain(viewer, key.group(1), this));
                 }
                 return Tag.selfClosingInserting(lines.build());
             }

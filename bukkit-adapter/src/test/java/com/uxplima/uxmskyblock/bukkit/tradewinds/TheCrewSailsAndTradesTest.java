@@ -2,6 +2,8 @@ package com.uxplima.uxmskyblock.bukkit.tradewinds;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,6 +16,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -310,6 +313,106 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
             all.append(text(line)).append('\n');
         }
         return all.toString();
+    }
+
+    @Test
+    @DisplayName("The ports are handed to their menu file, the one the vessel lies in drawn without a click line")
+    void thePortsAreHandedToTheirFile(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        when(market.where(vessel)).thenReturn(new PortMarket.Where.Docked(BAY.id()));
+        com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine engine =
+                org.mockito.Mockito.mock(com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine.class);
+        when(engine.open(eq(ada), eq("tradewinds-sail"), anyMap(), anyMap())).thenReturn(true);
+        harbour.useMenuEngine(engine);
+
+        harbour.sail(ada);
+
+        verify(engine)
+                .open(
+                        eq(ada),
+                        eq("tradewinds-sail"),
+                        eq(Map.of("vessel", vessel.value().toString())),
+                        eq(Map.of("tradewinds:ports", harbour.portRows(ada, new PortMarket.Where.Docked(BAY.id())))));
+        var drawn = harbour.portRows(ada, new PortMarket.Where.Docked(BAY.id()));
+        var renderer = com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.renderer(
+                new com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine(
+                        org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir),
+                Messages.bundled());
+        var template = com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.template("tradewinds-sail.conf", "ports");
+        String here = com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.lore(
+                renderer,
+                template,
+                com.uxplima.uxmlib.menu.runtime.MenuContext.of(ada, null, 0).withEntry(drawn.get(0)));
+        String away = com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.lore(
+                renderer,
+                template,
+                com.uxplima.uxmlib.menu.runtime.MenuContext.of(ada, null, 0).withEntry(drawn.get(1)));
+
+        assertThat(here)
+                .contains("◆ Emerald Bay")
+                .contains("Your vessel lies here.")
+                .doesNotContain("set sail");
+        assertThat(away).contains("Elsewhere").contains("Click to set sail.").doesNotContain("<entry_");
+    }
+
+    @Test
+    @DisplayName("A port chosen in the menu file sets the vessel sailing for it")
+    void aPortChosenInTheFileSetsSail(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        when(market.sail(vessel, SALTMARSH)).thenReturn(Result.ok(NOW.plusSeconds(90)));
+        com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine engine =
+                new com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine(
+                        org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
+        harbour.useMenuEngine(engine);
+        var row = harbour.portRows(ada, new PortMarket.Where.Docked(BAY.id())).get(1);
+
+        com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.click(
+                engine,
+                "tradewinds:set-sail",
+                com.uxplima.uxmlib.menu.runtime.MenuContext.of(
+                                ada, null, 0, Map.of("vessel", vessel.value().toString()))
+                        .withEntry(row),
+                ada,
+                com.uxplima.uxmlib.menu.spec.ClickKind.LEFT,
+                "");
+
+        verify(market).sail(vessel, SALTMARSH);
+    }
+
+    @Test
+    @DisplayName("The market is handed to its menu file, and a left click there buys a lot")
+    void theMarketIsHandedToItsFile(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        when(market.where(vessel)).thenReturn(new PortMarket.Where.Docked(BAY.id()));
+        com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine handed =
+                org.mockito.Mockito.mock(com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine.class);
+        when(handed.open(eq(ada), eq("tradewinds-market"), anyMap(), anyMap())).thenReturn(true);
+        harbour.useMenuEngine(handed);
+        harbour.market(ada);
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<Map<String, List<?>>> lists = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(handed).open(eq(ada), eq("tradewinds-market"), anyMap(), lists.capture());
+        Object wheat = java.util.Objects.requireNonNull(lists.getValue().get("tradewinds:goods"))
+                .get(0);
+
+        com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine engine =
+                new com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine(
+                        org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
+        harbour.useMenuEngine(engine);
+        var drawn = com.uxplima.uxmlib.menu.runtime.MenuContext.of(
+                        ada, null, 0, Map.of("vessel", vessel.value().toString(), "port", "Emerald Bay"))
+                .withEntry(wheat);
+        assertThat(com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.lore(
+                        com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.renderer(engine, Messages.bundled()),
+                        com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.template(
+                                "tradewinds-market.conf", "goods"),
+                        drawn))
+                .contains("Buy 16 40.00")
+                .contains("In the hold 20")
+                .doesNotContain("<entry_");
+        when(market.buy(any(), any(), any(), any())).thenReturn(Result.err("tradewinds.market.no_funds"));
+
+        com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.click(
+                engine, "tradewinds:buy", drawn, ada, com.uxplima.uxmlib.menu.spec.ClickKind.LEFT, "");
+
+        verify(market).buy(eq(vessel), any(), eq(BAY), any());
     }
 
     private Inventory top() {
