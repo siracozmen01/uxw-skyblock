@@ -255,6 +255,43 @@ class IslandControlMenuTest extends MockBukkitHarness {
                         org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    @DisplayName("A Bedrock player gets the menu file too, which the engine draws as a form, not the hints in chat")
+    void aBedrockPlayerGetsTheFile(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService mockBedrock =
+                mock(com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService.class);
+        when(mockBedrock.isBedrock(player)).thenReturn(true);
+        IslandControlMenu bedrockMenu = new IslandControlMenu(
+                mockStorage,
+                mockBank,
+                mockUpgrades,
+                mockLocations,
+                scheduler,
+                "skyblock_world",
+                uuid -> Optional.of(new ProfileId(uuid)),
+                mockBedrock,
+                Messages.bundled());
+        SkyblockMenuEngine engine = ShippedTemplates.engineWith(dataDir, "island-main.conf");
+        bedrockMenu.useMenuEngine(engine);
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+
+        bedrockMenu.open(player);
+        settle(() -> engine.showing(player, "island-main"));
+
+        org.mockito.Mockito.verify(mockBedrock, org.mockito.Mockito.never())
+                .openIslandControlForm(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
+    }
+
     private static class DirectSchedulerPort implements SchedulerPort {
         @Override
         public void onGlobal(Runnable task) {

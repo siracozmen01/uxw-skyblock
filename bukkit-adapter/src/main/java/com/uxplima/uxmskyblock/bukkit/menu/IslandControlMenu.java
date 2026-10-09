@@ -300,6 +300,13 @@ public final class IslandControlMenu {
                     }
                     return;
                 }
+                // The file is the menu on both editions: the engine draws it as a native form for a
+                // Bedrock player, so every window it opens is reachable there too. The form built in
+                // code below only answered with hints in chat, and stays for a file that is missing.
+                SkyblockMenuEngine engine = this.menuEngine;
+                if (engine != null && engine.open(player, "island-main", liveValues(island, bank, upgrades, pages))) {
+                    return;
+                }
                 if (bedrockFormService != null && bedrockFormService.isBedrock(player)) {
                     bedrockFormService.openIslandControlForm(
                             player,
@@ -329,10 +336,6 @@ public final class IslandControlMenu {
                             () -> messages.send(player, "menu.control.bank_hint"),
                             () -> messages.send(player, "menu.control.members_hint"),
                             () -> messages.send(player, "menu.control.settings_hint"));
-                    return;
-                }
-                SkyblockMenuEngine engine = this.menuEngine;
-                if (engine != null && engine.open(player, "island-main", liveValues(island, bank, upgrades, pages))) {
                     return;
                 }
                 SimpleGui gui = buildGui(player, island, bank, upgrades, optLoc);
