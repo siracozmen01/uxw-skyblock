@@ -158,7 +158,7 @@ public final class IntegrationWiring implements AutoCloseable {
 
         // The menu files are the menus. Three of them shipped from the beginning and nothing read
         // one, so an operator who moved a slot and restarted saw no change.
-        this.menuEngine = new SkyblockMenuEngine(plugin, this.messages, config.dataDir(), config.rootNode());
+        this.menuEngine = new SkyblockMenuEngine(plugin, this.messages, config.dataDir());
         this.menuEngine.loadSpecs();
         this.menuEngine.install();
         this.controlMenu.useMenuEngine(this.menuEngine);

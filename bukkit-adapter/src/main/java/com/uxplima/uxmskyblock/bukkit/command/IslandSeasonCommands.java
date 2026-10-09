@@ -160,7 +160,7 @@ public final class IslandSeasonCommands {
                 send(
                         sender,
                         "season.top_entry",
-                        Placeholder.unparsed("rank", Integer.toString(entry.rank())),
+                        Placeholder.unparsed("place", Integer.toString(entry.rank())),
                         Placeholder.unparsed("player", nameOf(entry.ownerUuid())),
                         Placeholder.unparsed("score", String.format(Locale.ROOT, "%,d", entry.score())));
             }

@@ -159,7 +159,7 @@ public final class IslandActivityCommands {
                 player,
                 "activity.entry",
                 Placeholder.unparsed("type", event.eventType().name()),
-                Placeholder.unparsed("body", values.getOrDefault("body", event.payloadData())),
+                Placeholder.unparsed("text", values.getOrDefault("body", event.payloadData())),
                 Placeholder.unparsed("ago", ago));
     }
 

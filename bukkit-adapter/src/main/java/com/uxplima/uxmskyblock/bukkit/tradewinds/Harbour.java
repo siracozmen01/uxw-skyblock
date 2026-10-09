@@ -303,7 +303,7 @@ public final class Harbour {
                                 Names.of(
                                         messages,
                                         player,
-                                        "rank",
+                                        "vessel_rank",
                                         "ranks",
                                         trade.after().id()),
                                 Placeholder.unparsed(

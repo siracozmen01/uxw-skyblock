@@ -125,7 +125,7 @@ public final class IslandNotificationListener implements Listener {
                                 "notification.categories",
                                 notification.category().name(),
                                 notification.category().name())),
-                Placeholder.unparsed("body", values.getOrDefault("body", notification.payloadData())));
+                Placeholder.unparsed("text", values.getOrDefault("body", notification.payloadData())));
     }
 
     private Optional<ProfileId> activeProfile(Player player) {

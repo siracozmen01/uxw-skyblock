@@ -42,6 +42,7 @@ import com.uxplima.uxmskyblock.bukkit.config.VaultConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WarpConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects;
+import com.uxplima.uxmskyblock.bukkit.i18n.ThemeSource;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -116,7 +117,8 @@ public final class ConfigurationLoader {
             throw new IllegalStateException("Failed to initialize plugin directories at: " + dataDir, e);
         }
 
-        // 1. Unpack messages catalog & menus templates
+        // 1. Unpack the shared theme, the messages catalog and the menus templates
+        ThemeSource.saveShared(dataDir, ConfigurationLoader.class.getClassLoader());
         unpackResource(plugin, "messages/messages_en.conf", dataDir.resolve("messages/messages_en.conf"));
         unpackResource(plugin, "messages/messages_tr.conf", dataDir.resolve("messages/messages_tr.conf"));
         for (String menu : SHIPPED_MENUS) {

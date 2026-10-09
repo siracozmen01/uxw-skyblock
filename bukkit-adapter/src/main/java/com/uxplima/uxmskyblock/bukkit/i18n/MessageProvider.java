@@ -27,6 +27,9 @@ import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.text.language.LibraryWords;
+import com.uxplima.uxmlib.text.style.SmallCapsTag;
+import com.uxplima.uxmlib.text.style.Styler;
+import com.uxplima.uxmlib.text.style.Theme;
 import org.spongepowered.configurate.CommentedConfigurationNode;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.hocon.HoconConfigurationLoader;
@@ -45,6 +48,17 @@ public final class MessageProvider {
     private final Map<String, Map<String, String>> localeCatalogs = new ConcurrentHashMap<>();
     private final Map<String, Map<String, List<String>>> localeLists = new ConcurrentHashMap<>();
     private final Map<String, String> prefixes = new ConcurrentHashMap<>();
+
+    /**
+     * The style pass a template goes through before it is parsed: the roles of {@code theme.conf},
+     * the category prefixes, and the small capitals of a language written in them.
+     */
+    private volatile Styler styler = new Styler(Theme.defaults());
+
+    /** Each template as the pass left it, per language, for the theme it was styled with. */
+    private final Map<String, String> styled = new ConcurrentHashMap<>();
+
+    private volatile Theme styledWith = styler.theme();
 
     public MessageProvider() {
         this(DEFAULT_LOCALE);
@@ -134,10 +148,6 @@ public final class MessageProvider {
         underlayLibraryWords();
     }
 
-    /** Paints the library's theme tokens in the shipped colours. */
-    private static final com.uxplima.uxmlib.text.style.Styler LIBRARY_STYLE =
-            new com.uxplima.uxmlib.text.style.Styler(com.uxplima.uxmlib.text.style.Theme.defaults());
-
     /**
      * Puts the words uxmLib ships for its own windows under every language this plugin speaks.
      *
@@ -159,10 +169,9 @@ public final class MessageProvider {
                 continue;
             }
             Map<String, String> catalog = new HashMap<>(localeCatalogs.get(locale));
-            // The library writes its lines with theme tokens, such as <tag:'INPUT'>, which this
-            // catalogue's plain MiniMessage does not know and printed as they stood.
-            Locale reader = Locale.forLanguageTag(locale);
-            words.forEach((key, line) -> catalog.putIfAbsent(key, LIBRARY_STYLE.tokens(line, reader)));
+            // The library writes its lines with theme tokens, such as <tag:'INPUT'>, and they go
+            // through the same style pass as this catalogue's own.
+            words.forEach(catalog::putIfAbsent);
             localeCatalogs.put(locale, Collections.unmodifiableMap(catalog));
         }
     }
@@ -322,12 +331,17 @@ public final class MessageProvider {
      */
     public Component getComponent(String key, String locale, TagResolver... resolvers) {
         String template = getRaw(key, locale);
+        if (template.equals(key)) {
+            return deserialize(template, resolvers);
+        }
         String targetLocale = (locale != null && !locale.isBlank()) ? locale.toLowerCase(Locale.ROOT) : defaultLocale;
 
-        String prefix = prefixes.getOrDefault(targetLocale, prefixes.getOrDefault(defaultLocale, ""));
-        String fullMessage = template.equals(key) ? template : prefix + template;
-
-        return deserialize(fullMessage, resolvers);
+        // A line that opens with its own category prefix says which system spoke, and a second one
+        // in front of it would say it twice.
+        String full = carriesItsPrefix(template)
+                ? template
+                : prefixes.getOrDefault(targetLocale, prefixes.getOrDefault(defaultLocale, "")) + template;
+        return deserialize(style(full, targetLocale), resolvers);
     }
 
     /**
@@ -335,7 +349,46 @@ public final class MessageProvider {
      */
     public Component getComponentWithoutPrefix(String key, String locale, TagResolver... resolvers) {
         String template = getRaw(key, locale);
-        return deserialize(template, resolvers);
+        if (template.equals(key)) {
+            return deserialize(template, resolvers);
+        }
+        return deserialize(style(template, locale), resolvers);
+    }
+
+    /** Whether {@code template} opens with a category prefix of its own. */
+    private static boolean carriesItsPrefix(String template) {
+        String opening = template.stripLeading();
+        return opening.startsWith("<tag:") || opening.startsWith("<etag:");
+    }
+
+    /** Hands the catalogue the server's style pass, so a reload repaints every line with the new theme. */
+    public void useStyler(Styler styler) {
+        this.styler = Objects.requireNonNull(styler, "styler must not be null");
+    }
+
+    /** The style pass this catalogue paints with. */
+    public Styler styler() {
+        return styler;
+    }
+
+    /**
+     * {@code template} through the style pass for {@code locale}: its roles painted from the theme and
+     * its letters in small capitals where that language is written in them.
+     *
+     * <p>The pass is a pure function of the template, the language and the theme, so each line is
+     * styled once and kept until the theme changes.
+     */
+    public String style(String template, String locale) {
+        Objects.requireNonNull(template, "template must not be null");
+        String language = (locale != null && !locale.isBlank()) ? locale.toLowerCase(Locale.ROOT) : defaultLocale;
+        Theme theme = styler.theme();
+        if (theme != styledWith) {
+            styled.clear();
+            styledWith = theme;
+        }
+        // A client may name its language with a region, en_us, and the letters follow the language.
+        Locale reader = Locale.forLanguageTag(language.replace('_', '-'));
+        return styled.computeIfAbsent(language + '\u0000' + template, any -> styler.apply(template, reader));
     }
 
     /**
@@ -374,6 +427,11 @@ public final class MessageProvider {
         return deserialize(template, resolvers);
     }
 
+    /** The same, for a template the catalogue of {@code locale} holds, through the style pass first. */
+    public Component renderCatalogued(String template, String locale, TagResolver... resolvers) {
+        return deserialize(style(template, locale), resolvers);
+    }
+
     /**
      * How a line names one of the island command's words: {@code <cmd:sethome>} becomes the line a
      * player types, under the names the operator gave the command. Until the command is registered it
@@ -396,7 +454,8 @@ public final class MessageProvider {
                 "cmd",
                 (arguments, context) -> Tag.selfClosingInserting(Component.text(
                         commandLine.apply(arguments.popOr("cmd needs a word").value()))));
-        return MINI_MESSAGE.deserialize(template, TagResolver.resolver(TagResolver.resolver(resolvers), commands));
+        return MINI_MESSAGE.deserialize(
+                template, TagResolver.resolver(TagResolver.resolver(resolvers), commands, SmallCapsTag.RESOLVER));
     }
 
     public Set<String> getAvailableLocales() {

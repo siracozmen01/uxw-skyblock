@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
+import com.uxplima.uxmskyblock.bukkit.i18n.ThemeSource;
 import com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine;
 import org.jspecify.annotations.Nullable;
 
@@ -69,6 +70,9 @@ public final class SkyblockReloader {
      * answers, which is the same order the server starts in.
      */
     private int reloadCatalogues(List<String> failures) {
+        // The words and the palette move together: a reload that repainted half a screen would be
+        // worse than one that asked for a restart.
+        messageProvider.styler().reload(ThemeSource.load(dataDir));
         messageProvider.loadBundledDefaults(SkyblockReloader.class.getClassLoader());
 
         Path messagesDir = dataDir.resolve("messages");

@@ -207,7 +207,7 @@ public final class ChunkBlockListener implements Listener {
             long next = service.inMemory(island.get().id())
                     .map(territory -> territory.nextRequirement(service.rules()))
                     .orElse(0L);
-            messages.send(player, "chunkblock.closed", Placeholder.unparsed("level", Long.toString(next)));
+            messages.send(player, "chunkblock.closed", Placeholder.unparsed("island_level", Long.toString(next)));
         }
     }
 }

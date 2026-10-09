@@ -8,6 +8,7 @@ import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
+import com.uxplima.uxmlib.text.style.SmallCaps;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.bukkit.world.VoidIslandGenerator;
 import org.junit.jupiter.api.DisplayName;
@@ -30,12 +31,12 @@ class TheDoctorSaysHowThePluginIsTest extends MockBukkitHarness {
 
         List<String> said = run(admin);
 
-        assertThat(said).anyMatch(line -> line.contains("OK storage"));
-        assertThat(said).anyMatch(line -> line.contains("OK windows") && line.contains("menu files read"));
-        assertThat(said).anyMatch(line -> line.contains("WARN placeholders"));
-        assertThat(said).anyMatch(line -> line.contains("OK island world"));
-        assertThat(said).anyMatch(line -> line.contains("WARN economy"));
-        assertThat(said).anyMatch(line -> line.contains("Nothing needs an operator"));
+        assertThat(said).anyMatch(line -> line.contains(caps("OK") + " storage"));
+        assertThat(said).anyMatch(line -> line.contains(caps("OK") + " windows") && line.contains("menu files read"));
+        assertThat(said).anyMatch(line -> line.contains(caps("WARN") + " placeholders"));
+        assertThat(said).anyMatch(line -> line.contains(caps("OK") + " island world"));
+        assertThat(said).anyMatch(line -> line.contains(caps("WARN") + " economy"));
+        assertThat(said).anyMatch(line -> line.contains(caps("Nothing needs an operator")));
     }
 
     @Test
@@ -48,8 +49,8 @@ class TheDoctorSaysHowThePluginIsTest extends MockBukkitHarness {
 
         List<String> said = run(admin);
 
-        assertThat(said).anyMatch(line -> line.contains("FAIL island world"));
-        assertThat(said).anyMatch(line -> line.contains("needs an operator"));
+        assertThat(said).anyMatch(line -> line.contains(caps("FAIL") + " island world"));
+        assertThat(said).anyMatch(line -> line.contains(caps("needs an operator")));
     }
 
     @Test
@@ -70,7 +71,8 @@ class TheDoctorSaysHowThePluginIsTest extends MockBukkitHarness {
         // pause: every tick also runs the plugin's own repeating work, and ticking flat out for a few
         // seconds queues thousands of those runs on the one connection the test database has.
         long until = System.currentTimeMillis() + 5000;
-        while (System.currentTimeMillis() < until && lines.stream().noneMatch(line -> line.contains("operator"))) {
+        while (System.currentTimeMillis() < until
+                && lines.stream().noneMatch(line -> line.contains(caps("operator")))) {
             server.getScheduler().performTicks(1);
             try {
                 Thread.sleep(50);
@@ -84,5 +86,10 @@ class TheDoctorSaysHowThePluginIsTest extends MockBukkitHarness {
             }
         }
         return lines;
+    }
+
+    /** English is drawn in small capitals, which is what the operator reads. */
+    private static String caps(String words) {
+        return SmallCaps.of(words);
     }
 }

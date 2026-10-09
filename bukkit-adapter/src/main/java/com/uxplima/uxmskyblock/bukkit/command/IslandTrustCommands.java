@@ -199,7 +199,7 @@ public final class IslandTrustCommands {
         try {
             until = readUntil(untilRaw, configuration, target);
         } catch (IllegalArgumentException e) {
-            send(player, "trust.bad_duration", Placeholder.unparsed("value", untilRaw == null ? "" : untilRaw));
+            send(player, "trust.bad_duration", Placeholder.unparsed("given", untilRaw == null ? "" : untilRaw));
             return Cmd.OK;
         }
 

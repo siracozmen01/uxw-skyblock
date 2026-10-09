@@ -36,12 +36,9 @@ import com.uxplima.uxmlib.menu.runtime.MenuListener;
 import com.uxplima.uxmlib.menu.spec.MenuSpec;
 import com.uxplima.uxmlib.menu.spec.MenuSpecLoader;
 import com.uxplima.uxmlib.scheduler.PaperScheduler;
-import com.uxplima.uxmlib.text.style.Theme;
 import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockDetector;
 import com.uxplima.uxmskyblock.bukkit.bedrock.LateBedrockScreen;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
-import org.jspecify.annotations.Nullable;
-import org.spongepowered.configurate.ConfigurationNode;
 
 /**
  * The menu engine, reading this server's own menu files.
@@ -77,15 +74,17 @@ public final class SkyblockMenuEngine implements AutoCloseable {
      */
     private final Map<UUID, Map<String, String>> lastValues = new ConcurrentHashMap<>();
 
-    public SkyblockMenuEngine(Plugin plugin, Messages messages, Path dataDir, @Nullable ConfigurationNode themeNode) {
+    public SkyblockMenuEngine(Plugin plugin, Messages messages, Path dataDir) {
         Objects.requireNonNull(plugin, "plugin must not be null");
         Objects.requireNonNull(messages, "messages must not be null");
         Objects.requireNonNull(dataDir, "dataDir must not be null");
 
         this.menusDir = dataDir.resolve("menus");
-        Theme theme = themeNode == null ? Theme.defaults() : Theme.from(themeNode);
         GuiText words = new CatalogueMenuWords(messages);
-        ItemRenderer itemRenderer = new ItemRenderer(words, () -> theme, bindings.placeholders());
+        // Asked each time a tile is drawn, so a reload that gives the styler a new theme repaints
+        // the menus with the chat.
+        com.uxplima.uxmlib.text.style.Styler styler = messages.styler();
+        ItemRenderer itemRenderer = new ItemRenderer(words, styler::theme, bindings.placeholders());
         MenuRenderer renderer = new MenuRenderer(itemRenderer, bindings.conditions(), bindings.contents());
         PaperScheduler scheduler = new PaperScheduler(plugin);
 

@@ -94,7 +94,7 @@ public final class ParkourBoard {
             messages.sendPlain(
                     player,
                     "parkour.top_entry",
-                    Placeholder.unparsed("rank", Integer.toString(rank + 1)),
+                    Placeholder.unparsed("place", Integer.toString(rank + 1)),
                     Placeholder.unparsed("player", names.get(rank)),
                     Placeholder.unparsed("time", ParkourRuns.format(Duration.ofMillis(best.millis()))),
                     Placeholder.unparsed("runs", Integer.toString(best.runs())));

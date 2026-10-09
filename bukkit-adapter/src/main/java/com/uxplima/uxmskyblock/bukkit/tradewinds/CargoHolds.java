@@ -183,7 +183,7 @@ public final class CargoHolds {
                         messages.renderPlain(
                                 player,
                                 "tradewinds.hold.title",
-                                Names.of(messages, player, "rank", "ranks", rank.id())));
+                                Names.of(messages, player, "vessel_rank", "ranks", rank.id())));
                 view.inventory = window;
                 window.setContents(window(read.get().items(), rank.holdSlots()));
                 viewers.computeIfAbsent(vessel, key -> ConcurrentHashMap.newKeySet())

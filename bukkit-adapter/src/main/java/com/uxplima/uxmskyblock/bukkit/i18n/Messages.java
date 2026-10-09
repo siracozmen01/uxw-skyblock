@@ -28,9 +28,6 @@ public final class Messages {
     private final MessageProvider provider;
     private final LocaleSource locales;
 
-    /** The server's theme, which paints the roles and labels of a line an operator wrote. */
-    private final Styler styler;
-
     public Messages(MessageProvider provider, LocaleSource locales) {
         this(provider, locales, Theme.defaults());
     }
@@ -38,7 +35,7 @@ public final class Messages {
     public Messages(MessageProvider provider, LocaleSource locales, Theme theme) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         this.locales = Objects.requireNonNull(locales, "locales must not be null");
-        this.styler = new Styler(Objects.requireNonNull(theme, "theme must not be null"));
+        provider.useStyler(new Styler(Objects.requireNonNull(theme, "theme must not be null")));
     }
 
     /**
@@ -88,7 +85,11 @@ public final class Messages {
      * its words by key.
      */
     public @Nullable String raw(Audience viewer, String key) {
-        return has(key) ? provider.getRaw(key, languageOf(viewer)) : null;
+        if (!has(key)) {
+            return null;
+        }
+        String language = languageOf(viewer);
+        return provider.style(provider.getRaw(key, language), language);
     }
 
     /**
@@ -98,7 +99,7 @@ public final class Messages {
      */
     public String paint(Audience viewer, String line) {
         Objects.requireNonNull(line, "line must not be null");
-        return styler.tokens(line, Locale.forLanguageTag(languageOf(viewer)));
+        return provider.styler().tokens(line, Locale.forLanguageTag(languageOf(viewer)));
     }
 
     /**
@@ -159,7 +160,7 @@ public final class Messages {
         List<String> templates = provider.getRawList(key, language);
         List<Component> rendered = new ArrayList<>(templates.size());
         for (String template : templates) {
-            rendered.add(provider.renderTemplate(template, resolvers));
+            rendered.add(provider.renderCatalogued(template, language, resolvers));
         }
         return List.copyOf(rendered);
     }
@@ -179,6 +180,14 @@ public final class Messages {
     public boolean has(String key) {
         Objects.requireNonNull(key, "key must not be null");
         return provider.getKeys(provider.defaultLocale()).contains(key);
+    }
+
+    /**
+     * The style pass every line goes through. A menu reads its theme each time it draws a tile, so a
+     * reload that hands this a new theme repaints the menus with the chat.
+     */
+    public Styler styler() {
+        return provider.styler();
     }
 
     /** The catalogs this plugin ships, which is the list of languages it has. */

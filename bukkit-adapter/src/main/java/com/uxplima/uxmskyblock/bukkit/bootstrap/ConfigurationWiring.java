@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.logging.Logger;
 
-import com.uxplima.uxmlib.text.style.Theme;
 import com.uxplima.uxmskyblock.bukkit.config.AllianceConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.config.BankConfiguration;
@@ -43,6 +42,7 @@ import com.uxplima.uxmskyblock.bukkit.config.WorldConfiguration;
 import com.uxplima.uxmskyblock.bukkit.effect.InteractionEffects;
 import com.uxplima.uxmskyblock.bukkit.i18n.MessageProvider;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.i18n.ThemeSource;
 import com.uxplima.uxmskyblock.core.domain.durability.PlayerStateDurabilityConfig;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.configurate.CommentedConfigurationNode;
@@ -147,9 +147,8 @@ public final class ConfigurationWiring {
                 LOGGER.warning("Failed listing the messages folder " + messagesDir + ": " + e.getMessage());
             }
         }
-        // The same theme the menus read, so a line an operator wrote is painted like the rest.
-        Theme theme = rootNode == null ? Theme.defaults() : Theme.from(rootNode);
-        return Messages.of(provider, language, theme);
+        // The same theme the menus read, so every line and every tile is painted from one file.
+        return Messages.of(provider, language, ThemeSource.load(dataDir));
     }
 
     ConfigurationWiring(

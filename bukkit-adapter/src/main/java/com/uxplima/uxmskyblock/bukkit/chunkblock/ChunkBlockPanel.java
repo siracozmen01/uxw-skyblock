@@ -99,7 +99,7 @@ public final class ChunkBlockPanel {
             long level = levelOf.apply(islandId, profile);
             ChunkBlockService.UnlockResult result =
                     service.unlock(islandId, faced, island.get().bounds(), level);
-            TagResolver next = Placeholder.unparsed("level", Long.toString(result.nextRequirement()));
+            TagResolver next = Placeholder.unparsed("island_level", Long.toString(result.nextRequirement()));
             switch (result.outcome()) {
                 case UNLOCKED -> tell(player, "chunkblock.unlocked", next);
                 case ALREADY_OPEN -> tell(player, "chunkblock.already_open");
@@ -138,7 +138,7 @@ public final class ChunkBlockPanel {
      * <ul>
      *   <li>{@code open_chunks}: how many chunks the island has open, the first among them
      *   <li>{@code next_level}: the level the next chunk needs
-     *   <li>{@code level}: the island's level
+     *   <li>{@code island_level}: the island's level
      *   <li>{@code levels_to_go}: how many levels until the next chunk, 0 when it can open now
      * </ul>
      */
@@ -147,7 +147,7 @@ public final class ChunkBlockPanel {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("open_chunks", Integer.toString(territory.size()));
         values.put("next_level", Long.toString(next));
-        values.put("level", Long.toString(level));
+        values.put("island_level", Long.toString(level));
         values.put("levels_to_go", Long.toString(Math.max(0, next - level)));
         return values;
     }

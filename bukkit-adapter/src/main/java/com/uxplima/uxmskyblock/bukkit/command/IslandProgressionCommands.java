@@ -242,7 +242,7 @@ public final class IslandProgressionCommands {
                     worthService.calculateScore(islandId, completedMissions(islandId, profileId), bankBalance);
             schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
                 send(player, "level.header");
-                send(player, "level.calculated", number("level", score.calculatedLevel()));
+                send(player, "level.calculated", number("island_level", score.calculatedLevel()));
                 send(player, "level.total_score", number("score", score.totalScore()));
                 send(player, "level.block_score", number("score", score.blockScore()));
                 send(player, "level.spawner_score", number("score", score.spawnerScore()));
@@ -326,7 +326,7 @@ public final class IslandProgressionCommands {
                                 send(
                                         player,
                                         "level.new_level",
-                                        number("level", score.calculatedLevel()),
+                                        number("island_level", score.calculatedLevel()),
                                         number("score", score.totalScore()));
                                 send(
                                         player,
@@ -397,7 +397,7 @@ public final class IslandProgressionCommands {
                                 ? messages.renderPlain(
                                         audience,
                                         "leaderboard.score_level",
-                                        Placeholder.unparsed("level", Long.toString(entry.score())))
+                                        Placeholder.unparsed("island_level", Long.toString(entry.score())))
                                 // Money is written through the catalogue, where the operator names the
                                 // currency. The stored entry spells it with a dollar sign for the API.
                                 : messages.renderPlain(
@@ -408,7 +408,7 @@ public final class IslandProgressionCommands {
                         send(
                                 audience,
                                 "leaderboard.entry",
-                                Placeholder.unparsed("rank", Integer.toString(entry.rank())),
+                                Placeholder.unparsed("place", Integer.toString(entry.rank())),
                                 Placeholder.component("name", name),
                                 Placeholder.component("score", score));
                     }
@@ -419,7 +419,7 @@ public final class IslandProgressionCommands {
                     send(
                             src.getSender(),
                             "leaderboard.your_rank",
-                            Placeholder.unparsed("rank", Integer.toString(ownRank.place())));
+                            Placeholder.unparsed("place", Integer.toString(ownRank.place())));
                 }
             });
         });
@@ -453,14 +453,14 @@ public final class IslandProgressionCommands {
                     send(
                             audience,
                             "leaderboard.entry",
-                            Placeholder.unparsed("rank", Integer.toString(ranked.rank())),
+                            Placeholder.unparsed("place", Integer.toString(ranked.rank())),
                             Placeholder.unparsed("name", ranked.reading().displayName()),
                             Placeholder.component(
                                     "score",
                                     messages.renderPlain(
                                             audience,
                                             "leaderboard.score_value",
-                                            Placeholder.unparsed("value", ranked.formatted()))));
+                                            Placeholder.unparsed("figure", ranked.formatted()))));
                 }
             });
         });
@@ -551,7 +551,7 @@ public final class IslandProgressionCommands {
                                 "biome.level_required",
                                 Placeholder.unparsed("biome", targetBiome.displayName()),
                                 Placeholder.unparsed("required", Integer.toString(required)),
-                                Placeholder.unparsed("level", Integer.toString(reached))));
+                                Placeholder.unparsed("island_level", Integer.toString(reached))));
                 return;
             }
 

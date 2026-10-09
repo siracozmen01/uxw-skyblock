@@ -87,7 +87,7 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
         turkish.setLocale(java.util.Locale.forLanguageTag("tr"));
         // The engine the server builds, so a value it does not answer fails here rather than on a live server.
         SkyblockMenuEngine engine = new SkyblockMenuEngine(
-                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir, null);
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
         ItemRenderer renderer = new ItemRenderer(
                 new CatalogueMenuWords(Messages.bundled()),
                 Theme::defaults,
@@ -106,7 +106,7 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
         org.mockbukkit.mockbukkit.entity.PlayerMock turkish = createPlayer("Okur");
         turkish.setLocale(java.util.Locale.forLanguageTag("tr"));
         SkyblockMenuEngine engine = new SkyblockMenuEngine(
-                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir, null);
+                org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
         java.util.function.Consumer<com.uxplima.uxmlib.menu.runtime.MenuActionContext> verb =
                 engine.bindings().actions().get("message").orElseThrow();
 
