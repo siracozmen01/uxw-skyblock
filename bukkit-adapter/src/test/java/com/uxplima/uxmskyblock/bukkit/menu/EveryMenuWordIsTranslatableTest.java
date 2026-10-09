@@ -73,6 +73,28 @@ class EveryMenuWordIsTranslatableTest {
                 .isEmpty();
     }
 
+    /** A tile line in a menu file, from the mark to the closing quote. */
+    private static final Pattern TILE = Pattern.compile("\"(tile:[^\"]*)\"");
+
+    /** The catalogue lines one tile line draws: the title, the description, and each fact's label and value. */
+    static List<String> tileKeys(String line) {
+        String[] words = line.trim().split("\\s+", -1);
+        String block = words[1].substring(1);
+        List<String> keys = new ArrayList<>(List.of(block + ".title", block + ".description"));
+        for (int at = 2; at < words.length; at++) {
+            String word = words[at];
+            if (word.startsWith("-") || word.startsWith("action:")) {
+                continue;
+            }
+            String fact = word.startsWith("state:")
+                    ? word.substring("state:".length()).split(":", -1)[0]
+                    : word;
+            keys.add(block + "." + fact + ".label");
+            keys.add(block + "." + fact + ".value");
+        }
+        return keys;
+    }
+
     @Test
     @DisplayName("Every key a menu file names is answered by the catalogue")
     void everyKeyIsAnswered() throws IOException {
@@ -91,11 +113,25 @@ class EveryMenuWordIsTranslatableTest {
             for (Path file : files.filter(path -> path.toString().endsWith(".conf"))
                     .sorted()
                     .toList()) {
-                Matcher matcher = key.matcher(Files.readString(file, StandardCharsets.UTF_8));
+                String text = Files.readString(file, StandardCharsets.UTF_8);
+                Matcher matcher = key.matcher(text);
                 while (matcher.find()) {
                     found++;
                     if (!answered.contains(matcher.group(1))) {
                         unanswered.add(file.getFileName() + " names " + matcher.group(1));
+                    }
+                }
+                // A tile names a block, and the block answers a title, a description and a label and a
+                // value for every fact the line names. A block the catalogue does not hold draws a tile
+                // with its key printed on it.
+                // A comment explains the shape and is not a tile.
+                Matcher tiles = TILE.matcher(text.replaceAll("(?m)^\\s*#.*$", ""));
+                while (tiles.find()) {
+                    for (String needed : tileKeys(tiles.group(1))) {
+                        found++;
+                        if (!answered.contains(needed)) {
+                            unanswered.add(file.getFileName() + " draws a tile that needs " + needed);
+                        }
                     }
                 }
             }

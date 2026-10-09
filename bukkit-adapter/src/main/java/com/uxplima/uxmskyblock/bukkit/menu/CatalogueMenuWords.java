@@ -24,9 +24,11 @@ import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 public final class CatalogueMenuWords implements GuiText {
 
     private final Messages messages;
+    private final SkyblockTiles tiles;
 
     public CatalogueMenuWords(Messages messages) {
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.tiles = new SkyblockTiles(messages);
     }
 
     @Override
@@ -47,6 +49,10 @@ public final class CatalogueMenuWords implements GuiText {
     public Component renderFor(Player viewer, String raw, Map<String, String> placeholders) {
         Objects.requireNonNull(raw, "raw must not be null");
         Objects.requireNonNull(placeholders, "placeholders must not be null");
+        // A tile is a whole tooltip whose words live in the catalogue, read in the viewer's language.
+        if (SkyblockTiles.marks(raw)) {
+            return tiles.lore(viewer, raw, resolvers(placeholders));
+        }
         return messages.provider().renderTemplate(raw, resolvers(placeholders));
     }
 

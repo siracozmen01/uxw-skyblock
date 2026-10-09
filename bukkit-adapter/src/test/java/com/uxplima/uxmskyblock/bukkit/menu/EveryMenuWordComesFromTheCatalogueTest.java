@@ -80,7 +80,7 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("A catalogue line drawn by the menu engine fills the value it spells, in English and in Turkish")
+    @DisplayName("A tile drawn by the menu engine fills the value it spells, in English and in Turkish")
     void aCatalogueLineFillsItsValue() {
         org.mockbukkit.mockbukkit.entity.PlayerMock english = createPlayer("Reader");
         org.mockbukkit.mockbukkit.entity.PlayerMock turkish = createPlayer("Okur");
@@ -94,10 +94,10 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
                 engine.bindings().placeholders());
         Map<String, String> opened = Map.of("vault_pages", "3");
 
-        assertThat(plain(renderer.title("@menu.vault.pages_unlocked", MenuContext.of(english, null, 0, opened))))
-                .isEqualTo("Pages unlocked: 3");
-        assertThat(plain(renderer.title("@menu.vault.pages_unlocked", MenuContext.of(turkish, null, 0, opened))))
-                .isEqualTo("Açık sayfa: 3");
+        assertThat(plain(renderer.title("tile:3 @menu.vault.page1 pages", MenuContext.of(english, null, 0, opened))))
+                .contains("◆ Page 1", "Details", "Pages 3");
+        assertThat(plain(renderer.title("tile:3 @menu.vault.page1 pages", MenuContext.of(turkish, null, 0, opened))))
+                .contains("◆ Sayfa 1", "Ayrıntılar", "Sayfa 3");
     }
 
     @Test
@@ -126,7 +126,7 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
         Player viewer = createPlayer("Reader");
         AskedFor values = new AskedFor(Map.of("argument_balance", "12.50"));
 
-        new CatalogueMenuWords(Messages.bundled()).text(viewer, "menu.bank.coins_line", values);
+        new CatalogueMenuWords(Messages.bundled()).text(viewer, "menu.bank.balance.coins.value", values);
 
         assertThat(values.asked).isNotEmpty().allMatch(name -> name.startsWith("argument_"));
     }
@@ -140,6 +140,14 @@ class EveryMenuWordComesFromTheCatalogueTest extends MockBukkitHarness {
 
     private static void checkText(Path file, String where, String value, List<String> written) {
         if (value.isBlank() || value.startsWith("@")) {
+            return;
+        }
+        // A tile names a colour, a block of the catalogue and the facts of that block, and no word of its own.
+        if (SkyblockTiles.marks(value)) {
+            String[] parts = value.trim().split("\\s+", -1);
+            if (parts.length < 2 || !parts[1].startsWith("@")) {
+                written.add(file.getFileName() + " " + where + ": " + value);
+            }
             return;
         }
         String words = value.replaceAll("<[^>]*>", "").replaceAll("%[a-z0-9_]+%", "");
