@@ -36,7 +36,7 @@ public final class CatalogueMenuWords implements GuiText {
         Objects.requireNonNull(viewer, "viewer must not be null");
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(placeholders, "placeholders must not be null");
-        return messages.renderPlain(viewer, key, resolvers(placeholders));
+        return messages.renderPlain(viewer, key, resolvers(viewer, placeholders));
     }
 
     @Override
@@ -51,9 +51,9 @@ public final class CatalogueMenuWords implements GuiText {
         Objects.requireNonNull(placeholders, "placeholders must not be null");
         // A tile is a whole tooltip whose words live in the catalogue, read in the viewer's language.
         if (SkyblockTiles.marks(raw)) {
-            return tiles.lore(viewer, raw, resolvers(placeholders));
+            return tiles.lore(viewer, raw, resolvers(viewer, placeholders));
         }
-        return messages.provider().renderTemplate(raw, resolvers(placeholders));
+        return messages.provider().renderTemplate(raw, resolvers(viewer, placeholders));
     }
 
     /**
@@ -75,23 +75,38 @@ public final class CatalogueMenuWords implements GuiText {
      * are asked, so a colour tag is never taken for a placeholder. A tile a list stamps once per entry asks
      * for that entry's values the same way, as {@code <entry_<name>>}.
      */
-    private static TagResolver[] resolvers(Map<String, String> placeholders) {
+    private TagResolver[] resolvers(Player viewer, Map<String, String> placeholders) {
         TagResolver[] spelled = placeholders.entrySet().stream()
                 .map(entry -> (TagResolver) Placeholder.unparsed(entry.getKey(), entry.getValue()))
                 .toArray(TagResolver[]::new);
         TagResolver[] all = java.util.Arrays.copyOf(spelled, spelled.length + 1);
-        all[spelled.length] = new ArgumentTags(placeholders);
+        all[spelled.length] = new ArgumentTags(messages, viewer, placeholders);
         return all;
     }
 
-    /** Fills {@code <argument_<name>>} from the values the menu was opened with, asked by name. */
-    private record ArgumentTags(Map<String, String> placeholders) implements TagResolver {
+    /**
+     * Fills {@code <argument_<name>>} from the values the menu was opened with, asked by name.
+     *
+     * <p>A value is words, drawn as written. Two shapes are read instead: a lone {@code <lang:key>} is
+     * drawn in the reader's client language, which is how an item keeps its own name, and a run of
+     * {@code <key:path>} is those catalogue lines in the reader's language and colours, which is how a
+     * state reads in its role. Neither reaches anything but the catalogue and the client's own words.
+     */
+    private record ArgumentTags(Messages messages, Player viewer, Map<String, String> placeholders)
+            implements TagResolver {
 
         private static final String PREFIX = "argument_";
 
         /** A value that is one translation and nothing else, such as an item's name, drawn in the reader's client. */
         private static final java.util.regex.Pattern TRANSLATED =
                 java.util.regex.Pattern.compile("<lang:([a-z0-9_.-]+)>");
+
+        /** A value that is one or more catalogue lines, such as a state in its colour or a progress bar. */
+        private static final java.util.regex.Pattern CATALOGUED =
+                java.util.regex.Pattern.compile("(?:<key:[a-z0-9_.-]+>)+");
+
+        private static final java.util.regex.Pattern CATALOGUE_KEY =
+                java.util.regex.Pattern.compile("<key:([a-z0-9_.-]+)>");
 
         /** A value of the list entry a tile is drawn for, such as one member of the island. */
         private static final String ENTRY = "entry_";
@@ -104,8 +119,18 @@ public final class CatalogueMenuWords implements GuiText {
                 return null;
             }
             java.util.regex.Matcher translated = TRANSLATED.matcher(value);
-            return Tag.selfClosingInserting(
-                    translated.matches() ? Component.translatable(translated.group(1)) : Component.text(value));
+            if (translated.matches()) {
+                return Tag.selfClosingInserting(Component.translatable(translated.group(1)));
+            }
+            if (CATALOGUED.matcher(value).matches()) {
+                net.kyori.adventure.text.TextComponent.Builder lines = Component.text();
+                java.util.regex.Matcher key = CATALOGUE_KEY.matcher(value);
+                while (key.find()) {
+                    lines.append(messages.renderPlain(viewer, key.group(1)));
+                }
+                return Tag.selfClosingInserting(lines.build());
+            }
+            return Tag.selfClosingInserting(Component.text(value));
         }
 
         @Override

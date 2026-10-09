@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,6 +53,25 @@ public final class IslandBoosterMenu {
     private @Nullable BedrockFormService bedrockFormService;
 
     private volatile @Nullable Consumer<Player> wayBack;
+
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
+
+    /** The menu file that draws the boosters, and the list it draws a card from for each kind. */
+    static final String FILE = "island-booster-cards";
+
+    static final String CARDS = "skyblock:booster-cards";
+
+    /** The kinds of booster in the order the cards are drawn, and the icon each one wears. */
+    private static final Map<BoosterCategory, Material> ICONS = new java.util.LinkedHashMap<>();
+
+    static {
+        ICONS.put(BoosterCategory.SPAWNER_RATE, Material.SPAWNER);
+        ICONS.put(BoosterCategory.CROP_GROWTH, Material.WHEAT);
+        ICONS.put(BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE);
+        ICONS.put(BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE);
+        ICONS.put(BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK);
+        ICONS.put(BoosterCategory.MISSION_REWARDS, Material.EMERALD);
+    }
 
     public IslandBoosterMenu(
             IslandStoragePort islandStoragePort,
@@ -128,6 +148,12 @@ public final class IslandBoosterMenu {
                     openForm(forms, player, overview, now);
                     return;
                 }
+                SkyblockMenuEngine engine = this.menuEngine;
+                if (engine != null
+                        && engine.open(
+                                player, FILE, overviewValues(overview), Map.of(CARDS, rows(player, overview, now)))) {
+                    return;
+                }
                 SimpleGui gui = buildGui(player, overview, now);
                 gui.open(player);
             };
@@ -187,6 +213,96 @@ public final class IslandBoosterMenu {
             choices.add(new BedrockFormService.Choice(label, () -> {}));
         }
         forms.openChoiceForm(player, "menu.booster.title", "menu.booster.form_body", choices);
+    }
+
+    /**
+     * Hands this window the engine that reads {@code menus/island-booster-cards.conf}. The window built
+     * here stays as the answer to a file that is missing or will not parse.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine engine) {
+        this.menuEngine = engine;
+        if (engine != null) {
+            engine.handedList(CARDS);
+        }
+    }
+
+    /** The overview the file draws over the cards: how many run, and what an empty island does to them. */
+    Map<String, String> overviewValues(IslandBoosterService.BoosterOverview overview) {
+        return Map.of("count", Integer.toString(overview.active().size()), "state", "<key:" + idleKey(overview) + ">");
+    }
+
+    private String idleKey(IslandBoosterService.BoosterOverview overview) {
+        return configuration.pauseWhenEmpty()
+                ? (overview.paused() ? "menu.booster.idle_paused" : "menu.booster.idle_online")
+                : "menu.booster.idle_disabled";
+    }
+
+    /** One card per kind of booster: its state, its multiplier, how long it has left and how it stacks. */
+    List<MenuRow> rows(Player player, IslandBoosterService.BoosterOverview overview, Instant now) {
+        List<MenuRow> rows = new ArrayList<>();
+        for (Map.Entry<BoosterCategory, Material> kind : ICONS.entrySet()) {
+            Card card = card(kind.getKey(), overview, now);
+            CategoryBoosterPolicy policy = card.policy();
+            Map<String, String> words = new java.util.HashMap<>();
+            words.put("material", kind.getValue().name());
+            words.put(
+                    "category",
+                    messages.named(
+                            player,
+                            "booster.categories",
+                            kind.getKey().name(),
+                            kind.getKey().displayName()));
+            words.put("status", "<key:" + card.statusKey() + ">");
+            words.put("multiplier", String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(kind.getKey())));
+            words.put("remaining", DurationText.of(messages, player, card.remaining()));
+            words.put("bar", bar(card.ratio(), 10));
+            words.put(
+                    "mode",
+                    messages.named(
+                            player,
+                            "booster.stack_modes",
+                            policy.stackMode().name(),
+                            policy.stackMode().name()));
+            words.put("cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier()));
+            words.put("duration", DurationText.of(messages, player, policy.maxDuration()));
+            rows.add(new MenuRow(words, kind.getKey()));
+        }
+        return List.copyOf(rows);
+    }
+
+    /** Where one kind of booster stands now. */
+    private record Card(CategoryBoosterPolicy policy, String statusKey, Duration remaining, double ratio) {}
+
+    private Card card(BoosterCategory category, IslandBoosterService.BoosterOverview overview, Instant now) {
+        CategoryBoosterPolicy policy = configuration.policy(category);
+        List<IslandBooster> active = overview.activeIn(category);
+        boolean hasActive = !active.isEmpty();
+        boolean isPaused = hasActive && active.stream().anyMatch(IslandBooster::isPaused);
+        long totalRemainingSec = 0;
+        for (IslandBooster b : active) {
+            totalRemainingSec += b.effectiveRemainingSeconds(now);
+        }
+        Duration maxDuration = policy.maxDuration();
+        double ratio =
+                (maxDuration.toSeconds() > 0) ? (double) totalRemainingSec / (double) maxDuration.toSeconds() : 0.0;
+        String statusKey;
+        if (!policy.enabled()) {
+            statusKey = "menu.booster.status_disabled";
+        } else if (isPaused) {
+            statusKey = "menu.booster.status_paused";
+        } else if (hasActive) {
+            statusKey = "menu.booster.status_active";
+        } else {
+            statusKey = "menu.booster.status_inactive";
+        }
+        return new Card(policy, statusKey, Duration.ofSeconds(totalRemainingSec), ratio);
+    }
+
+    /** The progress bar as catalogue pieces, a filled one per step reached and an empty one for the rest. */
+    private static String bar(double ratio, int totalBars) {
+        int filled = (int) Math.round(Math.clamp(ratio, 0.0, 1.0) * totalBars);
+        return "<key:menu.booster.bar_filled>".repeat(filled)
+                + "<key:menu.booster.bar_empty>".repeat(totalBars - filled);
     }
 
     /**
@@ -274,25 +390,24 @@ public final class IslandBoosterMenu {
                 player,
                 "tile:event @menu.booster.card status multiplier remaining progress stacking longest",
                 Placeholder.unparsed(
-                        "argument_category",
+                        "entry_category",
                         messages.named(player, "booster.categories", category.name(), category.displayName())),
-                Placeholder.component("argument_status", messages.renderPlain(player, statusKey)),
+                Placeholder.component("entry_status", messages.renderPlain(player, statusKey)),
                 Placeholder.unparsed(
-                        "argument_multiplier",
+                        "entry_multiplier",
                         String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(category))),
                 Placeholder.unparsed(
-                        "argument_remaining", DurationText.of(messages, player, Duration.ofSeconds(totalRemainingSec))),
-                Placeholder.component("argument_bar", renderProgressBar(player, ratio, 10)),
+                        "entry_remaining", DurationText.of(messages, player, Duration.ofSeconds(totalRemainingSec))),
+                Placeholder.component("entry_bar", renderProgressBar(player, ratio, 10)),
                 Placeholder.unparsed(
-                        "argument_mode",
+                        "entry_mode",
                         messages.named(
                                 player,
                                 "booster.stack_modes",
                                 policy.stackMode().name(),
                                 policy.stackMode().name())),
-                Placeholder.unparsed(
-                        "argument_cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier())),
-                Placeholder.unparsed("argument_duration", DurationText.of(messages, player, policy.maxDuration())));
+                Placeholder.unparsed("entry_cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier())),
+                Placeholder.unparsed("entry_duration", DurationText.of(messages, player, policy.maxDuration())));
         gui.set(slot, GuiItem.display(card));
     }
 
