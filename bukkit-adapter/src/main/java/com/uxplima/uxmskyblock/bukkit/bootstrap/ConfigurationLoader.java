@@ -98,6 +98,7 @@ public final class ConfigurationLoader {
             "tradewinds-market.conf",
             "island-vault-page.conf",
             "player-trade.conf",
+            "vessel-cargo.conf",
             "island-boosters.conf",
             "island-biome.conf",
             "island-homes.conf",

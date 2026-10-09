@@ -27,6 +27,7 @@ import org.bukkit.inventory.ItemStack;
 
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.inventory.BukkitInventorySerializer;
+import com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine;
 import com.uxplima.uxmskyblock.bukkit.session.ActiveSession;
 import com.uxplima.uxmskyblock.bukkit.trade.OnThePlayersThread;
 import com.uxplima.uxmskyblock.bukkit.trade.PlayerTradeSide;
@@ -73,18 +74,45 @@ public final class CargoHolds {
         void fence(UUID player, String why);
     }
 
-    /** The window a hold is shown in, holding which vessel it shows. */
+    /** The menu file a hold is drawn from. */
+    public static final String FILE = "vessel-cargo";
+
+    /** The region of that file the hold shows in. */
+    public static final String REGION = "tradewinds:hold";
+
+    /**
+     * The window a hold is shown in, holding which vessel it shows. A window drawn from the file
+     * carries it as its subject, with the hold as last read: drawing it reads nothing.
+     */
     public static final class View implements InventoryHolder {
 
         private final IslandId vessel;
+        private final int slots;
+        private volatile byte[] items;
         private @Nullable Inventory inventory;
 
         View(IslandId vessel) {
+            this(vessel, 0, new byte[0]);
+        }
+
+        View(IslandId vessel, int slots, byte[] items) {
             this.vessel = vessel;
+            this.slots = slots;
+            this.items = items.clone();
         }
 
         public IslandId vessel() {
             return vessel;
+        }
+
+        /** How many slots the vessel's rank gives its hold. */
+        int slots() {
+            return slots;
+        }
+
+        /** The hold as last read, one stack for each of its slots, null where a slot is empty. */
+        @Nullable ItemStack[] shown() {
+            return window(items, slots);
         }
 
         @Override
@@ -106,6 +134,12 @@ public final class CargoHolds {
     private final OnThePlayersThread thread;
     private final Crew crew;
     private final Set<UUID> moving = ConcurrentHashMap.newKeySet();
+    private @Nullable SkyblockMenuEngine engine;
+
+    /** Whether the file was found unable to show a hold, said once rather than on every open. */
+    private final java.util.concurrent.atomic.AtomicBoolean saidTheFileCannotShowAHold =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     private final Map<IslandId, Set<UUID>> viewers = new ConcurrentHashMap<>();
 
     @SuppressWarnings("TooManyParameters")
@@ -132,6 +166,34 @@ public final class CargoHolds {
         this.rankOf = Objects.requireNonNull(rankOf, "rankOf");
         this.thread = new OnThePlayersThread(scheduler);
         this.crew = new Crew(vessels, islandAt, sessions);
+    }
+
+    /**
+     * Draws a hold from {@code menus/vessel-cargo.conf} from now on: the window is the operator's, and
+     * the hold is the region the file names. The window built in code stays for a server whose file
+     * is gone or whose region is smaller than a rank's hold.
+     */
+    public void useMenuEngine(SkyblockMenuEngine engine) {
+        this.engine = Objects.requireNonNull(engine, "engine");
+        engine.bindings().content(REGION, new HoldContent(this));
+    }
+
+    /** Whether the file shows a hold of {@code slots}: a region read only and large enough for it. */
+    private boolean fileShows(SkyblockMenuEngine files, int slots) {
+        Optional<com.uxplima.uxmlib.menu.spec.MenuSpec> spec = files.spec(FILE);
+        if (spec.isEmpty()) {
+            return false;
+        }
+        com.uxplima.uxmlib.menu.spec.ContentRegionSpec region =
+                spec.get().contents().get(REGION);
+        boolean shows =
+                region != null && !region.editable() && region.slots().slots().size() >= slots;
+        if (!shows && saidTheFileCannotShowAHold.compareAndSet(false, true)) {
+            LOGGER.warning(() -> "menus/" + FILE + ".conf needs a content region \"" + REGION + "\", not editable, of"
+                    + " as many slots as the largest hold of modules/tradewinds.conf. A hold it cannot show opens in"
+                    + " the window built in code.");
+        }
+        return shows;
     }
 
     /** Whether a move of {@code player}'s is being carried out now, when nothing may change their inventory. */
@@ -176,6 +238,19 @@ public final class CargoHolds {
                     messages.send(player, "tradewinds.hold.busy");
                     return;
                 }
+                SkyblockMenuEngine files = this.engine;
+                if (files != null && fileShows(files, rank.holdSlots())) {
+                    View drawn = new View(vessel, rank.holdSlots(), read.get().items());
+                    viewers.computeIfAbsent(vessel, key -> ConcurrentHashMap.newKeySet())
+                            .add(player.getUniqueId());
+                    if (files.openHolding(
+                            player,
+                            FILE,
+                            drawn,
+                            Map.of("vessel_rank", Names.plain(messages, player, "ranks", rank.id())))) {
+                        return;
+                    }
+                }
                 View view = new View(vessel);
                 Inventory window = Bukkit.createInventory(
                         view,
@@ -183,7 +258,7 @@ public final class CargoHolds {
                         messages.renderPlain(
                                 player,
                                 "tradewinds.hold.title",
-                                Names.of(messages, player, "vessel_rank", "ranks", rank.id())));
+                                Names.of(messages, player, "argument_vessel_rank", "ranks", rank.id())));
                 view.inventory = window;
                 window.setContents(window(read.get().items(), rank.holdSlots()));
                 viewers.computeIfAbsent(vessel, key -> ConcurrentHashMap.newKeySet())
@@ -200,11 +275,26 @@ public final class CargoHolds {
             return;
         }
         event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player player) || moving(player.getUniqueId())) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
         Inventory clicked = event.getClickedInventory();
         if (clicked == null) {
+            return;
+        }
+        boolean taking = clicked.getHolder() instanceof View;
+        int slot = event.getSlot();
+        ItemStack shown = taking ? clicked.getItem(slot) : player.getInventory().getItem(slot);
+        request(player, view, taking, slot, shown);
+    }
+
+    /**
+     * {@code player} asks to move the stack {@code shown} between the hold and their own inventory: out
+     * of the hold's {@code slot} when {@code taking}, out of their own {@code slot} when not. Both
+     * windows ask through here, so a file window refuses what the window built in code refuses.
+     */
+    void request(Player player, View view, boolean taking, int slot, @Nullable ItemStack shown) {
+        if (moving(player.getUniqueId())) {
             return;
         }
         if (sealed.test(player)) {
@@ -212,8 +302,6 @@ public final class CargoHolds {
             messages.send(player, "tradewinds.hold.sealed");
             return;
         }
-        int slot = event.getSlot();
-        boolean taking = clicked.getHolder() instanceof View;
         // Asked again on every click: a window stays open after its player left the crew or the vessel.
         Result<IslandId, String> allowed = crew.aboard(
                 player, view.vessel(), taking ? IslandPermission.VAULT_WITHDRAW : IslandPermission.VAULT_DEPOSIT);
@@ -224,21 +312,17 @@ public final class CargoHolds {
             }
             return;
         }
+        if (shown == null || shown.getType().isAir()) {
+            return;
+        }
         if (taking) {
-            ItemStack shown = clicked.getItem(slot);
-            if (shown != null && !shown.getType().isAir()) {
-                move(player, view.vessel(), Direction.TAKE, slot, shown.clone());
-            }
+            move(player, view.vessel(), Direction.TAKE, slot, shown.clone());
             return;
         }
         if (slot < 0 || slot >= PlayerTradeSide.STORAGE_SLOTS) {
             return;
         }
-        ItemStack carried = player.getInventory().getItem(slot);
-        if (carried == null || carried.getType().isAir()) {
-            return;
-        }
-        move(player, view.vessel(), Direction.PUT, slot, carried.clone());
+        move(player, view.vessel(), Direction.PUT, slot, shown.clone());
     }
 
     /** A drag in a hold window would move items; it does nothing. */
@@ -380,6 +464,13 @@ public final class CargoHolds {
                         && top.getHolder() instanceof View view
                         && view.vessel().equals(vessel)) {
                     top.setContents(window(items, top.getSize()));
+                } else if (top != null
+                        && top.getHolder() instanceof com.uxplima.uxmlib.menu.runtime.MenuHolder menu
+                        && menu.ctx().subjectRaw().orElse(null) instanceof View drawn
+                        && drawn.vessel().equals(vessel)
+                        && engine != null) {
+                    drawn.items = items.clone();
+                    engine.menus().redraw(online, FILE);
                 } else {
                     forget(vessel, viewer);
                 }

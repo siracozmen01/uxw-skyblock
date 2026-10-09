@@ -304,6 +304,222 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
         assertThat(CargoHolds.keyOf("tradewinds.hold.full")).isEqualTo("tradewinds.hold.full");
     }
 
+    // -- the hold drawn from menus/vessel-cargo.conf ------------------------------------------------------------
+
+    @org.junit.jupiter.api.io.TempDir
+    @SuppressWarnings("NullAway.Init")
+    java.nio.file.Path dataDir;
+
+    @SuppressWarnings("NullAway.Init")
+    private com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine engine;
+
+    /** The engine a server builds over {@code files}, its listener installed as there. */
+    private void useFile(com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine files) {
+        engine = files;
+        holds.useMenuEngine(engine);
+        engine.install();
+    }
+
+    private void useShippedFile() {
+        useFile(com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.engineWith(dataDir, "vessel-cargo.conf"));
+    }
+
+    /** Opens the hold for {@code player} and runs the server until the engine has drawn it. */
+    private Inventory openInFile(PlayerMock player) {
+        holds.open(player);
+        long deadline = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < deadline) {
+            server.getScheduler().performOneTick();
+            Inventory top = player.getOpenInventory().getTopInventory();
+            if (top != null && top.getHolder() instanceof com.uxplima.uxmlib.menu.runtime.MenuHolder) {
+                return top;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("the hold never opened from its file");
+    }
+
+    private void clickInFile(PlayerMock player, int raw) {
+        server.getPluginManager().callEvent(new ServerClick(player.getOpenInventory(), raw));
+        server.getScheduler().performTicks(5);
+    }
+
+    /**
+     * A left click that reads the clicked stack as a server does. MockBukkit names the right slot of
+     * the player's inventory for a raw slot below the window, and then reads the stack of another.
+     */
+    private static final class ServerClick extends InventoryClickEvent {
+
+        ServerClick(org.bukkit.inventory.InventoryView view, int raw) {
+            super(view, InventoryType.SlotType.CONTAINER, raw, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        }
+
+        @Override
+        public @Nullable ItemStack getCurrentItem() {
+            if (getRawSlot() < getView().getTopInventory().getSize()) {
+                return super.getCurrentItem();
+            }
+            return getView().getBottomInventory().getItem(getSlot());
+        }
+    }
+
+    private static com.uxplima.uxmlib.menu.spec.ContentRegionSpec shippedRegion() {
+        return java.util.Objects.requireNonNull(
+                com.uxplima.uxmskyblock.bukkit.menu.ShippedTemplates.spec("vessel-cargo.conf")
+                        .contents()
+                        .get(CargoHolds.REGION));
+    }
+
+    private com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine fileWith(String region) throws Exception {
+        java.nio.file.Path menus = java.nio.file.Files.createDirectories(dataDir.resolve("menus"));
+        java.nio.file.Files.writeString(
+                menus.resolve("vessel-cargo.conf"),
+                "rows = 6\ncontent { \"tradewinds:hold\" " + region + " }\nfill-item { material = STONE }\n");
+        com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine files =
+                new com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine(
+                        org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
+        files.loadSpecs();
+        return files;
+    }
+
+    @Test
+    @DisplayName("The shipped file shows a hold of six rows, the largest a rank may have, and lets nothing in by hand")
+    void theFileShowsTheLargestHold() {
+        assertThat(shippedRegion().slots().slots()).hasSizeGreaterThanOrEqualTo(6 * 9);
+        assertThat(shippedRegion().editable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("The hold opens in its file, titled with the vessel's rank and filled from storage")
+    void theHoldOpensInItsFile() {
+        stow(new ItemStack(Material.DIAMOND, 5));
+        useShippedFile();
+
+        Inventory top = openInFile(ada);
+
+        assertThat(PlainTextComponentSerializer.plainText()
+                        .serialize(ada.getOpenInventory().title())
+                        .strip())
+                .isEqualTo("Cargo hold: Dinghy");
+        assertThat(top.getItem(shippedRegion().slots().slots().get(0))).isEqualTo(new ItemStack(Material.DIAMOND, 5));
+        assertThat(top.getItem(shippedRegion().slots().slots().get(ROWS * 9)))
+                .describedAs("past the dinghy's hold")
+                .isNull();
+    }
+
+    @Test
+    @DisplayName("A stack clicked in the inventory under the file goes into the hold, and the window shows it")
+    void aStackGoesIntoTheHoldThroughTheFile() {
+        useShippedFile();
+        Inventory top = openInFile(ada);
+
+        clickInFile(ada, 54 + slotInView(4));
+
+        assertThat(count(ada, Material.EMERALD)).isZero();
+        assertThat(held(Material.EMERALD)).isEqualTo(16);
+        assertThat(top.getItem(0)).isEqualTo(new ItemStack(Material.EMERALD, 16));
+    }
+
+    @Test
+    @DisplayName("A stack clicked in the file's hold comes out into the inventory, and the window is emptied of it")
+    void aStackComesOutThroughTheFile() {
+        stow(new ItemStack(Material.DIAMOND, 5));
+        useShippedFile();
+        Inventory top = openInFile(ada);
+
+        clickInFile(ada, 0);
+
+        assertThat(count(ada, Material.DIAMOND)).isEqualTo(5);
+        assertThat(held(Material.DIAMOND)).isZero();
+        assertThat(top.getItem(0)).isNull();
+    }
+
+    @Test
+    @DisplayName("The role decides in the file as in the window built in code: a deckhand takes nothing out")
+    void theRoleDecidesInTheFile() {
+        stow(new ItemStack(Material.DIAMOND, 5));
+        useShippedFile();
+        openInFile(bo);
+
+        clickInFile(bo, 0);
+
+        assertThat(count(bo, Material.DIAMOND)).isZero();
+        assertThat(held(Material.DIAMOND)).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("A slot past the hold the rank gives answers nothing")
+    void aSlotPastTheHoldAnswersNothing() {
+        stow(new ItemStack(Material.DIAMOND, 5));
+        useShippedFile();
+        openInFile(ada);
+        long before = cargoVersion;
+
+        clickInFile(ada, ROWS * 9);
+
+        assertThat(cargoVersion).isEqualTo(before);
+        assertThat(journal.events).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A click in the inventory under the file is the hold's own move, handed to nothing else")
+    void theHoldTakesTheClickAsItsOwn() {
+        useShippedFile();
+        Inventory top = openInFile(ada);
+        com.uxplima.uxmlib.menu.providers.ContentProvider provider =
+                engine.bindings().contents().get(CargoHolds.REGION).orElseThrow();
+
+        boolean taken = provider.ownRowsClicked(
+                ((com.uxplima.uxmlib.menu.runtime.MenuHolder) java.util.Objects.requireNonNull(top.getHolder())).ctx(),
+                shippedRegion(),
+                new com.uxplima.uxmlib.menu.providers.OwnRowsClick(
+                        4, new ItemStack(Material.EMERALD, 16), com.uxplima.uxmlib.menu.spec.ClickKind.LEFT));
+
+        assertThat(taken).isTrue();
+        assertThat(held(Material.EMERALD)).isEqualTo(16);
+    }
+
+    @Test
+    @DisplayName("A window reopened without its hold shows nothing and stows nothing")
+    void aWindowWithNoHoldDoesNothing() {
+        useShippedFile();
+        com.uxplima.uxmlib.menu.providers.ContentProvider provider =
+                engine.bindings().contents().get(CargoHolds.REGION).orElseThrow();
+        com.uxplima.uxmlib.menu.runtime.MenuContext holdless =
+                com.uxplima.uxmlib.menu.runtime.MenuContext.of(ada, null, 0);
+
+        assertThat(provider.render(holdless, shippedRegion())).isEmpty();
+        assertThat(provider.ownRowsClicked(
+                        holdless,
+                        shippedRegion(),
+                        new com.uxplima.uxmlib.menu.providers.OwnRowsClick(
+                                4, new ItemStack(Material.EMERALD, 16), com.uxplima.uxmlib.menu.spec.ClickKind.LEFT)))
+                .isFalse();
+        assertThat(journal.events).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A hold larger than the file's region opens in the window built in code")
+    void aHoldLargerThanTheRegionFallsBack() throws Exception {
+        useFile(fileWith("{ slots = [\"0-17\"], editable = false }"));
+
+        holds.open(ada);
+        server.getScheduler().performTicks(5);
+
+        assertThat(window(ada)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("A region a player could fill by hand leaves the hold in the window built in code")
+    void anEditableRegionFallsBack() throws Exception {
+        useFile(fileWith("{ slots = [\"0-53\"], editable = true }"));
+
+        holds.open(ada);
+        server.getScheduler().performTicks(5);
+
+        assertThat(window(ada)).isNotNull();
+    }
+
     private static com.uxplima.uxmskyblock.core.application.tradewinds.Ranks ranks(String hocon) throws Exception {
         return com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration.load(
                         org.spongepowered.configurate.hocon.HoconConfigurationLoader.builder()

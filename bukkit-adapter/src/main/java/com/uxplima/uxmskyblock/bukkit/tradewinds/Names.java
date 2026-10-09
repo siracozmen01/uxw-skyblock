@@ -22,4 +22,13 @@ final class Names {
                 ? Placeholder.unparsed(tag, id)
                 : Placeholder.component(tag, messages.renderPlain(player, key));
     }
+
+    /** What the reader's language file writes under {@code group.id}, as plain words, or the id itself. */
+    static String plain(Messages messages, Player player, String group, String id) {
+        String key = "tradewinds." + group + "." + id;
+        return messages.raw(player, key) == null
+                ? id
+                : net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                        .serialize(messages.renderPlain(player, key));
+    }
 }
