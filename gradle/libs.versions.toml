@@ -5,7 +5,7 @@ paper          = "26.2.build.112-stable"
 adventure      = "5.2.0"
 
 # UXPLIMA Toolkit
-uxmlib         = "0.148.0"
+uxmlib         = "0.150.0"                 # com.uxplima.uxmlib on repo.uxplima.com
 
 # Usage statistics, shaded and relocated into the plugin jar
 bstats         = "3.0.2"
@@ -51,19 +51,19 @@ adventure-api     = { module = "net.kyori:adventure-api",                       
 adventure-mini    = { module = "net.kyori:adventure-text-minimessage",           version.ref = "adventure" }
 
 # uxmLib Modules
-uxmlib-bom        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-bom",                  version.ref = "uxmlib" }
-uxmlib-common     = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-common",               version.ref = "uxmlib" }
-uxmlib-item       = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-item",                 version.ref = "uxmlib" }
-uxmlib-gui        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-gui",                  version.ref = "uxmlib" }
-uxmlib-menu       = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-menu",                 version.ref = "uxmlib" }
-uxmlib-command    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-command",              version.ref = "uxmlib" }
-uxmlib-storage    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-storage",              version.ref = "uxmlib" }
-uxmlib-hud        = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-hud",                  version.ref = "uxmlib" }
-uxmlib-bedrock    = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-bedrock",              version.ref = "uxmlib" }
-uxmlib-condition  = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-condition",            version.ref = "uxmlib" }
-uxmlib-integration = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-integration",        version.ref = "uxmlib" }
+uxmlib-bom        = { module = "com.uxplima.uxmlib:uxmlib-bom",                  version.ref = "uxmlib" }
+uxmlib-common     = { module = "com.uxplima.uxmlib:uxmlib-common",               version.ref = "uxmlib" }
+uxmlib-item       = { module = "com.uxplima.uxmlib:uxmlib-item",                 version.ref = "uxmlib" }
+uxmlib-gui        = { module = "com.uxplima.uxmlib:uxmlib-gui",                  version.ref = "uxmlib" }
+uxmlib-menu       = { module = "com.uxplima.uxmlib:uxmlib-menu",                 version.ref = "uxmlib" }
+uxmlib-command    = { module = "com.uxplima.uxmlib:uxmlib-command",              version.ref = "uxmlib" }
+uxmlib-storage    = { module = "com.uxplima.uxmlib:uxmlib-storage",              version.ref = "uxmlib" }
+uxmlib-hud        = { module = "com.uxplima.uxmlib:uxmlib-hud",                  version.ref = "uxmlib" }
+uxmlib-bedrock    = { module = "com.uxplima.uxmlib:uxmlib-bedrock",              version.ref = "uxmlib" }
+uxmlib-condition  = { module = "com.uxplima.uxmlib:uxmlib-condition",            version.ref = "uxmlib" }
+uxmlib-integration = { module = "com.uxplima.uxmlib:uxmlib-integration",        version.ref = "uxmlib" }
 vault-api         = { module = "com.github.MilkBowl:VaultAPI",                          version.ref = "vault-api" }
-uxmlib-redis      = { module = "com.github.UXPLIMA.uxm-lib:uxmlib-redis",                version.ref = "uxmlib" }
+uxmlib-redis      = { module = "com.uxplima.uxmlib:uxmlib-redis",                version.ref = "uxmlib" }
 lettuce-core      = { module = "io.lettuce:lettuce-core",                                version.ref = "lettuce" }
 
 # Utilities & Infrastructure

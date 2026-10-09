@@ -12,7 +12,7 @@ plugins {
 // Local development: when uxm-lib is checked out as a local reference or sibling directory,
 // build against it directly as a composite build so library changes are picked up without a publish step.
 // An explicit property (-Puxm.composite=false) can disable this behavior for clean standalone builds.
-// Without local checkout, published com.github.UXPLIMA.uxm-lib artifacts resolve from JitPack normally.
+// Without local checkout, the published com.uxplima.uxmlib artifacts resolve from repo.uxplima.com.
 val compositeEnabled = providers.gradleProperty("uxm.composite").map { it != "false" }.getOrElse(true)
 val uxmLibDir = if (compositeEnabled) {
     listOf("references/uxm-lib", "../uxm-lib", "../uxmLib", "../../uxm-lib")

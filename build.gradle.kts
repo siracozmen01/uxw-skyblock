@@ -6,6 +6,9 @@ allprojects {
         mavenCentral()
         maven("https://repo.papermc.io/repository/maven-public/")
         maven("https://repo.codemc.org/repository/maven-public/")
+        // uxmLib. JitPack stopped building its tags at 0.149.0, when it could no longer provision a Java 25
+        // toolchain, and the release lands in the Nexus with the same coordinates on every machine.
+        maven("https://repo.uxplima.com/repository/maven-public/")
         maven("https://jitpack.io")
         maven("https://repo.extendedclip.com/releases/")
         maven("https://repo.opencollab.dev/main/")
