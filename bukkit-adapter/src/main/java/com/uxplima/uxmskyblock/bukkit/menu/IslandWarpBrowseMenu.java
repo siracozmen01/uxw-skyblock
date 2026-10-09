@@ -11,6 +11,8 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
@@ -44,8 +46,18 @@ public final class IslandWarpBrowseMenu {
         }
     }
 
+    /** The menu file that draws the directory, and the list it draws the warps from. */
+    static final String FILE = "island-warp-directory";
+
+    static final String WARPS = "skyblock:public-warps";
+
     private final Messages messages;
     private @Nullable BedrockFormService bedrockFormService;
+    private volatile @Nullable SkyblockMenuEngine menuEngine;
+
+    /** What a choice does for each viewer with the directory open, which is the visit their command asked for. */
+    private final Map<java.util.UUID, java.util.function.Consumer<Entry>> visits =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public IslandWarpBrowseMenu(Messages messages) {
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
@@ -53,6 +65,44 @@ public final class IslandWarpBrowseMenu {
 
     public void setBedrockFormService(@Nullable BedrockFormService bedrockFormService) {
         this.bedrockFormService = bedrockFormService;
+    }
+
+    /**
+     * Hands this window the engine that reads {@code menus/island-warp-directory.conf}, and teaches the
+     * engine what choosing a warp does. The window built here stays as the answer to a file that is
+     * missing or will not parse.
+     */
+    public void useMenuEngine(@Nullable SkyblockMenuEngine engine) {
+        this.menuEngine = engine;
+        if (engine == null) {
+            return;
+        }
+        engine.handedList(WARPS);
+        engine.action(
+                "skyblock:warp-visit",
+                ctx -> MenuRow.handle(ctx.context(), Entry.class).ifPresent(entry -> {
+                    java.util.function.Consumer<Entry> visit =
+                            visits.get(ctx.player().getUniqueId());
+                    if (visit != null) {
+                        visit.accept(entry);
+                    }
+                }));
+    }
+
+    /** One row per warp: its icon, its name, its owner and its kind in the reader's language. */
+    List<MenuRow> rows(Player player, List<Entry> entries) {
+        List<MenuRow> rows = new ArrayList<>(entries.size());
+        for (Entry entry : entries) {
+            String category = entry.warp().category().name();
+            rows.add(new MenuRow(
+                    Map.of(
+                            "material", iconOf(entry).name(),
+                            "name", entry.warp().name().value(),
+                            "owner", entry.ownerName(),
+                            "category", messages.named(player, "warp.categories", category, category)),
+                    entry));
+        }
+        return List.copyOf(rows);
     }
 
     /**
@@ -71,6 +121,13 @@ public final class IslandWarpBrowseMenu {
         if (forms != null && forms.isBedrock(player)) {
             openForm(forms, player, entries, onVisit);
             return;
+        }
+        SkyblockMenuEngine engine = this.menuEngine;
+        if (engine != null) {
+            visits.put(player.getUniqueId(), onVisit);
+            if (engine.open(player, FILE, Map.of(), Map.of(WARPS, rows(player, entries)))) {
+                return;
+            }
         }
         buildGui(player, entries, onVisit).open(player);
     }
@@ -99,27 +156,26 @@ public final class IslandWarpBrowseMenu {
         return gui;
     }
 
-    /**
-     * One warp's tile.
-     *
-     * <p>The icon is whatever the warp says it is. A warp naming a material this server does not
-     * have still gets a tile: losing a shop from the directory because its owner picked a block a
-     * later version renamed is worse than showing it under a compass.
-     */
+    /** One warp's tile, in the window built here. */
     private ItemStack tile(SkyblockTiles tiles, Player player, Entry entry) {
-        Material material = Material.matchMaterial(entry.warp().iconMaterial());
-        if (material == null || material.isAir() || !material.isItem()) {
-            material = Material.COMPASS;
-        }
         String category = entry.warp().category().name();
         return tiles.item(
-                material,
+                iconOf(entry),
                 player,
                 "tile:3 @menu.warp_browse.tile owner kind",
-                SkyblockTiles.arguments(Map.of(
-                        "name", entry.warp().name().value(),
-                        "owner", entry.ownerName(),
-                        "category", messages.named(player, "warp.categories", category, category))));
+                Placeholder.unparsed("entry_name", entry.warp().name().value()),
+                Placeholder.unparsed("entry_owner", entry.ownerName()),
+                Placeholder.unparsed("entry_category", messages.named(player, "warp.categories", category, category)));
+    }
+
+    /**
+     * The icon the warp says it is. A warp naming a material this server does not have still gets a
+     * tile: losing a shop from the directory because its owner picked a block a later version renamed
+     * is worse than showing it under a compass.
+     */
+    private static Material iconOf(Entry entry) {
+        Material material = Material.matchMaterial(entry.warp().iconMaterial());
+        return material == null || material.isAir() || !material.isItem() ? Material.COMPASS : material;
     }
 
     /**

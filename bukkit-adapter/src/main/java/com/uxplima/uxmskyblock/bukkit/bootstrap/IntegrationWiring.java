@@ -1,7 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import org.bukkit.plugin.java.JavaPlugin;
@@ -170,17 +169,7 @@ public final class IntegrationWiring implements AutoCloseable {
         this.controlMenu.useMenuEngine(this.menuEngine);
         this.controlMenu.useVaultPages(gameplay.vaultService()::getMaxAllowedPages);
         this.controlMenu.useUpgradeStanding(gameplay.upgradeService()::standing);
-        // A window built in code goes back to the island menu, the way a menu file's back button does.
-        if (gameplay.shopMenu() != null) {
-            gameplay.shopMenu().useWayBack(this.controlMenu::open);
-            gameplay.shopMenu().useMenuEngine(this.menuEngine);
-        }
-        if (gameplay.boosterMenu() != null) {
-            gameplay.boosterMenu().useWayBack(wayBackTo("island-boosters"));
-        }
-        if (gameplay.missionsMenu() != null) {
-            gameplay.missionsMenu().useWayBack(wayBackTo("island-missions"));
-        }
+        WindowFiles.connect(gameplay, this.menuEngine, this.controlMenu);
 
         this.placeholderExpansion = new SkyblockPlaceholderExpansion(
                 persistence.islandStoragePort(),
@@ -400,17 +389,6 @@ public final class IntegrationWiring implements AutoCloseable {
     /** The menu engine, so a feature can register the verbs its own menu files name. */
     public SkyblockMenuEngine menuEngine() {
         return menuEngine;
-    }
-
-    /** Opens the menu file a code-built window came from, or the island menu when that file is gone. */
-    private java.util.function.Consumer<org.bukkit.entity.Player> wayBackTo(String menu) {
-        SkyblockMenuEngine engine = this.menuEngine;
-        IslandControlMenu island = this.controlMenu;
-        return viewer -> {
-            if (!engine.open(viewer, menu, Map.of())) {
-                island.open(viewer);
-            }
-        };
     }
 
     public IslandControlMenu controlMenu() {
