@@ -3,18 +3,23 @@ package com.uxplima.uxmskyblock.bukkit.menu;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.gui.style.Lore;
 import com.uxplima.uxmlib.gui.style.MenuTiles;
 import com.uxplima.uxmlib.gui.style.Tiles;
+import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmlib.text.style.Theme;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 
@@ -84,6 +89,43 @@ public final class SkyblockTiles {
             lore.action(words(viewer, action, resolvers));
         }
         return Tiles.titled(theme, words(viewer, spec.key + TITLE, resolvers), lore.build(), spec.colour);
+    }
+
+    /**
+     * A tile as an item a window shows: a blank name, the whole tooltip in the lore, and none of the lines the
+     * client would add under it, because a tile is a button and not the item it is drawn as.
+     */
+    public ItemStack item(Material material, Player viewer, String written, TagResolver... resolvers) {
+        Objects.requireNonNull(material, "material must not be null");
+        return ItemBuilder.of(material)
+                .name(Tiles.blankName())
+                .lore(List.of(lore(viewer, written, resolvers)))
+                .vanillaTooltip(false)
+                .build();
+    }
+
+    /** A button that only moves the player about: one line and no lore, such as the way back. */
+    public ItemStack button(Material material, Player viewer, String key, TagResolver... resolvers) {
+        Objects.requireNonNull(material, "material must not be null");
+        return ItemBuilder.of(material)
+                .name(words(viewer, key, resolvers))
+                .vanillaTooltip(false)
+                .build();
+    }
+
+    /** The pane behind every free slot: a blank name, no lore, and nothing to say. */
+    public static ItemStack filler() {
+        return ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
+                .name(Tiles.blankName())
+                .vanillaTooltip(false)
+                .build();
+    }
+
+    /** The values a window was opened with, each one answering {@code <argument_<name>>} as plain text. */
+    public static TagResolver[] arguments(Map<String, String> values) {
+        return values.entrySet().stream()
+                .map(entry -> (TagResolver) Placeholder.unparsed("argument_" + entry.getKey(), entry.getValue()))
+                .toArray(TagResolver[]::new);
     }
 
     private Component words(Player viewer, String path, TagResolver... resolvers) {

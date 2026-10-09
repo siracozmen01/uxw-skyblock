@@ -127,10 +127,11 @@ class IslandWarpBrowseMenuTest {
     void theTileSaysWhoseWarpItIs() {
         ItemStack tile = tileAt(menu.buildGui(player, twoWarps(), entry -> {}), 0);
 
-        String drawn = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
-                .serialize(java.util.Objects.requireNonNull(tile.getItemMeta().displayName()));
         List<net.kyori.adventure.text.Component> lore = tile.getItemMeta().lore();
         assertThat(lore).isNotNull();
+        // A tile's name is blank: its title is the first line of the lore.
+        String drawn = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(lore.get(0));
         String story = String.join(
                 " ",
                 lore.stream()

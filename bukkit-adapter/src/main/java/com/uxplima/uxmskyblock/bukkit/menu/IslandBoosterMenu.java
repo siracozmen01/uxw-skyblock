@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -19,7 +20,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.config.BoosterConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
@@ -49,6 +50,8 @@ public final class IslandBoosterMenu {
     private final @Nullable SchedulerPort schedulerPort;
     private final Messages messages;
     private @Nullable BedrockFormService bedrockFormService;
+
+    private volatile @Nullable Consumer<Player> wayBack;
 
     public IslandBoosterMenu(
             IslandStoragePort islandStoragePort,
@@ -186,57 +189,55 @@ public final class IslandBoosterMenu {
         forms.openChoiceForm(player, "menu.booster.title", "menu.booster.form_body", choices);
     }
 
+    /**
+     * Hands this window the way back to the menu that opened it, so the bottom row reads "Back" rather
+     * than leaving Escape as the only way out. Without one the window has no back button at all.
+     */
+    public void useWayBack(@Nullable Consumer<Player> wayBack) {
+        this.wayBack = wayBack;
+    }
+
     public SimpleGui buildGui(Player player, IslandBoosterService.BoosterOverview overview, Instant now) {
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "menu.booster.title"))
+                .title(MenuTitles.centre(messages.renderPlain(player, "menu.booster.title")))
                 .rows(4)
                 .build();
+        gui.filler().fill(GuiItem.display(SkyblockTiles.filler()));
 
-        // Border decoration
-        ItemStack filler = ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
-                .name(Component.empty())
-                .build();
-        gui.filler().fillBorder(GuiItem.display(filler));
-
-        // Center Overview Header (Slot 4)
-        boolean isPaused = overview.paused();
-        List<IslandBooster> allActive = overview.active();
+        SkyblockTiles tiles = new SkyblockTiles(messages);
         String idleKey = configuration.pauseWhenEmpty()
-                ? (isPaused ? "menu.booster.idle_paused" : "menu.booster.idle_online")
+                ? (overview.paused() ? "menu.booster.idle_paused" : "menu.booster.idle_online")
                 : "menu.booster.idle_disabled";
-        ItemStack header = ItemBuilder.of(Material.NETHER_STAR)
-                .name(messages.renderPlain(player, "menu.booster.overview_name"))
-                .lore(List.of(
-                        messages.renderPlain(
-                                player,
-                                "menu.booster.overview_active",
-                                Placeholder.unparsed("count", Integer.toString(allActive.size()))),
-                        messages.renderPlain(
-                                player,
-                                "menu.booster.overview_idle",
-                                Placeholder.component("state", messages.renderPlain(player, idleKey))),
-                        messages.renderPlain(player, "menu.booster.overview_note")))
-                .build();
-        gui.set(4, GuiItem.display(header));
+        gui.set(
+                4,
+                GuiItem.display(tiles.item(
+                        Material.NETHER_STAR,
+                        player,
+                        "tile:event @menu.booster.overview active idle",
+                        Placeholder.unparsed(
+                                "argument_count",
+                                Integer.toString(overview.active().size())),
+                        Placeholder.component("argument_state", messages.renderPlain(player, idleKey)))));
 
-        // Category Cards
-        setupCategoryCard(player, gui, 10, BoosterCategory.SPAWNER_RATE, Material.SPAWNER, overview, now);
-        setupCategoryCard(player, gui, 12, BoosterCategory.CROP_GROWTH, Material.WHEAT, overview, now);
-        setupCategoryCard(player, gui, 14, BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE, overview, now);
-        setupCategoryCard(player, gui, 16, BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE, overview, now);
-        setupCategoryCard(player, gui, 21, BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK, overview, now);
-        setupCategoryCard(player, gui, 23, BoosterCategory.MISSION_REWARDS, Material.EMERALD, overview, now);
+        setupCategoryCard(tiles, player, gui, 10, BoosterCategory.SPAWNER_RATE, Material.SPAWNER, overview, now);
+        setupCategoryCard(tiles, player, gui, 12, BoosterCategory.CROP_GROWTH, Material.WHEAT, overview, now);
+        setupCategoryCard(tiles, player, gui, 14, BoosterCategory.ORE_GENERATOR, Material.DIAMOND_ORE, overview, now);
+        setupCategoryCard(tiles, player, gui, 16, BoosterCategory.MOB_EXP, Material.EXPERIENCE_BOTTLE, overview, now);
+        setupCategoryCard(tiles, player, gui, 21, BoosterCategory.ISLAND_WORTH, Material.GOLD_BLOCK, overview, now);
+        setupCategoryCard(tiles, player, gui, 23, BoosterCategory.MISSION_REWARDS, Material.EMERALD, overview, now);
 
-        // Close button (Slot 31)
-        ItemStack closeItem = ItemBuilder.of(Material.BARRIER)
-                .name(messages.renderPlain(player, "menu.booster.close"))
-                .build();
-        gui.set(31, GuiItem.button(closeItem, event -> player.closeInventory()));
-
+        Consumer<Player> back = this.wayBack;
+        if (back != null) {
+            gui.set(31, GuiItem.button(tiles.button(Material.FEATHER, player, "menu.button.back"), event -> {
+                event.setCancelled(true);
+                back.accept(player);
+            }));
+        }
         return gui;
     }
 
     private void setupCategoryCard(
+            SkyblockTiles tiles,
             Player player,
             SimpleGui gui,
             int slot,
@@ -246,21 +247,16 @@ public final class IslandBoosterMenu {
             Instant now) {
         CategoryBoosterPolicy policy = configuration.policy(category);
         List<IslandBooster> active = overview.activeIn(category);
-        double effectiveMultiplier = overview.multiplierOf(category);
-
         boolean hasActive = !active.isEmpty();
         boolean isPaused = hasActive && active.stream().anyMatch(IslandBooster::isPaused);
 
-        Duration maxDuration = policy.maxDuration();
         long totalRemainingSec = 0;
         for (IslandBooster b : active) {
             totalRemainingSec += b.effectiveRemainingSeconds(now);
         }
-        Duration remaining = Duration.ofSeconds(totalRemainingSec);
-
+        Duration maxDuration = policy.maxDuration();
         double ratio =
                 (maxDuration.toSeconds() > 0) ? (double) totalRemainingSec / (double) maxDuration.toSeconds() : 0.0;
-        Component progressBar = renderProgressBar(player, ratio, 10);
 
         String statusKey;
         if (!policy.enabled()) {
@@ -273,50 +269,30 @@ public final class IslandBoosterMenu {
             statusKey = "menu.booster.status_inactive";
         }
 
-        ItemStack card = ItemBuilder.of(icon)
-                .name(messages.renderPlain(
-                        player,
-                        "menu.booster.card_name",
-                        Placeholder.unparsed(
-                                "category",
-                                messages.named(player, "booster.categories", category.name(), category.displayName()))))
-                .lore(List.of(
-                        messages.renderPlain(
+        ItemStack card = tiles.item(
+                icon,
+                player,
+                "tile:event @menu.booster.card status multiplier remaining progress stacking longest",
+                Placeholder.unparsed(
+                        "argument_category",
+                        messages.named(player, "booster.categories", category.name(), category.displayName())),
+                Placeholder.component("argument_status", messages.renderPlain(player, statusKey)),
+                Placeholder.unparsed(
+                        "argument_multiplier",
+                        String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(category))),
+                Placeholder.unparsed(
+                        "argument_remaining", DurationText.of(messages, player, Duration.ofSeconds(totalRemainingSec))),
+                Placeholder.component("argument_bar", renderProgressBar(player, ratio, 10)),
+                Placeholder.unparsed(
+                        "argument_mode",
+                        messages.named(
                                 player,
-                                "menu.booster.card_status",
-                                Placeholder.component("status", messages.renderPlain(player, statusKey))),
-                        messages.renderPlain(
-                                player,
-                                "menu.booster.card_multiplier",
-                                Placeholder.unparsed(
-                                        "multiplier",
-                                        String.format(java.util.Locale.ROOT, "%.2f", effectiveMultiplier))),
-                        messages.renderPlain(
-                                player,
-                                "menu.booster.card_remaining",
-                                Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining))),
-                        messages.renderPlain(
-                                player, "menu.booster.card_progress", Placeholder.component("bar", progressBar)),
-                        Component.empty(),
-                        messages.renderPlain(
-                                player,
-                                "menu.booster.card_stacking",
-                                Placeholder.unparsed(
-                                        "mode",
-                                        messages.named(
-                                                player,
-                                                "booster.stack_modes",
-                                                policy.stackMode().name(),
-                                                policy.stackMode().name())),
-                                Placeholder.unparsed(
-                                        "cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier()))),
-                        messages.renderPlain(
-                                player,
-                                "menu.booster.card_max_duration",
-                                Placeholder.unparsed(
-                                        "duration", DurationText.of(messages, player, policy.maxDuration())))))
-                .build();
-
+                                "booster.stack_modes",
+                                policy.stackMode().name(),
+                                policy.stackMode().name())),
+                Placeholder.unparsed(
+                        "argument_cap", String.format(java.util.Locale.ROOT, "%.2f", policy.maxMultiplier())),
+                Placeholder.unparsed("argument_duration", DurationText.of(messages, player, policy.maxDuration())));
         gui.set(slot, GuiItem.display(card));
     }
 

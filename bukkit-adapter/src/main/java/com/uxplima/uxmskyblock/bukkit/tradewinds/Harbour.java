@@ -12,22 +12,23 @@ import java.util.logging.Logger;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.config.TradeWindsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.i18n.MoneyText;
+import com.uxplima.uxmskyblock.bukkit.menu.SkyblockTiles;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.tradewinds.Port;
 import com.uxplima.uxmskyblock.core.application.tradewinds.PortMarket;
@@ -168,19 +169,24 @@ public final class Harbour {
         }
         int rows = Math.min(6, Math.max(1, (config.ports().size() + 8) / 9));
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "tradewinds.sail.title"))
+                .title(MenuTitles.centre(messages.renderPlain(player, "tradewinds.sail.title")))
                 .rows(rows)
                 .build();
+        SkyblockTiles tiles = new SkyblockTiles(messages);
         int slot = 0;
         for (Port port : config.ports()) {
             if (slot >= rows * 9) {
                 break;
             }
-            TagResolver[] tags = portTags(player, port, where);
-            ItemBuilder icon = ItemBuilder.of(material(config.icon(port)))
-                    .name(plain(messages.renderPlain(player, "tradewinds.sail.entry", tags)))
-                    .lore(List.of(plain(messages.renderPlain(player, state(port, where), tags))));
-            gui.set(slot++, GuiItem.button(icon.build(), event -> {
+            String state = state(port, where);
+            TagResolver[] tags = withTag(
+                    portTags(player, port, where),
+                    Placeholder.component(
+                            "argument_where", messages.renderPlain(player, state, portTags(player, port, where))));
+            // The port the vessel lies in is no voyage, so its tile says nothing about setting sail.
+            String line = "tile:3 @tradewinds.sail.port voyage state:where"
+                    + ("tradewinds.sail.here".equals(state) ? " -action" : "");
+            gui.set(slot++, GuiItem.button(tiles.item(material(config.icon(port)), player, line, tags), event -> {
                 event.setCancelled(true);
                 player.closeInventory();
                 setSail(player, vessel, port);
@@ -230,27 +236,37 @@ public final class Harbour {
         }
         int rows = Math.min(6, Math.max(1, (stall.offers().size() + 8) / 9));
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "tradewinds.market.title", name(player, stall.port())))
+                .title(MenuTitles.centre(
+                        messages.renderPlain(player, "tradewinds.market.title", name(player, stall.port()))))
                 .rows(rows)
                 .build();
+        SkyblockTiles tiles = new SkyblockTiles(messages);
         int slot = 0;
         for (Offer offer : stall.offers()) {
             if (slot >= rows * 9) {
                 break;
             }
-            TagResolver[] tags = offerTags(offer);
-            List<Component> lore = new ArrayList<>();
-            if (offer.good().sold()) {
-                lore.add(plain(messages.renderPlain(player, "tradewinds.market.buy", tags)));
+            // A port that only sells, or only buys, draws the one price and the one click it has.
+            boolean sold = offer.good().sold();
+            boolean bought = offer.good().bought();
+            StringBuilder line = new StringBuilder("tile:money @tradewinds.market.good");
+            if (sold) {
+                line.append(" buy");
             }
-            if (offer.good().bought()) {
-                lore.add(plain(messages.renderPlain(player, "tradewinds.market.sell", tags)));
+            if (bought) {
+                line.append(" sell");
             }
-            lore.add(plain(messages.renderPlain(player, "tradewinds.market.held", tags)));
-            ItemBuilder icon = ItemBuilder.of(material(offer.good().item()))
-                    .name(plain(messages.renderPlain(player, "tradewinds.market.good", tags)))
-                    .lore(lore);
-            gui.set(slot++, GuiItem.button(icon.build(), event -> {
+            line.append(" held");
+            if (sold != bought) {
+                line.append(
+                        sold
+                                ? " action:@tradewinds.market.good.buy_only"
+                                : " action:@tradewinds.market.good.sell_only");
+            } else if (!sold) {
+                line.append(" -action");
+            }
+            ItemStack icon = tiles.item(material(offer.good().item()), player, line.toString(), offerTags(offer));
+            gui.set(slot++, GuiItem.button(icon, event -> {
                 event.setCancelled(true);
                 boolean buying = event.isLeftClick();
                 if (buying ? offer.good().sold() : offer.good().bought()) {
@@ -259,6 +275,12 @@ public final class Harbour {
             }));
         }
         gui.open(player);
+    }
+
+    private static TagResolver[] withTag(TagResolver[] tags, TagResolver more) {
+        TagResolver[] all = java.util.Arrays.copyOf(tags, tags.length + 1);
+        all[tags.length] = more;
+        return all;
     }
 
     void trade(Player player, IslandId vessel, Port port, Port.Good good, boolean buying) {
@@ -376,10 +398,6 @@ public final class Harbour {
     private static Material material(String name) {
         Material material = Material.matchMaterial(name);
         return material == null || material.isAir() ? Material.OAK_BOAT : material;
-    }
-
-    private static Component plain(Component line) {
-        return line.decoration(TextDecoration.ITALIC, false);
     }
 
     private static String legacy(Component line) {

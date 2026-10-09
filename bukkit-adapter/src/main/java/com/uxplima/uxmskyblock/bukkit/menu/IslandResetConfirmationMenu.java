@@ -1,20 +1,20 @@
 package com.uxplima.uxmskyblock.bukkit.menu;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 
-import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -107,8 +107,8 @@ public final class IslandResetConfirmationMenu {
                             legacy(messages.renderPlain(player, "menu.reset.title")),
                             legacy(messages.renderPlain(
                                     player, "menu.reset.form_body", Placeholder.unparsed("code", verificationCode))),
-                            legacy(messages.renderPlain(player, "menu.reset.confirm_name")),
-                            legacy(messages.renderPlain(player, "menu.reset.cancel_name")),
+                            legacy(messages.renderPlain(player, "menu.reset.confirm.title")),
+                            legacy(messages.renderPlain(player, "menu.reset.cancel.title")),
                             onConfirm,
                             () -> {
                                 recycleService.cancelResetChallenge(profileId);
@@ -130,47 +130,25 @@ public final class IslandResetConfirmationMenu {
     public SimpleGui buildGui(
             Player player, ProfileId profileId, IslandId islandId, String verificationCode, Runnable onConfirm) {
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "menu.reset.title"))
+                .title(MenuTitles.centre(messages.renderPlain(player, "menu.reset.title")))
                 .rows(3)
                 .build();
+        gui.filler().fill(GuiItem.display(SkyblockTiles.filler()));
 
-        // Filler
-        ItemStack filler = ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
-                .name(Component.space())
-                .build();
-        gui.filler().fill(GuiItem.display(filler));
-
-        // Info icon in center
-        ItemStack infoItem = ItemBuilder.of(Material.BARRIER)
-                .name(messages.renderPlain(player, "menu.reset.info_name"))
-                .lore(messages.renderAll(
-                        player, "menu.reset.info_lore", Placeholder.unparsed("code", verificationCode)))
-                .build();
-        gui.set(13, GuiItem.display(infoItem));
-
-        // Confirm button
-        ItemStack confirmItem = ItemBuilder.of(Material.RED_CONCRETE)
-                .name(messages.renderPlain(player, "menu.reset.confirm_name"))
-                .lore(messages.renderAll(player, "menu.reset.confirm_lore"))
-                .build();
-
-        gui.set(11, GuiItem.button(confirmItem, event -> {
+        SkyblockTiles tiles = new SkyblockTiles(messages);
+        TagResolver[] code = SkyblockTiles.arguments(Map.of("code", verificationCode));
+        gui.set(13, GuiItem.display(tiles.item(Material.BARRIER, player, "tile:warn @menu.reset.info code", code)));
+        gui.set(11, GuiItem.button(tiles.item(Material.RED_CONCRETE, player, "tile:bad @menu.reset.confirm"), event -> {
             player.closeInventory();
             onConfirm.run();
         }));
-
-        // Cancel button
-        ItemStack cancelItem = ItemBuilder.of(Material.GREEN_CONCRETE)
-                .name(messages.renderPlain(player, "menu.reset.cancel_name"))
-                .lore(messages.renderAll(player, "menu.reset.cancel_lore"))
-                .build();
-
-        gui.set(15, GuiItem.button(cancelItem, event -> {
-            player.closeInventory();
-            recycleService.cancelResetChallenge(profileId);
-            messages.send(player, "menu.reset.cancelled");
-        }));
-
+        gui.set(
+                15,
+                GuiItem.button(tiles.item(Material.GREEN_CONCRETE, player, "tile:good @menu.reset.cancel"), event -> {
+                    player.closeInventory();
+                    recycleService.cancelResetChallenge(profileId);
+                    messages.send(player, "menu.reset.cancelled");
+                }));
         return gui;
     }
 }

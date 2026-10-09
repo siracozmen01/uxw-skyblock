@@ -11,14 +11,10 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -83,33 +79,23 @@ public final class IslandWarpBrowseMenu {
     public SimpleGui buildGui(Player player, List<Entry> entries, java.util.function.Consumer<Entry> onVisit) {
         int rows = Math.min(6, Math.max(2, (entries.size() / 9) + 2));
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "menu.warp_browse.title"))
+                .title(MenuTitles.centre(messages.renderPlain(player, "menu.warp_browse.title")))
                 .rows(rows)
                 .build();
+        gui.filler().fillRow(rows, GuiItem.display(SkyblockTiles.filler()));
 
+        SkyblockTiles tiles = new SkyblockTiles(messages);
         int slot = 0;
         int lastRowStart = (rows - 1) * 9;
         for (Entry entry : entries) {
             if (slot >= lastRowStart) {
                 break;
             }
-            gui.set(slot++, GuiItem.button(tile(player, entry), event -> {
+            gui.set(slot++, GuiItem.button(tile(tiles, player, entry), event -> {
                 event.setCancelled(true);
                 onVisit.accept(entry);
             }));
         }
-
-        gui.set(
-                lastRowStart + 4,
-                GuiItem.button(
-                        ItemBuilder.of(Material.BARRIER)
-                                .name(messages.renderPlain(player, "menu.warp_browse.close")
-                                        .decoration(TextDecoration.ITALIC, false))
-                                .build(),
-                        event -> {
-                            event.setCancelled(true);
-                            player.closeInventory();
-                        }));
         return gui;
     }
 
@@ -120,36 +106,20 @@ public final class IslandWarpBrowseMenu {
      * have still gets a tile: losing a shop from the directory because its owner picked a block a
      * later version renamed is worse than showing it under a compass.
      */
-    private ItemStack tile(Player player, Entry entry) {
+    private ItemStack tile(SkyblockTiles tiles, Player player, Entry entry) {
         Material material = Material.matchMaterial(entry.warp().iconMaterial());
         if (material == null || material.isAir() || !material.isItem()) {
             material = Material.COMPASS;
         }
-
-        List<Component> lore = new ArrayList<>();
-        lore.add(messages.renderPlain(
-                player, "menu.warp_browse.tile_owner", Placeholder.unparsed("owner", entry.ownerName())));
-        lore.add(messages.renderPlain(
+        String category = entry.warp().category().name();
+        return tiles.item(
+                material,
                 player,
-                "menu.warp_browse.tile_category",
-                Placeholder.unparsed(
-                        "category",
-                        messages.named(
-                                player,
-                                "warp.categories",
-                                entry.warp().category().name(),
-                                entry.warp().category().name()))));
-        lore.add(Component.empty());
-        lore.add(messages.renderPlain(player, "menu.warp_browse.tile_visit"));
-
-        return ItemBuilder.of(material)
-                .name(messages.renderPlain(
-                                player,
-                                "menu.warp_browse.tile_name",
-                                Placeholder.unparsed("name", entry.warp().name().value()))
-                        .decoration(TextDecoration.ITALIC, false))
-                .lore(lore)
-                .build();
+                "tile:3 @menu.warp_browse.tile owner kind",
+                SkyblockTiles.arguments(Map.of(
+                        "name", entry.warp().name().value(),
+                        "owner", entry.ownerName(),
+                        "category", messages.named(player, "warp.categories", category, category))));
     }
 
     /**

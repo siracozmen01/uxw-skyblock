@@ -15,6 +15,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.config.TradeConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 
@@ -75,7 +76,8 @@ final class TradeWindow {
         Inventory window = Bukkit.createInventory(
                 new View(trade, viewer.getUniqueId()),
                 ROWS * 9,
-                messages.renderPlain(viewer, "trade.window.title", Placeholder.unparsed("player", otherName)));
+                MenuTitles.centre(
+                        messages.renderPlain(viewer, "trade.window.title", Placeholder.unparsed("player", otherName))));
         draw(viewer, window, trade);
         viewer.openInventory(window);
     }

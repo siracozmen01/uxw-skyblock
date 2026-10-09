@@ -198,7 +198,25 @@ class TheWarpedCompassPointsAcrossTest extends MockBukkitHarness {
         assertThat(PlainTextComponentSerializer.plainText()
                         .serialize(result.getValue().getItemMeta().itemName()))
                 .isEqualTo("Warped Compass");
-        assertThat(result.getValue().getItemMeta().lore()).hasSize(2);
+        assertThat(PlainTextComponentSerializer.plainText()
+                        .serialize(java.util.Objects.requireNonNull(
+                                result.getValue().getItemMeta().displayName())))
+                .describedAs("an item in the hand is drawn as a tile: a blank name, the title in the lore")
+                .isBlank();
+        assertThat(PlainTextComponentSerializer.plainText()
+                        .serialize(java.util.Objects.requireNonNull(
+                                        result.getValue().getItemMeta().lore())
+                                .get(0)))
+                .contains("Warped Compass");
+        assertThat(String.join(
+                        " ",
+                        java.util.Objects.requireNonNull(
+                                        result.getValue().getItemMeta().lore())
+                                .stream()
+                                .map(PlainTextComponentSerializer.plainText()::serialize)
+                                .toList()))
+                .describedAs("the description the catalogue writes is on the compass")
+                .contains("Points at whoever stands");
         assertThat(WarpedCompass.isWarped(result.getValue())).isTrue();
     }
 

@@ -1,5 +1,6 @@
 package com.uxplima.uxmskyblock.bukkit.menu;
 
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -16,13 +17,12 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -319,106 +319,55 @@ public final class IslandControlMenu {
             Map<UpgradeId, Integer> upgrades,
             Optional<IslandLocation> optLoc) {
 
-        Component title = messages.renderPlain(player, "menu.control.title");
-        SimpleGui gui = Guis.gui().title(title).rows(4).build();
-
-        // Fill border
-        ItemStack border = ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
-                .name(Component.space())
+        SimpleGui gui = Guis.gui()
+                .title(MenuTitles.centre(messages.renderPlain(player, "menu.control.title")))
+                .rows(4)
                 .build();
-        gui.filler().fillBorder(GuiItem.display(border));
+        gui.filler().fill(GuiItem.display(SkyblockTiles.filler()));
 
-        // Slot 10: Overview
-        IslandBounds bounds = island.bounds();
-        ItemStack overviewItem = ItemBuilder.of(Material.GRASS_BLOCK)
-                .name(messages.renderPlain(player, "menu.control.overview_name"))
-                .lore(messages.renderAll(
+        Map<String, String> values = new HashMap<>(liveValues(island, bank, upgrades, 1));
+        values.put("owner", island.ownerPlayerUuid().value().toString().substring(0, 8));
+        TagResolver[] live = SkyblockTiles.arguments(values);
+        SkyblockTiles tiles = new SkyblockTiles(messages);
+
+        gui.set(
+                10,
+                GuiItem.display(tiles.item(
+                        Material.GRASS_BLOCK,
                         player,
-                        "menu.control.overview_lore",
-                        Placeholder.unparsed(
-                                "owner",
-                                island.ownerPlayerUuid().value().toString().substring(0, 8)),
-                        Placeholder.unparsed(
-                                "members", String.valueOf(island.members().size())),
-                        Placeholder.unparsed("x", String.valueOf(bounds.centerX())),
-                        Placeholder.unparsed("z", String.valueOf(bounds.centerZ())),
-                        Placeholder.unparsed("radius", String.valueOf(bounds.radius()))))
-                .build();
-        gui.set(10, GuiItem.display(overviewItem));
-
-        // Slot 11: Bank
-        long minorBalance = (bank != null) ? bank.primaryBalanceMinorUnits() : 0L;
-        long crystals = (bank != null) ? bank.crystalsBalance() : 0L;
-        ItemStack bankItem = ItemBuilder.of(Material.GOLD_INGOT)
-                .name(messages.renderPlain(player, "menu.control.bank_name"))
-                .lore(messages.renderAll(
+                        "tile:4 @menu.control.overview owner members centre radius",
+                        live)));
+        gui.set(
+                11,
+                hint(
+                        tiles.item(Material.GOLD_INGOT, player, "tile:money @menu.control.bank balance crystals", live),
                         player,
-                        "menu.control.bank_lore",
-                        Placeholder.unparsed(
-                                "balance", String.format(Locale.US, "%.2f", (double) minorBalance / 100.0)),
-                        Placeholder.unparsed("crystals", String.valueOf(crystals))))
-                .build();
-        gui.set(11, GuiItem.button(bankItem, e -> {
-            player.closeInventory();
-            messages.send(player, "menu.control.bank_hint");
-        }));
-
-        // Slot 12: Upgrades
-        int sizeTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SIZE, 0) : 0;
-        int spawnerTier = (upgrades != null) ? upgrades.getOrDefault(UpgradeId.SPAWNER_RATES, 0) : 0;
-        ItemStack upgradeItem = ItemBuilder.of(Material.NETHER_STAR)
-                .name(messages.renderPlain(player, "menu.control.upgrades_name"))
-                .lore(messages.renderAll(
+                        "menu.control.bank_hint"));
+        gui.set(
+                12,
+                hint(
+                        tiles.item(Material.NETHER_STAR, player, "tile:6 @menu.control.upgrades size spawner", live),
                         player,
-                        "menu.control.upgrades_lore",
-                        Placeholder.unparsed("size", String.valueOf(sizeTier)),
-                        Placeholder.unparsed("spawner", String.valueOf(spawnerTier))))
-                .build();
-        gui.set(12, GuiItem.button(upgradeItem, e -> {
-            player.closeInventory();
-            messages.send(player, "menu.control.upgrades_hint");
-        }));
-
-        // Slot 13: Biome
-        ItemStack biomeItem = ItemBuilder.of(Material.OAK_SAPLING)
-                .name(messages.renderPlain(player, "menu.control.biome_name"))
-                .lore(messages.renderAll(player, "menu.control.biome_lore"))
-                .build();
-        gui.set(13, GuiItem.button(biomeItem, e -> {
-            player.closeInventory();
-            messages.send(player, "menu.control.biome_hint");
-        }));
-
-        // Slot 14: Members
-        ItemStack membersItem = ItemBuilder.of(Material.PLAYER_HEAD)
-                .name(messages.renderPlain(player, "menu.control.members_name"))
-                .lore(messages.renderAll(
+                        "menu.control.upgrades_hint"));
+        gui.set(
+                13,
+                hint(
+                        tiles.item(Material.OAK_SAPLING, player, "tile:3 @menu.control.biome", live),
                         player,
-                        "menu.control.members_lore",
-                        Placeholder.unparsed(
-                                "members", String.valueOf(island.members().size()))))
-                .build();
-        gui.set(14, GuiItem.button(membersItem, e -> {
-            player.closeInventory();
-            messages.send(player, "menu.control.members_hint");
-        }));
-
-        // Slot 15: Flags & Settings
-        ItemStack settingsItem = ItemBuilder.of(Material.REDSTONE_TORCH)
-                .name(messages.renderPlain(player, "menu.control.settings_name"))
-                .lore(messages.renderAll(player, "menu.control.settings_lore"))
-                .build();
-        gui.set(15, GuiItem.button(settingsItem, e -> {
-            player.closeInventory();
-            messages.send(player, "menu.control.settings_hint");
-        }));
-
-        // Slot 16: Teleport Home
-        ItemStack homeItem = ItemBuilder.of(Material.COMPASS)
-                .name(messages.renderPlain(player, "menu.control.home_name"))
-                .lore(messages.renderAll(player, "menu.control.home_lore"))
-                .build();
-        gui.set(16, GuiItem.button(homeItem, e -> {
+                        "menu.control.biome_hint"));
+        gui.set(
+                14,
+                hint(
+                        tiles.item(Material.PLAYER_HEAD, player, "tile:1 @menu.control.members count", live),
+                        player,
+                        "menu.control.members_hint"));
+        gui.set(
+                15,
+                hint(
+                        tiles.item(Material.REDSTONE_TORCH, player, "tile:2 @menu.control.settings", live),
+                        player,
+                        "menu.control.settings_hint"));
+        gui.set(16, GuiItem.button(tiles.item(Material.COMPASS, player, "tile:4 @menu.control.home", live), e -> {
             player.closeInventory();
             if (optLoc.isPresent()) {
                 IslandLocation loc = optLoc.get();
@@ -435,13 +384,14 @@ public final class IslandControlMenu {
                 messages.send(player, "menu.control.home_missing");
             }
         }));
-
-        // Slot 31: Close Menu
-        ItemStack closeItem = ItemBuilder.of(Material.BARRIER)
-                .name(messages.renderPlain(player, "menu.control.close"))
-                .build();
-        gui.set(31, GuiItem.button(closeItem, e -> player.closeInventory()));
-
         return gui;
+    }
+
+    /** A tile whose click closes the window and names, in chat, the command that does the job. */
+    private GuiItem hint(ItemStack tile, Player player, String key) {
+        return GuiItem.button(tile, e -> {
+            player.closeInventory();
+            messages.send(player, key);
+        });
     }
 }

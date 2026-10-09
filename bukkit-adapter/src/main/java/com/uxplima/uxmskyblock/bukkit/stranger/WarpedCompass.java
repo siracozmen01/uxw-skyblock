@@ -27,8 +27,13 @@ import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import net.kyori.adventure.text.Component;
+
+import com.uxplima.uxmlib.gui.style.Tiles;
+import com.uxplima.uxmlib.item.ItemBuilder;
 import com.uxplima.uxmskyblock.bukkit.config.StrangerRealmsConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.menu.SkyblockTiles;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -115,12 +120,13 @@ public final class WarpedCompass implements Listener {
 
     /** The compass with its name and lines in the player's language. */
     ItemStack named(ItemStack compass, Player maker) {
-        ItemStack named = compass.clone();
-        named.editMeta(meta -> {
-            meta.itemName(messages.renderPlain(maker, "stranger.compass.name"));
-            meta.lore(messages.renderAll(maker, "stranger.compass.lore"));
-        });
-        return named;
+        // The name the item keeps, read where a name is shown outside the tooltip, such as an anvil.
+        Component title = messages.renderPlain(maker, "stranger.compass.title");
+        return ItemBuilder.from(compass)
+                .editMeta(meta -> meta.itemName(title))
+                .name(Tiles.blankName())
+                .lore(List.of(new SkyblockTiles(messages).lore(maker, "tile:event @stranger.compass")))
+                .build();
     }
 
     /** Starts the beat. Closing what it returns stops it. */

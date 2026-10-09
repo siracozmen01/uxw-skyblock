@@ -76,6 +76,14 @@ class IslandResetConfirmationMenuTest extends MockBukkitHarness {
                         .item()
                         .getType())
                 .isEqualTo(Material.BARRIER);
+        assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(13)))
+                        .item()
+                        .lore())
+                .describedAs("the info tile names the code the player types to go on")
+                .anySatisfy(line -> assertThat(
+                                net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                                        .serialize(line))
+                        .contains("1234"));
 
         assertThat(gui.getItem(15)).isInstanceOf(GuiItem.Static.class);
         assertThat(((GuiItem.Static) Objects.requireNonNull(gui.getItem(15)))

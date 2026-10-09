@@ -6,19 +6,19 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.command.BankRefusalLines;
 import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
@@ -66,6 +66,8 @@ public final class IslandShopMenu {
     }
 
     private @Nullable BedrockFormService bedrockFormService;
+
+    private volatile @Nullable Consumer<Player> wayBack;
 
     public IslandShopMenu(
             IslandShopService shopService,
@@ -157,14 +159,24 @@ public final class IslandShopMenu {
                 Placeholder.unparsed("price", money(price.currentPrice()))));
     }
 
+    /**
+     * Hands this window the way back to the island menu, so the bottom row reads "Back" rather than
+     * leaving Escape as the only way out. Without one the window has no back button at all.
+     */
+    public void useWayBack(@Nullable Consumer<Player> wayBack) {
+        this.wayBack = wayBack;
+    }
+
     /** Builds the window from what was already read, so nothing here reaches the database. */
     public SimpleGui buildGui(Player player, IslandId islandId, List<ShopItemPrice> catalogue) {
         int rows = Math.min(6, Math.max(2, (catalogue.size() / 9) + 2));
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "menu.shop.title"))
+                .title(MenuTitles.centre(messages.renderPlain(player, "menu.shop.title")))
                 .rows(rows)
                 .build();
+        gui.filler().fillRow(rows, GuiItem.display(SkyblockTiles.filler()));
 
+        SkyblockTiles tiles = new SkyblockTiles(messages);
         int slot = 0;
         int lastRowStart = (rows - 1) * 9;
         for (ShopItemPrice price : catalogue) {
@@ -175,25 +187,13 @@ public final class IslandShopMenu {
             if (material == null) {
                 continue;
             }
-
-            List<Component> lore = new ArrayList<>();
-            lore.add(messages.renderPlain(
-                    player, "menu.shop.tile_price", Placeholder.unparsed("price", money(price.currentPrice()))));
-            lore.add(Component.empty());
-            lore.add(messages.renderPlain(player, "menu.shop.tile_buy_one"));
-            lore.add(messages.renderPlain(
-                    player, "menu.shop.tile_buy_stack", Placeholder.unparsed("amount", Integer.toString(STACK))));
-            lore.add(messages.renderPlain(player, "menu.shop.tile_sell_one"));
-            lore.add(messages.renderPlain(
-                    player, "menu.shop.tile_sell_stack", Placeholder.unparsed("amount", Integer.toString(STACK))));
-
-            ItemStack icon = ItemBuilder.of(material)
-                    .name(messages.renderPlain(
-                                    player, "menu.shop.tile_name", ItemNames.placeholder("item", price.itemKey()))
-                            .decoration(TextDecoration.ITALIC, false))
-                    .lore(lore)
-                    .build();
-
+            ItemStack icon = tiles.item(
+                    material,
+                    player,
+                    "tile:money @menu.shop.tile price",
+                    ItemNames.placeholder("argument_item", price.itemKey()),
+                    Placeholder.unparsed("argument_price", money(price.currentPrice())),
+                    Placeholder.unparsed("argument_amount", Integer.toString(STACK)));
             gui.set(slot++, GuiItem.button(icon, event -> {
                 event.setCancelled(true);
                 boolean buying = event.isLeftClick();
@@ -202,17 +202,15 @@ public final class IslandShopMenu {
             }));
         }
 
-        gui.set(
-                lastRowStart + 4,
-                GuiItem.button(
-                        ItemBuilder.of(Material.BARRIER)
-                                .name(messages.renderPlain(player, "menu.shop.close")
-                                        .decoration(TextDecoration.ITALIC, false))
-                                .build(),
-                        event -> {
-                            event.setCancelled(true);
-                            player.closeInventory();
-                        }));
+        Consumer<Player> back = this.wayBack;
+        if (back != null) {
+            gui.set(
+                    lastRowStart + 4,
+                    GuiItem.button(tiles.button(Material.FEATHER, player, "menu.button.back"), event -> {
+                        event.setCancelled(true);
+                        back.accept(player);
+                    }));
+        }
         return gui;
     }
 

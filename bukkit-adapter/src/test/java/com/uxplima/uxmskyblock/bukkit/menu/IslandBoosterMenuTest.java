@@ -67,6 +67,8 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
                 List.of(IslandBooster.create(islandId, BoosterCategory.MOB_EXP, 2.0, Duration.ofHours(1), now)),
                 java.util.Map.of(BoosterCategory.MOB_EXP, 2.0));
 
+        java.util.concurrent.atomic.AtomicInteger wentBack = new java.util.concurrent.atomic.AtomicInteger();
+        menu.useWayBack(viewer -> wentBack.incrementAndGet());
         SimpleGui gui = menu.buildGui(player, overview, now);
 
         assertThat(gui.size()).isEqualTo(36);
@@ -77,7 +79,13 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
         assertThat(gui.getItem(16)).isNotNull(); // Mob Exp
         assertThat(gui.getItem(21)).isNotNull(); // Island Worth
         assertThat(gui.getItem(23)).isNotNull(); // Mission Rewards
-        assertThat(gui.getItem(31)).isNotNull(); // Close button
+        com.uxplima.uxmlib.gui.item.GuiItem back = java.util.Objects.requireNonNull(gui.getItem(31), "the way out");
+        assertThat(((com.uxplima.uxmlib.gui.item.GuiItem.Static) back).item().getType())
+                .describedAs("the way out is the back button, not a close button")
+                .isEqualTo(org.bukkit.Material.FEATHER);
+        back.action(new com.uxplima.uxmlib.gui.item.RenderContext(player, gui, 31))
+                .accept(org.mockito.Mockito.mock(org.bukkit.event.inventory.InventoryClickEvent.class));
+        assertThat(wentBack).hasValue(1);
     }
 
     @Test
@@ -103,7 +111,7 @@ class IslandBoosterMenuTest extends MockBukkitHarness {
                 .doesNotContain("DURATION")
                 .contains("□□□□□□□□□□")
                 .contains("süreler toplanır")
-                .contains("Kalan: yok");
+                .contains("Kalan yok");
     }
 
     @Test

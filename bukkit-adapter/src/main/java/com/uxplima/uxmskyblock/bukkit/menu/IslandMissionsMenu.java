@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,7 +23,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
 import com.uxplima.uxmlib.gui.item.GuiItem;
-import com.uxplima.uxmlib.item.ItemBuilder;
+import com.uxplima.uxmlib.gui.style.MenuTitles;
 import com.uxplima.uxmskyblock.bukkit.bedrock.BedrockFormService;
 import com.uxplima.uxmskyblock.bukkit.i18n.ItemNames;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
@@ -53,6 +54,8 @@ public final class IslandMissionsMenu {
     private final SchedulerPort schedulerPort;
     private final Messages messages;
     private @Nullable BedrockFormService bedrockFormService;
+
+    private volatile @Nullable Consumer<Player> wayBack;
 
     public IslandMissionsMenu(
             IslandMissionService missionService,
@@ -169,16 +172,12 @@ public final class IslandMissionsMenu {
             Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap,
             List<MissionDefinition> all) {
         SimpleGui gui = Guis.gui()
-                .title(messages.renderPlain(player, "menu.missions.title"))
+                .title(MenuTitles.centre(messages.renderPlain(player, "menu.missions.title")))
                 .rows(6)
                 .build();
+        gui.filler().fill(GuiItem.display(SkyblockTiles.filler()));
 
-        // Border decoration
-        ItemStack filler = ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
-                .name(Component.empty())
-                .build();
-        gui.filler().fillBorder(GuiItem.display(filler));
-
+        SkyblockTiles tiles = new SkyblockTiles(messages);
         int slot = 10;
         for (MissionDefinition def : all) {
             if (slot > 43) break;
@@ -187,6 +186,7 @@ public final class IslandMissionsMenu {
             MissionProgress progress = progressMap.get(def.id());
             long count = progress != null ? progress.progressCount() : 0L;
             boolean completed = progress != null && progress.completed();
+            boolean submits = !completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT;
 
             Material icon = completed
                     ? Material.ENCHANTED_BOOK
@@ -200,60 +200,43 @@ public final class IslandMissionsMenu {
                             Placeholder.unparsed("count", Long.toString(count)),
                             Placeholder.unparsed("required", Long.toString(def.requiredAmount())));
 
-            List<Component> lore = new ArrayList<>();
-            lore.add(messages.renderPlain(
-                    player,
-                    "menu.missions.tile_description",
-                    Placeholder.unparsed("description", messages.words(player, def.description()))));
-            lore.add(Component.empty());
-            lore.add(messages.renderPlain(
-                    player,
-                    "menu.missions.tile_branch",
-                    Placeholder.unparsed("branch", def.branch().name())));
-            lore.add(messages.renderPlain(
-                    player, "menu.missions.tile_progress", Placeholder.component("status", status)));
-            lore.add(Component.empty());
-            lore.add(messages.renderPlain(player, "menu.missions.tile_rewards"));
+            // A reward the mission does not pay is a row the tile leaves off, and a mission a click
+            // cannot advance says nothing about clicking.
+            StringBuilder line = new StringBuilder(completed ? "tile:good" : "tile:0")
+                    .append(" @menu.missions.tile branch progress");
             if (def.reward().crystals() > 0) {
-                lore.add(messages.renderPlain(
-                        player,
-                        "menu.missions.reward_crystals",
-                        Placeholder.unparsed(
-                                "amount", Long.toString(def.reward().crystals()))));
+                line.append(" crystals");
             }
             if (def.reward().currencyMinorUnits() > 0) {
-                lore.add(messages.renderPlain(
-                        player,
-                        "menu.missions.reward_currency",
-                        Placeholder.unparsed(
-                                "amount",
-                                String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0))));
+                line.append(" currency");
             }
             if (def.reward().islandExp() > 0) {
-                lore.add(messages.renderPlain(
-                        player,
-                        "menu.missions.reward_island_exp",
-                        Placeholder.unparsed(
-                                "amount", Long.toString(def.reward().islandExp()))));
+                line.append(" exp");
             }
-
-            if (!completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT) {
-                lore.add(Component.empty());
-                lore.add(messages.renderPlain(player, "menu.missions.tile_submit_hint"));
+            if (!submits) {
+                line.append(" -action");
             }
-
-            ItemStack item = ItemBuilder.of(icon)
-                    .name(messages.renderPlain(
-                                    player,
-                                    completed ? "menu.missions.tile_name_done" : "menu.missions.tile_name_open",
-                                    Placeholder.unparsed("mission", messages.words(player, def.displayName())))
-                            .decoration(TextDecoration.ITALIC, false))
-                    .lore(lore)
-                    .build();
+            String branch = def.branch().name();
+            ItemStack item = tiles.item(
+                    icon,
+                    player,
+                    line.toString(),
+                    Placeholder.unparsed("argument_mission", messages.words(player, def.displayName())),
+                    Placeholder.unparsed("argument_description", messages.words(player, def.description())),
+                    Placeholder.unparsed(
+                            "argument_branch", messages.named(player, "missions.branches", branch, branch)),
+                    Placeholder.component("argument_status", status),
+                    Placeholder.unparsed(
+                            "argument_crystals", Long.toString(def.reward().crystals())),
+                    Placeholder.unparsed(
+                            "argument_currency",
+                            String.format(Locale.US, "%.2f", def.reward().currencyMinorUnits() / 100.0)),
+                    Placeholder.unparsed(
+                            "argument_exp", Long.toString(def.reward().islandExp())));
 
             GuiItem guiItem = GuiItem.button(item, event -> {
                 event.setCancelled(true);
-                if (!completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT) {
+                if (submits) {
                     handleManualItemSubmission(player, islandId, profileId, def, count);
                 }
             });
@@ -261,7 +244,22 @@ public final class IslandMissionsMenu {
             gui.set(slot++, guiItem);
         }
 
+        Consumer<Player> back = this.wayBack;
+        if (back != null) {
+            gui.set(49, GuiItem.button(tiles.button(Material.FEATHER, player, "menu.button.back"), event -> {
+                event.setCancelled(true);
+                back.accept(player);
+            }));
+        }
         return gui;
+    }
+
+    /**
+     * Hands this window the way back to the menu that opened it, so the bottom row reads "Back" rather
+     * than leaving Escape as the only way out. Without one the window has no back button at all.
+     */
+    public void useWayBack(@Nullable Consumer<Player> wayBack) {
+        this.wayBack = wayBack;
     }
 
     /** Package private so the guard against losing a player's items can drive it directly. */

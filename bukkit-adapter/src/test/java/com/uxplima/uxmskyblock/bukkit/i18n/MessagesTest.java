@@ -117,12 +117,13 @@ class MessagesTest {
     void listKeyRendersEveryLine() {
         Player player = playerSpeaking(Locale.US);
 
-        List<Component> lines = messages.renderAll(player, "menu.control.overview_lore");
+        List<Component> lines = messages.renderAll(player, "poseidon.lore.pages");
 
-        assertThat(lines).isNotEmpty();
+        assertThat(lines).hasSize(5);
+        assertThat(PLAIN.serialize(lines.get(4))).startsWith("The flooded depths");
         // The help lines this test first read became /is help, drawn from the command itself; its
         // file order and its angle brackets are held by IslandHelpListsEveryCommandTest.
-        assertThat(PLAIN.serialize(lines.get(0))).startsWith("Owner:");
+        assertThat(PLAIN.serialize(lines.get(0))).startsWith("The Drowned Chronicle");
     }
 
     @Test
@@ -140,9 +141,9 @@ class MessagesTest {
         Player english = playerSpeaking(Locale.US);
 
         String turkishFirst = PLAIN.serialize(
-                messages.renderAll(turkish, "menu.control.overview_lore").get(0));
+                messages.renderAll(turkish, "poseidon.lore.pages").get(0));
         String englishFirst = PLAIN.serialize(
-                messages.renderAll(english, "menu.control.overview_lore").get(0));
+                messages.renderAll(english, "poseidon.lore.pages").get(0));
 
         assertThat(turkishFirst).isNotEqualTo(englishFirst);
     }

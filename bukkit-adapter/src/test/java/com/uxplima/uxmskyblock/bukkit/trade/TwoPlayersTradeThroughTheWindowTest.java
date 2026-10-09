@@ -100,9 +100,10 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
                         .serialize(java.util.Objects.requireNonNull(
                                 ready.getItemMeta().displayName())))
                 .isEqualTo("Click to agree to this trade.");
-        assertThat(PlainTextComponentSerializer.plainText()
-                        .serialize(ada.getOpenInventory().title()))
-                .isEqualTo("Trade with Bo");
+        String title = PlainTextComponentSerializer.plainText()
+                .serialize(ada.getOpenInventory().title());
+        assertThat(title.strip()).isEqualTo("Trade with Bo");
+        assertThat(title).describedAs("the title is centred over the window").startsWith(" ");
     }
 
     @Test

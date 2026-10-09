@@ -102,12 +102,21 @@ class IslandShopMenuTest {
     @Test
     @DisplayName("The window draws a tile for every commodity and a way out")
     void everyCommodityGetsATile() {
+        java.util.concurrent.atomic.AtomicInteger wentBack = new java.util.concurrent.atomic.AtomicInteger();
+        menu.useWayBack(viewer -> wentBack.incrementAndGet());
         SimpleGui gui = menu.buildGui(player, ISLAND, catalogue());
 
         assertThat(gui.getItem(0)).describedAs("the first commodity").isNotNull();
         assertThat(gui.getItem(1)).isNotNull();
         assertThat(gui.getItem(2)).isNotNull();
-        assertThat(gui.getItem(gui.size() - 5)).describedAs("the way out").isNotNull();
+        com.uxplima.uxmlib.gui.item.GuiItem back =
+                java.util.Objects.requireNonNull(gui.getItem(gui.size() - 5), "the way out");
+        assertThat(((com.uxplima.uxmlib.gui.item.GuiItem.Static) back).item().getType())
+                .describedAs("the way out is the back button, not a close button")
+                .isEqualTo(Material.FEATHER);
+        back.action(new com.uxplima.uxmlib.gui.item.RenderContext(player, gui, gui.size() - 5))
+                .accept(org.mockito.Mockito.mock(org.bukkit.event.inventory.InventoryClickEvent.class));
+        assertThat(wentBack).hasValue(1);
     }
 
     @Test

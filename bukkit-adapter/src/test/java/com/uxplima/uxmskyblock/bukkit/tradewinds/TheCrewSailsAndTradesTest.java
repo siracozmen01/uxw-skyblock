@@ -166,12 +166,17 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
         harbour.sail(ada);
 
         Inventory top = top();
-        assertThat(text(ada.getOpenInventory().title())).isEqualTo("Set sail");
+        assertThat(text(ada.getOpenInventory().title()).strip()).isEqualTo("Set sail");
         assertThat(type(top, 0)).isEqualTo(Material.EMERALD);
         assertThat(type(top, 1)).isEqualTo(Material.PRISMARINE_SHARD);
         assertThat(type(top, 2)).isEqualTo(Material.IRON_INGOT);
-        assertThat(name(top, 0)).isEqualTo("Emerald Bay");
-        assertThat(lore(top, 0)).contains("Your vessel lies here.");
+        assertThat(name(top, 0))
+                .describedAs("a tile's name is blank, its title opens the lore")
+                .isBlank();
+        assertThat(lore(top, 0)).contains("◆ Emerald Bay").contains("Your vessel lies here.");
+        assertThat(lore(top, 0))
+                .describedAs("the port the vessel lies in is no voyage to set sail on")
+                .doesNotContain("to set sail");
         assertThat(lore(top, 1)).contains("Click to set sail.");
     }
 
@@ -194,12 +199,14 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
         harbour.market(ada);
 
         Inventory top = top();
-        assertThat(text(ada.getOpenInventory().title())).isEqualTo("Market of Emerald Bay");
+        assertThat(text(ada.getOpenInventory().title()).strip()).isEqualTo("Market of Emerald Bay");
         assertThat(type(top, 0)).isEqualTo(Material.WHEAT);
         assertThat(lore(top, 0))
-                .contains("Left click: buy 16 for 40.00")
-                .contains("Right click: sell 16 for 24.00")
-                .contains("In the hold: 20");
+                .contains("Buy 16 40.00")
+                .contains("Sell 16 24.00")
+                .contains("In the hold 20")
+                .contains("Left click to buy")
+                .contains("Right click to sell");
     }
 
     @Test

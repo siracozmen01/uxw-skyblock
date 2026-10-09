@@ -97,7 +97,19 @@ class IslandControlMenuTest extends MockBukkitHarness {
         assertThat(gui.getItem(14)).isNotNull(); // Members
         assertThat(gui.getItem(15)).isNotNull(); // Settings
         assertThat(gui.getItem(16)).isNotNull(); // Teleport Home
-        assertThat(gui.getItem(31)).isNotNull(); // Close button
+        gui.open(player);
+        org.bukkit.inventory.ItemStack free = java.util.Objects.requireNonNull(
+                player.getOpenInventory().getTopInventory().getItem(31));
+        assertThat(free.getType())
+                .describedAs("a window has no close button: Escape closes it, and a free slot is the blank pane")
+                .isEqualTo(org.bukkit.Material.GRAY_STAINED_GLASS_PANE);
+        org.bukkit.inventory.ItemStack upgradesTile = java.util.Objects.requireNonNull(
+                player.getOpenInventory().getTopInventory().getItem(12));
+        assertThat(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                        .serialize(java.util.Objects.requireNonNull(upgradesTile.lore())
+                                .get(0)))
+                .describedAs("a tile's name is blank and its title opens the lore")
+                .contains("Island upgrades");
     }
 
     @Test
@@ -149,7 +161,7 @@ class IslandControlMenuTest extends MockBukkitHarness {
         String lore = java.util.Objects.requireNonNull(upgrades.lore()).stream()
                 .map(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
                 .collect(java.util.stream.Collectors.joining("\n"));
-        assertThat(lore).contains("Size tier: 1");
+        assertThat(lore).contains("Size tier 1");
     }
 
     @Test
