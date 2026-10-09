@@ -109,6 +109,31 @@ class IslandMembershipServiceTest {
     }
 
     @Test
+    @DisplayName("A role given and a permission moved are heard once written, a refusal is not")
+    void aChangeOfRolesIsHeard() {
+        java.util.List<IslandId> heard = new java.util.ArrayList<>();
+        service.whenRolesChanged(id -> {
+            throw new IllegalStateException("a listener that fails");
+        });
+        service.whenRolesChanged(heard::add);
+        island = island.addMember(new IslandMember(MATE_UUID, MATE, IslandRole.MEMBER, NOW));
+
+        assertThat(service.setRole(OWNER, OWNER, "member"))
+                .isInstanceOf(IslandMembershipService.RoleOutcome.CannotChangeOwner.class);
+        assertThat(service.setRolePermission(OWNER, "owner", "block_place", false))
+                .isInstanceOf(IslandMembershipService.PermissionOutcome.CannotChangeOwnerRole.class);
+        assertThat(heard).isEmpty();
+
+        assertThat(service.setRole(OWNER, MATE, "moderator"))
+                .isInstanceOf(IslandMembershipService.RoleOutcome.Changed.class);
+        assertThat(heard).containsExactly(ISLAND);
+
+        assertThat(service.setRolePermission(OWNER, "visitor", "block_place", true))
+                .isInstanceOf(IslandMembershipService.PermissionOutcome.Changed.class);
+        assertThat(heard).containsExactly(ISLAND, ISLAND);
+    }
+
+    @Test
     @DisplayName("An owner may invite, and the invite stands for the timeout")
     void anOwnerMayInvite() {
         IslandMembershipService.InviteOutcome outcome = service.invite(OWNER, MATE);

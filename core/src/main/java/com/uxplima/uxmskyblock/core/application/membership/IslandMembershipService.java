@@ -168,6 +168,10 @@ public final class IslandMembershipService {
     private final List<java.util.function.Consumer<IslandId>> membersChanged =
             new java.util.concurrent.CopyOnWriteArrayList<>();
 
+    /** Who hears that an island's roles, or who holds which, changed, after the change is written. */
+    private final List<java.util.function.Consumer<IslandId>> rolesChanged =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
     public IslandMembershipService(
             IslandStoragePort islandStoragePort,
             IslandMutationLock mutationLock,
@@ -263,16 +267,30 @@ public final class IslandMembershipService {
         membersChanged.add(Objects.requireNonNull(listener, "listener must not be null"));
     }
 
+    /**
+     * Tells {@code listener} each time a member is given another role or a role is given or denied a
+     * permission, once the change is written. It runs on the thread that made the change, outside
+     * every lock, so a window that shows the roles can draw them again.
+     */
+    public void whenRolesChanged(java.util.function.Consumer<IslandId> listener) {
+        rolesChanged.add(Objects.requireNonNull(listener, "listener must not be null"));
+    }
+
+    private void tellRolesChanged(IslandId islandId) {
+        tell(rolesChanged, islandId);
+    }
+
     private void tellMembersChanged(IslandId islandId) {
-        for (java.util.function.Consumer<IslandId> listener : membersChanged) {
+        tell(membersChanged, islandId);
+    }
+
+    private static void tell(List<java.util.function.Consumer<IslandId>> listeners, IslandId islandId) {
+        for (java.util.function.Consumer<IslandId> listener : listeners) {
             try {
                 listener.accept(islandId);
             } catch (RuntimeException e) {
                 // The change is written; a listener that fails does not undo it or hide it from the others.
-                LOGGER.log(
-                        java.util.logging.Level.WARNING,
-                        e,
-                        () -> "A listener to island " + islandId + "'s members failed.");
+                LOGGER.log(java.util.logging.Level.WARNING, e, () -> "A listener to island " + islandId + " failed.");
             }
         }
     }
@@ -410,7 +428,7 @@ public final class IslandMembershipService {
             return new RoleOutcome.OutOfReach();
         }
 
-        return mutationLock.inside(island.id(), () -> {
+        RoleOutcome outcome = mutationLock.inside(island.id(), () -> {
             Optional<Island> optFresh = islandStoragePort.findIslandById(island.id());
             Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
             if (optFresh.isEmpty() || optLocation.isEmpty()) {
@@ -425,6 +443,10 @@ public final class IslandMembershipService {
             islandStoragePort.saveIsland(updated, optLocation.get());
             return new RoleOutcome.Changed(target, roleId.toLowerCase(Locale.ROOT));
         });
+        if (outcome instanceof RoleOutcome.Changed) {
+            tellRolesChanged(island.id());
+        }
+        return outcome;
     }
 
     /** What a request to move a permission on a role came back with. */
@@ -505,7 +527,7 @@ public final class IslandMembershipService {
             permissions.remove(permission);
         }
 
-        return mutationLock.inside(island.id(), () -> {
+        PermissionOutcome outcome = mutationLock.inside(island.id(), () -> {
             Optional<Island> optFresh = islandStoragePort.findIslandById(island.id());
             Optional<IslandLocation> optLocation = islandStoragePort.findLocationByIslandId(island.id());
             if (optFresh.isEmpty() || optLocation.isEmpty()) {
@@ -517,6 +539,10 @@ public final class IslandMembershipService {
             return new PermissionOutcome.Changed(
                     roleId.toLowerCase(Locale.ROOT), permission.name().toLowerCase(Locale.ROOT), allowed);
         });
+        if (outcome instanceof PermissionOutcome.Changed) {
+            tellRolesChanged(island.id());
+        }
+        return outcome;
     }
 
     /** Every permission a caller may name, lower case and comma separated. */
