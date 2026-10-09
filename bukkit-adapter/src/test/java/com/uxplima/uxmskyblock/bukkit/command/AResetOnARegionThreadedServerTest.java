@@ -106,9 +106,7 @@ class AResetOnARegionThreadedServerTest extends MockBukkitHarness {
         Location at = player.getLocation();
         assertThat(at.getBlockX()).isEqualTo(12);
         assertThat(at.getBlockZ()).isEqualTo(-34);
-        assertThat(said)
-                .anyMatch(line -> line.contains("has been reset"))
-                .anyMatch(line -> line.contains("/is create"));
+        assertThat(said).anyMatch(line -> line.contains("is reset")).anyMatch(line -> line.contains("/is create"));
     }
 
     private List<String> run(String line) throws Exception {

@@ -212,7 +212,7 @@ class ACourseIsRunTest extends MockBukkitHarness {
         said();
         clock.advance(Duration.ofMillis(25_250));
         step(10);
-        assertThat(said()).contains("New best").contains("0:25.250").contains("0:30.000");
+        assertThat(said()).contains("new best").contains("0:25.250").contains("0:30.000");
 
         step(0);
         said();

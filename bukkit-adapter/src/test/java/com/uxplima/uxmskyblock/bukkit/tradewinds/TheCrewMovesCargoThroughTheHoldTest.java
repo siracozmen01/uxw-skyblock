@@ -164,7 +164,7 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
         assertThat(window(bo)).isNotNull();
 
         click(bo, 0);
-        assertThat(said(bo)).contains("does not allow");
+        assertThat(said(bo)).contains("cannot do that");
         assertThat(count(bo, Material.DIAMOND)).isZero();
         assertThat(journal.events).isEmpty();
         assertThat(window(bo)).describedAs("a refused role keeps the window").isNotNull();
@@ -182,7 +182,7 @@ class TheCrewMovesCargoThroughTheHoldTest extends MockBukkitHarness {
                 cy.getUniqueId(),
                 new ActiveSession(new PlayerUuid(cy.getUniqueId()), ProfileId.of(UUID.randomUUID()), 3L, 7L));
         holds.open(cy);
-        assertThat(said(cy)).contains("Only the vessel's own crew");
+        assertThat(said(cy)).contains("Only the crew of the vessel");
         assertThat(window(cy)).isNull();
 
         aboard = false;

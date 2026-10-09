@@ -118,8 +118,8 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
 
         List<String> lines = run("limits");
 
-        assertThat(lines).anyMatch(line -> line.endsWith(" • HOPPER: 8 / 10"));
-        assertThat(lines).anyMatch(line -> line.endsWith(" • VILLAGER: 2 / 20"));
+        assertThat(lines).anyMatch(line -> line.endsWith(" • HOPPER 8/10"));
+        assertThat(lines).anyMatch(line -> line.endsWith(" • VILLAGER 2/20"));
         assertThat(lines).noneMatch(line -> line.contains("PISTON") || line.contains("BOAT"));
     }
 
@@ -129,7 +129,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         when(limits.getCounts(ISLAND)).thenReturn(Map.of());
         when(limits.getLimits(ISLAND)).thenReturn(Map.of(LimitType.SPAWNER, 4));
 
-        assertThat(run("limits")).anyMatch(line -> line.endsWith(" • SPAWNER: 0 / 4"));
+        assertThat(run("limits")).anyMatch(line -> line.endsWith(" • SPAWNER 0/4"));
     }
 
     @Test
@@ -140,8 +140,8 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
 
         List<String> lines = run("limits");
 
-        int tiles = indexContaining(lines, "Tile entities");
-        int entities = indexContaining(lines, "Living entities");
+        int tiles = indexContaining(lines, "Blocks that work");
+        int entities = indexContaining(lines, "Mobs and vehicles");
         int hopper = indexContaining(lines, "HOPPER");
         int villager = indexContaining(lines, "VILLAGER");
         assertThat(tiles).isLessThan(hopper);
@@ -179,7 +179,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         when(antiAbuse.getQuarantineRemaining(eq(ISLAND), any(Instant.class)))
                 .thenReturn(Optional.of(Duration.ofSeconds(3_661)));
 
-        assertThat(String.join("\n", run("quarantine"))).contains("ACTIVE").contains("1h 1m 1s remaining");
+        assertThat(String.join("\n", run("quarantine"))).contains("is on,").contains("1h 1m 1s left");
     }
 
     @Test
@@ -190,7 +190,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         java.util.Locale before = java.util.Locale.getDefault();
         java.util.Locale.setDefault(java.util.Locale.forLanguageTag("ar-EG"));
         try {
-            assertThat(String.join("\n", run("quarantine"))).contains("1h 1m 1s remaining");
+            assertThat(String.join("\n", run("quarantine"))).contains("1h 1m 1s left");
         } finally {
             java.util.Locale.setDefault(before);
         }
@@ -201,7 +201,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
     void noQuarantineReadsInactive() throws Exception {
         when(antiAbuse.getQuarantineRemaining(eq(ISLAND), any(Instant.class))).thenReturn(Optional.empty());
 
-        assertThat(run("quarantine")).singleElement().asString().contains("INACTIVE");
+        assertThat(run("quarantine")).singleElement().asString().contains("is over");
     }
 
     @Test
@@ -209,8 +209,8 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
     void theBorderSaysWhichWay() throws Exception {
         when(boundaries.togglePerimeter(any(PlayerUuid.class))).thenReturn(true, false);
 
-        assertThat(run("border")).singleElement().asString().contains("enabled");
-        assertThat(run("border")).singleElement().asString().contains("disabled");
+        assertThat(run("border")).singleElement().asString().contains("is shown");
+        assertThat(run("border")).singleElement().asString().contains("is hidden");
     }
 
     @Test
@@ -224,7 +224,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         assertThat(run("booster apply spawner_rate 2.5 3h"))
                 .singleElement()
                 .asString()
-                .endsWith("Applied a 2.50x booster to Spawner Rate for 3h.");
+                .endsWith("Gave a 2.50x Spawner Rate booster for 3h.");
         verify(feed)
                 .record(
                         eq(ISLAND.value().toString()),
@@ -270,8 +270,8 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         String plain = String.join("\n", run("booster apply spawner_rate 2 1h"));
         String capped = String.join("\n", run("booster apply spawner_rate 2 1h"));
 
-        assertThat(plain).contains("runs for 2h at").doesNotContain("cap");
-        assertThat(capped).contains("cap of 4h at").contains("cap");
+        assertThat(plain).contains("runs longer: 2h at").doesNotContain("longest");
+        assertThat(capped).contains("its longest, 4h at");
     }
 
     private List<String> run(String line) throws Exception {

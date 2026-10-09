@@ -172,9 +172,9 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
         assertThat(String.join("\n", lines))
                 .contains(islandId.value().toString())
                 .contains(ownerUuid.value().toString())
-                .contains("Lifecycle: active")
-                .contains("Economic state: normal")
-                .contains("Members: 2, roles: 5");
+                .contains("Lifecycle active")
+                .contains("Economy normal")
+                .contains("Members 2 Roles 5");
     }
 
     @Test
@@ -184,7 +184,7 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
         when(freeze.findLocation(islandId)).thenReturn(Optional.empty());
 
         assertThat(String.join("\n", inspect()))
-                .contains("Administrative state: NORMAL")
+                .contains("Administration normal")
                 .doesNotContain("FROZEN")
                 .doesNotContain("Freeze reason");
     }
@@ -196,8 +196,8 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
         when(freeze.findLocation(islandId)).thenReturn(Optional.empty());
 
         assertThat(String.join("\n", inspect()))
-                .contains("Administrative state: FROZEN")
-                .contains("Freeze reason: chest duplication under review");
+                .contains("Administration frozen")
+                .contains("Freeze reason chest duplication under review");
     }
 
     @Test
@@ -208,7 +208,7 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
 
         String report = String.join("\n", inspect());
 
-        assertThat(report).contains("Administrative state: FROZEN").contains("Freeze reason: none given");
+        assertThat(report).contains("Administration frozen").contains("Freeze reason none given");
         assertThat(report).doesNotContain("null");
     }
 
@@ -219,7 +219,7 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
         when(freeze.findLocation(islandId))
                 .thenReturn(Optional.of(IslandLocation.fromCenterAndRadius(islandId, WORLD, 320, -640, 96)));
 
-        assertThat(String.join("\n", inspect())).contains("Location: " + WORLD + " (320, -640) radius 96");
+        assertThat(String.join("\n", inspect())).contains("Place " + WORLD + " (320, -640) Radius 96");
     }
 
     @Test
@@ -255,7 +255,7 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
         List<String> lines = inspect();
 
         assertThat(lines).hasSize(1);
-        assertThat(lines.get(0)).contains("not configured");
+        assertThat(lines.get(0)).contains("not set up");
     }
 
     @Test
@@ -267,9 +267,7 @@ class WhatAnAdminInspectReportsTest extends MockBukkitHarness {
 
         Component first = admin.nextComponentMessage();
         assertThat(first).isNotNull();
-        assertThat(PLAIN.serialize(first))
-                .contains("No island could be resolved")
-                .contains("Nobody");
+        assertThat(PLAIN.serialize(first)).contains("No island was found for").contains("Nobody");
         assertThat(admin.nextComponentMessage()).isNull();
     }
 }

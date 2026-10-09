@@ -75,7 +75,7 @@ class BedrockFormServiceTest {
         service.openIslandControlForm(player, island, () -> homeClicked.set(true), null, null, null, null);
 
         ArgumentCaptor<IntConsumer> consumerCaptor = ArgumentCaptor.forClass(IntConsumer.class);
-        verify(screen).sendSimpleForm(eq(player), eq("Island Control Panel"), any(), any(), consumerCaptor.capture());
+        verify(screen).sendSimpleForm(eq(player), eq("Island"), any(), any(), consumerCaptor.capture());
 
         consumerCaptor.getValue().accept(0);
         assertThat(homeClicked.get()).isTrue();
@@ -114,7 +114,7 @@ class BedrockFormServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Consumer<Map<String, String>>> consumerCaptor = ArgumentCaptor.forClass(Consumer.class);
-        verify(screen).sendCustomForm(eq(player), eq("Island Settings"), any(), any(), consumerCaptor.capture(), any());
+        verify(screen).sendCustomForm(eq(player), eq("Island settings"), any(), any(), consumerCaptor.capture(), any());
 
         consumerCaptor
                 .getValue()
@@ -154,12 +154,15 @@ class BedrockFormServiceTest {
         verify(screen)
                 .sendSimpleForm(
                         eq(trPlayer),
-                        eq("Ada Kontrol Paneli"),
-                        eq("Ada ayarlarınızı, kasanızı ve ışınlanma noktalarınızı yönetin."),
+                        eq("Ada"),
+                        eq("Adan, bankası, warpları ve insanları."),
                         buttonCaptor.capture(),
                         any());
 
-        assertThat(buttonCaptor.getValue().get(0).text()).isEqualTo("§aAda Evi");
-        assertThat(buttonCaptor.getValue().get(1).text()).isEqualTo("§bIşınlanma Noktaları");
+        // A Bedrock client reads no exact colour, so a button carries words and no code.
+        assertThat(buttonCaptor.getValue().get(0).text()).isEqualTo("Ev");
+        assertThat(buttonCaptor.getValue().get(1).text()).isEqualTo("Warplar");
+        assertThat(buttonCaptor.getValue())
+                .allSatisfy(button -> assertThat(button.text()).doesNotContain("§"));
     }
 }

@@ -169,7 +169,7 @@ class WhatTheNavigationCommandsTellAPlayerTest extends MockBukkitHarness {
     @CsvSource({
         "UPDATED, spawn",
         "OUTSIDE_THE_ISLAND, Stand on your own island",
-        "NOT_ALLOWED, does not allow moving its spawn",
+        "NOT_ALLOWED, cannot move its spawn",
         "NO_ISLAND, island"
     })
     @DisplayName("Each answer to /is setspawn reads its own line")

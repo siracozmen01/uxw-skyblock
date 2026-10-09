@@ -40,7 +40,7 @@ class MessagesTest {
     void turkishClientReadsTurkish() {
         Player player = playerSpeaking(Locale.of("tr", "TR"));
 
-        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).contains("adaya sahip değilsiniz");
+        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).contains("Bir adaya ait değilsin");
     }
 
     @Test
@@ -48,8 +48,7 @@ class MessagesTest {
     void englishClientReadsEnglish() {
         Player player = playerSpeaking(Locale.US);
 
-        assertThat(PLAIN.serialize(messages.render(player, "error.no_island")))
-                .contains("do not currently belong to an island");
+        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).contains("do not belong to an island");
     }
 
     @Test
@@ -57,8 +56,7 @@ class MessagesTest {
     void unknownLanguageFallsBackToDefault() {
         Player player = playerSpeaking(Locale.FRANCE);
 
-        assertThat(PLAIN.serialize(messages.render(player, "error.no_island")))
-                .contains("do not currently belong to an island");
+        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).contains("do not belong to an island");
     }
 
     @Test
@@ -66,8 +64,7 @@ class MessagesTest {
     void consoleReadsTheServerDefault() {
         ConsoleCommandSender console = mock(ConsoleCommandSender.class);
 
-        assertThat(PLAIN.serialize(messages.render(console, "error.no_island")))
-                .contains("do not currently belong to an island");
+        assertThat(PLAIN.serialize(messages.render(console, "error.no_island"))).contains("do not belong to an island");
     }
 
     @Test
@@ -89,17 +86,19 @@ class MessagesTest {
 
         ArgumentCaptor<Component> sent = ArgumentCaptor.forClass(Component.class);
         verify(player).sendMessage(sent.capture());
-        assertThat(PLAIN.serialize(sent.getValue())).contains("do not currently belong to an island");
+        assertThat(PLAIN.serialize(sent.getValue())).contains("do not belong to an island");
     }
 
     @Test
-    @DisplayName("render carries the catalogue prefix and renderPlain does not")
+    @DisplayName("render carries the line's category prefix and renderPlain does not")
     void prefixBelongsToRenderOnly() {
         Player player = playerSpeaking(Locale.US);
 
-        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).contains("SKYBLOCK");
+        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).startsWith("ERROR ▶ ");
         assertThat(PLAIN.serialize(messages.renderPlain(player, "error.no_island")))
-                .doesNotContain("SKYBLOCK");
+                .doesNotContain("ERROR")
+                .doesNotContain("▶")
+                .startsWith("You do not belong");
     }
 
     @Test
@@ -158,7 +157,7 @@ class MessagesTest {
         Player turkishClient = playerSpeaking(Locale.of("tr", "TR"));
 
         assertThat(PLAIN.serialize(pinned.render(turkishClient, "error.no_island")))
-                .contains("do not currently belong to an island");
+                .contains("do not belong to an island");
     }
 
     @Test
@@ -171,7 +170,7 @@ class MessagesTest {
         Player turkishClient = playerSpeaking(Locale.of("tr", "TR"));
 
         assertThat(PLAIN.serialize(following.render(turkishClient, "error.no_island")))
-                .contains("adaya sahip değilsiniz");
+                .contains("Bir adaya ait değilsin");
     }
 
     @Test
@@ -180,8 +179,7 @@ class MessagesTest {
         Player player = mock(Player.class);
         when(player.locale()).thenReturn(null);
 
-        assertThat(PLAIN.serialize(messages.render(player, "error.no_island")))
-                .contains("do not currently belong to an island");
+        assertThat(PLAIN.serialize(messages.render(player, "error.no_island"))).contains("do not belong to an island");
     }
 
     private static Player playerSpeaking(Locale locale) {

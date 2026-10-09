@@ -14,7 +14,6 @@ import org.bukkit.entity.Player;
 
 import net.kyori.adventure.inventory.Book;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.bedrock.BedrockButton;
 import com.uxplima.uxmlib.bedrock.BedrockScreen;
@@ -142,8 +141,8 @@ public final class PoseidonLore {
         return legacy(messages.renderPlain(player, key));
     }
 
-    /** A Floodgate form takes a legacy string, so a rendered line is flattened for it. */
+    /** A Floodgate form takes a string, so a rendered line is flattened for it. */
     private static String legacy(Component line) {
-        return LegacyComponentSerializer.legacySection().serialize(line);
+        return com.uxplima.uxmskyblock.bukkit.bedrock.FormText.of(line);
     }
 }

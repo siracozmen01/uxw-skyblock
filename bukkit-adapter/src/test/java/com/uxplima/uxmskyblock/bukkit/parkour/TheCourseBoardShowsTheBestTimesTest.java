@@ -149,11 +149,11 @@ class TheCourseBoardShowsTheBestTimesTest extends MockBukkitHarness {
         board.show(player);
 
         String said = said();
-        assertThat(said).contains("Best times on this course");
-        assertThat(said).contains("1. Swift 0:03.000 (2 runs)");
+        assertThat(said).contains("Best times here");
+        assertThat(said).contains("#1 Swift 0:03.000 (2 runs)");
         assertThat(said)
                 .describedAs("a runner the server never knew is shown by the start of their id")
-                .contains("2. cccccccc 1:05.320 (1 runs)");
+                .contains("#2 cccccccc 1:05.320 (1 runs)");
         assertThat(said).doesNotContain("Steady");
         assertThat(asked).containsExactly(2);
     }

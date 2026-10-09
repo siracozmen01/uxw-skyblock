@@ -11,7 +11,6 @@ import org.bukkit.entity.Player;
 
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.bedrock.BedrockButton;
 import com.uxplima.uxmlib.bedrock.BedrockDetector;
@@ -44,12 +43,12 @@ public final class BedrockFormService {
     }
 
     /**
-     * A Floodgate form takes a legacy string rather than a component, so a catalogue line is drawn
-     * for this viewer and then flattened. The catalogue is the only source: a fallback written here
+     * A Floodgate form takes a string rather than a component, so a catalogue line is drawn for this
+     * viewer and then flattened. The catalogue is the only source: a fallback written here
      * would be a second copy of the words, in one language, that no translator can reach.
      */
     private String text(Player player, String key, TagResolver... resolvers) {
-        return LegacyComponentSerializer.legacySection().serialize(messages.renderPlain(player, key, resolvers));
+        return FormText.of(messages.renderPlain(player, key, resolvers));
     }
 
     /** One button of a generic form: what it says, and what it does when it is pressed. */

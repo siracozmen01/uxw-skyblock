@@ -114,8 +114,8 @@ class WhatTheAdminCommandsSayTest extends MockBukkitHarness {
                 .thenReturn(new IslandInactivityScanReport(Instant.now(), 40, 3, 5, 2, 30, List.of()));
 
         assertThat(String.join("\n", run("admin inactivity scan")))
-                .contains("Starting")
-                .contains("40 evaluated, 3 successions, 5 archived, 2 deleted, 30 skipped");
+                .contains("Scanning the islands")
+                .contains("40 read, 3 handed on, 5 archived, 2 deleted, 30 skipped");
     }
 
     @Test
@@ -133,7 +133,7 @@ class WhatTheAdminCommandsSayTest extends MockBukkitHarness {
         grant(CatalogPermissions.ADMIN_MANAGE.node());
         build(() -> null, () -> freeze);
 
-        assertThat(run("admin inactivity scan")).singleElement().asString().contains("not enabled");
+        assertThat(run("admin inactivity scan")).singleElement().asString().contains("turned off");
     }
 
     @Test
@@ -171,7 +171,7 @@ class WhatTheAdminCommandsSayTest extends MockBukkitHarness {
         assertThat(run("admin unfreeze " + ISLAND.value()))
                 .singleElement()
                 .asString()
-                .contains("unfroze")
+                .contains("free again")
                 .contains(ISLAND.value().toString());
     }
 
@@ -184,7 +184,7 @@ class WhatTheAdminCommandsSayTest extends MockBukkitHarness {
         List<String> said = new ArrayList<>(run("admin freeze " + ISLAND.value()));
         said.addAll(run("admin unfreeze " + ISLAND.value()));
 
-        assertThat(said).hasSize(2).allMatch(line -> line.contains("not enabled"));
+        assertThat(said).hasSize(2).allMatch(line -> line.contains("turned off"));
     }
 
     private List<String> run(String line) throws CommandSyntaxException {

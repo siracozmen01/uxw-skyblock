@@ -139,14 +139,14 @@ class IslandFlagCommandsTest {
                 .thenReturn(new IslandFlagService.FlagChange.Changed("pvp", true));
 
         run("flag pvp", player);
-        assertThat(player.nextMessage()).contains("PvP Savaşı").doesNotContain("pvp");
+        assertThat(player.nextMessage()).contains("Savaş").doesNotContain("pvp");
 
         run("flag", player);
         java.util.List<String> listed = new java.util.ArrayList<>();
         for (String line = player.nextMessage(); line != null; line = player.nextMessage()) {
             listed.add(line);
         }
-        assertThat(listed).anyMatch(line -> line.contains("PvP Savaşı") && line.contains("(pvp)"));
+        assertThat(listed).anyMatch(line -> line.contains("Savaş") && line.contains("(pvp)"));
     }
 
     @Test

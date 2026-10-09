@@ -31,9 +31,9 @@ class CatalogueMenuWordsTest {
     @DisplayName("A menu key reads in the language the viewer's client speaks")
     void keyFollowsTheViewer() {
         assertThat(PLAIN.serialize(words.text(playerSpeaking(Locale.of("tr")), "error.no_island", Map.of())))
-                .contains("adaya sahip değilsiniz");
+                .contains("Bir adaya ait değilsin");
         assertThat(PLAIN.serialize(words.text(playerSpeaking(Locale.US), "error.no_island", Map.of())))
-                .contains("do not currently belong to an island");
+                .contains("do not belong to an island");
     }
 
     @Test

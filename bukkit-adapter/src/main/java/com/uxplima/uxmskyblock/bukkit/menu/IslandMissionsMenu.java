@@ -18,7 +18,6 @@ import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
@@ -147,12 +146,11 @@ public final class IslandMissionsMenu {
                             "menu.missions.status_open",
                             Placeholder.unparsed("count", Long.toString(count)),
                             Placeholder.unparsed("required", Long.toString(def.requiredAmount())));
-            String label = LegacyComponentSerializer.legacySection()
-                    .serialize(messages.renderPlain(
-                            player,
-                            "menu.missions.form_button",
-                            Placeholder.unparsed("mission", messages.words(player, def.displayName())),
-                            Placeholder.component("status", status)));
+            String label = com.uxplima.uxmskyblock.bukkit.bedrock.FormText.of(messages.renderPlain(
+                    player,
+                    "menu.missions.form_button",
+                    Placeholder.unparsed("mission", messages.words(player, def.displayName())),
+                    Placeholder.component("status", status)));
             boolean submittable = !completed && def.triggerType() == MissionTriggerType.ITEM_SUBMIT;
             long drawnWith = count;
             choices.add(new BedrockFormService.Choice(label, () -> {

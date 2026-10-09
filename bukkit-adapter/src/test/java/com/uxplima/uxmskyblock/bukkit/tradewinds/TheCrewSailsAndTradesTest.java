@@ -183,7 +183,7 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
         harbour.setSail(ada, vessel, SALTMARSH);
 
         verify(market).sail(vessel, SALTMARSH);
-        assertThat(said()).contains("sets sail for Saltmarsh");
+        assertThat(said()).contains("sails for Saltmarsh");
     }
 
     @Test
@@ -248,7 +248,7 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
 
         harbour.trade(ada, vessel, BAY, BAY.goods().get(0), false);
 
-        assertThat(said()).contains("now a Sloop").contains("4 rows");
+        assertThat(said()).contains("a Sloop now").contains("4 rows");
     }
 
     @Test
@@ -272,7 +272,7 @@ class TheCrewSailsAndTradesTest extends MockBukkitHarness {
         while ((line = bo.nextComponentMessage()) != null) {
             all.append(text(line)).append('\n');
         }
-        assertThat(all.toString()).contains("does not allow");
+        assertThat(all.toString()).contains("cannot do that");
     }
 
     @Test

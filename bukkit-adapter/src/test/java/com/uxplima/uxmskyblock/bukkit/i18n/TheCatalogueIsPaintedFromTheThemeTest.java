@@ -106,6 +106,19 @@ class TheCatalogueIsPaintedFromTheThemeTest {
     }
 
     @Test
+    @DisplayName("A key neither file names keeps the value the plugin ships")
+    void aShortFileKeepsTheShippedRest() throws IOException {
+        Path data = Files.createDirectories(dir.resolve("plugins").resolve("uxmSkyblock"));
+        Files.writeString(data.resolve("theme.conf"), "roles { value = \"#333333\" }\n");
+
+        Theme theme = ThemeSource.load(data);
+
+        assertThat(theme.hex("value")).isEqualToIgnoringCase("#333333");
+        assertThat(theme.separator()).isEqualTo("▶");
+        assertThat(theme.hex("good")).isEqualToIgnoringCase("#4ECCA3");
+    }
+
+    @Test
     @DisplayName("The shipped theme is written beside the plugins once, and never over a file that is there")
     void theSharedThemeIsWrittenOnce() throws IOException {
         Path data = Files.createDirectories(dir.resolve("plugins").resolve("uxmSkyblock"));

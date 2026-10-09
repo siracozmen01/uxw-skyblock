@@ -176,7 +176,7 @@ class WhatAOneBlockIslandReadsTest extends MockBukkitHarness {
                 .singleElement()
                 .asString()
                 .contains("Underground")
-                .contains("phase 2 of 2")
+                .contains("(2/2)")
                 .contains("1 of 5");
     }
 

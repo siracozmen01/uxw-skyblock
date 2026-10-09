@@ -186,7 +186,7 @@ class IslandActivityCommandsTest {
                 // The words belong to activity.bank_deposit and to nothing else. Without them this
                 // passes on the fallback line too, because that one prints the whole payload as the
                 // body and the payload holds both of those values as plain text.
-                .contains("into the bank")
+                .contains("in the bank")
                 .doesNotContain("BANK_DEPOSIT");
     }
 

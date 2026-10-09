@@ -29,7 +29,7 @@ public final class Messages {
     private final LocaleSource locales;
 
     public Messages(MessageProvider provider, LocaleSource locales) {
-        this(provider, locales, Theme.defaults());
+        this(provider, locales, ThemeSource.shippedInOrdinaryLetters());
     }
 
     public Messages(MessageProvider provider, LocaleSource locales, Theme theme) {
@@ -41,9 +41,12 @@ public final class Messages {
     /**
      * Builds the seam the server is configured for: a player's own client language decides, unless
      * the operator turned {@code language.follow-client} off and asked for one language throughout.
+     *
+     * <p>Painted in the shipped palette and written in ordinary letters. The server hands its own theme
+     * to the overload below.
      */
     public static Messages of(MessageProvider provider, LanguageConfiguration language) {
-        return of(provider, language, Theme.defaults());
+        return of(provider, language, ThemeSource.shippedInOrdinaryLetters());
     }
 
     /** The same, painting an operator's lines with the server's own theme. */
@@ -56,13 +59,14 @@ public final class Messages {
     }
 
     /**
-     * The shipped catalogs with no operator file over them. This is what a test wants, and what a
+     * The shipped catalogs with no operator file over them, painted in the shipped palette and written in
+     * ordinary letters. This is what a test wants, since it reads the words a translator wrote, and what a
      * caller that has no configuration to read can fall back to.
      */
     public static Messages bundled() {
         MessageProvider provider = new MessageProvider(LanguageConfiguration.DEFAULT_LANGUAGE);
         provider.loadBundledDefaults(Messages.class.getClassLoader());
-        return of(provider, LanguageConfiguration.defaults());
+        return of(provider, LanguageConfiguration.defaults(), ThemeSource.shippedInOrdinaryLetters());
     }
 
     /** Renders {@code key} for {@code viewer} with the catalog prefix, as a chat line carries it. */

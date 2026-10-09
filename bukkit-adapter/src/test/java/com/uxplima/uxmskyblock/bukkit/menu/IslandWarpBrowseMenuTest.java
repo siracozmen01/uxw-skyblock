@@ -139,7 +139,7 @@ class IslandWarpBrowseMenuTest {
                         .toList());
 
         assertThat(drawn).contains("shop");
-        assertThat(story).contains("Ayse").contains("Shops & Markets");
+        assertThat(story).contains("Ayse").contains("Shops and Markets");
     }
 
     @Test

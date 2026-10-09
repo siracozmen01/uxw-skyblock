@@ -122,7 +122,7 @@ class AVaultPageCannotBeTakenTwiceTest extends MockBukkitHarness {
         assertThat(top == null || top.getHolder() != holder)
                 .describedAs("the vault window closed")
                 .isTrue();
-        assertThat(player.nextMessage()).contains("closed so what you changed could be saved");
+        assertThat(player.nextMessage()).contains("closed so your changes could be saved");
     }
 
     @Test

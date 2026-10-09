@@ -173,7 +173,7 @@ class IslandInfoCommandsTest {
         assertThat(screen)
                 .contains("Ada " + ISLAND.value().toString().substring(0, 8))
                 .doesNotContain(ISLAND.value().toString())
-                .contains("Durum: etkin")
+                .contains("Durum etkin")
                 .doesNotContain("active");
     }
 

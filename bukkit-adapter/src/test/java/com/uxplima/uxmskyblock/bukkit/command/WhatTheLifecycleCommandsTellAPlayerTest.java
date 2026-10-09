@@ -107,7 +107,7 @@ class WhatTheLifecycleCommandsTellAPlayerTest extends MockBukkitHarness {
         assertThat(run("create"))
                 .singleElement()
                 .asString()
-                .contains("could not be created")
+                .contains("could not be made")
                 .doesNotContain("jdbc")
                 .doesNotContain("Connection refused");
     }
@@ -169,10 +169,10 @@ class WhatTheLifecycleCommandsTellAPlayerTest extends MockBukkitHarness {
         String denied = run("rename Rock").getFirst();
 
         assertThat(characters).contains("letters, digits");
-        assertThat(reserved).contains("kept for the server");
+        assertThat(reserved).contains("server keeps that name");
         assertThat(unsafe).contains("not allowed here");
-        assertThat(taken).contains("already has that name").doesNotContain("'Rock'");
-        assertThat(denied).contains("does not allow renaming").doesNotContain("Profile");
+        assertThat(taken).contains("has that name already").doesNotContain("'Rock'");
+        assertThat(denied).contains("cannot rename it").doesNotContain("Profile");
     }
 
     @Test

@@ -122,10 +122,9 @@ public final class IslandResetConfirmationMenu {
         });
     }
 
-    /** A Floodgate form takes a legacy string, so a component has to be flattened for it. */
+    /** A Floodgate form takes a string, so a component has to be flattened for it. */
     private static String legacy(net.kyori.adventure.text.Component component) {
-        return net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
-                .serialize(component);
+        return com.uxplima.uxmskyblock.bukkit.bedrock.FormText.of(component);
     }
 
     public SimpleGui buildGui(

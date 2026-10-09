@@ -184,7 +184,7 @@ class BukkitIslandVisitorEvictionAdapterTest {
         verify(visitor).sendMessage(msgCaptor.capture());
         String serialized = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
                 .serialize(msgCaptor.getValue());
-        assertThat(serialized).contains("KARANTİNA").contains("Hile şüphesi");
+        assertThat(serialized).contains("dondurdu").contains("Hile şüphesi");
     }
 
     private static class DirectScheduler implements SchedulerPort {

@@ -158,7 +158,9 @@ class IslandHelpListsEveryCommandTest extends MockBukkitHarness {
             dispatcher.execute(root + " help " + page, source);
             boolean more = false;
             for (Component line = player.nextComponentMessage(); line != null; line = player.nextComponentMessage()) {
-                String text = PlainTextComponentSerializer.plainText().serialize(line);
+                // An entry is indented under the page heading, so the line is read from its first word.
+                String text =
+                        PlainTextComponentSerializer.plainText().serialize(line).strip();
                 String unprefixed =
                         text.contains("» ") && text.indexOf("» ") < 12 ? text.substring(text.indexOf("» ") + 2) : text;
                 if (unprefixed.startsWith("/")) {

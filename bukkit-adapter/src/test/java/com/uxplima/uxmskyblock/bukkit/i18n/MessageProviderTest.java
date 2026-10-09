@@ -94,7 +94,7 @@ class MessageProviderTest {
         // Unknown locale should fall back to 'en'
         Component comp = provider.getComponent("command.create_success", "fr");
         String plain = PlainTextComponentSerializer.plainText().serialize(comp);
-        assertThat(plain).contains("Island created successfully");
+        assertThat(plain).contains("Your island is made");
     }
 
     @Test
@@ -102,10 +102,10 @@ class MessageProviderTest {
     void testPlaceholderSubstitution() {
         Component enComp = provider.getComponent("command.invite_success", "en", Placeholder.parsed("player", "Notch"));
         String enPlain = PlainTextComponentSerializer.plainText().serialize(enComp);
-        assertThat(enPlain).contains("Invited Notch to join your island");
+        assertThat(enPlain).contains("You invited Notch to your island");
 
         Component trComp = provider.getComponent("command.invite_success", "tr", Placeholder.parsed("player", "Notch"));
         String trPlain = PlainTextComponentSerializer.plainText().serialize(trComp);
-        assertThat(trPlain).contains("Notch adlı oyuncu adanıza davet edildi");
+        assertThat(trPlain).contains("Notch adana davet edildi");
     }
 }

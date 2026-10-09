@@ -80,7 +80,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
     void switchingOnSaysTheTeamHears() throws Exception {
         when(chat.toggleChannel(PROFILE)).thenReturn(IslandChatChannel.ISLAND);
 
-        assertThat(run("chat")).singleElement().asString().contains("Island chat enabled");
+        assertThat(run("chat")).singleElement().asString().contains("Island chat is on");
     }
 
     @Test
@@ -88,7 +88,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
     void switchingOffSaysPublicHears() throws Exception {
         when(chat.toggleChannel(PROFILE)).thenReturn(IslandChatChannel.GLOBAL);
 
-        assertThat(run("chat")).singleElement().asString().contains("public chat again");
+        assertThat(run("chat")).singleElement().asString().contains("goes to everyone again");
     }
 
     @Test
@@ -96,7 +96,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
     void noIslandIsSaidOnTheToggle() throws Exception {
         when(chat.toggleChannel(PROFILE)).thenThrow(new NoIslandForChatException(PROFILE));
 
-        assertThat(run("chat")).singleElement().asString().contains("must belong to an island");
+        assertThat(run("chat")).singleElement().asString().contains("need an island to use island chat");
     }
 
     @Test
@@ -107,10 +107,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
                 .when(chat)
                 .sendChat(PROFILE, "Talker", "hello team");
 
-        assertThat(run("chat hello team"))
-                .singleElement()
-                .asString()
-                .contains("do not have permission to send messages");
+        assertThat(run("chat hello team")).singleElement().asString().contains("not allowed to write in island chat");
     }
 
     @Test
@@ -131,7 +128,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
         said.addAll(run("allychat"));
         said.addAll(run("ac hello"));
 
-        assertThat(said).hasSize(4).allMatch(line -> line.contains("session is not ready"));
+        assertThat(said).hasSize(4).allMatch(line -> line.contains("profile is still loading"));
         verify(chat, never()).toggleChannel(any());
         verify(chat, never()).sendChat(any(), anyString(), anyString());
         verify(chat, never()).setChannel(any(), any());
@@ -143,14 +140,14 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
         player.addAttachment(MockBukkit.createMockPlugin(), "uxmskyblock.chat.spy", true);
         when(chat.toggleSpy(PROFILE)).thenReturn(true, false);
 
-        assertThat(run("spy")).singleElement().asString().contains("spy enabled");
-        assertThat(run("spy")).singleElement().asString().contains("spy disabled");
+        assertThat(run("spy")).singleElement().asString().contains("chat is on.");
+        assertThat(run("spy")).singleElement().asString().contains("chat is off.");
     }
 
     @Test
     @DisplayName("Spy refuses a player without the permission and never flips the switch")
     void spyRefusesWithoutPermission() throws Exception {
-        assertThat(run("spy")).singleElement().asString().contains("do not have permission to spy");
+        assertThat(run("spy")).singleElement().asString().contains("not allowed to read other islands' chat");
         verify(chat, never()).toggleSpy(any());
     }
 
@@ -162,7 +159,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
         // every island's private channel without anybody having meant to allow it.
         player.addAttachment(MockBukkit.createMockPlugin(), "skyblock.chat.spy", true);
 
-        assertThat(run("spy")).singleElement().asString().contains("do not have permission to spy");
+        assertThat(run("spy")).singleElement().asString().contains("not allowed to read other islands' chat");
         verify(chat, never()).toggleSpy(any());
     }
 
@@ -181,7 +178,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
         when(chat.getChannel(PROFILE)).thenReturn(IslandChatChannel.ALLIANCE);
         when(chat.setChannel(PROFILE, IslandChatChannel.GLOBAL)).thenReturn(IslandChatChannel.ISLAND);
 
-        assertThat(run("allychat")).singleElement().asString().contains("Island chat enabled");
+        assertThat(run("allychat")).singleElement().asString().contains("Island chat is on");
     }
 
     @Test
@@ -191,7 +188,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
                 .when(chat)
                 .sendChatOn(PROFILE, "Talker", "hi allies", IslandChatChannel.ALLIANCE);
 
-        assertThat(run("ac hi allies")).singleElement().asString().contains("too quickly");
+        assertThat(run("ac hi allies")).singleElement().asString().contains("writing too fast");
     }
 
     @Test
@@ -201,7 +198,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
                 .when(chat)
                 .sendChatOn(PROFILE, "Talker", "hi allies", IslandChatChannel.ALLIANCE);
 
-        assertThat(run("ac hi allies")).singleElement().asString().contains("must belong to an island");
+        assertThat(run("ac hi allies")).singleElement().asString().contains("need an island to use island chat");
     }
 
     @Test
@@ -219,7 +216,7 @@ class WhatTheChatCommandsSayTest extends MockBukkitHarness {
         said.addAll(run("spy"));
         said.addAll(run("allychat"));
 
-        assertThat(said).hasSize(4).allMatch(line -> line.contains("not enabled on this node"));
+        assertThat(said).hasSize(4).allMatch(line -> line.contains("turned off on this server"));
         verifyNoInteractions(chat);
     }
 

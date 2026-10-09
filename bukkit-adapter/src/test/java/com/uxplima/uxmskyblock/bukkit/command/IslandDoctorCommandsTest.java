@@ -46,9 +46,9 @@ class IslandDoctorCommandsTest extends MockBukkitHarness {
                         named("economy", HealthResult.warn("no economy plugin answers")),
                         named("windows", HealthResult.fail("no menu file was read"))));
 
-        assertThat(said).anyMatch(line -> line.contains("OK storage: the database answered"));
-        assertThat(said).anyMatch(line -> line.contains("WARN economy: no economy plugin answers"));
-        assertThat(said).anyMatch(line -> line.contains("FAIL windows: no menu file was read"));
+        assertThat(said).anyMatch(line -> line.contains("ok storage: the database answered"));
+        assertThat(said).anyMatch(line -> line.contains("warn economy: no economy plugin answers"));
+        assertThat(said).anyMatch(line -> line.contains("fail windows: no menu file was read"));
         assertThat(said.getLast()).contains("needs an operator");
     }
 

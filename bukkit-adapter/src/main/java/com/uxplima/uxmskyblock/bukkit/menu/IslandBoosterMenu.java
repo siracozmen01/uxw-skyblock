@@ -15,7 +15,6 @@ import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
@@ -170,21 +169,18 @@ public final class IslandBoosterMenu {
             for (IslandBooster booster : active) {
                 remainingSeconds += booster.effectiveRemainingSeconds(now);
             }
-            String label = LegacyComponentSerializer.legacySection()
-                    .serialize(messages.renderPlain(
-                            player,
-                            "menu.booster.form_button",
-                            Placeholder.unparsed(
-                                    "category",
-                                    messages.named(
-                                            player, "booster.categories", category.name(), category.displayName())),
-                            Placeholder.component("status", messages.renderPlain(player, statusKey)),
-                            Placeholder.unparsed(
-                                    "multiplier",
-                                    String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(category))),
-                            Placeholder.unparsed(
-                                    "remaining",
-                                    DurationText.of(messages, player, Duration.ofSeconds(remainingSeconds)))));
+            String label = com.uxplima.uxmskyblock.bukkit.bedrock.FormText.of(messages.renderPlain(
+                    player,
+                    "menu.booster.form_button",
+                    Placeholder.unparsed(
+                            "category",
+                            messages.named(player, "booster.categories", category.name(), category.displayName())),
+                    Placeholder.component("status", messages.renderPlain(player, statusKey)),
+                    Placeholder.unparsed(
+                            "multiplier",
+                            String.format(java.util.Locale.ROOT, "%.2f", overview.multiplierOf(category))),
+                    Placeholder.unparsed(
+                            "remaining", DurationText.of(messages, player, Duration.ofSeconds(remainingSeconds)))));
             choices.add(new BedrockFormService.Choice(label, () -> {}));
         }
         forms.openChoiceForm(player, "menu.booster.title", "menu.booster.form_body", choices);

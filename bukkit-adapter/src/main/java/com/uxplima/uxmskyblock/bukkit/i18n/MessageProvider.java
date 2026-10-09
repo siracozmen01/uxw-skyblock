@@ -352,7 +352,18 @@ public final class MessageProvider {
         if (template.equals(key)) {
             return deserialize(template, resolvers);
         }
-        return deserialize(style(template, locale), resolvers);
+        return deserialize(style(withoutItsPrefix(template), locale), resolvers);
+    }
+
+    /** A category prefix at the start of a line, with the space after it. */
+    private static final Pattern OPENING_PREFIX = Pattern.compile("^\\s*<e?tag:(?:'[^']*'|\"[^\"]*\"|[^>]*)>\\s*");
+
+    /**
+     * {@code template} without the category prefix it opens with. A chat line is drawn in a form, a lore
+     * or a title too, and the prefix that says which system spoke is noise in a place that already says it.
+     */
+    private static String withoutItsPrefix(String template) {
+        return OPENING_PREFIX.matcher(template).replaceFirst("");
     }
 
     /** Whether {@code template} opens with a category prefix of its own. */

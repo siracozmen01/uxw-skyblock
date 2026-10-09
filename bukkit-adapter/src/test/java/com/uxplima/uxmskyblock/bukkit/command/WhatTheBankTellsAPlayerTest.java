@@ -110,7 +110,7 @@ class WhatTheBankTellsAPlayerTest extends MockBukkitHarness {
         answerDeposit(new BankTransactionOutcome.AuthorityRejected(Kind.WALLET_REFUSED, "x"));
         answerWithdraw(new BankTransactionOutcome.AuthorityRejected(Kind.WALLET_REFUSED, "x"));
 
-        assertThat(run("bank deposit 5")).singleElement().asString().contains("nothing was deposited");
+        assertThat(run("bank deposit 5")).singleElement().asString().contains("nothing went in");
         assertThat(run("bank withdraw 5")).singleElement().asString().contains("back in the island bank");
     }
 
@@ -144,7 +144,7 @@ class WhatTheBankTellsAPlayerTest extends MockBukkitHarness {
         String repeated = run("bank withdraw 5").getFirst();
 
         assertThat(busy).contains("same moment").doesNotContain("StaleVersion").doesNotContain("expectedVersion");
-        assertThat(repeated).contains("already made").doesNotContain("DuplicateOperation");
+        assertThat(repeated).contains("was made already").doesNotContain("DuplicateOperation");
     }
 
     @Test

@@ -188,7 +188,7 @@ class IslandProgressionCommandsTest {
 
         run("biome", player);
 
-        assertThat(player.nextMessage()).contains("Biomes this server offers").contains("plains");
+        assertThat(player.nextMessage()).contains("This server offers").contains("plains");
     }
 
     @Test

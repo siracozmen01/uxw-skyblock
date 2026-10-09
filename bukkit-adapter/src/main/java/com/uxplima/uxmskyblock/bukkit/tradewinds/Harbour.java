@@ -17,7 +17,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import com.uxplima.uxmlib.gui.Guis;
 import com.uxplima.uxmlib.gui.SimpleGui;
@@ -384,6 +383,6 @@ public final class Harbour {
     }
 
     private static String legacy(Component line) {
-        return LegacyComponentSerializer.legacySection().serialize(line);
+        return com.uxplima.uxmskyblock.bukkit.bedrock.FormText.of(line);
     }
 }

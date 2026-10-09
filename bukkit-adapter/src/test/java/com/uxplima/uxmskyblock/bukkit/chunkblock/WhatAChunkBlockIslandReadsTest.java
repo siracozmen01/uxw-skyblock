@@ -133,7 +133,7 @@ class WhatAChunkBlockIslandReadsTest extends MockBukkitHarness {
 
         level.set(2);
         panel.unlockFaced(player);
-        assertThat(said()).singleElement().asString().contains("opens").contains("5");
+        assertThat(said()).singleElement().asString().contains("is open").contains("5");
         assertThat(service.isOpen(island.id(), new ChunkPos(1, 0))).contains(true);
 
         panel.unlockFaced(player);
@@ -163,7 +163,7 @@ class WhatAChunkBlockIslandReadsTest extends MockBukkitHarness {
         assertThat(said())
                 .singleElement()
                 .asString()
-                .contains("1 chunks open")
+                .contains("1 chunks are open")
                 .contains("level 2")
                 .contains("level 3");
     }

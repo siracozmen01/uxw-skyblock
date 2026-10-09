@@ -64,7 +64,7 @@ class OfflineNotificationDurabilityTest extends MockBukkitHarness {
 
             listener.onSessionActive(player);
             List<String> first = heardBy(player);
-            assertThat(first).anyMatch(line -> line.contains("You were removed from Ayse's island"));
+            assertThat(first).anyMatch(line -> line.contains("Ayse removed you from their island"));
 
             listener.onSessionActive(player);
             assertThat(heardBy(player)).describedAs("a second login").isEmpty();
