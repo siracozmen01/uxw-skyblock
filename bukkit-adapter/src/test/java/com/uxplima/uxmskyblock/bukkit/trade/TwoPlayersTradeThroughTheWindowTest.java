@@ -409,7 +409,7 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
     }
 
     /** A scheduler that runs everything at once, on the calling thread. */
-    private static SchedulerPort inline() {
+    static SchedulerPort inline() {
         return new SchedulerPort() {
             @Override
             public void onGlobal(Runnable task) {
@@ -459,7 +459,7 @@ class TwoPlayersTradeThroughTheWindowTest extends MockBukkitHarness {
     }
 
     /** A journal that records what it was asked and answers as the test says. */
-    private static final class Journal implements TradeJournalPort {
+    static final class Journal implements TradeJournalPort {
         private final List<String> events = new ArrayList<>();
         private InventoryMutationJournalOutcome commit = InventoryMutationJournalOutcome.success();
         private Runnable whileCommitting = () -> {};

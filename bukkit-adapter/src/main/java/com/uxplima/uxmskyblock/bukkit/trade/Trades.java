@@ -97,6 +97,38 @@ public final class Trades {
         this.commandLine = word -> messages.provider().commandLine(word);
     }
 
+    /**
+     * Draws trades from {@code menus/player-trade.conf} from now on. The file's window asks the trade
+     * for the same moves the window built in code makes itself.
+     */
+    public void useMenuEngine(com.uxplima.uxmskyblock.bukkit.menu.SkyblockMenuEngine engine) {
+        window.useMenuEngine(engine, new TradeWindow.Moves() {
+            @Override
+            public void offer(Player player, Trade trade, int slot, ItemStack item) {
+                if (trade.offer(player.getUniqueId(), slot, item)) {
+                    redraw(trade);
+                }
+            }
+
+            @Override
+            public void withdraw(Player player, Trade trade, int index) {
+                if (trade.withdraw(player.getUniqueId(), index)) {
+                    redraw(trade);
+                }
+            }
+
+            @Override
+            public void agree(Player player, Trade trade) {
+                Trades.this.agree(trade, player.getUniqueId());
+            }
+
+            @Override
+            public void callOff(Player player, Trade trade) {
+                Trades.this.callOff(trade, player.getUniqueId());
+            }
+        });
+    }
+
     /** Whether {@code player}'s trade is being carried out now, when nothing may change their inventory. */
     public boolean exchanging(UUID player) {
         Trade trade = trades.get(player);
@@ -209,7 +241,10 @@ public final class Trades {
             event.setCancelled(true);
             return;
         }
-        TradeWindow.View view = viewOf(event.getView());
+        // A window drawn from the file answers its own clicks through the menu engine.
+        @Nullable Inventory clickedTop = event.getView().getTopInventory();
+        TradeWindow.View view =
+                clickedTop != null && clickedTop.getHolder() instanceof TradeWindow.View built ? built : null;
         if (view == null || !(event.getWhoClicked() instanceof Player player)) {
             return;
         }
@@ -226,18 +261,24 @@ public final class Trades {
             callOff(trade, me);
             return;
         } else if (raw == TradeWindow.READY) {
-            if (trade.toggleReady(me)) {
-                redraw(trade);
-                carryOut(trade);
-                return;
-            }
-            changed = true;
+            agree(trade, me);
+            return;
         } else {
             changed = trade.withdraw(me, TradeWindow.mine(raw));
         }
         if (changed) {
             redraw(trade);
         }
+    }
+
+    /** {@code player} agrees, or takes it back; when both agree, the trade is carried out. */
+    private void agree(Trade trade, UUID player) {
+        if (trade.toggleReady(player)) {
+            redraw(trade);
+            carryOut(trade);
+            return;
+        }
+        redraw(trade);
     }
 
     /** A drag in a trade window would move items; it does nothing. */
@@ -364,7 +405,7 @@ public final class Trades {
         messages.send(online, outcome.errorOrThrow(), name);
         Inventory top = windowOf(online, trade);
         if (top != null) {
-            window.draw(online, top, trade);
+            window.redraw(online, top, trade);
         }
     }
 
@@ -377,7 +418,7 @@ public final class Trades {
                 }
                 Inventory top = windowOf(online, trade);
                 if (top != null) {
-                    window.draw(online, top, trade);
+                    window.redraw(online, top, trade);
                 }
             });
         }
@@ -391,14 +432,14 @@ public final class Trades {
 
     /** The trade window {@code view} shows, or null when it shows something else. */
     private static TradeWindow.@Nullable View viewOf(org.bukkit.inventory.InventoryView view) {
-        @Nullable Inventory top = view.getTopInventory();
-        return top != null && top.getHolder() instanceof TradeWindow.View trade ? trade : null;
+        return TradeWindow.viewOf(view.getTopInventory());
     }
 
     /** The window of {@code trade} {@code player} has open, or null. */
     private static @Nullable Inventory windowOf(Player player, Trade trade) {
         @Nullable Inventory top = player.getOpenInventory().getTopInventory();
-        return top != null && top.getHolder() instanceof TradeWindow.View view && view.trade() == trade ? top : null;
+        TradeWindow.View view = TradeWindow.viewOf(top);
+        return view != null && view.trade() == trade ? top : null;
     }
 
     private void forget(Trade trade) {
