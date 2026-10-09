@@ -74,7 +74,7 @@ public record DiscordEmbedTexts(Milestone milestone, Leaderboard leaderboard, Al
                         "Island Level",
                         "Members (<count>)",
                         "UXPLIMA Skyblock Milestones",
-                        0xFFD700),
+                        0xFFE66D),
                 new Leaderboard(
                         "🏆 Top Islands Leaderboard: <metric>",
                         "<place> **<island>**: <score>",
@@ -84,7 +84,7 @@ public record DiscordEmbedTexts(Milestone milestone, Leaderboard leaderboard, Al
                         "`#<rank>`",
                         "No leaderboard entries recorded.",
                         "UXPLIMA Skyblock Leaderboard",
-                        0xFFA500),
+                        0xFFA07A),
                 new Alliance(
                         "⚔️ Diplomatic Event: <action>",
                         "Alliance update concerning **<alliance>**.",
@@ -92,13 +92,13 @@ public record DiscordEmbedTexts(Milestone milestone, Leaderboard leaderboard, Al
                         "Initiated By",
                         "Target",
                         "UXPLIMA Skyblock Diplomacy",
-                        0x3498DB),
+                        0x48CAE4),
                 new Audit(
                         "🛡️ Staff Audit Alert [<severity>]: <event>",
                         "UXPLIMA Skyblock Administrative Audit",
-                        0xE74C3C,
-                        0xE67E22,
-                        0x95A5A6));
+                        0xFF6B8B,
+                        0xFFA07A,
+                        0x8A93A1));
     }
 
     private static final Pattern NAME = Pattern.compile("<([a-z]+)>");

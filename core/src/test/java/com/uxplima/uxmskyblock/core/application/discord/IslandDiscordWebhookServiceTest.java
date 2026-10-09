@@ -141,7 +141,7 @@ class IslandDiscordWebhookServiceTest {
         assertThat(call.url()).isEqualTo("https://discord.com/api/webhooks/admin");
 
         DiscordEmbed embed = call.payload().embeds().get(0);
-        assertThat(embed.color()).isEqualTo(0xE74C3C); // Red for critical
+        assertThat(embed.color()).isEqualTo(0xFF6B8B); // Rose, the palette red, for critical
         assertThat(embed.title()).contains("[CRITICAL]");
     }
 
