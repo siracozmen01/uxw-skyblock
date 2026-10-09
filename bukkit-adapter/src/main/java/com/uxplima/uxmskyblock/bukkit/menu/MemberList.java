@@ -9,7 +9,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.function.UnaryOperator;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -73,14 +72,16 @@ public final class MemberList {
         }
     }
 
-    /**
-     * Registers the list, the words a tile asks for and the verb a tile runs.
-     *
-     * @param typed an island command line under the names the operator gave the command
-     */
-    public void register(MenuBindings bindings, UnaryOperator<String> typed) {
+    /** What a click on a member's tile opens: the roles that member could be given. */
+    @FunctionalInterface
+    public interface RolePicker {
+        void pick(Player viewer, UUID member);
+    }
+
+    /** Registers the list, the words a tile asks for and the verb a tile runs. */
+    public void register(MenuBindings bindings, RolePicker picker) {
         Objects.requireNonNull(bindings, "bindings must not be null");
-        Objects.requireNonNull(typed, "typed must not be null");
+        Objects.requireNonNull(picker, "picker must not be null");
         bindings.list(SOURCE, this::rows);
         bindings.placeholder("entry_uuid", ctx -> rowOf(ctx).map(Row::uuid).orElse(""));
         bindings.placeholder("entry_name", ctx -> rowOf(ctx).map(Row::name).orElse(""));
@@ -89,10 +90,7 @@ public final class MemberList {
         bindings.placeholder("entry_state", ctx -> rowOf(ctx).map(Row::state).orElse(""));
         bindings.action(
                 ROLE_VERB,
-                ctx -> rowOf(ctx.context()).ifPresent(row -> {
-                    ctx.player().closeInventory();
-                    ctx.player().performCommand(typed.apply("role " + row.name()));
-                }));
+                ctx -> rowOf(ctx.context()).ifPresent(row -> picker.pick(ctx.player(), UUID.fromString(row.uuid()))));
     }
 
     /** The members of the viewer's island, the owner first, or none when the viewer has no island. */

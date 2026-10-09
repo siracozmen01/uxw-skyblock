@@ -50,10 +50,6 @@ final class SkyblockMenuVerbs {
             ctx.player().closeInventory();
             ctx.player().performCommand(typed.apply("shop"));
         });
-        engine.action("skyblock:permissions", ctx -> {
-            ctx.player().closeInventory();
-            ctx.player().performCommand(typed.apply("permissions"));
-        });
         // The upgrade key is the verb's argument, so one verb serves every upgrade a file names and
         // an operator can add a slot for a new one without a line of Java.
         // skyblock:island:<branch> <arguments> runs an island command under the operator's names for it,

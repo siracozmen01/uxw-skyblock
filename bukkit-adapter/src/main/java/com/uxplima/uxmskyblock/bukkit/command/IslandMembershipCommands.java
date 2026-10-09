@@ -310,15 +310,14 @@ public final class IslandMembershipCommands {
                                     "member.permissions_entry",
                                     Placeholder.unparsed(
                                             "role", messages.named(player, "roles", role.id(), role.displayName())),
-                                    Placeholder.unparsed("permissions", permissionsOf(role))));
+                                    Placeholder.unparsed("permissions", permissionsOf(player, role))));
                 }));
     }
 
-    /** The permissions a role carries, lower case and comma separated, or a word saying none. */
-    private String permissionsOf(com.uxplima.uxmskyblock.core.domain.island.IslandRole role) {
+    /** The permissions a role carries, by the names the reader's language gives them, or a word saying none. */
+    private String permissionsOf(Player reader, com.uxplima.uxmskyblock.core.domain.island.IslandRole role) {
         return role.permissions().stream()
-                .map(permission -> permission.name().toLowerCase(java.util.Locale.ROOT))
-                .sorted()
+                .map(permission -> messages.named(reader, "permissions", permission.name(), permission.name()))
                 .reduce((left, right) -> left + ", " + right)
                 .orElse("-");
     }
@@ -347,7 +346,13 @@ public final class IslandMembershipCommands {
                                     Placeholder.unparsed(
                                             "role",
                                             messages.named(player, "roles", changed.roleId(), changed.roleId())),
-                                    Placeholder.unparsed("permission", changed.permission()));
+                                    Placeholder.unparsed(
+                                            "permission",
+                                            messages.named(
+                                                    player,
+                                                    "permissions",
+                                                    changed.permission(),
+                                                    changed.permission())));
                         case IslandMembershipService.PermissionOutcome.NotAllowed ignored ->
                             send(player, "member.role_no_permission");
                         case IslandMembershipService.PermissionOutcome.OutOfReach ignored ->

@@ -46,6 +46,8 @@ class TheMembersWindowListsTheMembersTest extends MockBukkitHarness {
     private final IslandMembershipService membership = mock(IslandMembershipService.class);
     private final Messages messages = Messages.bundled();
 
+    private final List<UUID> picked = new java.util.ArrayList<>();
+
     private PlayerMock ada;
     private ProfileId adaProfile;
     private MemberList list;
@@ -103,7 +105,7 @@ class TheMembersWindowListsTheMembersTest extends MockBukkitHarness {
     @DisplayName("A member's tile names that member, in the words the catalogue gives a tile")
     void theTileNamesTheMember() {
         MenuBindings bindings = new MenuBindings();
-        list.register(bindings, line -> "is " + line);
+        list.register(bindings, (viewer, member) -> picked.add(member));
         MemberList.Row row = list.rows(MenuContext.of(ada, null, 0)).get(1);
         MenuContext drawn = MenuContext.of(ada, null, 0).withEntry(row);
         assertThat(bindings.list(MemberList.SOURCE)).isPresent();
@@ -126,6 +128,26 @@ class TheMembersWindowListsTheMembersTest extends MockBukkitHarness {
                 .contains("Role Member")
                 .contains("Now Offline")
                 .doesNotContain("<entry_");
+    }
+
+    @Test
+    @DisplayName("A click on a member's tile opens the roles of that member, not a line of role ids in chat")
+    void aClickPicksThatMembersRole() {
+        MenuBindings bindings = new MenuBindings();
+        list.register(bindings, (viewer, member) -> picked.add(member));
+        MemberList.Row row = list.rows(MenuContext.of(ada, null, 0)).get(1);
+
+        bindings.actions()
+                .get(MemberList.ROLE_VERB)
+                .orElseThrow()
+                .accept(new com.uxplima.uxmlib.menu.runtime.MenuActionContext(
+                        MenuContext.of(ada, null, 0).withEntry(row),
+                        ada,
+                        com.uxplima.uxmlib.menu.spec.ClickKind.LEFT,
+                        Map.of()));
+
+        assertThat(picked).containsExactly(UUID.fromString(row.uuid()));
+        assertThat(ada.nextMessage()).isNull();
     }
 
     /**

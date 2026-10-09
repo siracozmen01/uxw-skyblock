@@ -91,6 +91,16 @@ final class IslandCommandWiring {
                         .build());
         // A button runs an island command under the operator's names for it, so the verbs need the tree.
         SkyblockMenuVerbs.register(integration.menuEngine(), integration.messages(), tree::typed);
+        // The roles, what each may do and the role a member holds are windows, drawn again on a change.
+        var roleWindows = new com.uxplima.uxmskyblock.bukkit.menu.RoleWindows(
+                integration.menuEngine(),
+                integration.messages(),
+                authority.sessionCoordinator()::activeProfile,
+                gameplay.locationService(),
+                gameplay.scheduler(),
+                tree::typed);
+        roleWindows.register();
+        gameplay.membershipService().whenRolesChanged(roleWindows::rolesChanged);
         // The members window lists the members, one tile each, rather than sending the player to chat.
         new com.uxplima.uxmskyblock.bukkit.menu.MemberList(
                         integration.messages(),
@@ -98,7 +108,7 @@ final class IslandCommandWiring {
                         gameplay.locationService(),
                         gameplay.membershipService(),
                         java.time.Clock.systemUTC())
-                .register(integration.menuEngine().bindings(), tree::typed);
+                .register(integration.menuEngine().bindings(), roleWindows::pickRole);
         tree.useTemporaryAccess(
                 config.temporaryAccessConfig(), authority.nodeProcessIdentity(), authority.profileTypes());
         // The inbox, its table, its ten categories and the delivery on join were all here and

@@ -348,6 +348,23 @@ public final class SkyblockMenuEngine implements AutoCloseable {
         return true;
     }
 
+    /**
+     * Hands {@code viewer} fresh lists and draws {@code specId} again in place, when it is still the
+     * window they have up. The other lists the viewer was handed stay, so a window opened since keeps
+     * its own rows.
+     */
+    public void redraw(Player viewer, String specId, Map<String, List<?>> lists) {
+        Objects.requireNonNull(viewer, "viewer must not be null");
+        Objects.requireNonNull(specId, "specId must not be null");
+        Objects.requireNonNull(lists, "lists must not be null");
+        lastLists.merge(viewer.getUniqueId(), Map.copyOf(lists), (held, fresh) -> {
+            Map<String, List<?>> both = new java.util.HashMap<>(held);
+            both.putAll(fresh);
+            return Map.copyOf(both);
+        });
+        menus.redraw(viewer, specId);
+    }
+
     /** Registers one verb a skyblock menu file may name. */
     public void action(String id, java.util.function.Consumer<MenuActionContext> handler) {
         bindings.action(id, handler);
