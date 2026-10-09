@@ -11,12 +11,13 @@ public record ChatConfiguration(
         boolean enabled, String format, String allianceFormat, String spyFormat, int rateLimitMessagesPerSecond) {
 
     public static final boolean DEFAULT_ENABLED = true;
+    // Roles of theme.conf rather than colours, so a server that changes its palette changes its chat too.
     public static final String DEFAULT_FORMAT =
-            "<dark_gray>[<aqua>Island Chat<dark_gray>] <gray>[<green><role><gray>] <yellow><player><white>: <message>";
+            "<tag:'Island'> <muted>[<role>] <value><player><muted>: <body><message>";
     public static final String DEFAULT_ALLIANCE_FORMAT =
-            "<dark_gray>[<light_purple>Alliance<dark_gray>] <gray>[<green><role><gray>] <yellow><player><white>: <message>";
+            "<tag:'Alliance'> <muted>[<role>] <value><player><muted>: <body><message>";
     public static final String DEFAULT_SPY_FORMAT =
-            "<dark_gray>[<red>SPY<dark_gray>] <dark_gray>[<aqua><island_name><dark_gray>] <gray>[<green><role><gray>] <yellow><player><white>: <message>";
+            "<tag:'Spy'> <muted>[<accent><island_name><muted>] [<role>] <value><player><muted>: <body><message>";
     public static final int DEFAULT_RATE_LIMIT = 5;
 
     public ChatConfiguration {

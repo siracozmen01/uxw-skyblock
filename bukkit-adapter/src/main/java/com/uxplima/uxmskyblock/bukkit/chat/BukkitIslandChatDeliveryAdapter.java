@@ -58,7 +58,7 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
         deliver(
                 recipients,
                 reader -> miniMessage.deserialize(
-                        format,
+                        messages.paint(reader, format),
                         Placeholder.parsed("role", roleOf(reader, frame)),
                         Placeholder.parsed("player", frame.senderName()),
                         Placeholder.unparsed("message", frame.message())));
@@ -73,7 +73,7 @@ public final class BukkitIslandChatDeliveryAdapter implements IslandChatDelivery
         deliver(
                 spies,
                 reader -> miniMessage.deserialize(
-                        configuration.spyFormat(),
+                        messages.paint(reader, configuration.spyFormat()),
                         Placeholder.parsed("role", roleOf(reader, frame)),
                         Placeholder.parsed("player", frame.senderName()),
                         Placeholder.parsed("island_name", islandName),
