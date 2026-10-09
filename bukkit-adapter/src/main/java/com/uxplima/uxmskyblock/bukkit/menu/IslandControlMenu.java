@@ -204,6 +204,29 @@ public final class IslandControlMenu {
      * a dead placeholder in a file nothing read.
      */
     private Map<String, String> liveValues(
+            Player reader,
+            Island island,
+            @Nullable IslandBank bank,
+            @Nullable Map<UpgradeId, Integer> upgrades,
+            int vaultPages) {
+        Map<String, String> values = new HashMap<>(numbers(island, bank, upgrades, vaultPages));
+        // Each flag as flag_<name>, in the reader's words, so a settings tile shows where it stands
+        // rather than leaving the player to click and read the answer in chat.
+        island.flags().values().forEach((flag, enabled) -> {
+            String key = flag.toLowerCase(Locale.ROOT);
+            String state = enabled ? "on" : "off";
+            values.put(
+                    "flag_" + key,
+                    messages.named(
+                            reader,
+                            "menu.settings.states",
+                            key + "_" + state,
+                            messages.words(reader, "@menu.settings." + state)));
+        });
+        return Map.copyOf(values);
+    }
+
+    private static Map<String, String> numbers(
             Island island, @Nullable IslandBank bank, @Nullable Map<UpgradeId, Integer> upgrades, int vaultPages) {
         long minorBalance = bank != null ? bank.primaryBalanceMinorUnits() : 0L;
         Map<UpgradeId, Integer> tiers = upgrades != null ? upgrades : Map.of();
@@ -229,6 +252,9 @@ public final class IslandControlMenu {
 
     /** The upgrades window, opened from this menu and drawn from the values it gathers. */
     public static final String UPGRADES = "island-upgrades";
+
+    /** The settings window, opened from this menu and drawn from the values it gathers. */
+    public static final String SETTINGS = "island-settings";
 
     public void open(Player player) {
         show(player, "island-main", false);
@@ -296,7 +322,7 @@ public final class IslandControlMenu {
                 if (refresh) {
                     SkyblockMenuEngine engine = this.menuEngine;
                     if (engine != null && engine.showing(player, specId)) {
-                        engine.open(player, specId, liveValues(island, bank, upgrades, pages));
+                        engine.open(player, specId, liveValues(player, island, bank, upgrades, pages));
                     }
                     return;
                 }
@@ -304,7 +330,8 @@ public final class IslandControlMenu {
                 // Bedrock player, so every window it opens is reachable there too. The form built in
                 // code below only answered with hints in chat, and stays for a file that is missing.
                 SkyblockMenuEngine engine = this.menuEngine;
-                if (engine != null && engine.open(player, "island-main", liveValues(island, bank, upgrades, pages))) {
+                if (engine != null
+                        && engine.open(player, "island-main", liveValues(player, island, bank, upgrades, pages))) {
                     return;
                 }
                 if (bedrockFormService != null && bedrockFormService.isBedrock(player)) {
@@ -357,7 +384,7 @@ public final class IslandControlMenu {
                 .build();
         gui.filler().fill(GuiItem.display(SkyblockTiles.filler()));
 
-        Map<String, String> values = new HashMap<>(liveValues(island, bank, upgrades, 1));
+        Map<String, String> values = new HashMap<>(liveValues(player, island, bank, upgrades, 1));
         values.put("owner", island.ownerPlayerUuid().value().toString().substring(0, 8));
         TagResolver[] live = SkyblockTiles.arguments(values);
         SkyblockTiles tiles = new SkyblockTiles(messages);

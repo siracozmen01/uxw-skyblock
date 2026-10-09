@@ -88,13 +88,25 @@ public final class IslandFlagCommands {
         });
     }
 
+    private java.util.function.Consumer<Player> afterChange = player -> {};
+
+    /**
+     * What happens once a flag is written, on the player's thread: the settings window is drawn again
+     * with the flag where it stands now.
+     */
+    public void afterChange(java.util.function.Consumer<Player> then) {
+        this.afterChange = Objects.requireNonNull(then, "then must not be null");
+    }
+
     private void announce(Player player, IslandFlagService.FlagChange change) {
         switch (change) {
-            case IslandFlagService.FlagChange.Changed changed ->
+            case IslandFlagService.FlagChange.Changed changed -> {
                 send(
                         player,
                         changed.enabled() ? "flag.turned_on" : "flag.turned_off",
                         Placeholder.unparsed("flag", nameOf(player, changed.flag())));
+                afterChange.accept(player);
+            }
             case IslandFlagService.FlagChange.UnknownFlag unknown ->
                 send(
                         player,

@@ -141,6 +141,47 @@ class IslandControlMenuTest extends MockBukkitHarness {
         assertThat(engine.showing(player, IslandControlMenu.UPGRADES)).isFalse();
     }
 
+    @Test
+    @DisplayName("The settings tiles say where each flag stands, and a refresh draws the flag as it is now")
+    void theSettingsShowTheFlags(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+        SkyblockMenuEngine engine = ShippedTemplates.engineWith(dataDir, "island-settings.conf");
+        engine.install();
+        menu.useMenuEngine(engine);
+        engine.open(player, IslandControlMenu.SETTINGS, Map.of());
+        settle(() -> engine.showing(player, IslandControlMenu.SETTINGS));
+
+        menu.refresh(player, IslandControlMenu.SETTINGS);
+        settle(() -> stateOn(11).equals("Off") && stateOn(13).equals("Open"));
+
+        Island changed = sampleIsland.withFlags(sampleIsland
+                .flags()
+                .withFlag(com.uxplima.uxmskyblock.core.domain.island.IslandFlags.PVP, true)
+                .withFlag(com.uxplima.uxmskyblock.core.domain.island.IslandFlags.LOCKED, true));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(changed));
+        menu.refresh(player, IslandControlMenu.SETTINGS);
+        settle(() -> stateOn(11).equals("On") && stateOn(13).equals("Locked"));
+    }
+
+    /** The word the "Now" line of the tile at {@code slot} ends with, or nothing. */
+    private String stateOn(int slot) {
+        org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+        org.bukkit.inventory.ItemStack tile = top == null ? null : top.getItem(slot);
+        if (tile == null || tile.lore() == null) {
+            return "";
+        }
+        return java.util.Objects.requireNonNull(tile.lore()).stream()
+                .map(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
+                .map(String::strip)
+                .filter(line -> line.contains("Now"))
+                .map(line -> line.substring(line.lastIndexOf(' ') + 1))
+                .findFirst()
+                .orElse("");
+    }
+
     /** The tier the size tile of the open window reads, or nothing when there is no such line. */
     private @org.jspecify.annotations.Nullable String tierOnTheSizeTile() {
         org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();

@@ -257,6 +257,12 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);
+        flagCommands.afterChange(player -> {
+            com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu menu = tree.features.controlMenu();
+            if (menu != null) {
+                menu.refresh(player, com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu.SETTINGS);
+            }
+        });
 
         // The ban list had a service, a port, a table and a reader, and no command could put a name
         // in it. The visit gate asked an empty list on every island on every server.

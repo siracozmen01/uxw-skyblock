@@ -2,6 +2,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -160,6 +161,35 @@ class IslandFlagCommandsTest {
             assertThat(provider.getKeys("en")).describedAs("en").contains(key);
             assertThat(provider.getKeys("tr")).describedAs("tr").contains(key);
         }
+    }
+
+    @Test
+    @DisplayName("A flag written runs what comes after it, so the settings window is drawn again; a refusal does not")
+    void aChangeRunsWhatComesAfter() throws Exception {
+        java.util.List<org.bukkit.entity.Player> after = new java.util.ArrayList<>();
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        when(locations.findIsland(ISLAND)).thenReturn(Optional.of(island()));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        IslandFlagCommands commands = new IslandFlagCommands(
+                flagService,
+                locations,
+                inlineScheduler(),
+                Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
+                sessions);
+        commands.afterChange(after::add);
+        dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.build());
+
+        when(flagService.toggle(any(), any(), anyString())).thenReturn(new IslandFlagService.FlagChange.NotAllowed());
+        run("flag pvp", player);
+        assertThat(after).isEmpty();
+
+        when(flagService.toggle(any(), any(), anyString()))
+                .thenReturn(new IslandFlagService.FlagChange.Changed("pvp", true));
+        run("flag pvp", player);
+        assertThat(after).containsExactly(player);
     }
 
     @Test
