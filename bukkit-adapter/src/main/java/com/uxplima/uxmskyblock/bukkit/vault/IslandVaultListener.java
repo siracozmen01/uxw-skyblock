@@ -56,6 +56,11 @@ public final class IslandVaultListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
+        if (holder.written().get()) {
+            // The page was written at a stop, so what the window holds is no longer the window's to move.
+            event.setCancelled(true);
+            return;
+        }
         int topSize = event.getView().getTopInventory().getSize();
         boolean out = takesOut(event, topSize);
         boolean in = putsIn(event, topSize);
@@ -72,6 +77,10 @@ public final class IslandVaultListener implements Listener {
             return;
         }
         if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        if (holder.written().get()) {
+            event.setCancelled(true);
             return;
         }
         if (holder.mayDeposit()) {

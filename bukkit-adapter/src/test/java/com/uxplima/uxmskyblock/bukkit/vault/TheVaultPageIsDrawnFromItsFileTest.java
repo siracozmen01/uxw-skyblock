@@ -384,6 +384,75 @@ class TheVaultPageIsDrawnFromItsFileTest extends MockBukkitHarness {
         verify(vaultService, never()).openVaultPage(any(), any(), any(), anyInt(), any(), any());
     }
 
+    @Test
+    @DisplayName("A window reopened without its page, as the engine reopens from its history, shows and moves nothing")
+    void aWindowWithNoPageMovesNothing() {
+        ContentProvider provider = provider(fileEngine());
+        MenuContext pageless = MenuContext.of(player, null, 0);
+
+        assertThat(provider.render(pageless, region())).isEmpty();
+        assertThat(provider.allows(
+                        pageless, region(), new ContentClick(0, 0, ContentClick.Kind.TAKE, null, diamonds())))
+                .isFalse();
+        assertThat(provider.allows(
+                        pageless, region(), new ContentClick(0, 0, ContentClick.Kind.INSERT, diamonds(), null)))
+                .isFalse();
+        provider.readBack(pageless, region(), List.of(diamonds()));
+
+        verify(vaultService, never()).commitVaultPage(any(), any(), any(), any(), any());
+        assertThat(player.nextMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("Once the stop has written the page, its window lets nothing more move")
+    void aWrittenPageMovesNothing() {
+        SkyblockMenuEngine engine = fileEngine();
+        pageHolds(1, diamonds());
+        Inventory top = openPage(1);
+
+        window.writeBeforeStop(player);
+
+        assertThat(provider(engine)
+                        .allows(
+                                contextOf(top),
+                                region(),
+                                new ContentClick(0, 0, ContentClick.Kind.TAKE, null, diamonds())))
+                .isFalse();
+        assertThat(provider(engine).render(contextOf(top), region())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Once the stop has written the page, the chest built in code lets nothing more move either")
+    void aWrittenChestMovesNothing() {
+        pageHolds(1, diamonds());
+        openPage(1);
+        window.writeBeforeStop(player);
+        org.bukkit.event.inventory.InventoryClickEvent take = new org.bukkit.event.inventory.InventoryClickEvent(
+                player.getOpenInventory(),
+                org.bukkit.event.inventory.InventoryType.SlotType.CONTAINER,
+                0,
+                org.bukkit.event.inventory.ClickType.LEFT,
+                org.bukkit.event.inventory.InventoryAction.PICKUP_ALL);
+
+        new IslandVaultListener(window).onInventoryClick(take);
+
+        assertThat(take.isCancelled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Once the stop has written the page, a drag into the chest built in code goes nowhere")
+    void aWrittenChestTakesNoDrag() {
+        pageHolds(1, diamonds());
+        openPage(1);
+        window.writeBeforeStop(player);
+        org.bukkit.event.inventory.InventoryDragEvent drag = new org.bukkit.event.inventory.InventoryDragEvent(
+                player.getOpenInventory(), null, diamonds(), false, java.util.Map.of(3, diamonds()));
+
+        new IslandVaultListener(window).onInventoryDrag(drag);
+
+        assertThat(drag.isCancelled()).isTrue();
+    }
+
     private IslandVaultWindow.VaultHolder holder(boolean mayWithdraw, boolean mayDeposit) {
         List<ItemStack> empty = new ArrayList<>();
         for (int slot = 0; slot < 45; slot++) {
