@@ -70,7 +70,12 @@ public final class IslandChatCommands {
      * channel to switch on.
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildAllianceChat() {
-        return Cmd.literal("allychat").executes(this::executeAllianceToggle);
+        // The help line has always offered a message after the word, and the word took none, so
+        // the line it published answered with an argument error.
+        return Cmd.literal("allychat")
+                .executes(this::executeAllianceToggle)
+                .then(Cmd.argument("message", StringArgumentType.greedyString())
+                        .executes(this::executeAllianceMessage));
     }
 
     /** {@code /is ac [message]}: the short form, which sends one line without leaving your channel. */

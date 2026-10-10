@@ -217,6 +217,22 @@ class IslandChatCommandsTest {
     }
 
     @Test
+    @DisplayName("/is allychat <message> sends that line on the alliance channel, as its help line says")
+    void allychatSendsALine() throws Exception {
+        when(chat.hasAlliances()).thenReturn(true);
+
+        run("allychat hello allies", player);
+
+        verify(chat)
+                .sendChatOn(
+                        eq(PROFILE),
+                        anyString(),
+                        eq("hello allies"),
+                        eq(com.uxplima.uxmskyblock.core.domain.chat.IslandChatChannel.ALLIANCE));
+        verify(chat, never()).setChannel(any(), any());
+    }
+
+    @Test
     @DisplayName("/is allychat moves the player onto the alliance channel")
     void allychatMovesThePlayerOntoTheChannel() throws Exception {
         when(chat.hasAlliances()).thenReturn(true);

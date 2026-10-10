@@ -75,7 +75,7 @@ class EveryMenuCommandParsesTest {
     private static final String SAMPLE_INPUT = "example";
 
     /** The tree the plugin registers, built with stand-ins for everything it talks to. */
-    private static CommandDispatcher<CommandSourceStack> dispatcher() {
+    static CommandDispatcher<CommandSourceStack> dispatcher() {
         IslandCommandTree tree = new IslandCommandTree(
                 mock(CreateIslandUseCase.class),
                 mock(IslandLocationService.class),
