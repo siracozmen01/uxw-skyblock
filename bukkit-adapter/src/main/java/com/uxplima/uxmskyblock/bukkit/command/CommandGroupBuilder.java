@@ -221,6 +221,10 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         activityCommands.useWindows(() -> tree.socialWindows);
+        activityCommands.useCurrencyNames(id -> tree.economyBridge
+                .wallets()
+                .flatMap(wallets -> wallets.currency(id))
+                .map(kept -> kept.spec().displayName()));
 
         IslandHomeCommands homeCommands = new IslandHomeCommands(
                 () -> tree.homeService,

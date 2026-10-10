@@ -63,6 +63,32 @@ public final class ActivityFeedProjection implements OutboxEventConsumer {
         }
         UUID playerUuid = UUID.fromString(player.get());
         boolean in = minorUnits > 0;
+        Optional<String> currency = first(CURRENCY, event.payload())
+                .filter(written -> !com.uxplima.uxmskyblock.core.application.bank.BankCurrencies.isPrimary(written));
+        String playerName = playerNames.apply(playerUuid).orElse(playerUuid.toString());
+        String reason = first(REASON, event.payload())
+                .map(ActivityFeedProjection::unescaped)
+                .orElse("");
+        if (currency.isPresent()) {
+            // An operator currency is kept in whole units and stored by its id, which the reader's feed names as the
+            // operator names it then: fifty experience does not read as fifty coins, nor as an id.
+            feed.record(
+                    event.aggregateId(),
+                    null,
+                    in ? ActivityEventType.BANK_DEPOSIT : ActivityEventType.BANK_WITHDRAW,
+                    ActivityVisibility.MEMBERS_ONLY,
+                    in ? "activity.bank_held_deposit" : "activity.bank_held_withdraw",
+                    Map.of(
+                            "player",
+                            playerName,
+                            "amount",
+                            Long.toString(Math.abs(minorUnits)),
+                            "currency",
+                            currency.get(),
+                            "reason",
+                            reason));
+            return;
+        }
         feed.record(
                 event.aggregateId(),
                 null,
@@ -70,25 +96,14 @@ public final class ActivityFeedProjection implements OutboxEventConsumer {
                 ActivityVisibility.MEMBERS_ONLY,
                 in ? "activity.bank_deposit" : "activity.bank_withdraw",
                 Map.of(
-                        "player", playerNames.apply(playerUuid).orElse(playerUuid.toString()),
-                        "amount", amountOf(Math.abs(minorUnits), first(CURRENCY, event.payload())),
+                        "player",
+                        playerName,
+                        "amount",
+                        BigDecimal.valueOf(Math.abs(minorUnits), 2)
+                                .stripTrailingZeros()
+                                .toPlainString(),
                         "reason",
-                                first(REASON, event.payload())
-                                        .map(ActivityFeedProjection::unescaped)
-                                        .orElse("")));
-    }
-
-    /**
-     * The amount as the feed writes it. The island's own money is kept in minor units and written as such; an
-     * operator currency is kept in whole units and written with its id, so fifty experience does not read as fifty
-     * coins.
-     */
-    private static String amountOf(long amount, Optional<String> currency) {
-        if (currency.isEmpty()
-                || com.uxplima.uxmskyblock.core.application.bank.BankCurrencies.isPrimary(currency.get())) {
-            return BigDecimal.valueOf(amount, 2).stripTrailingZeros().toPlainString();
-        }
-        return amount + " " + currency.get();
+                        reason));
     }
 
     private static Optional<String> first(Pattern pattern, String payload) {

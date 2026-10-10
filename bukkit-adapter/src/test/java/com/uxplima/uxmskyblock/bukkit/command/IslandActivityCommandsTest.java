@@ -353,6 +353,30 @@ class IslandActivityCommandsTest {
     }
 
     @Test
+    @DisplayName("A currency the bank keeps is named in the reader's language, as the operator names it today")
+    void aKeptCurrencyIsNamed() throws Exception {
+        when(feed.getRecentActivities(anyString(), anyInt()))
+                .thenReturn(List.of(eventOf(
+                        "activity.bank_held_deposit",
+                        com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                java.util.Map.of("player", "Ayse", "amount", "50", "currency", "experience")),
+                        Instant.now().minus(java.time.Duration.ofMinutes(3)))));
+        IslandActivityCommands commands =
+                new IslandActivityCommands(() -> feed, locations, inlineScheduler(), Messages.bundled(), sessions);
+        commands.useCurrencyNames(
+                id -> id.equals("experience") ? Optional.of("@bank.currencies.experience") : Optional.empty());
+        CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
+        tree.register(commands.build());
+
+        runOn(tree, "activity");
+
+        player.nextMessage();
+        assertThat(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                        .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage())))
+                .contains("Ayse put 50 Experience in the bank.");
+    }
+
+    @Test
     @DisplayName("With the window gone, the feed is said in chat as it always was")
     void withoutTheWindowTheFeedIsSaid() throws Exception {
         IslandActivityCommands commands =

@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A bank line says what moved. The island's money is kept in cents and an operator currency in whole units,
- * so fifty experience read as fifty cents, "0.5", until the line named the currency.
+ * so fifty experience read as fifty cents, "0.5", until the line named the currency, and then by its id.
  */
 class TheFeedNamesTheCurrencyTest {
 
@@ -64,7 +64,7 @@ class TheFeedNamesTheCurrencyTest {
     }
 
     @Test
-    @DisplayName("An operator currency is written whole, with its name")
+    @DisplayName("An operator currency is written whole, on a line of its own, with its id for the reader to name")
     void anOperatorCurrency() {
         projection.consume(moved(-50L, "experience"));
 
@@ -74,7 +74,7 @@ class TheFeedNamesTheCurrencyTest {
                         any(),
                         eq(ActivityEventType.BANK_WITHDRAW),
                         eq(ActivityVisibility.MEMBERS_ONLY),
-                        eq("activity.bank_withdraw"),
-                        eq(Map.of("player", "Rex", "amount", "50 experience", "reason", "In")));
+                        eq("activity.bank_held_withdraw"),
+                        eq(Map.of("player", "Rex", "amount", "50", "currency", "experience", "reason", "In")));
     }
 }

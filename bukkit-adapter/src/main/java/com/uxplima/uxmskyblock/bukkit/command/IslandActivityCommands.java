@@ -63,6 +63,14 @@ public final class IslandActivityCommands {
         this.sessionCoordinator = sessionCoordinator;
     }
 
+    /** The name the operator gives a currency the bank keeps, by its id, written as the bank file writes it. */
+    private java.util.function.Function<String, Optional<String>> currencyNames = id -> Optional.empty();
+
+    /** Hands this command where the names of the bank's currencies are read. */
+    public void useCurrencyNames(java.util.function.Function<String, Optional<String>> names) {
+        this.currencyNames = Objects.requireNonNull(names, "names must not be null");
+    }
+
     /** The window the feed is shown in, rather than lines in chat. */
     private java.util.function.Supplier<
                     com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
@@ -155,6 +163,12 @@ public final class IslandActivityCommands {
             return messages.words(player, value);
         }
         return switch (name) {
+            // A currency the bank keeps is stored by its id, and named as the operator names it today.
+            case "currency" ->
+                currencyNames
+                        .apply(value)
+                        .map(written -> messages.words(player, written))
+                        .orElse(value);
             case "role" -> messages.named(player, "roles", value, value);
             case "category" -> messages.named(player, "warp.categories", value, value);
             case "preset" ->
