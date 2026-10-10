@@ -121,7 +121,7 @@ class IslandHelpListsEveryCommandTest extends MockBukkitHarness {
 
         List<String> said = allPages(tree(ConfiguredCommands.load(file)), turkish, "ada");
 
-        assertThat(said).anyMatch(line -> line.startsWith("/ada uyeler") && line.contains("Ada üyelerini listeler"));
+        assertThat(said).anyMatch(line -> line.startsWith("/ada uyeler") && line.contains("Ada üyelerini açar"));
         assertThat(said).noneMatch(line -> line.startsWith("/ada members"));
     }
 

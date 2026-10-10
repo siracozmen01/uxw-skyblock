@@ -66,6 +66,8 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
 
+        bankCommands.useWindows(tree.windows);
+
         IslandUpgradeCommands upgradeCommands = new IslandUpgradeCommands(
                 () -> tree.features.upgradeService(),
                 tree.islandLocationService,
@@ -73,6 +75,8 @@ final class CommandGroupBuilder {
                 tree.serverNodeId,
                 tree.messages,
                 tree.sessionCoordinator);
+
+        upgradeCommands.useWindows(tree.windows);
         upgradeCommands.useEffects(tree.interactionEffects, effectPlayer);
         upgradeCommands.afterPurchase(player -> {
             com.uxplima.uxmskyblock.bukkit.menu.IslandControlMenu menu = tree.features.controlMenu();
@@ -185,6 +189,8 @@ final class CommandGroupBuilder {
                 () -> tree.features.worthService(),
                 () -> tree.missionService,
                 tree.messages);
+
+        progressionCommands.useWindows(tree.windows);
         progressionCommands.useBiomeRules(tree.biomeConfiguration);
         progressionCommands.useRecalculationCooldown(tree.recalculationCooldown);
         progressionCommands.useLeaderboards(() -> tree.leaderboards);
@@ -219,6 +225,8 @@ final class CommandGroupBuilder {
                 tree.homeConfiguration,
                 tree.messages,
                 tree.sessionCoordinator);
+
+        homeCommands.useWindows(tree.windows);
         homeCommands.useGameModes(profile -> tree.gameModes.apply(profile));
 
         // Four subsystems were built, wired and running with no command to reach them: warps, the
@@ -287,6 +295,7 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);
+        membershipCommands.useWindows(tree.windows);
         membershipCommands.useNotifications(tree.notificationService);
         membershipCommands.useLifecycle(() -> tree.playerLifecycle);
         membershipCommands.useActivityFeed(tree.activityFeedService);

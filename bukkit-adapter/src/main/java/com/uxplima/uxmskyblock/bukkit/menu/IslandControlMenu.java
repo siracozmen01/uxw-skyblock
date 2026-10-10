@@ -257,7 +257,22 @@ public final class IslandControlMenu {
     public static final String SETTINGS = "island-settings";
 
     public void open(Player player) {
-        show(player, "island-main", false);
+        show(player, "island-main", false, () -> {});
+    }
+
+    /** Whether the operator kept the window {@code specId}, so a command named after it opens it. */
+    public boolean hasWindow(String specId) {
+        SkyblockMenuEngine engine = this.menuEngine;
+        return engine != null && engine.has(specId);
+    }
+
+    /**
+     * Opens the window {@code specId} with the island's values, as its tile in this menu does, so a
+     * command named after a window opens it. When the window cannot be opened, {@code otherwise} runs on
+     * the player's thread, so the command still answers in chat.
+     */
+    public void openWindow(Player player, String specId, Runnable otherwise) {
+        show(player, specId, false, Objects.requireNonNull(otherwise, "otherwise must not be null"));
     }
 
     /**
@@ -266,10 +281,10 @@ public final class IslandControlMenu {
      * one would otherwise show the tier it had before.
      */
     public void refresh(Player player, String specId) {
-        show(player, specId, true);
+        show(player, specId, true, () -> {});
     }
 
-    private void show(Player player, String specId, boolean refresh) {
+    private void show(Player player, String specId, boolean refresh, Runnable otherwise) {
         Objects.requireNonNull(player, "player must not be null");
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
         Optional<ProfileId> activeOpt = activeProfileProvider.apply(player.getUniqueId());
@@ -293,8 +308,15 @@ public final class IslandControlMenu {
                     return;
                 }
                 schedulerPort.onEntity(playerUuid, () -> {
-                    if (player.isOnline()) {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    // A window is drawn from an island's values. A command named after one still
+                    // answers a player without an island, as the board does, in chat.
+                    if ("island-main".equals(specId)) {
                         player.sendMessage(messages.render(player, "menu.control.no_island"));
+                    } else {
+                        otherwise.run();
                     }
                 });
                 return;
@@ -330,8 +352,11 @@ public final class IslandControlMenu {
                 // Bedrock player, so every window it opens is reachable there too. The form built in
                 // code below only answered with hints in chat, and stays for a file that is missing.
                 SkyblockMenuEngine engine = this.menuEngine;
-                if (engine != null
-                        && engine.open(player, "island-main", liveValues(player, island, bank, upgrades, pages))) {
+                if (engine != null && engine.open(player, specId, liveValues(player, island, bank, upgrades, pages))) {
+                    return;
+                }
+                if (!"island-main".equals(specId)) {
+                    otherwise.run();
                     return;
                 }
                 if (bedrockFormService != null && bedrockFormService.isBedrock(player)) {

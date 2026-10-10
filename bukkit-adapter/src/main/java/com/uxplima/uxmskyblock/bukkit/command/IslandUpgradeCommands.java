@@ -52,6 +52,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandUpgradeCommands {
 
+    /** Where a command named after a window opens it. */
+    private CommandWindows windows = CommandWindows.none();
+
+    void useWindows(CommandWindows windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     private static final java.util.logging.Logger LOGGER =
             java.util.logging.Logger.getLogger(IslandUpgradeCommands.class.getName());
 
@@ -133,7 +140,7 @@ public final class IslandUpgradeCommands {
     /** The same branch under another word, so {@code /is upgrade} and {@code /is upgrades} both work. */
     public LiteralArgumentBuilder<CommandSourceStack> buildUnder(String verb) {
         return Cmd.literal(verb)
-                .executes(this::executeList)
+                .executes(ctx -> windows.openOr(ctx, "island-upgrades", this::executeList))
                 .then(Cmd.literal("list").executes(this::executeList))
                 .then(Cmd.literal("buy")
                         .then(Cmd.argument("upgrade", StringArgumentType.word())

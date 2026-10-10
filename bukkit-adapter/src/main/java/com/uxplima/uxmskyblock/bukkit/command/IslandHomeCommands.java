@@ -44,6 +44,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandHomeCommands {
 
+    /** Where a command named after a window opens it. */
+    private CommandWindows windows = CommandWindows.none();
+
+    void useWindows(CommandWindows windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     private final Supplier<@Nullable HomeService> homeServiceProvider;
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
@@ -73,7 +80,9 @@ public final class IslandHomeCommands {
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildNamedHome() {
-        return Cmd.literal("homes").executes(this::executeListHomes);
+        return Cmd.literal("homes")
+                .executes(ctx -> windows.openOr(ctx, "island-homes", this::executeListHomes))
+                .then(Cmd.literal("list").executes(this::executeListHomes));
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildDeleteHome() {

@@ -43,6 +43,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandBankCommands {
 
+    /** Where a command named after a window opens it. */
+    private CommandWindows windows = CommandWindows.none();
+
+    void useWindows(CommandWindows windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     private final IslandBankService islandBankService;
     private final IslandLocationService islandLocationService;
     private final SkyblockEconomyBridge economyBridge;
@@ -76,7 +83,7 @@ public final class IslandBankCommands {
 
     public LiteralArgumentBuilder<CommandSourceStack> build() {
         return Cmd.literal("bank")
-                .executes(this::executeBankBalance)
+                .executes(ctx -> windows.openOr(ctx, "island-bank", this::executeBankBalance))
                 .then(Cmd.literal("balance").executes(this::executeBankBalance))
                 .then(Cmd.literal("status").executes(this::executeBankStatus))
                 .then(Cmd.literal("upkeep").executes(this::executeBankStatus))

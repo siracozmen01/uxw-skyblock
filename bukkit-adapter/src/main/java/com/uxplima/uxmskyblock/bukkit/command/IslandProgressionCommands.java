@@ -46,6 +46,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandProgressionCommands {
 
+    /** Where a command named after a window opens it. */
+    private CommandWindows windows = CommandWindows.none();
+
+    void useWindows(CommandWindows windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     private final IslandLocationService islandLocationService;
     private final IslandBankService islandBankService;
     private final IslandLeaderboardService islandLeaderboardService;
@@ -156,7 +163,7 @@ public final class IslandProgressionCommands {
 
     public LiteralArgumentBuilder<CommandSourceStack> buildTop() {
         return Cmd.literal("top")
-                .executes(ctx -> executeTop(ctx, "level"))
+                .executes(ctx -> windows.openOr(ctx, "island-top", board -> executeTop(board, "level")))
                 // A registered metric is named namespace:key, and a word stops at the colon.
                 .then(Cmd.argument("category", StringArgumentType.greedyString())
                         .executes(ctx -> executeTop(ctx, StringArgumentType.getString(ctx, "category"))));
@@ -164,7 +171,8 @@ public final class IslandProgressionCommands {
 
     public LiteralArgumentBuilder<CommandSourceStack> buildBiome() {
         return Cmd.literal("biome")
-                .executes(this::executeBiomeOffer)
+                .executes(ctx -> windows.openOr(ctx, "island-biome", this::executeBiomeOffer))
+                .then(Cmd.literal("list").executes(this::executeBiomeOffer))
                 .then(Cmd.argument("type", StringArgumentType.word()).executes(this::executeBiomeChange));
     }
 

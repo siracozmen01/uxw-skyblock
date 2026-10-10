@@ -100,6 +100,7 @@ final class IslandCommandWiring {
                 gameplay.scheduler(),
                 tree::typed);
         roleWindows.register();
+        tree.windows().useRoles(roleWindows::openRoles);
         gameplay.membershipService().whenRolesChanged(roleWindows::rolesChanged);
         // The members window lists the members, one tile each, rather than sending the player to chat.
         new com.uxplima.uxmskyblock.bukkit.menu.MemberList(

@@ -102,6 +102,7 @@ public final class IslandCommandTree {
     final String worldName;
     final SkyblockEconomyBridge economyBridge;
     final IslandFeatures features;
+    final CommandWindows windows;
     volatile @Nullable IslandBankruptcyService bankruptcyService;
     volatile @Nullable IslandNameService nameService;
     volatile @Nullable IslandNetworkRouter networkRouter;
@@ -232,6 +233,7 @@ public final class IslandCommandTree {
         this.worldName = Objects.requireNonNull(worldName, "worldName must not be null");
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
         this.features = Objects.requireNonNull(features, "features must not be null");
+        this.windows = new CommandWindows(features::controlMenu);
     }
 
     public IslandUpgradeStoragePort islandUpgradePort() {
@@ -264,6 +266,11 @@ public final class IslandCommandTree {
 
     public void setActivityFeedService(@Nullable ActivityFeedService activityFeedService) {
         this.activityFeedService = activityFeedService;
+    }
+
+    /** Where a command named after a window opens it. */
+    public CommandWindows windows() {
+        return windows;
     }
 
     /** Tells the tree what a trust grant carries, so the trust branch can make one. */

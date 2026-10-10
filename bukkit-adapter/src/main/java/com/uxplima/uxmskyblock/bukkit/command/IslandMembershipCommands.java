@@ -50,6 +50,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class IslandMembershipCommands {
 
+    /** Where a command named after a window opens it. */
+    private CommandWindows windows = CommandWindows.none();
+
+    void useWindows(CommandWindows windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     /**
      * What the operator wrote for the milestones this command group reaches.
      *
@@ -247,7 +254,9 @@ public final class IslandMembershipCommands {
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildMembers() {
-        return Cmd.literal("members").executes(this::executeMembers);
+        return Cmd.literal("members")
+                .executes(ctx -> windows.openOr(ctx, "island-members", this::executeMembers))
+                .then(Cmd.literal("list").executes(this::executeMembers));
     }
 
     /** {@code /is role <player> <role>}: what somebody on the island may do. */
@@ -282,7 +291,10 @@ public final class IslandMembershipCommands {
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildPermissions() {
         return Cmd.literal("permissions")
-                .executes(this::executePermissionList)
+                .executes(ctx -> ctx.getSource().getSender() instanceof Player player && windows.openRoles(player)
+                        ? Cmd.OK
+                        : executePermissionList(ctx))
+                .then(Cmd.literal("list").executes(this::executePermissionList))
                 .then(Cmd.argument("role", StringArgumentType.word())
                         .then(Cmd.argument("permission", StringArgumentType.word())
                                 .then(Cmd.argument("state", StringArgumentType.word())

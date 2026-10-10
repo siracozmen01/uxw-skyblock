@@ -130,6 +130,15 @@ public final class RoleWindows {
         viewer.performCommand(typed.apply(line));
     }
 
+    /** Opens the roles window, as {@code /is permissions} does, or answers false when the operator removed it. */
+    public boolean openRoles(Player viewer) {
+        if (!engine.has(ROLES_FILE)) {
+            return false;
+        }
+        show(viewer, ROLES_FILE, "", true);
+        return true;
+    }
+
     /** Opens the roles {@code member} could be given, the click on a member's tile. */
     public void pickRole(Player viewer, UUID member) {
         show(viewer, MEMBER_FILE, member.toString(), true);
