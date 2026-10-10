@@ -67,12 +67,12 @@ public final class DatabaseTestFixture {
     /** Creates an isolated file-backed SQLite database for testing. */
     public static Database createSqliteFile(Path dbFile) {
         Objects.requireNonNull(dbFile, "dbFile");
-        return Database.builder().sqlite(dbFile).build();
+        return Database.builder().sqlite(dbFile).foreignKeys(true).build();
     }
 
     /** Creates an in-memory SQLite database for testing. */
     public static Database createSqliteInMemory() {
-        return Database.builder().sqliteInMemory().build();
+        return Database.builder().sqliteInMemory().foreignKeys(true).build();
     }
 
     /** Creates a configured, unstarted MariaDB container instance. */

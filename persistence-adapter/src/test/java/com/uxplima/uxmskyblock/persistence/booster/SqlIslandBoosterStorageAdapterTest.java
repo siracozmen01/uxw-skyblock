@@ -45,14 +45,21 @@ final class SqlIslandBoosterStorageAdapterTest {
 
     private void seedAccountAndProfile(UUID playerUuid, UUID profileId) throws SQLException {
         try (Connection conn = database.connection()) {
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO player_accounts (player_uuid, active_profile_id) VALUES (?, ?)")) {
+            // In the order the server writes them: the account, its profile, then the account
+            // pointing at the profile, since each of the two points at the other.
+            try (PreparedStatement stmt =
+                    conn.prepareStatement("INSERT INTO player_accounts (player_uuid) VALUES (?)")) {
                 stmt.setString(1, playerUuid.toString());
-                stmt.setString(2, profileId.toString());
                 stmt.executeUpdate();
             }
             try (PreparedStatement stmt = conn.prepareStatement(
                     "INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES (?, ?, 'CLASSIC')")) {
+                stmt.setString(1, profileId.toString());
+                stmt.setString(2, playerUuid.toString());
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt =
+                    conn.prepareStatement("UPDATE player_accounts SET active_profile_id = ? WHERE player_uuid = ?")) {
                 stmt.setString(1, profileId.toString());
                 stmt.setString(2, playerUuid.toString());
                 stmt.executeUpdate();

@@ -31,6 +31,9 @@ class CosmeticRewardRestartTest {
             MigrationRunner runner = new MigrationRunner(db1);
             runner.apply(SkyblockMigrations.getMigrations(db1.dialect()));
 
+            // A grant belongs to a profile, and the schema holds it to one that exists.
+            storeProfile(db1, profileA);
+            storeProfile(db1, profileB);
             SqlProfileCosmeticStorageAdapter adapter1 = new SqlProfileCosmeticStorageAdapter(db1);
 
             assertThat(adapter1.hasCosmetic(profileA, "neon_wings")).isFalse();
@@ -62,6 +65,19 @@ class CosmeticRewardRestartTest {
             // Assert idempotency of re-granting after restart
             adapter2.grantCosmetic(profileA, "neon_wings", "REPEAT_GRANT");
             assertThat(adapter2.getCosmetics(profileA)).containsExactlyInAnyOrder("neon_wings", "crystal_aura");
+        }
+    }
+
+    /** Stores an account and its one profile, in the order the server writes them. */
+    private static void storeProfile(Database db, ProfileId profile) {
+        String player = UUID.randomUUID().toString();
+        try (java.sql.Connection conn = db.connection();
+                java.sql.Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("INSERT INTO player_accounts (player_uuid) VALUES ('" + player + "')");
+            stmt.executeUpdate("INSERT INTO player_profiles (profile_id, player_uuid, profile_type) VALUES ('"
+                    + profile.value() + "', '" + player + "', 'CLASSIC')");
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
         }
     }
 }

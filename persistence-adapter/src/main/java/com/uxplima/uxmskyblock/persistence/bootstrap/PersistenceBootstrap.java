@@ -253,12 +253,15 @@ public final class PersistenceBootstrap implements AutoCloseable {
         Database db = Database.builder()
                 .sqlite(databaseFile)
                 .synchronous(com.uxplima.uxmlib.storage.sql.DatabaseBuilder.Synchronous.FULL)
+                // Every table under an island cascades from it. SQLite ignores that unless the
+                // connection asks, so a deleted island left its owner a member of nothing.
+                .foreignKeys(true)
                 .build();
         return new PersistenceBootstrap(db);
     }
 
     public static PersistenceBootstrap createSqliteInMemory() {
-        Database db = Database.builder().sqliteInMemory().build();
+        Database db = Database.builder().sqliteInMemory().foreignKeys(true).build();
         return new PersistenceBootstrap(db);
     }
 
