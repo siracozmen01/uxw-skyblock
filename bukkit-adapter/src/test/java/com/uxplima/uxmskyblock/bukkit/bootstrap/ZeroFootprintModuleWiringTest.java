@@ -361,6 +361,7 @@ class ZeroFootprintModuleWiringTest {
         when(config.inactivityConfig()).thenReturn(inactivity);
 
         MissionConfiguration mission = mock(MissionConfiguration.class);
+        when(mission.resetZone()).thenReturn(java.time.ZoneId.of("UTC"));
         when(mission.missions()).thenReturn(java.util.List.of());
         when(config.missionConfig()).thenReturn(mission);
 

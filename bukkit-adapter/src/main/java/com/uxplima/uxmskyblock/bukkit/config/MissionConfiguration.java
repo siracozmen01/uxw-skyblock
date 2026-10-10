@@ -10,6 +10,7 @@ import java.util.Objects;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionBranch;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionId;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionReward;
 import com.uxplima.uxmskyblock.core.domain.mission.MissionTriggerType;
 import org.spongepowered.configurate.ConfigurationNode;
@@ -17,12 +18,18 @@ import org.spongepowered.configurate.ConfigurationNode;
 /**
  * Configuration holder for island missions, branches, trigger specifications, and rewards.
  */
-public record MissionConfiguration(boolean enabled, List<MissionDefinition> missions) {
+public record MissionConfiguration(boolean enabled, List<MissionDefinition> missions, java.time.ZoneId resetZone) {
+
+    /** Missions whose days and weeks turn in the server's own zone. */
+    public MissionConfiguration(boolean enabled, List<MissionDefinition> missions) {
+        this(enabled, missions, java.time.ZoneId.systemDefault());
+    }
 
     public static final boolean DEFAULT_ENABLED = true;
 
     public MissionConfiguration {
         missions = (missions == null) ? List.of() : List.copyOf(missions);
+        Objects.requireNonNull(resetZone, "resetZone must not be null");
     }
 
     public static MissionConfiguration defaultConfiguration() {
@@ -89,7 +96,47 @@ public record MissionConfiguration(boolean enabled, List<MissionDefinition> miss
                         MissionTriggerType.ITEM_SUBMIT,
                         "IRON_INGOT",
                         64L,
-                        new MissionReward(50L, 5000L, 1000L, List.of())));
+                        new MissionReward(50L, 5000L, 1000L, List.of())),
+                new MissionDefinition(
+                        MissionId.of("daily_cobblestone"),
+                        MissionBranch.MINING,
+                        "@missions.catalog.daily_cobblestone.name",
+                        "@missions.catalog.daily_cobblestone.description",
+                        MissionTriggerType.BLOCK_BREAK,
+                        "COBBLESTONE",
+                        256L,
+                        new MissionReward(5L, 250L, 50L, List.of()),
+                        MissionRepeat.DAILY),
+                new MissionDefinition(
+                        MissionId.of("daily_wheat"),
+                        MissionBranch.FARMING,
+                        "@missions.catalog.daily_wheat.name",
+                        "@missions.catalog.daily_wheat.description",
+                        MissionTriggerType.CROP_HARVEST,
+                        "WHEAT",
+                        64L,
+                        new MissionReward(5L, 250L, 50L, List.of()),
+                        MissionRepeat.DAILY),
+                new MissionDefinition(
+                        MissionId.of("weekly_hunter"),
+                        MissionBranch.SLAYER,
+                        "@missions.catalog.weekly_hunter.name",
+                        "@missions.catalog.weekly_hunter.description",
+                        MissionTriggerType.MOB_KILL,
+                        "*",
+                        100L,
+                        new MissionReward(30L, 2500L, 400L, List.of()),
+                        MissionRepeat.WEEKLY),
+                new MissionDefinition(
+                        MissionId.of("weekly_angler"),
+                        MissionBranch.ADVENTURE,
+                        "@missions.catalog.weekly_angler.name",
+                        "@missions.catalog.weekly_angler.description",
+                        MissionTriggerType.FISHING,
+                        "*",
+                        50L,
+                        new MissionReward(25L, 2000L, 300L, List.of()),
+                        MissionRepeat.WEEKLY));
         return new MissionConfiguration(DEFAULT_ENABLED, defaults);
     }
 
@@ -101,9 +148,10 @@ public record MissionConfiguration(boolean enabled, List<MissionDefinition> miss
         }
 
         boolean enabled = node.node("enabled").getBoolean(DEFAULT_ENABLED);
+        java.time.ZoneId zone = zoneOf(node.node("reset-zone").getString("system"));
         ConfigurationNode catalogNode = node.node("catalog");
         if (catalogNode.virtual() || catalogNode.empty()) {
-            return new MissionConfiguration(enabled, defaultConfiguration().missions());
+            return new MissionConfiguration(enabled, defaultConfiguration().missions(), zone);
         }
 
         List<MissionDefinition> list = new ArrayList<>();
@@ -146,6 +194,12 @@ public record MissionConfiguration(boolean enabled, List<MissionDefinition> miss
                 }
             }
             MissionReward reward = new MissionReward(crystals, currency, exp, commands);
+            String repeatRaw = mNode.node("repeat").getString("once");
+            MissionRepeat repeat = MissionRepeat.named(repeatRaw).orElseGet(() -> {
+                LOGGER.warning(() -> "The mission " + missionKey + " repeats '" + repeatRaw
+                        + "', which is none of once, daily and weekly. It is finished once.");
+                return MissionRepeat.ONCE;
+            });
 
             list.add(new MissionDefinition(
                     MissionId.of(missionKey),
@@ -155,9 +209,27 @@ public record MissionConfiguration(boolean enabled, List<MissionDefinition> miss
                     triggerType,
                     targetFilter,
                     requiredAmount,
-                    reward));
+                    reward,
+                    repeat));
         }
 
-        return new MissionConfiguration(enabled, Collections.unmodifiableList(list));
+        return new MissionConfiguration(enabled, Collections.unmodifiableList(list), zone);
+    }
+
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(MissionConfiguration.class.getName());
+
+    /** The zone a file names, "system" for the server's own, and the server's own for one it does not know. */
+    static java.time.ZoneId zoneOf(String written) {
+        if (written.isBlank() || written.strip().equalsIgnoreCase("system")) {
+            return java.time.ZoneId.systemDefault();
+        }
+        try {
+            return java.time.ZoneId.of(written.strip());
+        } catch (java.time.DateTimeException unknown) {
+            LOGGER.warning(() -> "missions.reset-zone is '" + written
+                    + "', which is no time zone. Missions turn over in the server's own zone.");
+            return java.time.ZoneId.systemDefault();
+        }
     }
 }

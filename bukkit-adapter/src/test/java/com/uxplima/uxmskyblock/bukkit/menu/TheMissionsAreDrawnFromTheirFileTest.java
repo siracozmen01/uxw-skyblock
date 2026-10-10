@@ -84,7 +84,8 @@ class TheMissionsAreDrawnFromTheirFileTest extends MockBukkitHarness {
 
         assertThat(open.words())
                 .containsEntry("material", "CHEST")
-                .containsEntry("facts", "branch progress crystals")
+                .containsEntry("facts", "branch repeat progress crystals")
+                .containsEntry("repeat", "Hiç, bir kez biter")
                 .containsEntry("status", "0 / 10");
         assertThat(IslandMissionsMenu.factsOf(DIAMONDS, true)).endsWith("-action");
     }
@@ -158,7 +159,8 @@ class TheMissionsAreDrawnFromTheirFileTest extends MockBukkitHarness {
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
         when(storage.findIslandIdByProfileId(PROFILE)).thenReturn(Optional.of(ISLAND));
         when(missions.allMissions()).thenReturn(List.of(DIAMONDS));
-        when(missions.findAllProgress(ISLAND, PROFILE)).thenReturn(Map.of());
+        when(missions.currentProgress(eq(ISLAND), eq(PROFILE), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Map.of());
         SkyblockMenuEngine engine = mock(SkyblockMenuEngine.class);
         when(engine.open(eq(player), eq("island-mission-list"), anyMap(), anyMap()))
                 .thenReturn(true);
@@ -181,5 +183,56 @@ class TheMissionsAreDrawnFromTheirFileTest extends MockBukkitHarness {
         assertThat(top == null || !(top.getHolder() instanceof com.uxplima.uxmlib.gui.Gui))
                 .describedAs("no window built in code is open")
                 .isTrue();
+    }
+
+    @Test
+    @DisplayName("The daily, the weekly and the challenges each open with only the missions of their kind, as they "
+            + "stand now")
+    void eachKindOpensItsOwn() {
+        MissionDefinition daily = new MissionDefinition(
+                MissionId.of("daily"),
+                MissionBranch.MINING,
+                "Daily",
+                "Every day.",
+                MissionTriggerType.BLOCK_BREAK,
+                "STONE",
+                10,
+                MissionReward.empty(),
+                com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        when(storage.findIslandIdByProfileId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        when(missions.allMissions()).thenReturn(List.of(DIAMONDS, daily));
+        Map<MissionId, com.uxplima.uxmskyblock.core.domain.mission.MissionProgress> now = Map.of(
+                daily.id(),
+                new com.uxplima.uxmskyblock.core.domain.mission.MissionProgress(
+                        daily.id(), 4L, false, null, java.time.Instant.now()));
+        when(missions.currentProgress(eq(ISLAND), eq(PROFILE), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(now);
+        SkyblockMenuEngine engine = mock(SkyblockMenuEngine.class);
+        when(engine.open(eq(player), eq("island-mission-list"), anyMap(), anyMap()))
+                .thenReturn(true);
+        menu.useMenuEngine(engine);
+
+        menu.open(player, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY);
+        menu.open(player, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE);
+        menu.open(player, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.WEEKLY);
+
+        verify(engine)
+                .open(
+                        eq(player),
+                        eq("island-mission-list"),
+                        anyMap(),
+                        eq(Map.of("skyblock:mission-list", menu.rows(player, now, List.of(daily)))));
+        verify(engine)
+                .open(
+                        eq(player),
+                        eq("island-mission-list"),
+                        anyMap(),
+                        eq(Map.of("skyblock:mission-list", menu.rows(player, now, List.of(DIAMONDS)))));
+        verify(engine)
+                .open(eq(player), eq("island-mission-list"), anyMap(), eq(Map.of("skyblock:mission-list", List.of())));
+        assertThat(menu.rows(player, now, List.of(daily)).get(0).words())
+                .containsEntry("status", "4 / 10")
+                .containsEntry("repeat", "Her gün");
     }
 }

@@ -10,9 +10,11 @@ public record MissionDefinition(
         MissionTriggerType triggerType,
         String targetFilter,
         long requiredAmount,
-        MissionReward reward) {
+        MissionReward reward,
+        MissionRepeat repeat) {
 
     public MissionDefinition {
+        Objects.requireNonNull(repeat, "repeat must not be null");
         Objects.requireNonNull(id, "id must not be null");
         Objects.requireNonNull(branch, "branch must not be null");
         Objects.requireNonNull(displayName, "displayName must not be null");
@@ -23,5 +25,27 @@ public record MissionDefinition(
             throw new IllegalArgumentException("requiredAmount must be positive: " + requiredAmount);
         }
         reward = (reward == null) ? MissionReward.empty() : reward;
+    }
+
+    /** A mission finished once, as every mission was before missions came back. */
+    public MissionDefinition(
+            MissionId id,
+            MissionBranch branch,
+            String displayName,
+            String description,
+            MissionTriggerType triggerType,
+            String targetFilter,
+            long requiredAmount,
+            MissionReward reward) {
+        this(
+                id,
+                branch,
+                displayName,
+                description,
+                triggerType,
+                targetFilter,
+                requiredAmount,
+                reward,
+                MissionRepeat.ONCE);
     }
 }

@@ -116,7 +116,7 @@ class IslandMechanicsCommandsTest {
                 () -> antiAbuse,
                 () -> boosters,
                 () -> null,
-                () -> null,
+                () -> missionsMenu,
                 () -> boundaries,
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()));
 
@@ -128,6 +128,27 @@ class IslandMechanicsCommandsTest {
         dispatcher.register(commands.buildBounds());
         dispatcher.register(commands.buildMissions());
         dispatcher.register(commands.buildChallenges());
+    }
+
+    /** The missions window, none until a test hands one over. */
+    private com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable IslandMissionsMenu missionsMenu;
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The daily missions, the weekly ones and the challenges each open their own list")
+    void eachKindOpensItsOwnList() throws Exception {
+        missionsMenu = mock(com.uxplima.uxmskyblock.bukkit.menu.IslandMissionsMenu.class);
+
+        run("missions", player);
+        run("missions daily", player);
+        run("missions weekly", player);
+        run("missions challenges", player);
+        run("challenges", player);
+
+        verify(missionsMenu).open(player, null);
+        verify(missionsMenu).open(player, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY);
+        verify(missionsMenu).open(player, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.WEEKLY);
+        verify(missionsMenu, org.mockito.Mockito.times(2))
+                .open(player, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE);
     }
 
     @org.junit.jupiter.api.Test

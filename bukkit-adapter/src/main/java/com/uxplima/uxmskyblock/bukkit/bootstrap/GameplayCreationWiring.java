@@ -129,6 +129,7 @@ public final class GameplayCreationWiring {
         this.missionService = new IslandMissionService(persistence.islandMissionStoragePort());
         if (config.moduleSettings().isModuleEnabled("missions")) {
             this.missionService.registerMissions(config.missionConfig().missions());
+            this.missionService.resetIn(config.missionConfig().resetZone());
             this.missionsMenu = new IslandMissionsMenu(
                     missionService,
                     persistence.islandStoragePort(),

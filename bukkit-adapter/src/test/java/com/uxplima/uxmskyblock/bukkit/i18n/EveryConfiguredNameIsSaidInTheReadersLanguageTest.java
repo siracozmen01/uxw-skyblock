@@ -42,7 +42,9 @@ class EveryConfiguredNameIsSaidInTheReadersLanguageTest extends MockBukkitHarnes
                 names.add(found.group(2));
             }
         }
-        assertThat(names).hasSize(21);
+        assertThat(names)
+                .describedAs("eleven missions and seven upgrades, a name and a description each")
+                .hasSize(29);
         assertEveryNameIsAnsweredKey(names);
     }
 

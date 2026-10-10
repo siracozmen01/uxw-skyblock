@@ -91,6 +91,14 @@ public final class IslandMissionsMenu {
     }
 
     public void open(Player player) {
+        open(player, null);
+    }
+
+    /**
+     * Opens the missions that come back as {@code which} says, every mission when it is null: the daily ones, the
+     * weekly ones, or the challenges, which are finished once.
+     */
+    public void open(Player player, com.uxplima.uxmskyblock.core.domain.mission.@Nullable MissionRepeat which) {
         UUID rawUuid = player.getUniqueId();
         PlayerUuid playerUuid = new PlayerUuid(rawUuid);
         Optional<ProfileId> activeOpt =
@@ -116,9 +124,12 @@ public final class IslandMissionsMenu {
             }
 
             IslandId islandId = optIslandId.get();
+            // A mission that came back since it was last worked on reads as not started.
             Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap =
-                    missionService.findAllProgress(islandId, profileId);
-            List<MissionDefinition> all = missionService.allMissions();
+                    missionService.currentProgress(islandId, profileId, java.time.Instant.now());
+            List<MissionDefinition> all = missionService.allMissions().stream()
+                    .filter(def -> which == null || def.repeat() == which)
+                    .toList();
 
             schedulerPort.onEntity(playerUuid, () -> {
                 if (!player.isOnline()) {
@@ -305,6 +316,11 @@ public final class IslandMissionsMenu {
             words.put("description", messages.words(player, def.description()));
             words.put("branch", messages.named(player, "missions.branches", branch, branch));
             words.put(
+                    "repeat",
+                    messages.words(
+                            player,
+                            "@menu.missions.repeats." + def.repeat().name().toLowerCase(Locale.ROOT)));
+            words.put(
                     "status",
                     completed ? "<key:menu.missions.status_completed>" : count + " / " + def.requiredAmount());
             words.put("crystals", Long.toString(def.reward().crystals()));
@@ -330,7 +346,7 @@ public final class IslandMissionsMenu {
      * mission a click cannot advance says nothing about clicking.
      */
     static String factsOf(MissionDefinition def, boolean completed) {
-        StringBuilder facts = new StringBuilder("branch progress");
+        StringBuilder facts = new StringBuilder("branch repeat progress");
         if (def.reward().crystals() > 0) {
             facts.append(" crystals");
         }

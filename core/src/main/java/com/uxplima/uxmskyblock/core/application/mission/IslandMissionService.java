@@ -63,6 +63,40 @@ public final class IslandMissionService {
         this(storagePort, null);
     }
 
+    /** The zone a day and a week turn in, for the missions that come back. The server's own until told. */
+    private volatile java.time.ZoneId resetZone = java.time.ZoneId.systemDefault();
+
+    /** Tells this service the zone its days and weeks turn in. */
+    public void resetIn(java.time.ZoneId zone) {
+        this.resetZone = Objects.requireNonNull(zone, "zone must not be null");
+    }
+
+    /**
+     * Where {@code progress} stands at {@code now}: as stored, or started over when it was made in a day or a
+     * week that is over, for a mission that comes back.
+     */
+    MissionProgress current(MissionDefinition def, MissionProgress progress, Instant now) {
+        if (def.repeat() == com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE
+                || !progress.updatedAt().isBefore(def.repeat().periodStart(now, resetZone))) {
+            return progress;
+        }
+        return new MissionProgress(def.id(), 0L, false, null, now);
+    }
+
+    /**
+     * Every mission this profile has made progress on, as it stands at {@code now}: a mission that came back since
+     * reads as not started. This is what a window shows.
+     */
+    public Map<MissionId, MissionProgress> currentProgress(IslandId islandId, ProfileId profileId, Instant now) {
+        Objects.requireNonNull(now, "now must not be null");
+        Map<MissionId, MissionProgress> current = new java.util.HashMap<>();
+        findAllProgress(islandId, profileId).forEach((id, progress) -> {
+            MissionDefinition def = missionCatalog.get(id);
+            current.put(id, def == null ? progress : current(def, progress, now));
+        });
+        return Collections.unmodifiableMap(current);
+    }
+
     public void registerMission(MissionDefinition definition) {
         Objects.requireNonNull(definition, "definition must not be null");
         missionCatalog.put(definition.id(), definition);
@@ -120,9 +154,13 @@ public final class IslandMissionService {
     public int countCompleted(IslandId islandId, ProfileId profileId) {
         Objects.requireNonNull(islandId, "islandId must not be null");
         Objects.requireNonNull(profileId, "profileId must not be null");
+        // A mission that comes back counts for none: the level would fall every time its day or week turned.
         int completed = 0;
         for (MissionProgress progress : findAllProgress(islandId, profileId).values()) {
-            if (progress.completed()) {
+            MissionDefinition def = missionCatalog.get(progress.missionId());
+            if (progress.completed()
+                    && (def == null
+                            || def.repeat() == com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE)) {
                 completed++;
             }
         }
@@ -316,7 +354,9 @@ public final class IslandMissionService {
         boolean[] finishedItNow = {false};
         long[] credited = {0L};
         MissionProgress next = playerProgress.compute(def.id(), (missionId, existing) -> {
-            MissionProgress before = existing != null ? existing : MissionProgress.initial(missionId);
+            // A mission that came back since the last of this progress starts over before it moves on.
+            MissionProgress before =
+                    existing != null ? current(def, existing, now) : MissionProgress.initial(missionId);
             if (before.completed()) {
                 return before;
             }

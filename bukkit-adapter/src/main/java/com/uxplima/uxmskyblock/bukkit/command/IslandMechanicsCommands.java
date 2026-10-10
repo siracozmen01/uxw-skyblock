@@ -42,6 +42,7 @@ import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.identity.ProfileId;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitCategory;
 import com.uxplima.uxmskyblock.core.domain.limit.LimitType;
+import com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -117,11 +118,15 @@ public final class IslandMechanicsCommands {
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildMissions() {
-        return Cmd.literal("missions").executes(this::executeMissions);
+        return Cmd.literal("missions")
+                .executes(ctx -> executeMissions(ctx, null))
+                .then(Cmd.literal("daily").executes(ctx -> executeMissions(ctx, MissionRepeat.DAILY)))
+                .then(Cmd.literal("weekly").executes(ctx -> executeMissions(ctx, MissionRepeat.WEEKLY)))
+                .then(Cmd.literal("challenges").executes(ctx -> executeMissions(ctx, MissionRepeat.ONCE)));
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildChallenges() {
-        return Cmd.literal("challenges").executes(this::executeMissions);
+        return Cmd.literal("challenges").executes(ctx -> executeMissions(ctx, MissionRepeat.ONCE));
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildBorder() {
@@ -332,7 +337,8 @@ public final class IslandMechanicsCommands {
                 || result instanceof BoosterApplyResult.Replaced;
     }
 
-    private int executeMissions(CommandContext<CommandSourceStack> ctx) {
+    /** Opens the missions, only those that come back as {@code which} says when it is not null. */
+    private int executeMissions(CommandContext<CommandSourceStack> ctx, @Nullable MissionRepeat which) {
         Audience sender = ctx.getSource().getSender();
         if (!(sender instanceof Player player)) {
             send(sender, "error.players_only");
@@ -343,7 +349,7 @@ public final class IslandMechanicsCommands {
             send(player, "missions.disabled");
             return Cmd.OK;
         }
-        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> missionsMenu.open(player));
+        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> missionsMenu.open(player, which));
         return Cmd.OK;
     }
 

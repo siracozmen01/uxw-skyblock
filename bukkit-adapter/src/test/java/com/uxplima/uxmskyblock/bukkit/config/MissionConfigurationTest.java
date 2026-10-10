@@ -69,4 +69,55 @@ class MissionConfigurationTest {
         assertThat(mission.reward().islandExp()).isEqualTo(500L);
         assertThat(mission.reward().commands()).containsExactly("broadcast Great job {player}!");
     }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The shipped file has daily and weekly missions beside the challenges, turning in the server's zone")
+    void theShippedFileHasEveryKind() throws IOException {
+        MissionConfiguration config = MissionConfiguration.load(HoconConfigurationLoader.builder()
+                .path(java.nio.file.Path.of("src/main/resources/modules/missions.conf"))
+                .build()
+                .load());
+
+        assertThat(config.missions())
+                .extracting(com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition::repeat)
+                .contains(
+                        com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE,
+                        com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY,
+                        com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.WEEKLY);
+        assertThat(config.resetZone()).isEqualTo(java.time.ZoneId.systemDefault());
+        assertThat(MissionConfiguration.defaultConfiguration().missions())
+                .extracting(com.uxplima.uxmskyblock.core.domain.mission.MissionDefinition::repeat)
+                .describedAs("a server whose file lost its catalogue still has every kind")
+                .contains(
+                        com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY,
+                        com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.WEEKLY);
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("A mission names how often it comes back and the file names the zone; a wrong word is said and "
+            + "read as once")
+    void repeatAndZoneAreRead() throws IOException {
+        ConfigurationNode root = HoconConfigurationLoader.builder().buildAndLoadString("""
+                missions {
+                    reset-zone = "Asia/Tokyo"
+                    catalog {
+                        a { trigger-type = "BLOCK_BREAK", repeat = "Daily" }
+                        b { trigger-type = "BLOCK_BREAK", repeat = "monthly" }
+                        c { trigger-type = "BLOCK_BREAK" }
+                    }
+                }
+                """);
+        MissionConfiguration config = MissionConfiguration.load(root);
+
+        assertThat(config.resetZone()).isEqualTo(java.time.ZoneId.of("Asia/Tokyo"));
+        java.util.Map<String, com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat> repeats =
+                new java.util.HashMap<>();
+        config.missions().forEach(mission -> repeats.put(mission.id().value(), mission.repeat()));
+        assertThat(repeats)
+                .containsEntry("a", com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY)
+                .containsEntry("b", com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE)
+                .containsEntry("c", com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.ONCE);
+        assertThat(MissionConfiguration.zoneOf("Mars/Olympus")).isEqualTo(java.time.ZoneId.systemDefault());
+        assertThat(MissionConfiguration.zoneOf("UTC")).isEqualTo(java.time.ZoneId.of("UTC"));
+    }
 }
