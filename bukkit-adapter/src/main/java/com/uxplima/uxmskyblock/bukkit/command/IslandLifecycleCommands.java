@@ -3,6 +3,7 @@ package com.uxplima.uxmskyblock.bukkit.command;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
@@ -563,8 +564,24 @@ public final class IslandLifecycleCommands {
             IslandId islandId,
             String code) {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
-        var unused = recycleService
-                .executeReset(profileId, islandId, code, false)
+        CompletableFuture<RecycleResult> erasure;
+        try {
+            erasure = recycleService.executeReset(profileId, islandId, code, false);
+        } catch (RuntimeException e) {
+            // The erasure threw before it handed back anything to wait on. The reset it began has to
+            // be given back here, or every later attempt is told one is running for as long as the
+            // server runs, and the island is never erased.
+            if (antiAbuse != null) {
+                antiAbuse.endReset(playerUuid);
+            }
+            LOGGER.log(
+                    java.util.logging.Level.WARNING,
+                    e,
+                    () -> "Resetting island " + islandId + " for " + player.getName() + " failed before it started.");
+            send(player, "reset.failed");
+            return;
+        }
+        var unused = erasure
                 // Given back whether the erasure finished or threw, so a failure does not leave the
                 // player unable to reset for as long as the server runs.
                 .whenComplete((result, error) -> {

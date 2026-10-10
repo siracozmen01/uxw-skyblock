@@ -220,4 +220,63 @@ class AResetIsCountedWhenThePlayerLeavesTest extends MockBukkitHarness {
         verify(antiAbuse).recordReset(org.mockito.ArgumentMatchers.eq(new PlayerUuid(player.getUniqueId())), any());
         verify(recycle).executeReset(PROFILE, ISLAND, "4321", false);
     }
+
+    @Test
+    @DisplayName("An erasure that throws before it starts gives the reset back and says it failed")
+    void aResetThatThrowsIsGivenBack() throws Exception {
+        server.addSimpleWorld(WORLD);
+        PlayerMock player = createRegionThreadedPlayer("Thrown");
+        IslandRecycleService recycle = mock(IslandRecycleService.class);
+        when(recycle.executeReset(any(), any(), any(), anyBoolean()))
+                .thenThrow(new UnsupportedOperationException("Not on any region"));
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService antiAbuse =
+                mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        when(antiAbuse.checkResetAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult.Allowed(3));
+        when(antiAbuse.beginReset(any())).thenReturn(true);
+        SchedulerPort inline = mock(SchedulerPort.class);
+        doAnswer(call -> {
+                    call.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(inline)
+                .async(any(Runnable.class));
+        doAnswer(call -> {
+                    call.getArgument(1, Runnable.class).run();
+                    return null;
+                })
+                .when(inline)
+                .onEntity(any(PlayerUuid.class), any(Runnable.class));
+        IslandLifecycleCommands commands = new IslandLifecycleCommands(
+                mock(CreateIslandUseCase.class),
+                locations,
+                new StarterPresetCatalog(),
+                mock(StarterSchematicEngine.class),
+                mock(IslandProtectionListener.class),
+                sessions,
+                inline,
+                ServerNodeId.of("node-1"),
+                WORLD,
+                () -> antiAbuse,
+                () -> recycle,
+                () -> null,
+                () -> null,
+                Messages.bundled());
+        CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.buildReset());
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(player);
+
+        dispatcher.execute("reset confirm 1234", source);
+
+        verify(antiAbuse).endReset(new PlayerUuid(player.getUniqueId()));
+        org.assertj.core.api.Assertions.assertThat(
+                        net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                                .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage())))
+                .contains("could not finish");
+    }
 }
