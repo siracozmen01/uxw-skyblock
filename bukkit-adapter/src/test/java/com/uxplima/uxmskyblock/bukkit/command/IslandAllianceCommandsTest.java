@@ -152,6 +152,29 @@ class IslandAllianceCommandsTest {
     }
 
     @Test
+    @DisplayName("The player an alliance is offered to is told, with the line that takes it")
+    void theOfferedPlayerIsTold() throws Exception {
+        run("alliance invite Theirs", me);
+
+        assertThat(them.nextMessage())
+                .describedAs("the offer reaches the island it went to")
+                .contains("alliance.offered_you");
+        assertThat(them.nextMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("A refused offer tells nobody else")
+    void aRefusedOfferTellsNobody() throws Exception {
+        org.mockito.Mockito.doThrow(new IllegalStateException("refused"))
+                .when(alliances)
+                .sendInvite(any(), any(), any());
+
+        run("alliance invite Theirs", me);
+
+        assertThat(them.nextMessage()).isNull();
+    }
+
+    @Test
     @DisplayName("Accepting looks the invite up as they sent it, not as I would have")
     void acceptingUsesTheSendersOrder() throws Exception {
         run("alliance accept Theirs", me);

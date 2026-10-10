@@ -139,6 +139,15 @@ public final class IslandAllianceCommands {
             try {
                 service.sendInvite(mine, theirs, activeProfile(player).orElseThrow());
                 onEntity(player, () -> send(player, "alliance.invited", Placeholder.unparsed("player", targetName)));
+                // The offer was written and nobody was told: the island it went to learnt of it only
+                // by typing the list of offers, so it was never answered.
+                Player offered = Bukkit.getPlayerExact(targetName);
+                if (offered != null) {
+                    onEntity(
+                            offered,
+                            () -> send(
+                                    offered, "alliance.offered_you", Placeholder.unparsed("player", player.getName())));
+                }
             } catch (RuntimeException refused) {
                 refuse(player, refused);
             }
