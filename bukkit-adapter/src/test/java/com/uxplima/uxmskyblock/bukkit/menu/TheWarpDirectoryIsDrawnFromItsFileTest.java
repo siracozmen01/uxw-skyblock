@@ -101,6 +101,25 @@ class TheWarpDirectoryIsDrawnFromItsFileTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A warp keeps its name on a server whose members window lists its members too")
+    void aWarpKeepsItsNameBesideTheMembers() {
+        SkyblockMenuEngine engine = new SkyblockMenuEngine(MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);
+        new MemberList(
+                        Messages.bundled(),
+                        uuid -> java.util.Optional.empty(),
+                        mock(com.uxplima.uxmskyblock.core.application.island.IslandLocationService.class),
+                        mock(com.uxplima.uxmskyblock.core.application.membership.IslandMembershipService.class),
+                        java.time.Clock.systemUTC())
+                .register(engine.bindings(), (viewer, member) -> {});
+        var template = ShippedTemplates.template("island-warp-directory.conf", "warps");
+        MenuContext drawn = MenuContext.of(player, null, 0)
+                .withEntry(menu.rows(player, entries).get(0));
+
+        assertThat(ShippedTemplates.lore(ShippedTemplates.renderer(engine, Messages.bundled()), template, drawn))
+                .contains("◆ shop");
+    }
+
+    @Test
     @DisplayName("Choosing a warp in the file runs the visit the command asked for, with that warp")
     void choosingAWarpVisitsIt() {
         SkyblockMenuEngine engine = new SkyblockMenuEngine(MockBukkit.createMockPlugin(), Messages.bundled(), dataDir);

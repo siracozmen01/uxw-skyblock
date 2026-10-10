@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -70,6 +71,11 @@ public final class MemberList {
             Objects.requireNonNull(since, "since must not be null");
             Objects.requireNonNull(state, "state must not be null");
         }
+
+        /** The words a tile asks for as {@code <entry_<name>>}, without the prefix. */
+        public Map<String, String> words() {
+            return Map.of("uuid", uuid, "name", name, "role", role, "since", since, "state", state);
+        }
     }
 
     /** What a click on a member's tile opens: the roles that member could be given. */
@@ -78,19 +84,26 @@ public final class MemberList {
         void pick(Player viewer, UUID member);
     }
 
-    /** Registers the list, the words a tile asks for and the verb a tile runs. */
+    /**
+     * Registers the list and the verb a tile runs.
+     *
+     * <p>Each member is handed over as a {@link MenuRow}, whose words every list answers the same way. This
+     * registered {@code entry_name} and four more by name, and a name registered by one list is the answer for
+     * every list: the warp directory asked for its warp's name, was told there was no member, and drew every warp
+     * with a blank title.
+     */
     public void register(MenuBindings bindings, RolePicker picker) {
         Objects.requireNonNull(bindings, "bindings must not be null");
         Objects.requireNonNull(picker, "picker must not be null");
-        bindings.list(SOURCE, this::rows);
-        bindings.placeholder("entry_uuid", ctx -> rowOf(ctx).map(Row::uuid).orElse(""));
-        bindings.placeholder("entry_name", ctx -> rowOf(ctx).map(Row::name).orElse(""));
-        bindings.placeholder("entry_role", ctx -> rowOf(ctx).map(Row::role).orElse(""));
-        bindings.placeholder("entry_since", ctx -> rowOf(ctx).map(Row::since).orElse(""));
-        bindings.placeholder("entry_state", ctx -> rowOf(ctx).map(Row::state).orElse(""));
+        bindings.list(
+                SOURCE,
+                ctx -> rows(ctx).stream()
+                        .map(row -> new MenuRow(row.words(), row))
+                        .toList());
         bindings.action(
                 ROLE_VERB,
-                ctx -> rowOf(ctx.context()).ifPresent(row -> picker.pick(ctx.player(), UUID.fromString(row.uuid()))));
+                ctx -> MenuRow.handle(ctx.context(), Row.class)
+                        .ifPresent(row -> picker.pick(ctx.player(), UUID.fromString(row.uuid()))));
     }
 
     /** The members of the viewer's island, the owner first, or none when the viewer has no island. */
@@ -122,9 +135,5 @@ public final class MemberList {
                         viewer, "roles", member.role().id(), member.role().displayName()),
                 DurationText.of(messages, viewer, since.isNegative() ? Duration.ZERO : since),
                 messages.words(viewer, online ? "@menu.members.member.online" : "@menu.members.member.offline"));
-    }
-
-    private static Optional<Row> rowOf(MenuContext ctx) {
-        return ctx.entry().filter(Row.class::isInstance).map(Row.class::cast);
     }
 }

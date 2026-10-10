@@ -105,12 +105,13 @@ class TheMembersWindowListsTheMembersTest extends MockBukkitHarness {
     @DisplayName("A member's tile names that member, in the words the catalogue gives a tile")
     void theTileNamesTheMember() {
         MenuBindings bindings = new MenuBindings();
+        SkyblockMenuEngine.answerEntries(bindings.placeholders());
         list.register(bindings, (viewer, member) -> picked.add(member));
-        MemberList.Row row = list.rows(MenuContext.of(ada, null, 0)).get(1);
-        MenuContext drawn = MenuContext.of(ada, null, 0).withEntry(row);
-        assertThat(bindings.list(MemberList.SOURCE)).isPresent();
-        assertThat(bindings.placeholder("entry_name").orElseThrow().apply(drawn))
-                .isEqualTo(row.name());
+        MenuContext drawn =
+                MenuContext.of(ada, null, 0).withEntry(listed(bindings).get(1));
+        MemberList.Row row = MenuRow.handle(drawn, MemberList.Row.class).orElseThrow();
+        assertThat(bindings.placeholders().resolve("entry_name", drawn)).hasValue(row.name());
+        assertThat(bindings.placeholders().resolve("entry_uuid", drawn)).hasValue(row.uuid());
 
         String tile = PlainTextComponentSerializer.plainText()
                 .serialize(new CatalogueMenuWords(messages)
@@ -141,13 +142,18 @@ class TheMembersWindowListsTheMembersTest extends MockBukkitHarness {
                 .get(MemberList.ROLE_VERB)
                 .orElseThrow()
                 .accept(new com.uxplima.uxmlib.menu.runtime.MenuActionContext(
-                        MenuContext.of(ada, null, 0).withEntry(row),
+                        MenuContext.of(ada, null, 0).withEntry(listed(bindings).get(1)),
                         ada,
                         com.uxplima.uxmlib.menu.spec.ClickKind.LEFT,
                         Map.of()));
 
         assertThat(picked).containsExactly(UUID.fromString(row.uuid()));
         assertThat(ada.nextMessage()).isNull();
+    }
+
+    /** The members as the registered list hands them to the engine, one entry per tile. */
+    private List<?> listed(MenuBindings bindings) {
+        return bindings.list(MemberList.SOURCE).orElseThrow().apply(MenuContext.of(ada, null, 0));
     }
 
     /**
