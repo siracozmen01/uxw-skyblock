@@ -278,6 +278,14 @@ public final class IslandControlMenu {
         show(player, "island-main", false, () -> {});
     }
 
+    /** What the main menu does for a player with no island, on their thread; nothing set tells them in chat. */
+    private volatile java.util.function.@Nullable Consumer<Player> noIsland;
+
+    /** Hands the main menu what it does for a player with no island, as the operator chose. */
+    public void useNoIsland(java.util.function.@Nullable Consumer<Player> noIsland) {
+        this.noIsland = noIsland;
+    }
+
     /** Whether the operator kept the window {@code specId}, so a command named after it opens it. */
     public boolean hasWindow(String specId) {
         SkyblockMenuEngine engine = this.menuEngine;
@@ -331,7 +339,10 @@ public final class IslandControlMenu {
                     }
                     // A window is drawn from an island's values. A command named after one still
                     // answers a player without an island, as the board does, in chat.
-                    if ("island-main".equals(specId)) {
+                    java.util.function.Consumer<Player> instead = this.noIsland;
+                    if ("island-main".equals(specId) && instead != null) {
+                        instead.accept(player);
+                    } else if ("island-main".equals(specId)) {
                         player.sendMessage(messages.render(player, "menu.control.no_island"));
                     } else {
                         otherwise.run();

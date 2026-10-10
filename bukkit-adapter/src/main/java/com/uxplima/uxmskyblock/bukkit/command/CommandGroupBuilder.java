@@ -168,6 +168,7 @@ final class CommandGroupBuilder {
         lifecycleCommands.useLifecycle(() -> tree.playerLifecycle);
         lifecycleCommands.useAntiAbuseRules(tree.antiAbuseConfiguration);
         lifecycleCommands.useEffects(tree.interactionEffects, effectPlayer);
+        lifecycleCommands.usePresetChoices(() -> tree.presetChoices, () -> tree.presetList);
 
         IslandNavigationCommands navigationCommands = new IslandNavigationCommands(
                 tree.islandLocationService,

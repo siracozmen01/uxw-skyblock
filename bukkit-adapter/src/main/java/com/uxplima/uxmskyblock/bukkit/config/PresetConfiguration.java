@@ -23,7 +23,8 @@ import org.spongepowered.configurate.ConfigurationNode;
  * <p>The four the plugin ships with were written in Java and there could never be a fifth. They are
  * the fallback now, and {@code modules/presets.conf} is where a server says what it offers.
  */
-public record PresetConfiguration(List<StarterPreset> presets, String defaultId, SchematicPasteConfiguration paste) {
+public record PresetConfiguration(
+        List<StarterPreset> presets, String defaultId, SchematicPasteConfiguration paste, PresetChoices choices) {
 
     private static final java.util.logging.Logger LOGGER =
             java.util.logging.Logger.getLogger(PresetConfiguration.class.getName());
@@ -32,7 +33,12 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId,
         Objects.requireNonNull(presets, "presets must not be null");
         Objects.requireNonNull(defaultId, "defaultId must not be null");
         Objects.requireNonNull(paste, "paste must not be null");
+        Objects.requireNonNull(choices, "choices must not be null");
         presets = List.copyOf(presets);
+    }
+
+    public PresetConfiguration(List<StarterPreset> presets, String defaultId, SchematicPasteConfiguration paste) {
+        this(presets, defaultId, paste, PresetChoices.DEFAULT);
     }
 
     public PresetConfiguration(List<StarterPreset> presets, String defaultId) {
@@ -40,19 +46,24 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId,
     }
 
     public static PresetConfiguration defaultConfiguration() {
-        return defaultConfiguration(SchematicPasteConfiguration.DEFAULT);
+        return defaultConfiguration(SchematicPasteConfiguration.DEFAULT, PresetChoices.DEFAULT);
     }
 
-    private static PresetConfiguration defaultConfiguration(SchematicPasteConfiguration paste) {
-        return new PresetConfiguration(StarterPresetCatalog.shipped(), StarterPresetCatalog.CLASSIC.id(), paste);
+    private static PresetConfiguration defaultConfiguration(SchematicPasteConfiguration paste, PresetChoices choices) {
+        return new PresetConfiguration(
+                StarterPresetCatalog.shipped(), StarterPresetCatalog.CLASSIC.id(), paste, choices);
     }
 
     public static PresetConfiguration load(ConfigurationNode rootNode) {
         Objects.requireNonNull(rootNode, "rootNode must not be null");
         ConfigurationNode node = rootNode.node("presets");
         ConfigurationNode entries = node.node("entries");
-        if (node.virtual() || entries.virtual() || !entries.isMap()) {
+        if (node.virtual()) {
             return defaultConfiguration();
+        }
+        PresetChoices choices = PresetChoices.load(node);
+        if (entries.virtual() || !entries.isMap()) {
+            return defaultConfiguration(SchematicPasteConfiguration.load(node.node("paste")), choices);
         }
 
         List<StarterPreset> presets = new ArrayList<>();
@@ -78,10 +89,11 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId,
         }
 
         if (presets.isEmpty()) {
-            return defaultConfiguration(SchematicPasteConfiguration.load(node.node("paste")));
+            return defaultConfiguration(SchematicPasteConfiguration.load(node.node("paste")), choices);
         }
         String defaultId = node.node("default").getString(presets.get(0).id());
-        return new PresetConfiguration(presets, defaultId, SchematicPasteConfiguration.load(node.node("paste")));
+        return new PresetConfiguration(
+                presets, defaultId, SchematicPasteConfiguration.load(node.node("paste")), choices);
     }
 
     /** An operator who writes a biome the server does not know gets plains rather than a failed start. */
@@ -155,9 +167,9 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId,
         List<StarterPreset> startable =
                 presets.stream().filter(preset -> startable(preset, provided)).toList();
         if (startable.isEmpty()) {
-            return defaultConfiguration(paste);
+            return defaultConfiguration(paste, choices);
         }
-        return new PresetConfiguration(startable, defaultId, paste);
+        return new PresetConfiguration(startable, defaultId, paste, choices);
     }
 
     /** Whether the preset's own start and every dimension's start have providers. */

@@ -70,6 +70,7 @@ class IslandLifecycleCommandsTest {
     private IslandRecycleService recycle;
     private IslandNameService names;
     private CommandDispatcher<CommandSourceStack> dispatcher;
+    private IslandLifecycleCommands commands;
 
     private static SchedulerPort inlineScheduler() {
         SchedulerPort scheduler = mock(SchedulerPort.class);
@@ -121,7 +122,7 @@ class IslandLifecycleCommandsTest {
         PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
         when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
 
-        IslandLifecycleCommands commands = new IslandLifecycleCommands(
+        commands = new IslandLifecycleCommands(
                 create,
                 locations,
                 new StarterPresetCatalog(
@@ -184,6 +185,72 @@ class IslandLifecycleCommandsTest {
                         eq(new StarterPresetCatalog().defaultPreset().id()),
                         any(ServerNodeId.class),
                         eq(WORLD));
+    }
+
+    @Test
+    @DisplayName("A bare /is create opens the window of kinds when the operator asks for it, and makes nothing")
+    void aBareCreateOffersTheKinds() throws Exception {
+        com.uxplima.uxmskyblock.bukkit.menu.PresetList kinds =
+                mock(com.uxplima.uxmskyblock.bukkit.menu.PresetList.class);
+        when(kinds.show(player)).thenReturn(true);
+        commands.usePresetChoices(() -> com.uxplima.uxmskyblock.bukkit.config.PresetChoices.DEFAULT, () -> kinds);
+
+        run("create", player);
+
+        verify(kinds).show(player);
+        verify(create, never()).execute(any(), any(), anyString(), any(ServerNodeId.class), anyString());
+    }
+
+    @Test
+    @DisplayName("A bare /is create makes the default island when the window is gone or the operator wants it made")
+    void aBareCreateMakesTheDefault() throws Exception {
+        com.uxplima.uxmskyblock.bukkit.menu.PresetList kinds =
+                mock(com.uxplima.uxmskyblock.bukkit.menu.PresetList.class);
+        commands.usePresetChoices(() -> com.uxplima.uxmskyblock.bukkit.config.PresetChoices.DEFAULT, () -> kinds);
+        run("create", player);
+
+        when(kinds.show(player)).thenReturn(true);
+        commands.usePresetChoices(
+                () -> new com.uxplima.uxmskyblock.bukkit.config.PresetChoices(
+                        java.util.Map.of(),
+                        com.uxplima.uxmskyblock.bukkit.config.PresetChoices.WhenNoIsland.MENU,
+                        false),
+                () -> kinds);
+        run("create", player);
+
+        verify(create, org.mockito.Mockito.times(2))
+                .execute(
+                        any(PlayerUuid.class),
+                        eq(PROFILE),
+                        eq(new StarterPresetCatalog().defaultPreset().id()),
+                        any(ServerNodeId.class),
+                        eq(WORLD));
+        verify(kinds).show(player);
+    }
+
+    @Test
+    @DisplayName("A kind behind a permission node is made only for a player who holds it")
+    void aLockedKindAsksForItsNode() throws Exception {
+        commands.usePresetChoices(
+                () -> new com.uxplima.uxmskyblock.bukkit.config.PresetChoices(
+                        java.util.Map.of(
+                                "desert",
+                                new com.uxplima.uxmskyblock.bukkit.config.PresetChoices.Look(
+                                        "SAND", "myserver.desert")),
+                        com.uxplima.uxmskyblock.bukkit.config.PresetChoices.WhenNoIsland.MENU,
+                        true),
+                () -> null);
+
+        run("create desert", player);
+        verify(create, never()).execute(any(), any(), anyString(), any(ServerNodeId.class), anyString());
+        assertThat(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                        .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage())))
+                .describedAs("this test's catalogue answers with the key")
+                .isEqualTo("create.preset_locked");
+
+        player.addAttachment(MockBukkit.createMockPlugin(), "myserver.desert", true);
+        run("create desert", player);
+        verify(create).execute(any(PlayerUuid.class), eq(PROFILE), eq("desert"), any(ServerNodeId.class), eq(WORLD));
     }
 
     @Test

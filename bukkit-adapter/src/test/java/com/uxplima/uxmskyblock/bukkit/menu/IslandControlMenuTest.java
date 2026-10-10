@@ -304,6 +304,22 @@ class IslandControlMenuTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A player with no island is handed to what the operator chose, and not told in chat")
+    void aPlayerWithNoIslandIsHandedOn() {
+        when(mockStorage.findIslandIdByProfileId(eq(new ProfileId(player.getUniqueId()))))
+                .thenReturn(Optional.empty());
+        java.util.List<org.bukkit.entity.Player> handed = new java.util.concurrent.CopyOnWriteArrayList<>();
+        menu.useNoIsland(handed::add);
+
+        menu.open(player);
+        settle(() -> !handed.isEmpty());
+
+        assertThat(handed).containsExactly(player);
+        assertThat(((org.mockbukkit.mockbukkit.entity.PlayerMock) player).nextMessage())
+                .isNull();
+    }
+
+    @Test
     @DisplayName("open displays control panel when player has island")
     void openDisplaysControlPanel() {
         ProfileId profileId = new ProfileId(player.getUniqueId());

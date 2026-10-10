@@ -120,6 +120,26 @@ final class IslandCommandWiring {
         var topList = new com.uxplima.uxmskyblock.bukkit.menu.TopList(tree::typed);
         topList.useMenuEngine(integration.menuEngine());
         tree.useTopList(topList);
+        // The kinds of island are a window, and a player with no island is met the way the operator chose.
+        com.uxplima.uxmskyblock.bukkit.config.PresetChoices choices =
+                config.presetConfig().choices();
+        var presetList = new com.uxplima.uxmskyblock.bukkit.menu.PresetList(
+                integration.messages(), () -> gameplay.presetCatalog().allPresets(), () -> choices, tree::typed);
+        presetList.useMenuEngine(integration.menuEngine());
+        tree.usePresets(choices, presetList);
+        integration.controlMenu().useNoIsland(player -> {
+            switch (choices.whenNoIsland()) {
+                case MENU -> {
+                    if (!presetList.show(player)) {
+                        player.performCommand(tree.typed("create"));
+                    }
+                }
+                case CREATE ->
+                    player.performCommand(tree.typed(
+                            "create " + gameplay.presetCatalog().defaultPreset().id()));
+                case HELP -> player.performCommand(tree.typed("help"));
+            }
+        });
         // The members window lists the members, one tile each, rather than sending the player to chat.
         new com.uxplima.uxmskyblock.bukkit.menu.MemberList(
                         integration.messages(),

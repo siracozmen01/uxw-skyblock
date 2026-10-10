@@ -139,6 +139,9 @@ public final class IslandCommandTree {
 
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList homeList;
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList topList;
+    volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable PresetList presetList;
+    volatile com.uxplima.uxmskyblock.bukkit.config.PresetChoices presetChoices =
+            com.uxplima.uxmskyblock.bukkit.config.PresetChoices.DEFAULT;
 
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
@@ -422,6 +425,14 @@ public final class IslandCommandTree {
     /** Hands the operator's wait between two rescans of one island to the command that runs them. */
     public void setRecalculationCooldown(java.time.Duration cooldown) {
         this.recalculationCooldown = java.util.Objects.requireNonNull(cooldown, "cooldown must not be null");
+    }
+
+    /** How a player picks a kind of island, and the window the kinds are shown in. */
+    public void usePresets(
+            com.uxplima.uxmskyblock.bukkit.config.PresetChoices choices,
+            com.uxplima.uxmskyblock.bukkit.menu.@Nullable PresetList list) {
+        this.presetChoices = java.util.Objects.requireNonNull(choices, "choices must not be null");
+        this.presetList = list;
     }
 
     /** The window the homes are listed in, rather than lines in chat. */

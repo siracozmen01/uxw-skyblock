@@ -110,6 +110,7 @@ public final class ConfigurationLoader {
             "island-member-role.conf",
             "island-home-list.conf",
             "island-leaderboard.conf",
+            "island-create.conf",
             "island-bank-currency.conf");
 
     private ConfigurationLoader() {

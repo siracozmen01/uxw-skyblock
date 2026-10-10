@@ -79,6 +79,21 @@ public final class IslandLifecycleCommands {
         this.lifecycle = java.util.Objects.requireNonNull(lifecycle, "lifecycle must not be null");
     }
 
+    /** How a player picks a kind of island, and who may start each, as {@code modules/presets.conf} says. */
+    private Supplier<com.uxplima.uxmskyblock.bukkit.config.PresetChoices> presetChoices =
+            () -> com.uxplima.uxmskyblock.bukkit.config.PresetChoices.DEFAULT;
+
+    /** The window of island kinds, when the operator kept its file. */
+    private Supplier<com.uxplima.uxmskyblock.bukkit.menu.@Nullable PresetList> presetList = () -> null;
+
+    /** Tells this command group how a player picks a kind of island, and where the window of kinds is. */
+    public void usePresetChoices(
+            Supplier<com.uxplima.uxmskyblock.bukkit.config.PresetChoices> choices,
+            Supplier<com.uxplima.uxmskyblock.bukkit.menu.@Nullable PresetList> list) {
+        this.presetChoices = java.util.Objects.requireNonNull(choices, "choices must not be null");
+        this.presetList = java.util.Objects.requireNonNull(list, "list must not be null");
+    }
+
     public void useEffects(
             com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffects effects,
             com.uxplima.uxmskyblock.bukkit.effect.@Nullable InteractionEffectPlayer player) {
@@ -189,8 +204,7 @@ public final class IslandLifecycleCommands {
 
     public LiteralArgumentBuilder<CommandSourceStack> buildCreate() {
         return Cmd.literal("create")
-                .executes(
-                        ctx -> executeCreate(ctx, presetCatalog.defaultPreset().id()))
+                .executes(this::executeCreateWithoutKind)
                 .then(Cmd.argument("preset", StringArgumentType.word())
                         .executes(ctx -> executeCreate(ctx, StringArgumentType.getString(ctx, "preset"))));
     }
@@ -322,9 +336,37 @@ public final class IslandLifecycleCommands {
         });
     }
 
+    /** {@code /is create} with no kind written: the window of kinds, or the default island, as the operator chose. */
+    private int executeCreateWithoutKind(CommandContext<CommandSourceStack> ctx) {
+        if (ctx.getSource().getSender() instanceof Player player && offerKinds(player)) {
+            return Cmd.OK;
+        }
+        return executeCreate(ctx, presetCatalog.defaultPreset().id());
+    }
+
+    /**
+     * Shows a player the window of island kinds, when the operator asks for it and kept its file, and answers
+     * whether it opened.
+     */
+    public boolean offerKinds(Player player) {
+        com.uxplima.uxmskyblock.bukkit.menu.PresetList list = presetList.get();
+        return presetChoices.get().createAsks() && list != null && list.show(player);
+    }
+
     private int executeCreate(CommandContext<CommandSourceStack> ctx, String presetId) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             send(ctx.getSource().getSender(), "error.players_only");
+            return Cmd.OK;
+        }
+        // A kind the operator keeps behind a permission node is refused before anything is made.
+        java.util.Optional<com.uxplima.uxmskyblock.core.domain.preset.StarterPreset> asked =
+                presetCatalog.findById(presetId);
+        if (asked.isPresent() && !presetChoices.get().allows(player, asked.get().id())) {
+            send(
+                    player,
+                    "create.preset_locked",
+                    Placeholder.unparsed(
+                            "preset", messages.words(player, asked.get().displayName())));
             return Cmd.OK;
         }
 
