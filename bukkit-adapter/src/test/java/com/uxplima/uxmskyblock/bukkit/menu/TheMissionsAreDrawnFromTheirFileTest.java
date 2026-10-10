@@ -235,4 +235,60 @@ class TheMissionsAreDrawnFromTheirFileTest extends MockBukkitHarness {
                 .containsEntry("status", "4 / 10")
                 .containsEntry("repeat", "Her gün");
     }
+
+    @Test
+    @DisplayName("Every mission opens in one order, the daily ones first, then by branch and id, whatever the file "
+            + "handed back")
+    void theMissionsKeepAnOrder() {
+        MissionDefinition weekly = new MissionDefinition(
+                MissionId.of("w"),
+                MissionBranch.FARMING,
+                "W",
+                "W",
+                MissionTriggerType.BLOCK_BREAK,
+                "STONE",
+                10,
+                MissionReward.empty(),
+                com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.WEEKLY);
+        MissionDefinition dailyMining = new MissionDefinition(
+                MissionId.of("b"),
+                MissionBranch.MINING,
+                "B",
+                "B",
+                MissionTriggerType.BLOCK_BREAK,
+                "STONE",
+                10,
+                MissionReward.empty(),
+                com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY);
+        MissionDefinition dailyFarming = new MissionDefinition(
+                MissionId.of("z"),
+                MissionBranch.FARMING,
+                "Z",
+                "Z",
+                MissionTriggerType.BLOCK_BREAK,
+                "STONE",
+                10,
+                MissionReward.empty(),
+                com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat.DAILY);
+        when(sessions.activeProfile(player.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        when(storage.findIslandIdByProfileId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        when(missions.allMissions()).thenReturn(List.of(DIAMONDS, weekly, dailyMining, dailyFarming));
+        when(missions.currentProgress(eq(ISLAND), eq(PROFILE), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Map.of());
+        SkyblockMenuEngine engine = mock(SkyblockMenuEngine.class);
+        when(engine.open(eq(player), eq("island-mission-list"), anyMap(), anyMap()))
+                .thenReturn(true);
+        menu.useMenuEngine(engine);
+
+        menu.open(player);
+
+        verify(engine)
+                .open(
+                        eq(player),
+                        eq("island-mission-list"),
+                        anyMap(),
+                        eq(Map.of(
+                                "skyblock:mission-list",
+                                menu.rows(player, Map.of(), List.of(dailyFarming, dailyMining, weekly, DIAMONDS)))));
+    }
 }

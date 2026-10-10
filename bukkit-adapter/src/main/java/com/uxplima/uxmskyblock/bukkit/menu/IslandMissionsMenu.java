@@ -127,8 +127,13 @@ public final class IslandMissionsMenu {
             // A mission that came back since it was last worked on reads as not started.
             Map<com.uxplima.uxmskyblock.core.domain.mission.MissionId, MissionProgress> progressMap =
                     missionService.currentProgress(islandId, profileId, java.time.Instant.now());
+            // The file keeps no order among its missions, so the window keeps one of its own: the daily ones, the
+            // weekly ones, then the challenges, each kind by branch and then by id.
             List<MissionDefinition> all = missionService.allMissions().stream()
                     .filter(def -> which == null || def.repeat() == which)
+                    .sorted(java.util.Comparator.comparingInt((MissionDefinition def) -> kindOrder(def.repeat()))
+                            .thenComparing(MissionDefinition::branch)
+                            .thenComparing(def -> def.id().value()))
                     .toList();
 
             schedulerPort.onEntity(playerUuid, () -> {
@@ -329,6 +334,15 @@ public final class IslandMissionsMenu {
             rows.add(new MenuRow(words, new Drawn(def, count, completed)));
         }
         return List.copyOf(rows);
+    }
+
+    /** Where a kind of mission stands in the window: the ones that come back soonest first. */
+    static int kindOrder(com.uxplima.uxmskyblock.core.domain.mission.MissionRepeat repeat) {
+        return switch (repeat) {
+            case DAILY -> 0;
+            case WEEKLY -> 1;
+            case ONCE -> 2;
+        };
     }
 
     private static Material iconOf(MissionDefinition def, boolean completed) {
