@@ -152,6 +152,21 @@ public final class IslandMembershipCommands {
         this.antiAbuseRules = rules;
     }
 
+    /** What makes and takes away an owner's own roles, and how many one may make. */
+    private Supplier<com.uxplima.uxmskyblock.core.application.membership.@Nullable IslandRoleShaper> roleShaper =
+            () -> null;
+
+    private Supplier<com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration> roleConfiguration =
+            com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration::defaults;
+
+    /** Hands this group what makes an owner's own roles, and the allowance the operator wrote. */
+    public void useRoleShaper(
+            Supplier<com.uxplima.uxmskyblock.core.application.membership.@Nullable IslandRoleShaper> shaper,
+            Supplier<com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration> configuration) {
+        this.roleShaper = java.util.Objects.requireNonNull(shaper, "shaper must not be null");
+        this.roleConfiguration = java.util.Objects.requireNonNull(configuration, "configuration must not be null");
+    }
+
     /** Tells this command group where to write the island's activity feed. */
     public void useActivityFeed(@Nullable ActivityFeedService service) {
         this.activityLog.useService(service);
@@ -295,10 +310,89 @@ public final class IslandMembershipCommands {
                         ? Cmd.OK
                         : executePermissionList(ctx))
                 .then(Cmd.literal("list").executes(this::executePermissionList))
+                .then(Cmd.literal("create")
+                        .then(Cmd.argument("name", StringArgumentType.word()).executes(this::executeCreateRole)))
+                .then(Cmd.literal("delete")
+                        .then(Cmd.argument("name", StringArgumentType.word()).executes(this::executeDeleteRole)))
                 .then(Cmd.argument("role", StringArgumentType.word())
                         .then(Cmd.argument("permission", StringArgumentType.word())
                                 .then(Cmd.argument("state", StringArgumentType.word())
                                         .executes(this::executeSetPermission))));
+    }
+
+    /** {@code /is permissions create <name>}: a role of the owner's own, edited like the others. */
+    private int executeCreateRole(CommandContext<CommandSourceStack> ctx) {
+        String name = StringArgumentType.getString(ctx, "name");
+        return withShaper(ctx, (player, shaper, actor) -> {
+            // The owner's nodes are read here, on their own thread, and the number goes with the request.
+            int allowance = roleConfiguration.get().allowanceFor(player::hasPermission);
+            schedulerPort.async(() -> answer(player, shaper.create(actor, name, allowance)));
+        });
+    }
+
+    /** {@code /is permissions delete <role>}: takes a role of the owner's own away. */
+    private int executeDeleteRole(CommandContext<CommandSourceStack> ctx) {
+        String name = StringArgumentType.getString(ctx, "name");
+        return withShaper(
+                ctx, (player, shaper, actor) -> schedulerPort.async(() -> answer(player, shaper.delete(actor, name))));
+    }
+
+    /** Runs {@code action} with the caller's profile when the roles of an owner can be made at all. */
+    private int withShaper(
+            CommandContext<CommandSourceStack> ctx,
+            TriConsumer<Player, com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper, ProfileId>
+                    action) {
+        return withService(ctx, (player, service, actor) -> {
+            com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper shaper = roleShaper.get();
+            if (shaper == null) {
+                send(player, "member.disabled");
+                return;
+            }
+            action.accept(player, shaper, actor);
+        });
+    }
+
+    /** Three things at once, as a request to shape the roles needs them. */
+    @FunctionalInterface
+    private interface TriConsumer<A, B, C> {
+        void accept(A first, B second, C third);
+    }
+
+    /** Says what came of making or taking away a role. */
+    private void answer(
+            Player player, com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome outcome) {
+        switch (outcome) {
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.Created created ->
+                send(player, "member.role_created", Placeholder.unparsed("role", created.roleId()));
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.Deleted deleted ->
+                send(
+                        player,
+                        "member.role_deleted",
+                        Placeholder.unparsed("role", deleted.roleId()),
+                        Placeholder.unparsed("count", Integer.toString(deleted.moved())));
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.NotOwner ignored ->
+                send(player, "member.role_owner_only");
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.NoIsland ignored ->
+                send(player, "error.no_island");
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.BadName bad ->
+                send(player, "member.role_bad_name", Placeholder.unparsed("name", bad.name()));
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.Taken taken ->
+                send(player, "member.role_taken", Placeholder.unparsed("role", taken.roleId()));
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.LimitReached limit ->
+                send(player, "member.role_limit", Placeholder.unparsed("limit", Integer.toString(limit.limit())));
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.UnknownRole unknown ->
+                send(
+                        player,
+                        "member.role_unknown_own",
+                        Placeholder.unparsed("role", unknown.roleId()),
+                        Placeholder.unparsed("roles", unknown.available()));
+            case com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.Shipped shipped ->
+                send(
+                        player,
+                        "member.role_shipped",
+                        Placeholder.unparsed(
+                                "role", messages.named(player, "roles", shipped.roleId(), shipped.roleId())));
+        }
     }
 
     private int executePermissionList(CommandContext<CommandSourceStack> ctx) {

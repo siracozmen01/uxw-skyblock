@@ -140,6 +140,9 @@ public final class IslandCommandTree {
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList homeList;
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList topList;
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable PresetList presetList;
+    volatile com.uxplima.uxmskyblock.core.application.membership.@Nullable IslandRoleShaper roleShaper;
+    volatile com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration roleConfiguration =
+            com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration.defaults();
     volatile com.uxplima.uxmskyblock.bukkit.config.PresetChoices presetChoices =
             com.uxplima.uxmskyblock.bukkit.config.PresetChoices.DEFAULT;
 
@@ -425,6 +428,14 @@ public final class IslandCommandTree {
     /** Hands the operator's wait between two rescans of one island to the command that runs them. */
     public void setRecalculationCooldown(java.time.Duration cooldown) {
         this.recalculationCooldown = java.util.Objects.requireNonNull(cooldown, "cooldown must not be null");
+    }
+
+    /** What makes an owner's own roles, and how many the operator lets one make. */
+    public void useRoleShaper(
+            com.uxplima.uxmskyblock.core.application.membership.@Nullable IslandRoleShaper shaper,
+            com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration configuration) {
+        this.roleShaper = shaper;
+        this.roleConfiguration = java.util.Objects.requireNonNull(configuration, "configuration must not be null");
     }
 
     /** How a player picks a kind of island, and the window the kinds are shown in. */

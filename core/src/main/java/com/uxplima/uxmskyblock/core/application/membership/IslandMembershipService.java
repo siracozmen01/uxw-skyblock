@@ -280,6 +280,11 @@ public final class IslandMembershipService {
         tell(rolesChanged, islandId);
     }
 
+    /** Tells everyone listening that the roles of {@code islandId} changed elsewhere, as an owner making one. */
+    public void rolesChangedOn(IslandId islandId) {
+        tellRolesChanged(Objects.requireNonNull(islandId, "islandId must not be null"));
+    }
+
     private void tellMembersChanged(IslandId islandId) {
         tell(membersChanged, islandId);
     }

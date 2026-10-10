@@ -102,6 +102,13 @@ final class IslandCommandWiring {
         roleWindows.register();
         tree.windows().useRoles(roleWindows::openRoles);
         gameplay.membershipService().whenRolesChanged(roleWindows::rolesChanged);
+        // An owner makes roles of their own beside the four every island has, as many as config.conf allows.
+        tree.useRoleShaper(
+                new com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper(
+                        persistence.islandStoragePort(),
+                        persistence.islandMutationLock(),
+                        gameplay.membershipService()::rolesChangedOn),
+                config.roleConfig());
         // Each currency the bank keeps beside its money is a tile of the bank window, with a window of its own.
         new com.uxplima.uxmskyblock.bukkit.menu.BankCurrencyList(
                         integration.messages(),

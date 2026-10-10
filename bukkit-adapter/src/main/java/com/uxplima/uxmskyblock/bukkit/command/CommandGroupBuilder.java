@@ -305,6 +305,7 @@ final class CommandGroupBuilder {
         membershipCommands.useActivityFeed(tree.activityFeedService);
         membershipCommands.useCoopHoppingLock(tree.antiAbuseService(), tree.antiAbuseConfiguration);
         membershipCommands.useEffects(tree.interactionEffects, effectPlayer);
+        membershipCommands.useRoleShaper(() -> tree.roleShaper, () -> tree.roleConfiguration);
 
         IslandInfoCommands infoCommands = new IslandInfoCommands(
                 tree.islandLocationService,

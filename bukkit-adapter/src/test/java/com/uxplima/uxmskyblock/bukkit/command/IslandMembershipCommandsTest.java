@@ -536,4 +536,39 @@ class IslandMembershipCommandsTest {
 
         verify(membership, never()).setRolePermission(any(), anyString(), anyString(), anyBoolean());
     }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("An owner makes a role by name with the allowance their nodes give, and takes one away by name")
+    void anOwnerShapesTheRoles() throws Exception {
+        com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper shaper =
+                mock(com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.class);
+        when(shaper.create(any(), anyString(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.Created(
+                        "builder"));
+        when(shaper.delete(any(), anyString()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper.Outcome.Deleted(
+                        "builder", 2));
+        commands.useRoleShaper(
+                () -> shaper,
+                () -> new com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration(
+                        2, 8, java.util.Map.of("myserver.roles.5", 5)));
+        owner.addAttachment(org.mockbukkit.mockbukkit.MockBukkit.createMockPlugin(), "myserver.roles.5", true);
+
+        run("permissions create builder", owner);
+        run("permissions delete builder", owner);
+
+        verify(shaper).create(OWNER, "builder", 5);
+        verify(shaper).delete(OWNER, "builder");
+        verify(membership, never()).setRolePermission(any(), anyString(), anyString(), anyBoolean());
+        assertThat(owner.nextMessage()).isEqualTo("member.role_created");
+        assertThat(owner.nextMessage()).isEqualTo("member.role_deleted");
+    }
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("With nothing to make roles, the command says roles are off rather than going quiet")
+    void noShaperIsSaid() throws Exception {
+        run("permissions create builder", owner);
+
+        assertThat(owner.nextMessage()).isEqualTo("member.disabled");
+    }
 }

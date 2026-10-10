@@ -55,6 +55,12 @@ public final class RoleWindows {
     static final String PERMISSIONS = "skyblock:role-permissions";
     static final String MEMBER_ROLES = "skyblock:member-roles";
 
+    /** The requirement that holds in the window of a role the island's owner made. */
+    static final String OWN_MADE = "skyblock:role-own-made";
+
+    /** The verb that takes the role a window shows away. */
+    static final String DELETE = "skyblock:role-delete";
+
     private final SkyblockMenuEngine engine;
     private final Messages messages;
     private final Function<UUID, Optional<ProfileId>> activeProfile;
@@ -111,6 +117,15 @@ public final class RoleWindows {
                                 ctx.player(),
                                 "permissions " + lower(entry.roleId()) + " "
                                         + lower(entry.permission().name()) + " " + (entry.allowed() ? "off" : "on"))));
+        // A role the owner made is taken away from its own window; one every island has shows no such button.
+        engine.bindings()
+                .condition(OWN_MADE, (ctx, args) -> "yes".equals(ctx.arguments().get("role_own")));
+        engine.action(DELETE, ctx -> {
+            String roleId = ctx.context().arguments().get("role_id");
+            if (roleId != null && !roleId.isBlank()) {
+                change(ctx.player(), "permissions delete " + roleId);
+            }
+        });
         engine.action(
                 "skyblock:member-role-give",
                 ctx -> MenuRow.handle(ctx.context(), MemberRoleEntry.class)
@@ -178,11 +193,21 @@ public final class RoleWindows {
                     }
                     return;
                 }
-                drawn(viewer, island.get(), file, about).ifPresent(window -> {
-                    shown.put(uuid, new Shown(island.get().id(), file, about));
-                    if (!open) {
-                        engine.redraw(viewer, file, window.lists());
-                    } else if (!engine.open(viewer, file, window.values(), window.lists())) {
+                Optional<Window> drawn = drawn(viewer, island.get(), file, about);
+                // The role this window showed was taken away: whoever still has it up sees the roles that are left.
+                boolean gone = drawn.isEmpty() && PERMISSIONS_FILE.equals(file);
+                if (gone && !open && !engine.showing(viewer, PERMISSIONS_FILE)) {
+                    shown.remove(uuid);
+                    return;
+                }
+                String showing = gone ? ROLES_FILE : file;
+                String showingAbout = gone ? "" : about;
+                boolean opening = open || gone;
+                (gone ? drawn(viewer, island.get(), ROLES_FILE, "") : drawn).ifPresent(window -> {
+                    shown.put(uuid, new Shown(island.get().id(), showing, showingAbout));
+                    if (!opening) {
+                        engine.redraw(viewer, showing, window.lists());
+                    } else if (!engine.open(viewer, showing, window.values(), window.lists())) {
                         // The file is gone or would not parse: the command says it in chat instead.
                         viewer.performCommand(typed.apply(window.fallback()));
                     }
@@ -202,7 +227,14 @@ public final class RoleWindows {
             case PERMISSIONS_FILE ->
                 Optional.ofNullable(island.roles().get(about))
                         .map(role -> new Window(
-                                Map.of("role", roleName(viewer, role)),
+                                Map.of(
+                                        "role", roleName(viewer, role),
+                                        "role_id", lower(role.id()),
+                                        "role_own",
+                                                com.uxplima.uxmskyblock.core.application.membership.IslandRoleShaper
+                                                                .isOwnMade(role)
+                                                        ? "yes"
+                                                        : "no"),
                                 Map.of(PERMISSIONS, permissionRows(viewer, role)),
                                 "permissions"));
             case MEMBER_FILE -> memberWindow(viewer, island, about);

@@ -323,6 +323,30 @@ public record Island(
                 freezeReason);
     }
 
+    /**
+     * The island without the role {@code roleId}. A member who held it keeps it until the caller moves them, so
+     * the caller moves them first.
+     */
+    public Island withoutRole(String roleId) {
+        Objects.requireNonNull(roleId, "roleId must not be null");
+        Map<String, IslandRole> copy = new HashMap<>(roles);
+        copy.remove(roleId);
+        return new Island(
+                id,
+                bounds,
+                ownerPlayerUuid,
+                ownerProfileId,
+                members,
+                copy,
+                flags,
+                createdAt,
+                lifecycle,
+                residencyState,
+                economicState,
+                administrativeState,
+                freezeReason);
+    }
+
     public Island withBounds(IslandBounds newBounds) {
         Objects.requireNonNull(newBounds, "newBounds must not be null");
         return new Island(

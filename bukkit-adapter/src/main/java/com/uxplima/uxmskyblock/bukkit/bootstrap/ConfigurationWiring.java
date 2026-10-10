@@ -118,6 +118,7 @@ public final class ConfigurationWiring {
     private final PresetConfiguration presetConfig;
     private final Messages messages;
     private final HomeConfiguration homeConfig;
+    private final com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration roleConfig;
     private final NotificationConfiguration notificationConfig;
 
     /**
@@ -251,6 +252,7 @@ public final class ConfigurationWiring {
         this.presetConfig = Objects.requireNonNull(presetConfig, "presetConfig must not be null");
         this.messages = buildMessages(rootNode, dataDir);
         this.homeConfig = HomeConfiguration.load(rootNode);
+        this.roleConfig = com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration.load(rootNode);
         this.notificationConfig = rootNode != null
                 ? NotificationConfiguration.load(rootNode)
                 : NotificationConfiguration.defaultConfiguration();
@@ -394,6 +396,11 @@ public final class ConfigurationWiring {
     /** How many named homes a player may keep, and which permission buys more. */
     public HomeConfiguration homeConfig() {
         return homeConfig;
+    }
+
+    /** How many roles of their own an island's owner may make, and which permission buys more. */
+    public com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration roleConfig() {
+        return roleConfig;
     }
 
     /** The words this server answers in, in every language it ships. */

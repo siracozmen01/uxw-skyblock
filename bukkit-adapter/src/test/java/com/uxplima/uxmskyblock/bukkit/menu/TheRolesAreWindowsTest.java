@@ -227,6 +227,54 @@ class TheRolesAreWindowsTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A role the owner made shows a button that takes it away, and one every island has shows none")
+    void anOwnMadeRoleCanBeTakenAway() {
+        island = island.withRole(
+                new IslandRole("BUILDER", 401, "builder", java.util.EnumSet.of(IslandPermission.BLOCK_PLACE), false));
+        MenuRow builder = windows.roleRows(ada, island).stream()
+                .filter(row -> row.handle().equals(new RoleWindows.RoleEntry("BUILDER")))
+                .findFirst()
+                .orElseThrow();
+
+        click("skyblock:role-edit", builder);
+        settle(() -> titleOf(ada).equals("builder"));
+        assertThat(loreAt(44)).contains("Take this role away").contains("Shift click to take it away");
+        ShippedTemplates.click(
+                engine,
+                RoleWindows.DELETE,
+                com.uxplima.uxmlib.menu.runtime.MenuContext.of(
+                        ada, null, 0, java.util.Map.of("role_id", "builder", "role_own", "yes")),
+                ada,
+                ClickKind.SHIFT_LEFT,
+                "");
+        assertThat(typed).containsExactly("permissions delete builder");
+
+        click("skyblock:role-edit", windows.roleRows(ada, island).get(3));
+        drain();
+        assertThat(titleOf(ada)).isEqualTo("Member");
+        assertThat(loreAt(44)).doesNotContain("Take this role away");
+    }
+
+    @Test
+    @DisplayName("When the role a window shows is taken away, whoever has it up sees the roles that are left")
+    void aRoleTakenAwayShowsTheRest() {
+        island = island.withRole(new IslandRole("BUILDER", 401, "builder", java.util.Set.of(), false));
+        MenuRow builder = windows.roleRows(ada, island).stream()
+                .filter(row -> row.handle().equals(new RoleWindows.RoleEntry("BUILDER")))
+                .findFirst()
+                .orElseThrow();
+        click("skyblock:role-edit", builder);
+        settle(() -> titleOf(ada).equals("builder"));
+
+        island = island.withoutRole("BUILDER");
+        windows.rolesChanged(ISLAND);
+        drain();
+
+        assertThat(titleOf(ada)).isEqualTo("Roles");
+        assertThat(loreAt(4)).contains("New role");
+    }
+
+    @Test
     @DisplayName("A player with no island is told so, and no window opens")
     void noIslandIsSaid() {
         ShippedTemplates.click(
