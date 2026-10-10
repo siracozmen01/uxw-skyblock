@@ -279,4 +279,109 @@ class AResetIsCountedWhenThePlayerLeavesTest extends MockBukkitHarness {
                                 .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage())))
                 .contains("could not finish");
     }
+
+    @Test
+    @DisplayName("Everyone who belonged to the island is told it was reset: at once if here, on their next join if not")
+    void theMembersAreTold() throws Exception {
+        server.addSimpleWorld(WORLD);
+        PlayerMock owner = createRegionThreadedPlayer("Owner");
+        PlayerMock here = createRegionThreadedPlayer("Here");
+        ProfileId hereProfile = new ProfileId(UUID.randomUUID());
+        ProfileId awayProfile = new ProfileId(UUID.randomUUID());
+        com.uxplima.uxmskyblock.core.domain.island.Island island =
+                com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                                ISLAND,
+                                com.uxplima.uxmskyblock.core.domain.island.IslandBounds.fromCenterAndRadius(0, 0, 50),
+                                new PlayerUuid(owner.getUniqueId()),
+                                PROFILE,
+                                java.time.Instant.now())
+                        .addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                                new PlayerUuid(here.getUniqueId()),
+                                hereProfile,
+                                com.uxplima.uxmskyblock.core.domain.island.IslandRole.MEMBER,
+                                java.time.Instant.now()))
+                        .addMember(new com.uxplima.uxmskyblock.core.domain.island.IslandMember(
+                                new PlayerUuid(UUID.randomUUID()),
+                                awayProfile,
+                                com.uxplima.uxmskyblock.core.domain.island.IslandRole.MEMBER,
+                                java.time.Instant.now()));
+        IslandRecycleService recycle = mock(IslandRecycleService.class);
+        when(recycle.executeReset(any(), any(), any(), anyBoolean()))
+                .thenReturn(CompletableFuture.completedFuture(
+                        new IslandRecycleService.RecycleResult.Success(ISLAND, 3L, WORLD, 1, 2)));
+        IslandLocationService locations = mock(IslandLocationService.class);
+        when(locations.findIslandId(PROFILE)).thenReturn(Optional.of(ISLAND));
+        when(locations.findIsland(ISLAND)).thenReturn(Optional.of(island));
+        PlayerSessionCoordinator sessions = mock(PlayerSessionCoordinator.class);
+        when(sessions.activeProfile(owner.getUniqueId())).thenReturn(Optional.of(PROFILE));
+        com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService antiAbuse =
+                mock(com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService.class);
+        when(antiAbuse.checkResetAllowed(any(), anyBoolean()))
+                .thenReturn(new com.uxplima.uxmskyblock.core.domain.antiabuse.ResetCheckResult.Allowed(3));
+        when(antiAbuse.beginReset(any())).thenReturn(true);
+        SchedulerPort inline = mock(SchedulerPort.class);
+        doAnswer(call -> {
+                    call.getArgument(0, Runnable.class).run();
+                    return null;
+                })
+                .when(inline)
+                .async(any(Runnable.class));
+        doAnswer(call -> {
+                    call.getArgument(1, Runnable.class).run();
+                    return null;
+                })
+                .when(inline)
+                .onEntity(any(PlayerUuid.class), any(Runnable.class));
+        IslandLifecycleCommands commands = new IslandLifecycleCommands(
+                mock(CreateIslandUseCase.class),
+                locations,
+                new StarterPresetCatalog(),
+                mock(StarterSchematicEngine.class),
+                mock(IslandProtectionListener.class),
+                sessions,
+                inline,
+                ServerNodeId.of("node-1"),
+                WORLD,
+                () -> antiAbuse,
+                () -> recycle,
+                () -> null,
+                () -> null,
+                Messages.bundled());
+        com.uxplima.uxmskyblock.core.application.notification.NotificationService notices =
+                mock(com.uxplima.uxmskyblock.core.application.notification.NotificationService.class);
+        commands.useNotifications(notices);
+        CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
+        dispatcher.register(commands.buildReset());
+        CommandSourceStack source = mock(CommandSourceStack.class);
+        when(source.getSender()).thenReturn(owner);
+
+        dispatcher.execute("reset confirm 1234", source);
+
+        org.assertj.core.api.Assertions.assertThat(
+                        net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                                .serialize(java.util.Objects.requireNonNull(here.nextComponentMessage())))
+                .contains("Owner reset the island you belonged to");
+        verify(notices)
+                .notify(
+                        org.mockito.ArgumentMatchers.eq(awayProfile),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory.RESET),
+                        org.mockito.ArgumentMatchers.eq("notification.island_reset"),
+                        org.mockito.ArgumentMatchers.eq(java.util.Map.of("player", "Owner")),
+                        org.mockito.ArgumentMatchers.isNull());
+        verify(notices, org.mockito.Mockito.never())
+                .notify(org.mockito.ArgumentMatchers.eq(PROFILE), any(), any(), any(), any());
+        verify(notices, org.mockito.Mockito.never())
+                .notify(org.mockito.ArgumentMatchers.eq(hereProfile), any(), any(), any(), any());
+        java.util.List<String> ownerRead = new java.util.ArrayList<>();
+        for (net.kyori.adventure.text.Component line = owner.nextComponentMessage();
+                line != null;
+                line = owner.nextComponentMessage()) {
+            ownerRead.add(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                    .serialize(line));
+        }
+        org.assertj.core.api.Assertions.assertThat(ownerRead)
+                .describedAs("the owner reset it, and is told so, not that somebody reset it")
+                .noneMatch(line -> line.contains("the island you belonged to"));
+    }
 }

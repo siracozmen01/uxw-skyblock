@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.command;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -131,6 +132,15 @@ public final class IslandLifecycleCommands {
     /** Tells this command group where to write the island's activity feed. */
     public void useActivityFeed(@Nullable ActivityFeedService service) {
         this.activityLog.useService(service);
+    }
+
+    private volatile com.uxplima.uxmskyblock.core.application.notification.@Nullable NotificationService
+            notificationService;
+
+    /** Where a member who is away is told that the island they belonged to was reset. */
+    public void useNotifications(
+            com.uxplima.uxmskyblock.core.application.notification.@Nullable NotificationService service) {
+        this.notificationService = service;
     }
 
     public IslandLifecycleCommands(
@@ -564,6 +574,13 @@ public final class IslandLifecycleCommands {
             IslandId islandId,
             String code) {
         PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        // Read before the island is gone: once it is erased nothing says who belonged to it.
+        java.util.List<com.uxplima.uxmskyblock.core.domain.island.IslandMember> others = islandLocationService
+                .findIsland(islandId)
+                .map(island -> island.members().values().stream()
+                        .filter(member -> !member.profileId().equals(profileId))
+                        .toList())
+                .orElse(java.util.List.of());
         CompletableFuture<RecycleResult> erasure;
         try {
             erasure = recycleService.executeReset(profileId, islandId, code, false);
@@ -593,6 +610,9 @@ public final class IslandLifecycleCommands {
                     // Counted here, off any player's thread, whether or not the player is still on.
                     // It was counted on the player's thread, so a player who left while the island
                     // was erased was never counted, and the count was a database write on the region.
+                    if (result instanceof RecycleResult.Success) {
+                        tellTheMembers(others, player.getName());
+                    }
                     if (result instanceof RecycleResult.Success && antiAbuse != null) {
                         antiAbuse.recordReset(playerUuid, Instant.now());
                         // Owed first, paid below if the player is still here, and otherwise when
@@ -641,6 +661,40 @@ public final class IslandLifecycleCommands {
                         }
                     });
                 });
+    }
+
+    /**
+     * Tells everyone who belonged to a reset island that it is gone: at once when they are on this
+     * server, and on their next join otherwise. A member standing on the island was moved to spawn
+     * with no word of why, and one who was away found out only by typing a command.
+     */
+    private void tellTheMembers(
+            java.util.List<com.uxplima.uxmskyblock.core.domain.island.IslandMember> members, String owner) {
+        for (com.uxplima.uxmskyblock.core.domain.island.IslandMember member : members) {
+            Player online = Bukkit.getPlayer(member.playerUuid().value());
+            if (online != null) {
+                send(online, "reset.member_notice", Placeholder.unparsed("player", owner));
+                continue;
+            }
+            var notices = this.notificationService;
+            if (notices == null) {
+                continue;
+            }
+            try {
+                notices.notify(
+                        member.profileId(),
+                        com.uxplima.uxmskyblock.core.domain.notification.NotificationCategory.RESET,
+                        "notification.island_reset",
+                        Map.of("player", owner),
+                        null);
+            } catch (RuntimeException e) {
+                // The island is gone either way. A notice that could not be written is a log line.
+                LOGGER.log(
+                        java.util.logging.Level.WARNING,
+                        e,
+                        () -> "Leaving a reset notice for " + member.profileId() + " failed.");
+            }
+        }
     }
 
     private int executeGetRename(CommandContext<CommandSourceStack> ctx) {

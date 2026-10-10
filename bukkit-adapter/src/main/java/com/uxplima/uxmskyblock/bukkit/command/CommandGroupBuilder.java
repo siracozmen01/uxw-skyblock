@@ -159,6 +159,7 @@ final class CommandGroupBuilder {
                 () -> tree.nameService,
                 tree.messages);
         lifecycleCommands.useActivityFeed(tree.activityFeedService);
+        lifecycleCommands.useNotifications(tree.notificationService);
         lifecycleCommands.useLifecycle(() -> tree.playerLifecycle);
         lifecycleCommands.useAntiAbuseRules(tree.antiAbuseConfiguration);
         lifecycleCommands.useEffects(tree.interactionEffects, effectPlayer);
