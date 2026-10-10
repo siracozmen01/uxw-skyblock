@@ -88,7 +88,10 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
             conn.setAutoCommit(false);
             try (Statement stmt = conn.createStatement()) {
                 if (database.dialect() == Dialect.SQLITE) {
-                    stmt.execute("PRAGMA foreign_keys = OFF;");
+                    // Turning the keys off does nothing inside a transaction, and the accounts and the
+                    // profiles point at each other, so no order puts every parent first. Deferred, the
+                    // keys are checked once, at the commit, when every row is back.
+                    stmt.execute("PRAGMA defer_foreign_keys = ON;");
                 } else if (database.dialect() == Dialect.MYSQL) {
                     stmt.execute("SET FOREIGN_KEY_CHECKS = 0;");
                 }
@@ -96,9 +99,7 @@ public final class SqlDatabaseBackupAdapter implements DatabaseBackupPort {
                 // Every row goes, children first, and the backup's rows come back, parents first.
                 DatabaseDump.restore(conn, database.dialect(), sqlDump.substring(headerEnd + 1));
 
-                if (database.dialect() == Dialect.SQLITE) {
-                    stmt.execute("PRAGMA foreign_keys = ON;");
-                } else if (database.dialect() == Dialect.MYSQL) {
+                if (database.dialect() == Dialect.MYSQL) {
                     stmt.execute("SET FOREIGN_KEY_CHECKS = 1;");
                 }
 
