@@ -250,8 +250,7 @@ class TheRolesAreWindowsTest extends MockBukkitHarness {
         assertThat(typed).containsExactly("permissions delete builder");
 
         click("skyblock:role-edit", windows.roleRows(ada, island).get(3));
-        drain();
-        assertThat(titleOf(ada)).isEqualTo("Member");
+        settleAfterDraining(() -> titleOf(ada).equals("Member"));
         assertThat(loreAt(44)).doesNotContain("Take this role away");
     }
 
@@ -269,6 +268,8 @@ class TheRolesAreWindowsTest extends MockBukkitHarness {
         island = island.withoutRole("BUILDER");
         windows.rolesChanged(ISLAND);
         drain();
+        // A busy machine may still be drawing it: the window is read off the player's thread first.
+        settleAfterDraining(() -> titleOf(ada).equals("Roles"));
 
         assertThat(titleOf(ada)).isEqualTo("Roles");
         assertThat(loreAt(4)).contains("New role");
@@ -354,6 +355,18 @@ class TheRolesAreWindowsTest extends MockBukkitHarness {
             server.getScheduler().performOneTick();
             server.getScheduler().waitAsyncTasksFinished();
         }
+    }
+
+    /** Drains the server, async work included, until {@code done} holds, for as long as five seconds. */
+    private void settleAfterDraining(java.util.function.BooleanSupplier done) {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < deadline) {
+            drain();
+            if (done.getAsBoolean()) {
+                return;
+            }
+        }
+        throw new AssertionError("the server never settled, the window is titled '" + titleOf(ada) + "'");
     }
 
     /** Runs the server until {@code done} holds: the engine draws a window off the player's thread first. */
