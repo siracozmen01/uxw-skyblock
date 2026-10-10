@@ -330,7 +330,7 @@ class ProductionMigrationFastLaneTest {
                                 "version",
                                 "updated_at");
 
-                // bank_transactions columns (V6)
+                // bank_transactions columns (V6, and bank_version since V48)
                 Set<String> txCols = getColumnNames(meta, "bank_transactions");
                 assertThat(txCols)
                         .containsExactlyInAnyOrder(
@@ -343,6 +343,7 @@ class ProductionMigrationFastLaneTest {
                                 "delta_amount_minor_units",
                                 "resulting_balance_minor_units",
                                 "reason",
+                                "bank_version",
                                 "created_at");
 
                 // processed_operations columns (V6)

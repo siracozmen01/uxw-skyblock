@@ -126,7 +126,7 @@ final class SqlIslandBankLedger {
                        resulting_balance_minor_units, reason, created_at
                 FROM bank_transactions
                 WHERE island_id = ?
-                ORDER BY created_at DESC
+                ORDER BY bank_version DESC, created_at DESC
                 LIMIT ?
                 """;
 

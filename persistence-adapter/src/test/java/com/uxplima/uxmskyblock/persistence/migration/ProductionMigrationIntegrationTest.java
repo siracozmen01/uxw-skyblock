@@ -689,6 +689,7 @@ class ProductionMigrationIntegrationTest {
                             "delta_amount_minor_units",
                             "resulting_balance_minor_units",
                             "reason",
+                            "bank_version",
                             "created_at");
 
             Set<String> opCols = getColumnNames(meta, "processed_operations");

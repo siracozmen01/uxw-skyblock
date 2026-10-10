@@ -51,16 +51,15 @@ final class HeldCurrencies {
                 island, actor, "experience", 0, -75L, "Take out", node, epoch, 4L, op(), "h5");
         assertThat(((BankTransactionOutcome.Success) emptied).updatedBank().heldOf("experience"))
                 .isZero();
-        // The ledger records each move under its currency. Two moves in one second have no order on an engine
-        // that keeps whole seconds, so the move is found by what it was rather than by where it stands.
-        assertThat(adapter.getTransactionHistory(island, 10))
-                .filteredOn(transaction -> transaction.deltaAmountMinorUnits() == -75L)
-                .singleElement()
-                .extracting(BankTransaction::currencyId, BankTransaction::currencyScale)
-                .containsExactly("experience", 0);
-        assertThat(adapter.getTransactionHistory(island, 10))
-                .extracting(BankTransaction::currencyId)
-                .containsOnly("experience", "points");
+        // Every move here lands within one second, which an engine that keeps whole seconds cannot order by time:
+        // the history is read by the version each move reached, so the newest is the last one made.
+        assertThat(adapter.getTransactionHistory(island, 5))
+                .extracting(BankTransaction::currencyId, BankTransaction::deltaAmountMinorUnits)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("experience", -75L),
+                        org.assertj.core.groups.Tuple.tuple("points", 7L),
+                        org.assertj.core.groups.Tuple.tuple("experience", 25L),
+                        org.assertj.core.groups.Tuple.tuple("experience", 50L));
 
         for (String refused : new String[] {"Not An Id", "vault"}) {
             assertThatThrownBy(() -> adapter.executeTransaction(

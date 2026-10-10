@@ -407,8 +407,8 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                         INSERT INTO bank_transactions (
                             transaction_id, operation_id, island_id, actor_uuid,
                             currency_id, currency_scale, delta_amount_minor_units,
-                            resulting_balance_minor_units, reason, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            resulting_balance_minor_units, reason, bank_version, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                         """;
                 try (PreparedStatement ps = connection.prepareStatement(insertTxSql)) {
                     ps.setString(1, txId.toString());
@@ -420,6 +420,8 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     ps.setLong(7, deltaAmountMinorUnits);
                     ps.setLong(8, newBal);
                     ps.setString(9, reason);
+                    // The version the bank row reached with this move, one more than the one it was read at.
+                    ps.setLong(10, expectedVersion + 1);
                     ps.executeUpdate();
                 }
 

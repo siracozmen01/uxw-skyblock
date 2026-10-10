@@ -91,6 +91,39 @@ class PlayerIslandBankSqliteTest {
     }
 
     @Test
+    @DisplayName("Each move records the version its bank reached, one more with every move, whatever its time")
+    void eachMoveRecordsItsVersion() throws Exception {
+        adapter.createBank(islandId);
+        for (long version = 1; version <= 3; version++) {
+            adapter.executeTransaction(
+                    islandId,
+                    actorUuid,
+                    "PRIMARY",
+                    2,
+                    100L,
+                    "In",
+                    currentNode,
+                    currentEpoch,
+                    version,
+                    UUID.randomUUID(),
+                    "v" + version);
+        }
+
+        java.util.List<Long> versions = new java.util.ArrayList<>();
+        try (java.sql.Connection connection = database.connection();
+                java.sql.PreparedStatement ps = connection.prepareStatement(
+                        "SELECT bank_version FROM bank_transactions WHERE island_id = ? ORDER BY bank_version")) {
+            ps.setString(1, islandId.value().toString());
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    versions.add(rs.getLong(1));
+                }
+            }
+        }
+        org.assertj.core.api.Assertions.assertThat(versions).containsExactly(2L, 3L, 4L);
+    }
+
+    @Test
     @DisplayName("deposit on PRIMARY currency succeeds, increments version and logs transaction")
     void depositPrimaryCurrency() {
         adapter.createBank(islandId);
