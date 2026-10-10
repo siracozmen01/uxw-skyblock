@@ -49,6 +49,13 @@ public final class IslandProgressionCommands {
     /** Where a command named after a window opens it. */
     private CommandWindows windows = CommandWindows.none();
 
+    /** The window a board is shown in, looked up when one is asked for. */
+    private Supplier<com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList> topList = () -> null;
+
+    void useTopList(Supplier<com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList> topList) {
+        this.topList = Objects.requireNonNull(topList, "topList must not be null");
+    }
+
     void useWindows(CommandWindows windows) {
         this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
     }
@@ -396,52 +403,123 @@ public final class IslandProgressionCommands {
                     unnamed.put(entry.islandId(), labels.of(src.getSender(), entry.islandId()));
                 }
             }
-            schedulerPort.onGlobal(() -> {
-                Audience audience = src.getSender();
-                Component categoryName = messages.renderPlain(
-                        audience, "leaderboard.category_" + cat.name().toLowerCase(Locale.ROOT));
-                send(audience, "leaderboard.header", Placeholder.component("category", categoryName));
-                if (entries.isEmpty()) {
-                    send(audience, "leaderboard.empty");
-                } else {
-                    for (LeaderboardEntry entry : entries) {
-                        // A name the island was not given, and a level, are words, so they come from
-                        // the reader's catalogue. The stored entry carries them in English for the API.
-                        Component name = entry.named()
-                                ? Component.text(entry.islandName())
-                                : unnamed.getOrDefault(entry.islandId(), Component.empty());
-                        Component score = cat == LeaderboardCategory.LEVEL
-                                ? messages.renderPlain(
-                                        audience,
-                                        "leaderboard.score_level",
-                                        Placeholder.unparsed("island_level", Long.toString(entry.score())))
-                                // Money is written through the catalogue, where the operator names the
-                                // currency. The stored entry spells it with a dollar sign for the API.
-                                : messages.renderPlain(
-                                        audience,
-                                        "leaderboard.score_money",
-                                        Placeholder.unparsed(
-                                                "amount", String.format(Locale.ROOT, "%,.2f", entry.score() / 100.0)));
-                        send(
-                                audience,
-                                "leaderboard.entry",
-                                Placeholder.unparsed("place", Integer.toString(entry.rank())),
-                                Placeholder.component("name", name),
-                                Placeholder.component("score", score));
+            // A window of the board, each island under its owner's head, when the operator kept its file.
+            com.uxplima.uxmskyblock.bukkit.menu.TopList window = topList.get();
+            if (window != null && src.getSender() instanceof Player player) {
+                java.util.Map<IslandId, java.util.UUID> owners = new java.util.HashMap<>();
+                for (LeaderboardEntry entry : entries) {
+                    islandLocationService
+                            .findIsland(entry.islandId())
+                            .ifPresent(island -> owners.put(
+                                    entry.islandId(), island.ownerPlayerUuid().value()));
+                }
+                schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                    if (!player.isOnline()) {
+                        return;
                     }
-                }
-                if (ownRank == Rank.NOT_PLACED) {
-                    send(src.getSender(), "leaderboard.your_rank_unplaced");
-                } else if (ownRank.place() > 0) {
-                    send(
-                            src.getSender(),
-                            "leaderboard.your_rank",
-                            Placeholder.unparsed("place", Integer.toString(ownRank.place())));
-                }
-            });
+                    // A name by id is the server's cache of who has played, read on the player's thread.
+                    java.util.Map<java.util.UUID, String> ownerNames = new java.util.HashMap<>();
+                    owners.values().forEach(owner -> {
+                        String name = org.bukkit.Bukkit.getOfflinePlayer(owner).getName();
+                        if (name != null) {
+                            ownerNames.put(owner, name);
+                        }
+                    });
+                    java.util.List<com.uxplima.uxmskyblock.bukkit.menu.TopList.Entry> shown = entries.stream()
+                            .map(entry -> {
+                                java.util.UUID owner = owners.get(entry.islandId());
+                                return new com.uxplima.uxmskyblock.bukkit.menu.TopList.Entry(
+                                        entry.rank(),
+                                        plain(nameOf(entry, unnamed)),
+                                        plain(scoreOf(player, cat, entry)),
+                                        owner,
+                                        owner == null ? null : ownerNames.get(owner));
+                            })
+                            .toList();
+                    String board = plain(messages.renderPlain(
+                            player, "leaderboard.category_" + cat.name().toLowerCase(Locale.ROOT)));
+                    if (!window.show(player, board, plain(rankWords(player, ownRank)), shown)) {
+                        topInChat(src, cat, entries, unnamed, ownRank);
+                    }
+                });
+                return;
+            }
+            schedulerPort.onGlobal(() -> topInChat(src, cat, entries, unnamed, ownRank));
         });
 
         return Cmd.OK;
+    }
+
+    /** A board in chat: a header, a line for each island, and where the reader's own island stands. */
+    private void topInChat(
+            CommandSourceStack src,
+            LeaderboardCategory cat,
+            java.util.List<LeaderboardEntry> entries,
+            java.util.Map<IslandId, Component> unnamed,
+            Rank ownRank) {
+        Audience audience = src.getSender();
+        Component categoryName = messages.renderPlain(
+                audience, "leaderboard.category_" + cat.name().toLowerCase(Locale.ROOT));
+        send(audience, "leaderboard.header", Placeholder.component("category", categoryName));
+        if (entries.isEmpty()) {
+            send(audience, "leaderboard.empty");
+        } else {
+            for (LeaderboardEntry entry : entries) {
+                send(
+                        audience,
+                        "leaderboard.entry",
+                        Placeholder.unparsed("place", Integer.toString(entry.rank())),
+                        Placeholder.component("name", nameOf(entry, unnamed)),
+                        Placeholder.component("score", scoreOf(audience, cat, entry)));
+            }
+        }
+        if (ownRank == Rank.NOT_PLACED) {
+            send(audience, "leaderboard.your_rank_unplaced");
+        } else if (ownRank.place() > 0) {
+            send(audience, "leaderboard.your_rank", Placeholder.unparsed("place", Integer.toString(ownRank.place())));
+        }
+    }
+
+    /** The island's name, or whose island it is when nobody named it. */
+    private static Component nameOf(LeaderboardEntry entry, java.util.Map<IslandId, Component> unnamed) {
+        return entry.named()
+                ? Component.text(entry.islandName())
+                : unnamed.getOrDefault(entry.islandId(), Component.empty());
+    }
+
+    /**
+     * An island's score in the reader's words. A level is a word, and money is written through the catalogue,
+     * where the operator names the currency; the stored entry spells both in English for the API.
+     */
+    private Component scoreOf(Audience reader, LeaderboardCategory cat, LeaderboardEntry entry) {
+        return cat == LeaderboardCategory.LEVEL
+                ? messages.renderPlain(
+                        reader,
+                        "leaderboard.score_level",
+                        Placeholder.unparsed("island_level", Long.toString(entry.score())))
+                : messages.renderPlain(
+                        reader,
+                        "leaderboard.score_money",
+                        Placeholder.unparsed("amount", String.format(Locale.ROOT, "%,.2f", entry.score() / 100.0)));
+    }
+
+    /** Where the reader's own island stands, as the leaderboard window says it. */
+    private Component rankWords(Audience reader, Rank rank) {
+        if (rank == Rank.NOT_PLACED) {
+            return messages.renderPlain(reader, "menu.leaderboard.rank_unplaced");
+        }
+        if (rank.place() > 0) {
+            return messages.renderPlain(
+                    reader,
+                    "menu.leaderboard.rank_placed",
+                    Placeholder.unparsed("place", Integer.toString(rank.place())));
+        }
+        return messages.renderPlain(reader, "menu.leaderboard.rank_none");
+    }
+
+    private static String plain(Component line) {
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(line);
     }
 
     /**

@@ -137,6 +137,9 @@ public final class IslandCommandTree {
     /** The window the public warp directory opens in, so its icons are drawn. */
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable IslandWarpBrowseMenu warpBrowseMenu;
 
+    volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList homeList;
+    volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList topList;
+
     volatile @Nullable IslandSocialService socialService;
     volatile @Nullable IslandAllianceService allianceService;
     volatile @Nullable RewardInboxService rewardInboxService;
@@ -419,6 +422,16 @@ public final class IslandCommandTree {
     /** Hands the operator's wait between two rescans of one island to the command that runs them. */
     public void setRecalculationCooldown(java.time.Duration cooldown) {
         this.recalculationCooldown = java.util.Objects.requireNonNull(cooldown, "cooldown must not be null");
+    }
+
+    /** The window the homes are listed in, rather than lines in chat. */
+    public void useHomeList(com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList homeList) {
+        this.homeList = homeList;
+    }
+
+    /** The window a leaderboard is shown in, rather than lines in chat. */
+    public void useTopList(com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList topList) {
+        this.topList = topList;
     }
 
     /** Hands the directory window to the browse command, so a warp's icon is seen. */

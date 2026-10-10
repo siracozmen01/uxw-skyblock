@@ -308,6 +308,34 @@ class IslandHomeCommandsTest {
     }
 
     @Test
+    @DisplayName("/is homes shows the homes in their window, and writes nothing in chat")
+    void listingOpensTheWindow() throws Exception {
+        List<Home> held = List.of(homeAt("base", 1.0, 2.0, 3.0));
+        when(homes.listHomes(PROFILE)).thenReturn(held);
+        com.uxplima.uxmskyblock.bukkit.menu.HomeList window = mock(com.uxplima.uxmskyblock.bukkit.menu.HomeList.class);
+        when(window.show(player, held, HomeConfiguration.defaults().allowanceFor(node -> false)))
+                .thenReturn(true);
+        commands.useHomeList(() -> window);
+
+        run("homes", player);
+
+        verify(window).show(player, held, HomeConfiguration.defaults().allowanceFor(node -> false));
+        assertThat(player.nextMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("/is homes on a server whose operator removed the window lists the homes in chat")
+    void listingWithoutTheWindowIsChat() throws Exception {
+        when(homes.listHomes(PROFILE)).thenReturn(List.of(homeAt("base", 1.0, 2.0, 3.0)));
+        com.uxplima.uxmskyblock.bukkit.menu.HomeList window = mock(com.uxplima.uxmskyblock.bukkit.menu.HomeList.class);
+        commands.useHomeList(() -> window);
+
+        run("homes", player);
+
+        assertThat(player.nextMessage()).isNotNull();
+    }
+
+    @Test
     @DisplayName("/is delhome names the home the player typed")
     void deletingNamesTheHome() throws Exception {
         run("delhome base", player);

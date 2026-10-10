@@ -102,6 +102,13 @@ final class IslandCommandWiring {
         roleWindows.register();
         tree.windows().useRoles(roleWindows::openRoles);
         gameplay.membershipService().whenRolesChanged(roleWindows::rolesChanged);
+        // The homes and every leaderboard are windows, one tile each, rather than lines in chat.
+        var homeList = new com.uxplima.uxmskyblock.bukkit.menu.HomeList(tree::typed);
+        homeList.useMenuEngine(integration.menuEngine());
+        tree.useHomeList(homeList);
+        var topList = new com.uxplima.uxmskyblock.bukkit.menu.TopList(tree::typed);
+        topList.useMenuEngine(integration.menuEngine());
+        tree.useTopList(topList);
         // The members window lists the members, one tile each, rather than sending the player to chat.
         new com.uxplima.uxmskyblock.bukkit.menu.MemberList(
                         integration.messages(),

@@ -51,6 +51,13 @@ public final class IslandHomeCommands {
         this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
     }
 
+    /** The window the homes are listed in, looked up when they are listed. */
+    private Supplier<com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList> homeList = () -> null;
+
+    void useHomeList(Supplier<com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList> homeList) {
+        this.homeList = Objects.requireNonNull(homeList, "homeList must not be null");
+    }
+
     private final Supplier<@Nullable HomeService> homeServiceProvider;
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
@@ -228,26 +235,41 @@ public final class IslandHomeCommands {
                 : 0;
         return withHome(ctx, (player, service, profileId) -> {
             List<Home> homes = service.listHomes(profileId);
-            send(
-                    player,
-                    "home.list_header",
-                    Placeholder.unparsed("count", Integer.toString(homes.size())),
-                    Placeholder.unparsed("max", Integer.toString(allowance)));
-            if (homes.isEmpty()) {
-                send(player, "home.list_empty");
+            // A window of the homes, one tile each, when the operator kept its file. The lines in chat
+            // stay for a server that removed it.
+            com.uxplima.uxmskyblock.bukkit.menu.HomeList window = homeList.get();
+            if (window != null) {
+                schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+                    if (player.isOnline() && !window.show(player, homes, allowance)) {
+                        listInChat(player, homes, allowance);
+                    }
+                });
                 return;
             }
-            for (Home home : homes) {
-                send(
-                        player,
-                        "home.list_entry",
-                        Placeholder.unparsed("name", home.name()),
-                        Placeholder.unparsed("world", home.worldName()),
-                        Placeholder.unparsed("x", Long.toString(Math.round(home.x()))),
-                        Placeholder.unparsed("y", Long.toString(Math.round(home.y()))),
-                        Placeholder.unparsed("z", Long.toString(Math.round(home.z()))));
-            }
+            listInChat(player, homes, allowance);
         });
+    }
+
+    private void listInChat(Player player, List<Home> homes, int allowance) {
+        send(
+                player,
+                "home.list_header",
+                Placeholder.unparsed("count", Integer.toString(homes.size())),
+                Placeholder.unparsed("max", Integer.toString(allowance)));
+        if (homes.isEmpty()) {
+            send(player, "home.list_empty");
+            return;
+        }
+        for (Home home : homes) {
+            send(
+                    player,
+                    "home.list_entry",
+                    Placeholder.unparsed("name", home.name()),
+                    Placeholder.unparsed("world", home.worldName()),
+                    Placeholder.unparsed("x", Long.toString(Math.round(home.x()))),
+                    Placeholder.unparsed("y", Long.toString(Math.round(home.y()))),
+                    Placeholder.unparsed("z", Long.toString(Math.round(home.z()))));
+        }
     }
 
     private int executeDeleteHome(CommandContext<CommandSourceStack> ctx) {

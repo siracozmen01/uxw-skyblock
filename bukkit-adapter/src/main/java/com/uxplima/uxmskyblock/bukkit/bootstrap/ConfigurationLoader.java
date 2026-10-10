@@ -107,7 +107,9 @@ public final class ConfigurationLoader {
             "island-chunks.conf",
             "island-roles.conf",
             "island-role-permissions.conf",
-            "island-member-role.conf");
+            "island-member-role.conf",
+            "island-home-list.conf",
+            "island-leaderboard.conf");
 
     private ConfigurationLoader() {
         throw new UnsupportedOperationException("ConfigurationLoader is a set of loading steps, not a thing to hold.");

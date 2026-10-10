@@ -192,6 +192,7 @@ final class CommandGroupBuilder {
                 tree.messages);
 
         progressionCommands.useWindows(tree.windows);
+        progressionCommands.useTopList(() -> tree.topList);
         progressionCommands.useBiomeRules(tree.biomeConfiguration);
         progressionCommands.useRecalculationCooldown(tree.recalculationCooldown);
         progressionCommands.useLeaderboards(() -> tree.leaderboards);
@@ -228,6 +229,7 @@ final class CommandGroupBuilder {
                 tree.sessionCoordinator);
 
         homeCommands.useWindows(tree.windows);
+        homeCommands.useHomeList(() -> tree.homeList);
         homeCommands.useGameModes(profile -> tree.gameModes.apply(profile));
 
         // Four subsystems were built, wired and running with no command to reach them: warps, the
