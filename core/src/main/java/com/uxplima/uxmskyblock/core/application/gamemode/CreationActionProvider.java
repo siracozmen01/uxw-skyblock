@@ -1,5 +1,7 @@
 package com.uxplima.uxmskyblock.core.application.gamemode;
 
+import java.util.concurrent.CompletableFuture;
+
 /**
  * One thing a new island's start does: lay a platform, set a OneBlock island's block, paste a structure.
  *
@@ -15,4 +17,14 @@ public interface CreationActionProvider<C> {
 
     /** Does the action at the place the context describes, on the thread that owns that place. */
     void apply(C context);
+
+    /**
+     * Does the action and answers once it is done. Most actions are done when {@link #apply} returns and
+     * keep this as it is. One that spreads its work over ticks, as a pasted structure does, answers when
+     * the last of it stands, so the actions after it and the player's arrival wait for it.
+     */
+    default CompletableFuture<Void> applyThen(C context) {
+        apply(context);
+        return CompletableFuture.completedFuture(null);
+    }
 }

@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 /**
  * The creation actions a server knows, each answered by exactly one provider.
@@ -54,8 +56,56 @@ public final class CreationActions<C> {
      * @throws IllegalArgumentException when an action has no provider, before any action has run
      */
     public void run(List<String> actionIds, C context) {
-        Objects.requireNonNull(actionIds, "actionIds must not be null");
         Objects.requireNonNull(context, "context must not be null");
+        for (CreationActionProvider<C> provider : resolve(actionIds)) {
+            provider.apply(context);
+        }
+    }
+
+    /**
+     * Runs the actions in the order the list names them, each once the one before it is done, and answers
+     * when the last is done. An action done at once is followed at once, on the same thread. One that
+     * finishes later, on whatever thread finished it, is followed through {@code resume}, which hands the
+     * next action back to the thread that owns the place.
+     *
+     * @throws IllegalArgumentException when an action has no provider, before any action has run
+     */
+    public CompletableFuture<Void> runThen(List<String> actionIds, C context, Executor resume) {
+        Objects.requireNonNull(context, "context must not be null");
+        Objects.requireNonNull(resume, "resume must not be null");
+        return from(resolve(actionIds), 0, context, resume);
+    }
+
+    private CompletableFuture<Void> from(
+            List<CreationActionProvider<C>> resolved, int index, C context, Executor resume) {
+        for (int i = index; i < resolved.size(); i++) {
+            CompletableFuture<Void> step = applied(resolved.get(i), context);
+            if (!step.isDone()) {
+                int next = i + 1;
+                if (next == resolved.size()) {
+                    // Nothing follows it, so nothing is handed back.
+                    return step;
+                }
+                return step.thenComposeAsync(done -> from(resolved, next, context, resume), resume);
+            }
+            if (step.isCompletedExceptionally()) {
+                return step;
+            }
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private static <C> CompletableFuture<Void> applied(CreationActionProvider<C> provider, C context) {
+        try {
+            CompletableFuture<Void> step = provider.applyThen(context);
+            return step == null ? CompletableFuture.completedFuture(null) : step;
+        } catch (RuntimeException failed) {
+            return CompletableFuture.failedFuture(failed);
+        }
+    }
+
+    private List<CreationActionProvider<C>> resolve(List<String> actionIds) {
+        Objects.requireNonNull(actionIds, "actionIds must not be null");
         List<CreationActionProvider<C>> resolved = new ArrayList<>(actionIds.size());
         for (String actionId : actionIds) {
             CreationActionProvider<C> provider = providers.get(key(actionId));
@@ -64,9 +114,7 @@ public final class CreationActions<C> {
             }
             resolved.add(provider);
         }
-        for (CreationActionProvider<C> provider : resolved) {
-            provider.apply(context);
-        }
+        return resolved;
     }
 
     private static String key(String actionId) {
