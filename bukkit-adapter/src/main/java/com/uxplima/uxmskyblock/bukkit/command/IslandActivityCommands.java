@@ -63,6 +63,19 @@ public final class IslandActivityCommands {
         this.sessionCoordinator = sessionCoordinator;
     }
 
+    /** The window the feed is shown in, rather than lines in chat. */
+    private java.util.function.Supplier<
+                    com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
+            windows = () -> null;
+
+    /** Hands this command the window the feed is shown in. */
+    public void useWindows(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
+                    windows) {
+        this.windows = Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> build() {
         return Cmd.literal("activity").executes(this::executeActivity);
     }
@@ -95,6 +108,25 @@ public final class IslandActivityCommands {
                     service.getRecentActivities(optIsland.get().value().toString(), DEFAULT_LIMIT);
             Instant now = Instant.now();
             schedulerPort.onEntity(playerUuid, () -> {
+                com.uxplima.uxmskyblock.bukkit.menu.SocialWindows window = windows.get();
+                if (window != null
+                        && window.showActivity(
+                                player,
+                                events.stream()
+                                        .map(event -> {
+                                            String ago = DurationText.coarse(
+                                                    messages, player, Duration.between(event.createdAt(), now));
+                                            // The line says how long ago itself, as it does in chat.
+                                            return new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Line(
+                                                    net.kyori.adventure.text.serializer.plain
+                                                            .PlainTextComponentSerializer.plainText()
+                                                            .serialize(lineOf(player, event, ago))
+                                                            .strip(),
+                                                    ago);
+                                        })
+                                        .toList())) {
+                    return;
+                }
                 send(player, "activity.header");
                 if (events.isEmpty()) {
                     send(player, "activity.empty");
@@ -144,6 +176,16 @@ public final class IslandActivityCommands {
      * row written before a language file was edited still reads.
      */
     private void sendOne(Player player, ActivityEvent event, String ago) {
+        Component line = lineOf(player, event, ago);
+        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+            if (player.isOnline()) {
+                player.sendMessage(line);
+            }
+        });
+    }
+
+    /** One line of the feed in the reader's language, with {@code ago} where the line asks how long ago. */
+    private Component lineOf(Player player, ActivityEvent event, String ago) {
         java.util.Map<String, String> values = MessagePayload.unpack(event.payloadData());
         String key = event.payloadTypeId();
         if (messages.has(key)) {
@@ -152,10 +194,9 @@ public final class IslandActivityCommands {
                 resolvers.add(Placeholder.unparsed(value.getKey(), readable(player, value.getKey(), value.getValue())));
             }
             resolvers.add(Placeholder.unparsed("ago", ago));
-            send(player, key, resolvers.toArray(new TagResolver[0]));
-            return;
+            return messages.render(player, key, resolvers.toArray(new TagResolver[0]));
         }
-        send(
+        return messages.render(
                 player,
                 "activity.entry",
                 Placeholder.unparsed("type", event.eventType().name()),

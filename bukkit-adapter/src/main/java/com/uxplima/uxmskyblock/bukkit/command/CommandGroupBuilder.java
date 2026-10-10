@@ -220,6 +220,7 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);
+        activityCommands.useWindows(() -> tree.socialWindows);
 
         IslandHomeCommands homeCommands = new IslandHomeCommands(
                 () -> tree.homeService,
@@ -253,6 +254,7 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         socialCommands.useIslandNames(() -> tree.nameService);
+        socialCommands.useWindows(() -> tree.socialWindows);
 
         IslandAllianceCommands allianceCommands = new IslandAllianceCommands(
                 () -> tree.allianceService,
@@ -261,6 +263,7 @@ final class CommandGroupBuilder {
                 tree.messages,
                 tree.sessionCoordinator);
         allianceCommands.useIslandNames(() -> tree.nameService);
+        allianceCommands.useWindows(() -> tree.socialWindows);
 
         IslandRewardCommands rewardCommands = new IslandRewardCommands(
                 () -> tree.rewardInboxService, tree.schedulerPort, tree.messages, tree.sessionCoordinator);

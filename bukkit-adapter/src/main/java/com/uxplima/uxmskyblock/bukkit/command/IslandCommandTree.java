@@ -140,6 +140,7 @@ public final class IslandCommandTree {
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable HomeList homeList;
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable TopList topList;
     volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable PresetList presetList;
+    volatile com.uxplima.uxmskyblock.bukkit.menu.@Nullable SocialWindows socialWindows;
     volatile com.uxplima.uxmskyblock.core.application.membership.@Nullable IslandRoleShaper roleShaper;
     volatile com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration roleConfiguration =
             com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration.defaults();
@@ -436,6 +437,11 @@ public final class IslandCommandTree {
             com.uxplima.uxmskyblock.bukkit.config.RoleConfiguration configuration) {
         this.roleShaper = shaper;
         this.roleConfiguration = java.util.Objects.requireNonNull(configuration, "configuration must not be null");
+    }
+
+    /** The windows the feed, the guestbook, the bookmarks and the alliances are shown in. */
+    public void useSocialWindows(com.uxplima.uxmskyblock.bukkit.menu.@Nullable SocialWindows windows) {
+        this.socialWindows = windows;
     }
 
     /** How a player picks a kind of island, and the window the kinds are shown in. */

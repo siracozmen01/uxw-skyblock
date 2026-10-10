@@ -323,6 +323,52 @@ class IslandActivityCommandsTest {
     }
 
     @Test
+    @DisplayName("The feed opens in its window, each line as the chat would write it, and nothing goes to chat")
+    void theFeedOpensInItsWindow() throws Exception {
+        when(feed.getRecentActivities(anyString(), anyInt()))
+                .thenReturn(List.of(eventOf(
+                        "activity.bank_deposit",
+                        com.uxplima.uxmskyblock.core.domain.message.MessagePayload.pack(
+                                java.util.Map.of("player", "Ayse", "amount", "250")),
+                        Instant.now().minus(java.time.Duration.ofHours(2)))));
+        IslandActivityCommands commands =
+                new IslandActivityCommands(() -> feed, locations, inlineScheduler(), Messages.bundled(), sessions);
+        com.uxplima.uxmskyblock.bukkit.menu.SocialWindows window =
+                mock(com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.class);
+        when(window.showActivity(any(), any())).thenReturn(true);
+        commands.useWindows(() -> window);
+        CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
+        tree.register(commands.build());
+
+        runOn(tree, "activity");
+
+        org.mockito.ArgumentCaptor<List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Line>> lines =
+                org.mockito.ArgumentCaptor.captor();
+        verify(window).showActivity(eq(player), lines.capture());
+        assertThat(lines.getValue()).singleElement().satisfies(line -> {
+            assertThat(line.text()).contains("2h ago").contains("Ayse put 250 in the bank.");
+            assertThat(line.ago()).isEqualTo("2h");
+        });
+        assertThat(player.nextMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("With the window gone, the feed is said in chat as it always was")
+    void withoutTheWindowTheFeedIsSaid() throws Exception {
+        IslandActivityCommands commands =
+                new IslandActivityCommands(() -> feed, locations, inlineScheduler(), Messages.bundled(), sessions);
+        com.uxplima.uxmskyblock.bukkit.menu.SocialWindows window =
+                mock(com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.class);
+        commands.useWindows(() -> window);
+        CommandDispatcher<CommandSourceStack> tree = new CommandDispatcher<>();
+        tree.register(commands.build());
+
+        runOn(tree, "activity");
+
+        assertThat(player.nextMessage()).isNotNull();
+    }
+
+    @Test
     @DisplayName("The feed is asked for the caller's own island, by the id the writer uses")
     void theFeedIsAskedForTheCallersIsland() throws Exception {
         run("activity", player);

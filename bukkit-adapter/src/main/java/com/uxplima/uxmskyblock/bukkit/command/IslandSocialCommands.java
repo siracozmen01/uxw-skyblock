@@ -97,6 +97,19 @@ public final class IslandSocialCommands {
         labels.useNames(names);
     }
 
+    /** The windows the guestbook and the bookmarks are shown in, rather than lines in chat. */
+    private java.util.function.Supplier<
+                    com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
+            windows = () -> null;
+
+    /** Hands this group the windows its lists are shown in. */
+    public void useWindows(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
+                    windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     public LiteralArgumentBuilder<CommandSourceStack> buildGuestbook() {
         return Cmd.literal("guestbook")
                 .executes(this::executeReadGuestbook)
@@ -219,6 +232,16 @@ public final class IslandSocialCommands {
             boolean moderator = mayModerate(islandId, profileId);
             List<GuestbookEntry> entries = service.listGuestbookEntries(subject, moderator, PAGE_SIZE, 0);
             onEntity(player, () -> {
+                com.uxplima.uxmskyblock.bukkit.menu.SocialWindows window = windows.get();
+                if (window != null
+                        && window.showGuestbook(
+                                player,
+                                entries.stream()
+                                        .map(entry -> new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Entry(
+                                                entry.reviewId(), entry.message(), entry.isPinned(), entry.isHidden()))
+                                        .toList())) {
+                    return;
+                }
                 send(player, "social.guestbook_header");
                 if (entries.isEmpty()) {
                     send(player, "social.guestbook_empty");
@@ -315,6 +338,18 @@ public final class IslandSocialCommands {
         return net.kyori.adventure.text.Component.text(subject.key());
     }
 
+    /** A bookmarked subject as a tile names it, and whose island it is when it is one. */
+    private com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place placeOf(Player reader, SocialSubjectRef subject) {
+        if (SocialSubjectRef.ISLAND_TYPE.equals(subject.typeId())) {
+            try {
+                return labels.place(reader, IslandId.of(java.util.UUID.fromString(subject.key())));
+            } catch (IllegalArgumentException notAnIsland) {
+                // A key that is not an island id is shown as it was written, and visits nobody.
+            }
+        }
+        return new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place(subject.key(), null);
+    }
+
     private int executeListBookmarks(CommandContext<CommandSourceStack> ctx) {
         return withService(
                 ctx,
@@ -323,7 +358,14 @@ public final class IslandSocialCommands {
                     List<net.kyori.adventure.text.Component> named = saved.stream()
                             .map(subject -> nameOf(player, subject))
                             .toList();
+                    List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place> places = saved.stream()
+                            .map(subject -> placeOf(player, subject))
+                            .toList();
                     onEntity(player, () -> {
+                        com.uxplima.uxmskyblock.bukkit.menu.SocialWindows window = windows.get();
+                        if (window != null && window.showBookmarks(player, places)) {
+                            return;
+                        }
                         send(player, "social.bookmarks_header");
                         if (saved.isEmpty()) {
                             send(player, "social.bookmarks_empty");

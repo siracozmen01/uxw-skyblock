@@ -127,6 +127,10 @@ final class IslandCommandWiring {
         var topList = new com.uxplima.uxmskyblock.bukkit.menu.TopList(tree::typed);
         topList.useMenuEngine(integration.menuEngine());
         tree.useTopList(topList);
+        // The feed, the guestbook, the bookmarks and the alliances are windows, one tile per line.
+        var socialWindows = new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows(integration.messages(), tree::typed);
+        socialWindows.useMenuEngine(integration.menuEngine());
+        tree.useSocialWindows(socialWindows);
         // The kinds of island are a window, and a player with no island is met the way the operator chose.
         com.uxplima.uxmskyblock.bukkit.config.PresetChoices choices =
                 config.presetConfig().choices();

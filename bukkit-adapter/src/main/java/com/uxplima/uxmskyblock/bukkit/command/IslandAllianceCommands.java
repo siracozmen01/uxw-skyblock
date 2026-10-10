@@ -81,6 +81,19 @@ public final class IslandAllianceCommands {
         labels.useNames(names);
     }
 
+    /** The window the allies and the offers are shown in, rather than lines in chat. */
+    private java.util.function.Supplier<
+                    com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
+            windows = () -> null;
+
+    /** Hands this group the window its lists are shown in. */
+    public void useWindows(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows>
+                    windows) {
+        this.windows = java.util.Objects.requireNonNull(windows, "windows must not be null");
+    }
+
     /** The same branch under another word, for the name a document publishes. */
     public LiteralArgumentBuilder<CommandSourceStack> buildAlias(String verb) {
         return branch(verb);
@@ -92,7 +105,7 @@ public final class IslandAllianceCommands {
 
     private LiteralArgumentBuilder<CommandSourceStack> branch(String verb) {
         return Cmd.literal(verb)
-                .executes(this::executeList)
+                .executes(this::executeWindow)
                 .then(Cmd.literal("list").executes(this::executeList))
                 .then(Cmd.literal("invites").executes(this::executeInvites))
                 .then(Cmd.literal("invite")
@@ -103,6 +116,40 @@ public final class IslandAllianceCommands {
                         .then(Cmd.argument("player", StringArgumentType.word()).executes(this::executeDecline)))
                 .then(Cmd.literal("break")
                         .then(Cmd.argument("player", StringArgumentType.word()).executes(this::executeBreak)));
+    }
+
+    /** The bare branch: the allies and the offers in one window, or the allies in chat when it is gone. */
+    private int executeWindow(CommandContext<CommandSourceStack> ctx) {
+        if (windows.get() == null) {
+            return executeList(ctx);
+        }
+        return onOwnIsland(ctx, (player, service, islandId) -> {
+            List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place> allies = service.getAllies(islandId).stream()
+                    .map(ally -> labels.place(player, ally))
+                    .toList();
+            List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place> offers =
+                    service.getPendingInvites(islandId).stream()
+                            .map(invite -> labels.place(player, invite.senderIslandId()))
+                            .toList();
+            onEntity(player, () -> {
+                com.uxplima.uxmskyblock.bukkit.menu.SocialWindows window = windows.get();
+                if (window == null || !window.showAlliances(player, allies, offers)) {
+                    executeListNow(player, allies);
+                }
+            });
+        });
+    }
+
+    /** The allies in chat, on the player's thread, already named. */
+    private void executeListNow(Player player, List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place> allies) {
+        send(player, "alliance.header", Placeholder.unparsed("count", Integer.toString(allies.size())));
+        if (allies.isEmpty()) {
+            send(player, "alliance.empty");
+            return;
+        }
+        for (com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place ally : allies) {
+            send(player, "alliance.entry", Placeholder.unparsed("island", ally.name()));
+        }
     }
 
     private int executeList(CommandContext<CommandSourceStack> ctx) {

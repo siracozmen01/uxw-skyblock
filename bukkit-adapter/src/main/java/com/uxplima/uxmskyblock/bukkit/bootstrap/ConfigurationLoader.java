@@ -111,6 +111,10 @@ public final class ConfigurationLoader {
             "island-home-list.conf",
             "island-leaderboard.conf",
             "island-create.conf",
+            "island-activity.conf",
+            "island-guestbook.conf",
+            "island-bookmarks.conf",
+            "island-alliances.conf",
             "island-bank-currency.conf");
 
     private ConfigurationLoader() {

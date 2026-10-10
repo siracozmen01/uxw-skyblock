@@ -86,6 +86,9 @@ class IslandSocialCommandsTest {
                 Instant.now());
     }
 
+    /** The windows the lists open in, none until a test hands one over. */
+    private com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows windows;
+
     @BeforeEach
     void setUp() {
         server = MockBukkit.mock();
@@ -104,6 +107,7 @@ class IslandSocialCommandsTest {
         locations = mock(com.uxplima.uxmskyblock.core.application.island.IslandLocationService.class);
         IslandSocialCommands commands = new IslandSocialCommands(
                 () -> social, index, locations, inlineScheduler(), Messages.bundled(), sessions);
+        commands.useWindows(() -> windows);
 
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.buildGuestbook());
@@ -339,6 +343,63 @@ class IslandSocialCommandsTest {
         run("bookmarks", player);
 
         verify(social).listBookmarks(VISITOR);
+    }
+
+    @Test
+    @DisplayName("The guestbook and the bookmarks open in their windows, every entry by its id and every island by "
+            + "its owner")
+    void theListsOpenInTheirWindows() throws Exception {
+        windows = mock(com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.class);
+        when(windows.showGuestbook(any(), any())).thenReturn(true);
+        when(windows.showBookmarks(any(), any())).thenReturn(true);
+        IslandId bookmarked = IslandId.of(UUID.randomUUID());
+        org.mockbukkit.mockbukkit.entity.PlayerMock bo = server.addPlayer("Bo");
+        when(locations.findIsland(bookmarked))
+                .thenReturn(Optional.of(Island.create(
+                        bookmarked,
+                        new IslandBounds(-50, -50, 50, 50, 0, 0, 50),
+                        PlayerUuid.of(bo.getUniqueId()),
+                        new ProfileId(UUID.randomUUID()),
+                        Instant.now())));
+        when(social.listGuestbookEntries(any(), eq(false), anyInt(), anyInt()))
+                .thenReturn(List.of(
+                        new com.uxplima.uxmskyblock.core.domain.social.GuestbookEntry(
+                                "rev-1",
+                                SocialSubjectRef.island(SOMEONE_ELSES),
+                                VISITOR,
+                                "nice",
+                                false,
+                                true,
+                                Instant.now()),
+                        new com.uxplima.uxmskyblock.core.domain.social.GuestbookEntry(
+                                "rev-2",
+                                SocialSubjectRef.island(SOMEONE_ELSES),
+                                VISITOR,
+                                "spam",
+                                true,
+                                false,
+                                Instant.now())));
+        when(social.listBookmarks(VISITOR))
+                .thenReturn(List.of(SocialSubjectRef.island(bookmarked), new SocialSubjectRef("other:thing", "key")));
+
+        run("guestbook", player);
+        run("bookmarks", player);
+
+        verify(windows)
+                .showGuestbook(
+                        player,
+                        List.of(
+                                new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Entry(
+                                        "rev-1", "nice", true, false),
+                                new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Entry(
+                                        "rev-2", "spam", false, true)));
+        org.mockito.ArgumentCaptor<List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place>> places =
+                org.mockito.ArgumentCaptor.captor();
+        verify(windows).showBookmarks(eq(player), places.capture());
+        assertThat(places.getValue())
+                .extracting(com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place::owner)
+                .containsExactly("Bo", null);
+        assertThat(player.nextMessage()).describedAs("nothing went to chat").isNull();
     }
 
     @Test

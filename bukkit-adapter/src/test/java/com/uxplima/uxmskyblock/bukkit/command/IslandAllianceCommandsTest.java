@@ -96,8 +96,47 @@ class IslandAllianceCommandsTest {
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
                 sessions);
 
+        commands.useWindows(() -> windows);
+        this.locations = locations;
+
         dispatcher = new CommandDispatcher<>();
         dispatcher.register(commands.build());
+    }
+
+    /** The window the lists open in, none until a test hands one over. */
+    private com.uxplima.uxmskyblock.bukkit.menu.@org.jspecify.annotations.Nullable SocialWindows windows;
+
+    private IslandLocationService locations;
+
+    @org.junit.jupiter.api.Test
+    @DisplayName("The bare command opens the allies and the offers in one window, each island by its owner")
+    void theBareCommandOpensTheWindow() throws Exception {
+        windows = mock(com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.class);
+        when(windows.showAlliances(any(), any(), any())).thenReturn(true);
+        when(locations.findIsland(THEIRS))
+                .thenReturn(Optional.of(com.uxplima.uxmskyblock.core.domain.island.Island.create(
+                        THEIRS,
+                        com.uxplima.uxmskyblock.core.domain.island.IslandBounds.fromCenterAndRadius(0, 0, 50),
+                        PlayerUuid.of(them.getUniqueId()),
+                        THEIR_PROFILE,
+                        java.time.Instant.now())));
+        when(alliances.getAllies(MINE)).thenReturn(java.util.List.of(THEIRS));
+        when(alliances.getPendingInvites(MINE)).thenReturn(java.util.List.of());
+
+        run("alliance", me);
+
+        org.mockito.ArgumentCaptor<java.util.List<com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place>> allies =
+                org.mockito.ArgumentCaptor.captor();
+        verify(windows).showAlliances(eq(me), allies.capture(), eq(java.util.List.of()));
+        assertThat(allies.getValue())
+                .extracting(com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place::owner)
+                .containsExactly("Theirs");
+        assertThat(me.nextMessage()).describedAs("nothing went to chat").isNull();
+
+        run("alliance list", me);
+        assertThat(me.nextMessage())
+                .describedAs("the list word still says it in chat")
+                .isNotNull();
     }
 
     @org.junit.jupiter.api.Test

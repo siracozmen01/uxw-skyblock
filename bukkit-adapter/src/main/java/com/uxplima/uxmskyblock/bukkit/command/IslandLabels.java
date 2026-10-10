@@ -61,4 +61,16 @@ final class IslandLabels {
                 "leaderboard.unnamed",
                 Placeholder.unparsed("id", island.value().toString().substring(0, 8)));
     }
+
+    /** The island as a tile names it: the words {@link #of} gives, plain, and whose it is when the server knows. */
+    com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place place(Audience reader, IslandId island) {
+        String name = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(of(reader, island));
+        String owner = locations
+                .findIsland(island)
+                .map(found ->
+                        Bukkit.getOfflinePlayer(found.ownerPlayerUuid().value()).getName())
+                .orElse(null);
+        return new com.uxplima.uxmskyblock.bukkit.menu.SocialWindows.Place(name, owner);
+    }
 }
