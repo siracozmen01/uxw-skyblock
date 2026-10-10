@@ -152,6 +152,11 @@ public final class ConfigurationLoader {
         Path commandsFile = dataDir.resolve("commands.conf");
         unpackResource(plugin, "commands.conf", commandsFile);
         bringUpToDate(plugin, dataDir, commandsFile, "commands.conf");
+        // How every menu asks for a word, read when the menu engine is built: an anvil, a chat line, a
+        // sign or a dialog, chosen for each place. It was read and never written, so no operator found it.
+        Path textInputFile = dataDir.resolve("text-input.conf");
+        unpackResource(plugin, "text-input.conf", textInputFile);
+        bringUpToDate(plugin, dataDir, textInputFile, "text-input.conf");
         CommentedConfigurationNode root = loadHocon(configFile);
 
         ServerNodeConfiguration nodeConfig;
