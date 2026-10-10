@@ -39,13 +39,23 @@ public final class WorldBorderPacketAdapter implements WorldBorderPacketPort {
             WorldBorder border = Bukkit.createWorldBorder();
             border.setCenter(centerX + 0.5, centerZ + 0.5);
             if (oldRadius > 0.0 && transitionDurationMs > 0L) {
-                border.setSize(oldRadius * 2.0);
-                border.setSize(radius * 2.0, Math.max(1L, transitionDurationMs / 1000L));
+                border.setSize(widthOf(oldRadius));
+                border.setSize(widthOf(radius), Math.max(1L, transitionDurationMs / 1000L));
             } else {
-                border.setSize(radius * 2.0);
+                border.setSize(widthOf(radius));
             }
             player.setWorldBorder(border);
         });
+    }
+
+    /**
+     * How wide the border of an island of this radius is. The island holds its centre block and
+     * {@code radius} blocks either side of it, so a radius of 50 is 101 blocks across. The border was
+     * drawn 100 wide around the middle of the centre block, half a block inside the island on each
+     * side, so the edge blocks a player owned stood half outside it.
+     */
+    static double widthOf(double radius) {
+        return radius * 2.0 + 1.0;
     }
 
     @Override
