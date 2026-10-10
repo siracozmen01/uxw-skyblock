@@ -56,6 +56,24 @@ class PlayerWorldGridAllocationSqliteTest {
     }
 
     @Test
+    @DisplayName("A slot handed back from a failed creation is the next one given out")
+    void aReleasedSlotIsGivenOutAgain() {
+        PlayerWorldGridAllocationAdapter pooled =
+                new PlayerWorldGridAllocationAdapter(database, new SqlSpiralSlotPoolAdapter(database));
+        pooled.allocateNext(node1, "world", IslandId.of(UUID.randomUUID()));
+        WorldGridAllocation failed = pooled.allocateNext(node1, "world", IslandId.of(UUID.randomUUID()));
+
+        pooled.release(failed);
+        WorldGridAllocation next = pooled.allocateNext(node1, "world", IslandId.of(UUID.randomUUID()));
+
+        assertThat(next.sequenceIndex())
+                .describedAs("the next island stands where the failed one would have, not one slot further out")
+                .isEqualTo(failed.sequenceIndex());
+        assertThat(next.centerX()).isEqualTo(failed.centerX());
+        assertThat(next.centerZ()).isEqualTo(failed.centerZ());
+    }
+
+    @Test
     @DisplayName("allocates next sequence index monotonically on clean database")
     void allocatesNextSequenceFromCleanDatabase() {
         IslandId island1 = IslandId.of(UUID.randomUUID());

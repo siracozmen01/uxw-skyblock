@@ -285,6 +285,9 @@ public final class CreateIslandUseCase {
             return new CreateIslandResult.Success(island, location, preset);
         } catch (Exception e) {
             Optional<IslandId> existing = islandStoragePort.findIslandIdByProfileId(profileId);
+            if (!existing.equals(Optional.of(islandId))) {
+                releaseUnwritten(allocation);
+            }
             if (existing.isPresent()) {
                 return new CreateIslandResult.AlreadyHasIsland(existing.get());
             }
@@ -360,6 +363,25 @@ public final class CreateIslandUseCase {
                 return new CreateIslandResult.AlreadyHasIsland(existing.get());
             }
             return new CreateIslandResult.Failure(e.getMessage() != null ? e.getMessage() : "Unknown storage error");
+        }
+    }
+
+    /**
+     * Hands back the slot of an island that was never written.
+     *
+     * <p>A creation that failed kept its slot, so every failure pushed the next island one slot further
+     * out and left a square of empty sky behind. A slot that cannot be handed back is only that square
+     * again, so the failure the player is told about stays the one that happened.
+     */
+    private void releaseUnwritten(WorldGridAllocation allocation) {
+        try {
+            worldGridAllocationPort.release(allocation);
+        } catch (RuntimeException e) {
+            LOGGER.log(
+                    Level.WARNING,
+                    e,
+                    () -> "The grid slot " + allocation.sequenceIndex() + " of a failed creation could not be "
+                            + "handed back. It stays empty until an operator frees it.");
         }
     }
 

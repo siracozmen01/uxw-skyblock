@@ -142,6 +142,15 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
                 "Exhausted " + MAX_RESERVATION_ATTEMPTS + " attempts to allocate world grid slot");
     }
 
+    @Override
+    public void release(WorldGridAllocation allocation) {
+        Objects.requireNonNull(allocation, "allocation must not be null");
+        if (spiralSlotPool != null) {
+            spiralSlotPool.releaseSlot(
+                    allocation.sequenceIndex(), allocation.worldName(), allocation.centerX(), allocation.centerZ());
+        }
+    }
+
     /**
      * The spacing the islands already placed stand on, or nothing when no island stands off the centre.
      *

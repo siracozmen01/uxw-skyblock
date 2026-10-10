@@ -160,6 +160,69 @@ class CreateIslandUseCaseTest {
         CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland already =
                 (CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland) result;
         assertThat(already.existingIslandId()).isEqualTo(existingIslandId);
+        assertThat(allocationPort.released)
+                .describedAs("the island that won the race stands on land of its own, and this slot was never used")
+                .hasSize(1);
+    }
+
+    @Test
+    @DisplayName("A creation that fails hands its grid slot back, and one that succeeds keeps it")
+    void aFailedCreationHandsItsSlotBack() {
+        storage = new FakeIslandStorage() {
+            @Override
+            public void saveIsland(Island island, IslandLocation location) {
+                throw new RuntimeException("disk full");
+            }
+        };
+        useCase = new CreateIslandUseCase(storage, authority, bank, presetCatalog, gridService, allocationPort);
+
+        CreateIslandUseCase.CreateIslandResult result = useCase.execute(
+                new PlayerUuid(UUID.randomUUID()),
+                new ProfileId(UUID.randomUUID()),
+                "classic",
+                ServerNodeId.of("node-1"),
+                "world");
+
+        assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.Failure.class);
+        assertThat(allocationPort.released)
+                .singleElement()
+                .isEqualTo(allocationPort.allocations.values().iterator().next());
+    }
+
+    @Test
+    @DisplayName("An island written before a later step failed keeps its slot, since it stands on it")
+    void aWrittenIslandKeepsItsSlotWhenALaterStepFails() {
+        bank = new FakeIslandBank() {
+            @Override
+            public IslandBank createBank(IslandId islandId) {
+                throw new RuntimeException("bank table locked");
+            }
+        };
+        useCase = new CreateIslandUseCase(storage, authority, bank, presetCatalog, gridService, allocationPort);
+
+        CreateIslandUseCase.CreateIslandResult result = useCase.execute(
+                new PlayerUuid(UUID.randomUUID()),
+                new ProfileId(UUID.randomUUID()),
+                "classic",
+                ServerNodeId.of("node-1"),
+                "world");
+
+        assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.AlreadyHasIsland.class);
+        assertThat(allocationPort.released).isEmpty();
+    }
+
+    @Test
+    @DisplayName("An island that was made keeps the slot it was given")
+    void aMadeIslandKeepsItsSlot() {
+        CreateIslandUseCase.CreateIslandResult result = useCase.execute(
+                new PlayerUuid(UUID.randomUUID()),
+                new ProfileId(UUID.randomUUID()),
+                "classic",
+                ServerNodeId.of("node-1"),
+                "world");
+
+        assertThat(result).isInstanceOf(CreateIslandUseCase.CreateIslandResult.Success.class);
+        assertThat(allocationPort.released).isEmpty();
     }
 
     private static class FakeIslandStorage implements IslandStoragePort {
@@ -373,6 +436,12 @@ class CreateIslandUseCaseTest {
         private final AtomicLong seqCounter = new AtomicLong(0);
         private final SpiralGridCoordinateAllocator allocator = new SpiralGridCoordinateAllocator();
         final Map<Long, WorldGridAllocation> allocations = new HashMap<>();
+        final java.util.List<WorldGridAllocation> released = new java.util.ArrayList<>();
+
+        @Override
+        public void release(WorldGridAllocation allocation) {
+            released.add(allocation);
+        }
 
         @Override
         public long reserveNextSequence(

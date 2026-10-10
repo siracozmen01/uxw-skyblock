@@ -80,4 +80,10 @@ public interface WorldGridAllocationPort {
      * @param islandId island identifier to bind
      */
     void bindIsland(long sequenceIndex, IslandId islandId);
+
+    /**
+     * Hands back a slot {@link #allocateNext} gave an island that was never written, so the next island
+     * is placed on it rather than one slot further out.
+     */
+    void release(WorldGridAllocation allocation);
 }
