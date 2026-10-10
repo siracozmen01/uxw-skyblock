@@ -66,6 +66,31 @@ public record GeneratorsConfiguration(boolean enabled, Map<Integer, Map<Material
     }
 
     /**
+     * What a generator of {@code tier} turns up, each block with its share in percent, in the order the file
+     * writes them: the same rates {@link #roll} draws from, so a window that shows them shows what the
+     * generator does. A tier with no rates turns up cobblestone and nothing else.
+     */
+    public Map<Material, Double> shares(int tier) {
+        Map<Material, Double> rates = ratesFor(tier);
+        double total = rates == null
+                ? 0.0
+                : rates.values().stream()
+                        .filter(w -> w > 0.0)
+                        .mapToDouble(Double::doubleValue)
+                        .sum();
+        if (rates == null || total <= 0.0) {
+            return Map.of(Material.COBBLESTONE, 100.0);
+        }
+        Map<Material, Double> shares = new LinkedHashMap<>();
+        rates.forEach((material, weight) -> {
+            if (weight > 0.0) {
+                shares.put(material, weight / total * 100.0);
+            }
+        });
+        return Collections.unmodifiableMap(shares);
+    }
+
+    /**
      * The rates of the highest tier the file writes at or below {@code tier}, or of the lowest one
      * when it writes none that low.
      *

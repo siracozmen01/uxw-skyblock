@@ -59,6 +59,7 @@ public final class IslandControlMenu {
 
     private volatile @Nullable ToIntFunction<IslandId> vaultPages;
     private volatile @Nullable UnaryOperator<Map<UpgradeId, Integer>> upgradeStanding;
+    private volatile @Nullable UpgradeWords upgradeWords;
     private final Messages messages;
 
     public IslandControlMenu(
@@ -197,6 +198,14 @@ public final class IslandControlMenu {
     }
 
     /**
+     * What each upgrade does now, what its next tier would do and what that costs, so the upgrades window
+     * says what is bought before it is bought.
+     */
+    public void useUpgradeWords(@Nullable UpgradeWords upgradeWords) {
+        this.upgradeWords = upgradeWords;
+    }
+
+    /**
      * The live values {@code island-main.conf} may spell as {@code %argument_<name>%}.
      *
      * <p>Every token here is one the server can actually answer. The file that shipped before spelled
@@ -210,6 +219,10 @@ public final class IslandControlMenu {
             @Nullable Map<UpgradeId, Integer> upgrades,
             int vaultPages) {
         Map<String, String> values = new HashMap<>(numbers(island, bank, upgrades, vaultPages));
+        UpgradeWords words = this.upgradeWords;
+        if (words != null) {
+            values.putAll(words.values(reader, upgrades != null ? upgrades : Map.of()));
+        }
         // Each flag as flag_<name>, in the reader's words, so a settings tile shows where it stands
         // rather than leaving the player to click and read the answer in chat.
         island.flags().values().forEach((flag, enabled) -> {

@@ -142,6 +142,54 @@ class IslandControlMenuTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("Each upgrade says what it gives now, what the next tier gives and what that costs")
+    void theUpgradesSayWhatTheyGive(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+        when(mockBank.findBankByIslandId(eq(islandId))).thenReturn(Optional.empty());
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+        when(mockLocations.resolveHome(eq(profileId))).thenReturn(Optional.empty());
+        var definitions = com.uxplima.uxmskyblock.bukkit.config.UpgradesConfiguration.defaultConfiguration()
+                .definitions();
+        menu.useUpgradeStanding(new com.uxplima.uxmskyblock.core.application.upgrade.IslandUpgradeService(
+                mockUpgrades, definitions)::standing);
+        menu.useUpgradeWords(new UpgradeWords(
+                Messages.bundled(),
+                () -> definitions,
+                com.uxplima.uxmskyblock.bukkit.config.GeneratorsConfiguration.defaultConfiguration()));
+        SkyblockMenuEngine engine = ShippedTemplates.engineWith(dataDir, "island-upgrades.conf");
+        engine.install();
+        menu.useMenuEngine(engine);
+
+        menu.openWindow(player, IslandControlMenu.UPGRADES, () -> {});
+        settle(() -> loreAt(11).contains("Now"));
+
+        assertThat(loreAt(11))
+                .contains("Tier 1/5")
+                .contains("Now 50×50 blocks")
+                .contains("Next tier 75×75 blocks")
+                .contains("Next tier costs 500.00");
+        assertThat(loreAt(15))
+                .contains("Now: Cobblestone 100%.")
+                .contains("Next tier: Cobblestone 70%, Coal ore 20%, Iron ore 10%.");
+    }
+
+    /** The tooltip of the tile at {@code slot}, its lines joined and its spacing evened, as one sentence. */
+    private String loreAt(int slot) {
+        org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+        org.bukkit.inventory.ItemStack tile = top == null ? null : top.getItem(slot);
+        if (tile == null || tile.lore() == null) {
+            return "";
+        }
+        return java.util.Objects.requireNonNull(tile.lore()).stream()
+                .map(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
+                .map(String::strip)
+                .collect(java.util.stream.Collectors.joining(" "))
+                .replaceAll("\\s+", " ");
+    }
+
+    @Test
     @DisplayName("The settings tiles say where each flag stands, and a refresh draws the flag as it is now")
     void theSettingsShowTheFlags(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
         ProfileId profileId = new ProfileId(player.getUniqueId());
@@ -193,6 +241,7 @@ class IslandControlMenuTest extends MockBukkitHarness {
                 .map(net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()::serialize)
                 .filter(line -> line.contains("Tier"))
                 .map(line -> line.strip().substring(line.strip().lastIndexOf(' ') + 1))
+                .map(tier -> tier.contains("/") ? tier.substring(0, tier.indexOf('/')) : tier)
                 .findFirst()
                 .orElse(null);
     }
