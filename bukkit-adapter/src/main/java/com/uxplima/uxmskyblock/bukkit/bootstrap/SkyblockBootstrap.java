@@ -67,10 +67,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
 
         SchedulerPort scheduler = new FoliaSchedulerAdapter(plugin);
         AdaptiveBackpressureController backpressureController = new AdaptiveBackpressureController(
-                () -> {
-                    double[] tps = Bukkit.getTPS();
-                    return (tps != null && tps.length > 0) ? tps[0] : 20.0;
-                },
+                new com.uxplima.uxmskyblock.bukkit.performance.ServerTickRate(),
                 configWiring.performanceConfig().adaptiveThrottle(),
                 configWiring.performanceConfig().tpsThreshold(),
                 configWiring.performanceConfig().normalBlocksPerTick(),
