@@ -2,9 +2,12 @@ package com.uxplima.uxmskyblock.bukkit.bootstrap;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.uxplima.uxmskyblock.bukkit.command.IslandCommandTree;
@@ -183,6 +186,48 @@ public final class SkyblockBootstrap implements AutoCloseable {
         integrationWiring.whenServerIsUp();
         drawIslandsOnTheWebMap();
         writeShippedPlatforms();
+        groundTheSpawns();
+    }
+
+    /**
+     * Lays ground under every island world's spawn that has none, so a player with no island, one who has
+     * just reset theirs, has somewhere to stand. The ground is the file schematics/world_spawn.schem,
+     * written plain on the first start for an operator to replace with a lobby.
+     */
+    @SuppressWarnings("deprecation") // UnsafeValues is where the server says which version its names are of
+    private void groundTheSpawns() {
+        com.uxplima.uxmskyblock.bukkit.schematic.IslandSchematics files = gameplayWiring.islandSchematics();
+        com.uxplima.uxmskyblock.bukkit.schematic.SpawnGround ground =
+                new com.uxplima.uxmskyblock.bukkit.schematic.SpawnGround(files);
+        CompletableFuture<Boolean> written = files == null
+                ? CompletableFuture.completedFuture(false)
+                : files.writeIfMissing(
+                        com.uxplima.uxmskyblock.bukkit.schematic.SpawnGround.FILE,
+                        com.uxplima.uxmskyblock.bukkit.schematic.SpawnGround.shipped(
+                                Bukkit.getUnsafe().getDataVersion()));
+        SchedulerPort scheduler = gameplayWiring.scheduler();
+        var unused = written.handle((done, failure) -> {
+            for (String name : configWiring.islandWorlds()) {
+                World world = Bukkit.getWorld(name);
+                if (world == null) {
+                    continue;
+                }
+                Location spawn = world.getSpawnLocation();
+                int chunkX = spawn.getBlockX() >> 4;
+                int chunkZ = spawn.getBlockZ() >> 4;
+                scheduler.onRegion(name, chunkX, chunkZ, () -> {
+                    var unusedLaid = ground.ensure(world, task -> scheduler.onRegion(name, chunkX, chunkZ, task))
+                            .thenAccept(any -> {
+                                if (any) {
+                                    plugin.getLogger()
+                                            .info("Laid ground under the spawn of " + name
+                                                    + ", where a player with no island stands.");
+                                }
+                            });
+                });
+            }
+            return null;
+        });
     }
 
     /**
