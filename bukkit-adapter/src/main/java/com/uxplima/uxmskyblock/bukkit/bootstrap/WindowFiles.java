@@ -31,7 +31,7 @@ final class WindowFiles {
             gameplay.resetConfirmationMenu().useMenuEngine(engine);
         }
         if (gameplay.boosterMenu() != null) {
-            gameplay.boosterMenu().useWayBack(wayBackTo(engine, island, "island-boosters"));
+            gameplay.boosterMenu().useWayBack(wayBackTo(engine, island, "island-main"));
             gameplay.boosterMenu().useMenuEngine(engine);
         }
         if (gameplay.tradeWiring().enabled()) {

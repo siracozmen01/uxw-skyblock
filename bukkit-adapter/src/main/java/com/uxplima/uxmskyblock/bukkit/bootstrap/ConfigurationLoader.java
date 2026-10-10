@@ -99,7 +99,6 @@ public final class ConfigurationLoader {
             "island-vault-page.conf",
             "player-trade.conf",
             "vessel-cargo.conf",
-            "island-boosters.conf",
             "island-biome.conf",
             "island-homes.conf",
             "island-social.conf",
