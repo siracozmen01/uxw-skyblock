@@ -40,6 +40,9 @@ class PlayerIslandBankIntegrationTest {
 
     private static MariaDBContainer<?> mariaDbContainer;
     private static PostgreSQLContainer<?> postgresContainer;
+    private static org.testcontainers.containers.MySQLContainer<?> mySqlContainer;
+    private static Database mySqlDatabase;
+    private static PlayerIslandBankAdapter mySqlAdapter;
 
     private static Database mariaDatabase;
     private static Database postgresDatabase;
@@ -59,6 +62,13 @@ class PlayerIslandBankIntegrationTest {
             mariaAdapter = new PlayerIslandBankAdapter(mariaDatabase);
         }
 
+        mySqlContainer = DatabaseTestFixture.startMySqlIfEnabled();
+        if (mySqlContainer != null) {
+            mySqlDatabase = DatabaseTestFixture.connectToContainer(mySqlContainer, Dialect.MYSQL);
+            new MigrationRunner(mySqlDatabase).apply(SkyblockMigrations.getMigrations(mySqlDatabase.dialect()));
+            mySqlAdapter = new PlayerIslandBankAdapter(mySqlDatabase);
+        }
+
         postgresContainer = DatabaseTestFixture.startPostgresIfEnabled();
         if (postgresContainer != null) {
             postgresDatabase = DatabaseTestFixture.connectToContainer(postgresContainer, Dialect.POSTGRES);
@@ -74,6 +84,12 @@ class PlayerIslandBankIntegrationTest {
         }
         if (mariaDbContainer != null) {
             mariaDbContainer.stop();
+        }
+        if (mySqlDatabase != null && !mySqlDatabase.isClosed()) {
+            mySqlDatabase.close();
+        }
+        if (mySqlContainer != null) {
+            mySqlContainer.stop();
         }
         if (postgresDatabase != null && !postgresDatabase.isClosed()) {
             postgresDatabase.close();
@@ -113,6 +129,61 @@ class PlayerIslandBankIntegrationTest {
     @DisplayName("PostgreSQL: a settled operation old enough is swept, and one that never settled is not")
     void postgresSweepsSettled() throws Exception {
         assertOnlySettledOperationsGo(postgresDatabase, postgresAdapter, "postgres");
+    }
+
+    @Test
+    @Order(5)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMariaDb
+    @DisplayName("MariaDB: a currency the operator lists is kept in a row of its own")
+    void mariaDbKeepsAnOperatorCurrency() throws Exception {
+        IslandId island = seededIsland(mariaDatabase);
+        mariaAdapter.createBank(island);
+        HeldCurrencies.areKept(mariaAdapter, island, UUID.randomUUID(), NODE_ALPHA, EPOCH);
+    }
+
+    @Test
+    @Order(6)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfPostgres
+    @DisplayName("PostgreSQL: a currency the operator lists is kept in a row of its own")
+    void postgresKeepsAnOperatorCurrency() throws Exception {
+        IslandId island = seededIsland(postgresDatabase);
+        postgresAdapter.createBank(island);
+        HeldCurrencies.areKept(postgresAdapter, island, UUID.randomUUID(), NODE_ALPHA, EPOCH);
+    }
+
+    @Test
+    @Order(7)
+    @com.uxplima.uxmskyblock.persistence.testfixture.EnabledIfMySql
+    @DisplayName("MySQL: a currency the operator lists is kept in a row of its own")
+    void mySqlKeepsAnOperatorCurrency() throws Exception {
+        IslandId island = seededIsland(mySqlDatabase);
+        mySqlAdapter.createBank(island);
+        HeldCurrencies.areKept(mySqlAdapter, island, UUID.randomUUID(), NODE_ALPHA, EPOCH);
+    }
+
+    /** An island with a live lease on this node, ready for a bank. */
+    private IslandId seededIsland(Database db) throws Exception {
+        IslandId islandId = IslandId.of(UUID.randomUUID());
+        try (Connection conn = db.connection()) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO islands (id, owner_account_uuid, owner_profile_id, lifecycle, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")) {
+                ps.setString(1, islandId.value().toString());
+                ps.setString(2, UUID.randomUUID().toString());
+                ps.setString(3, UUID.randomUUID().toString());
+                ps.executeUpdate();
+            }
+            String plus60 = (db.dialect() == Dialect.POSTGRES)
+                    ? "CURRENT_TIMESTAMP + INTERVAL '60 seconds'"
+                    : "CURRENT_TIMESTAMP + INTERVAL 60 SECOND";
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute(
+                        "INSERT INTO island_authorities (island_id, authoritative_node, authority_epoch, lease_expires_at, last_heartbeat_at) "
+                                + "VALUES ('" + islandId.value() + "', '" + NODE_ALPHA + "', " + EPOCH + ", " + plus60
+                                + ", CURRENT_TIMESTAMP)");
+            }
+        }
+        return islandId;
     }
 
     /**

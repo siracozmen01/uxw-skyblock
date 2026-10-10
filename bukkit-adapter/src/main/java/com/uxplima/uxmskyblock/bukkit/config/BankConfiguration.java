@@ -1,6 +1,7 @@
 package com.uxplima.uxmskyblock.bukkit.config;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 
 import com.uxplima.uxmlib.common.Durations;
@@ -10,7 +11,8 @@ import org.spongepowered.configurate.ConfigurationNode;
 /**
  * Configuration holder for island bank and upkeep failure policy (Section 2.39).
  */
-public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operationRetention) {
+public record BankConfiguration(
+        IslandUpkeepPolicy upkeepPolicy, Duration operationRetention, List<BankCurrencySpec> currencies) {
 
     public static final boolean DEFAULT_ENABLED = false;
     public static final Duration DEFAULT_INTERVAL = Duration.ofHours(24);
@@ -29,6 +31,7 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operat
     public static final Duration DEFAULT_OPERATION_RETENTION = Duration.ofDays(30);
 
     public BankConfiguration {
+        currencies = List.copyOf(Objects.requireNonNull(currencies, "currencies must not be null"));
         Objects.requireNonNull(upkeepPolicy, "upkeepPolicy must not be null");
         Objects.requireNonNull(operationRetention, "operationRetention must not be null");
         if (operationRetention.isNegative()) {
@@ -36,9 +39,19 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operat
         }
     }
 
+    /** The shape before the bank kept more than the island's own money. */
+    public BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operationRetention) {
+        this(upkeepPolicy, operationRetention, List.of());
+    }
+
     /** The one-argument shape, for a caller that names no retention. */
     public BankConfiguration(IslandUpkeepPolicy upkeepPolicy) {
         this(upkeepPolicy, DEFAULT_OPERATION_RETENTION);
+    }
+
+    /** The currencies turned on, in order. */
+    public List<BankCurrencySpec> enabledCurrencies() {
+        return currencies.stream().filter(BankCurrencySpec::enabled).toList();
     }
 
     public static BankConfiguration defaultConfiguration() {
@@ -52,9 +65,10 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operat
                 ? Durations.parse(retentionRaw)
                 : DEFAULT_OPERATION_RETENTION;
 
+        List<BankCurrencySpec> currencies = BankCurrencySpec.load(rootNode);
         ConfigurationNode upkeepNode = rootNode.node("bank", "upkeep");
         if (upkeepNode.virtual() || upkeepNode.empty()) {
-            return new BankConfiguration(IslandUpkeepPolicy.defaultPolicy(), operationRetention);
+            return new BankConfiguration(IslandUpkeepPolicy.defaultPolicy(), operationRetention, currencies);
         }
 
         boolean enabled = upkeepNode.node("enabled").getBoolean(DEFAULT_ENABLED);
@@ -78,6 +92,6 @@ public record BankConfiguration(IslandUpkeepPolicy upkeepPolicy, Duration operat
         IslandUpkeepPolicy policy = new IslandUpkeepPolicy(
                 enabled, interval, baseFeeMinor, perMemberFeeMinor, graceDuration, autoRemediate);
 
-        return new BankConfiguration(policy, operationRetention);
+        return new BankConfiguration(policy, operationRetention, currencies);
     }
 }

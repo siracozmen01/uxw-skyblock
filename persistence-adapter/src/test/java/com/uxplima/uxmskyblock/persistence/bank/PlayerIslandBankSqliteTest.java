@@ -83,6 +83,14 @@ class PlayerIslandBankSqliteTest {
     }
 
     @Test
+    @DisplayName("A currency the operator lists is kept in the bank in a row of its own, beside the bank's columns")
+    void anOperatorCurrencyIsKept() {
+        adapter.createBank(islandId);
+
+        HeldCurrencies.areKept(adapter, islandId, actorUuid, currentNode, currentEpoch);
+    }
+
+    @Test
     @DisplayName("deposit on PRIMARY currency succeeds, increments version and logs transaction")
     void depositPrimaryCurrency() {
         adapter.createBank(islandId);

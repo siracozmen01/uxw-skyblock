@@ -40,16 +40,28 @@ public final class SkyblockEconomyBridge {
     private final IslandBankService bankService;
     private final SchedulerPort schedulerPort;
     private final @Nullable EconomySagaCoordinator sagaCoordinator;
+    private final @Nullable BankWallets wallets;
 
     public SkyblockEconomyBridge(
             EconomyBridge economyBridge,
             IslandBankService bankService,
             SchedulerPort schedulerPort,
             @Nullable EconomySagaCoordinator sagaCoordinator) {
+        this(economyBridge, bankService, schedulerPort, sagaCoordinator, null);
+    }
+
+    /** A bridge that also moves the currencies the operator lists, through {@code wallets}. */
+    public SkyblockEconomyBridge(
+            EconomyBridge economyBridge,
+            IslandBankService bankService,
+            SchedulerPort schedulerPort,
+            @Nullable EconomySagaCoordinator sagaCoordinator,
+            @Nullable BankWallets wallets) {
         this.economyBridge = Objects.requireNonNull(economyBridge, "economyBridge must not be null");
         this.bankService = Objects.requireNonNull(bankService, "bankService must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.sagaCoordinator = sagaCoordinator;
+        this.wallets = wallets;
     }
 
     public SkyblockEconomyBridge(
@@ -59,16 +71,94 @@ public final class SkyblockEconomyBridge {
 
     public static SkyblockEconomyBridge createDefault(
             IslandBankService bankService, SchedulerPort schedulerPort, @Nullable EconomySagaPort sagaPort) {
+        return createDefault(bankService, schedulerPort, sagaPort, java.util.List.of());
+    }
+
+    /**
+     * The bridge a server runs: the island's own money through its economy, and every currency of
+     * {@code currencies} through the wallet its type names, each move a saga that a crash can finish.
+     */
+    public static SkyblockEconomyBridge createDefault(
+            IslandBankService bankService,
+            SchedulerPort schedulerPort,
+            @Nullable EconomySagaPort sagaPort,
+            java.util.List<com.uxplima.uxmskyblock.bukkit.config.BankCurrencySpec> currencies) {
         // Rebinding rather than resolved once. An economy plugin that registers its service after this
         // one enables, which is every economy plugin once this one loads at startup, used to leave the
         // bridge on the dummy for as long as the server ran and the island bank refusing every move.
         EconomyBridge bridge = new RebindingEconomyBridge();
         EconomySagaCoordinator coordinator = null;
+        BankWallets wallets = null;
         if (sagaPort != null) {
             BukkitVaultWalletAdapter walletAdapter = new BukkitVaultWalletAdapter(bridge);
-            coordinator = new EconomySagaCoordinator(sagaPort, walletAdapter, bankService, Duration.ofSeconds(30));
+            wallets = BankWallets.ofServer(walletAdapter, schedulerPort, currencies, "uxmSkyblock");
+            coordinator = new EconomySagaCoordinator(sagaPort, wallets, bankService, Duration.ofSeconds(30));
         }
-        return new SkyblockEconomyBridge(bridge, bankService, schedulerPort, coordinator);
+        return new SkyblockEconomyBridge(bridge, bankService, schedulerPort, coordinator, wallets);
+    }
+
+    /** The currencies the bank keeps beside the island's own money, or nothing on a bridge without them. */
+    public Optional<BankWallets> wallets() {
+        return Optional.ofNullable(wallets);
+    }
+
+    /**
+     * Moves {@code units} of the operator's currency {@code currency} between the player and the island bank: in
+     * when {@code intoTheBank}, out otherwise. Each move is a saga, so a crash between the wallet and the bank is
+     * finished or undone on the next start. The answer comes back on the player's thread.
+     */
+    public void moveHeld(
+            Player player,
+            ProfileId profileId,
+            String currency,
+            long units,
+            boolean intoTheBank,
+            ServerNodeId nodeId,
+            Consumer<BankTransactionOutcome> callback) {
+        Objects.requireNonNull(player, "player must not be null");
+        Objects.requireNonNull(currency, "currency must not be null");
+        Objects.requireNonNull(callback, "callback must not be null");
+        PlayerUuid playerUuid = new PlayerUuid(player.getUniqueId());
+        EconomySagaCoordinator coordinator = this.sagaCoordinator;
+        BankWallets known = this.wallets;
+        if (units <= 0) {
+            callback.accept(new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT, "The amount must be positive."));
+            return;
+        }
+        if (coordinator == null || known == null || known.currency(currency).isEmpty()) {
+            callback.accept(new BankTransactionOutcome.AuthorityRejected(
+                    BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
+                    "The bank keeps no currency called " + currency + "."));
+            return;
+        }
+        schedulerPort.async(() -> {
+            BankTransactionOutcome outcome;
+            Optional<IslandId> island = bankService.findIslandIdByProfileId(profileId);
+            if (island.isEmpty()) {
+                outcome = new BankTransactionOutcome.AuthorityRejected(
+                        BankTransactionOutcome.AuthorityRejected.Kind.NO_ISLAND,
+                        "No island associated with profile " + profileId);
+            } else if (intoTheBank) {
+                long carried = known.carried(player.getUniqueId(), currency).orElse(0L);
+                outcome = carried < units
+                        ? new BankTransactionOutcome.InsufficientFunds(carried, units)
+                        : coordinator.executeDeposit(
+                                SagaId.random(),
+                                playerUuid,
+                                profileId,
+                                island.get(),
+                                units,
+                                currency,
+                                nodeId,
+                                Instant.now());
+            } else {
+                outcome = coordinator.executeWithdraw(
+                        SagaId.random(), playerUuid, profileId, island.get(), units, currency, nodeId, Instant.now());
+            }
+            BankTransactionOutcome answered = outcome;
+            schedulerPort.onEntity(playerUuid, () -> callback.accept(answered));
+        });
     }
 
     public static SkyblockEconomyBridge createDefault(IslandBankService bankService, SchedulerPort schedulerPort) {

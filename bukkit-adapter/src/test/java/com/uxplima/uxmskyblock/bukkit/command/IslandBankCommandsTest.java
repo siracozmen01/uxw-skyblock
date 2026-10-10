@@ -372,4 +372,149 @@ class IslandBankCommandsTest {
 
         verify(bridge, never()).depositToIslandBank(any(), any(), anyLong(), any(), any());
     }
+
+    /** The bridge keeps experience beside the island's money, as the shipped file does. */
+    private void experienceIsKept() {
+        com.uxplima.uxmskyblock.bukkit.config.BankCurrencySpec experience =
+                new com.uxplima.uxmskyblock.bukkit.config.BankCurrencySpec(
+                        "experience",
+                        com.uxplima.uxmskyblock.bukkit.config.BankCurrencySpec.Type.EXPERIENCE,
+                        10,
+                        true,
+                        "@bank.currencies.experience",
+                        "EXPERIENCE_BOTTLE",
+                        java.util.Map.of());
+        com.uxplima.uxmskyblock.bukkit.integration.economy.BankWallets wallets =
+                new com.uxplima.uxmskyblock.bukkit.integration.economy.BankWallets(
+                        mock(com.uxplima.uxmskyblock.core.application.economy.ExternalWalletPort.class),
+                        inlineScheduler(),
+                        java.util.Map.of(
+                                "experience",
+                                new com.uxplima.uxmskyblock.bukkit.integration.economy.BankWallets.Kept(
+                                        experience,
+                                        com.uxplima.uxmlib.condition.wallet.ExperienceWallet.ofPoints(),
+                                        "")));
+        when(bridge.wallets()).thenReturn(Optional.of(wallets));
+    }
+
+    /** Answers every move of a listed currency with {@code outcome}. */
+    private void everyHeldMoveEnds(com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome outcome) {
+        doAnswer(invocation -> {
+                    invocation
+                            .<java.util.function.Consumer<
+                                            com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome>>
+                                    getArgument(6)
+                            .accept(outcome);
+                    return null;
+                })
+                .when(bridge)
+                .moveHeld(any(), any(), any(), anyLong(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+    }
+
+    @Test
+    @DisplayName("An amount followed by a listed currency moves that currency, and the island's money stays put")
+    void aListedCurrencyIsNamedAfterTheAmount() throws Exception {
+        experienceIsKept();
+        everyHeldMoveEnds(
+                new com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome.InsufficientFunds(30, 50));
+
+        run("bank deposit 50 experience", player);
+        assertThat(said()).endsWith("You have only 30 Experience.");
+        run("bank withdraw 2k Experience", player);
+
+        verify(bridge).moveHeld(any(), eq(PROFILE), eq("experience"), eq(50L), eq(true), any(), any());
+        verify(bridge).moveHeld(any(), eq(PROFILE), eq("experience"), eq(2_000L), eq(false), any(), any());
+        assertThat(said()).endsWith("The island bank holds only 30 Experience.");
+        verify(bridge, never()).depositToIslandBank(any(), any(), anyLong(), any(), any());
+        verify(bridge, never()).withdrawFromIslandBank(any(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A move of a listed currency that lands names the amount and the currency")
+    void aListedMoveThatLands() throws Exception {
+        experienceIsKept();
+        everyHeldMoveEnds(new com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome.Success(
+                new com.uxplima.uxmskyblock.core.domain.bank.IslandBank(
+                        ISLAND, 0L, 0L, 0L, 1L, java.time.Instant.now()),
+                new com.uxplima.uxmskyblock.core.domain.bank.BankTransaction(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        ISLAND,
+                        player.getUniqueId(),
+                        "experience",
+                        0,
+                        50L,
+                        50L,
+                        "In",
+                        java.time.Instant.now())));
+
+        run("bank deposit 50 experience", player);
+        assertThat(said()).endsWith("You put 50 Experience into the island bank.");
+        run("bank withdraw 50 experience", player);
+        assertThat(said()).endsWith("You took 50 Experience from the island bank.");
+    }
+
+    @Test
+    @DisplayName("A word after the amount that names no listed currency is no amount, and nothing moves")
+    void aCurrencyTheBankLacks() throws Exception {
+        experienceIsKept();
+
+        run("bank deposit 50 gems", player);
+
+        assertThat(said()).contains("50 gems is not an amount");
+        verify(bridge, never())
+                .moveHeld(any(), any(), any(), anyLong(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+        verify(bridge, never()).depositToIslandBank(any(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A listed currency asks the role for the same permission the money does")
+    void aListedCurrencyAsksTheRole() throws Exception {
+        experienceIsKept();
+        callerHolds(com.uxplima.uxmskyblock.core.domain.island.IslandPermission.BANK_WITHDRAW);
+
+        run("bank deposit 50 experience", player);
+        run("bank withdraw 50 experience", player);
+
+        verify(bridge, never()).moveHeld(any(), any(), any(), anyLong(), eq(true), any(), any());
+        verify(bridge).moveHeld(any(), eq(PROFILE), eq("experience"), eq(50L), eq(false), any(), any());
+    }
+
+    @Test
+    @DisplayName("A refused move of a listed currency says so, and an unreadable amount of one is named")
+    void aListedMoveThatIsRefused() throws Exception {
+        experienceIsKept();
+        everyHeldMoveEnds(new com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome.AuthorityRejected(
+                com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
+                "no"));
+
+        run("bank deposit 5 experience", player);
+        assertThat(said()).endsWith("The Experience could not be moved, so nothing changed.");
+        run("bank deposit lots experience", player);
+        assertThat(said()).contains("lots is not an amount");
+    }
+
+    @Test
+    @DisplayName("The balance lists what the island holds of every listed currency under its money")
+    void theBalanceListsEveryCurrency() throws Exception {
+        experienceIsKept();
+        when(bank.findBank(PROFILE))
+                .thenReturn(Optional.of(new com.uxplima.uxmskyblock.core.domain.bank.IslandBank(
+                        ISLAND, 1_234_500L, 0L, 0L, 1L, java.time.Instant.now(), java.util.Map.of("experience", 42L))));
+
+        run("bank", player);
+
+        assertThat(said()).contains("123.45");
+        assertThat(said()).isEqualTo(" • Experience 42");
+    }
+
+    @Test
+    @DisplayName("A bank that keeps no other currency reads only its money")
+    void aBankOfMoneyAlone() throws Exception {
+        run("bank", player);
+
+        said();
+        assertThat(player.nextComponentMessage()).isNull();
+        verify(bank, never()).findBank(any());
+    }
 }

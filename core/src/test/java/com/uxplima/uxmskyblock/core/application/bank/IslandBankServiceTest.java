@@ -58,6 +58,34 @@ class IslandBankServiceTest {
     }
 
     @Test
+    @DisplayName("A keyed move names the column of its currency: the island's money in cents, any other in units")
+    void aMoveNamesItsCurrency() {
+        BankTransactionOutcome money = bankService.moveOnce(profileId, playerUuid, 250L, "In", nodeId, "k-money");
+        BankTransactionOutcome experience =
+                bankService.moveOnce(profileId, playerUuid, "experience", 40L, "In", nodeId, "k-experience");
+
+        assertThat(((BankTransactionOutcome.Success) money).transaction().currencyId())
+                .isEqualTo("PRIMARY");
+        assertThat(((BankTransactionOutcome.Success) money).transaction().currencyScale())
+                .isEqualTo(2);
+        assertThat(((BankTransactionOutcome.Success) experience).transaction().currencyId())
+                .isEqualTo("experience");
+        assertThat(((BankTransactionOutcome.Success) experience).transaction().currencyScale())
+                .isZero();
+    }
+
+    @Test
+    @DisplayName("The bank of a profile is read with everything it holds, and nothing without an island")
+    void theBankOfAProfile() {
+        bankPort.banks.put(
+                islandId, new IslandBank(islandId, 5000L, 0L, 0L, 1L, Instant.now(), java.util.Map.of("points", 9L)));
+
+        assertThat(bankService.findBank(profileId).orElseThrow().heldOf("points"))
+                .isEqualTo(9L);
+        assertThat(bankService.findBank(new ProfileId(UUID.randomUUID()))).isEmpty();
+    }
+
+    @Test
     @DisplayName("getBalanceMinorUnits returns current balance when island and bank exist")
     void getBalanceReturnsValue() {
         Optional<Long> balance = bankService.getBalanceMinorUnits(profileId);

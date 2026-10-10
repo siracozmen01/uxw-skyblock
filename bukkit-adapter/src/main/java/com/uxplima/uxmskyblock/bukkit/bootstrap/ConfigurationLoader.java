@@ -109,7 +109,8 @@ public final class ConfigurationLoader {
             "island-role-permissions.conf",
             "island-member-role.conf",
             "island-home-list.conf",
-            "island-leaderboard.conf");
+            "island-leaderboard.conf",
+            "island-bank-currency.conf");
 
     private ConfigurationLoader() {
         throw new UnsupportedOperationException("ConfigurationLoader is a set of loading steps, not a thing to hold.");

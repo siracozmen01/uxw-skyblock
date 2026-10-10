@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
 import com.uxplima.uxmskyblock.core.domain.bank.BankTransactionOutcome;
@@ -26,7 +27,7 @@ public final class EconomySagaCoordinator {
             java.util.logging.Logger.getLogger(EconomySagaCoordinator.class.getName());
 
     private final EconomySagaPort sagaPort;
-    private final ExternalWalletPort walletPort;
+    private final WalletDirectory wallets;
     private final IslandBankService bankService;
     private final Duration sagaTimeout;
 
@@ -35,8 +36,14 @@ public final class EconomySagaCoordinator {
             ExternalWalletPort walletPort,
             IslandBankService bankService,
             Duration sagaTimeout) {
+        this(sagaPort, WalletDirectory.only(walletPort), bankService, sagaTimeout);
+    }
+
+    /** A coordinator moving each currency through the wallet {@code wallets} names for it. */
+    public EconomySagaCoordinator(
+            EconomySagaPort sagaPort, WalletDirectory wallets, IslandBankService bankService, Duration sagaTimeout) {
         this.sagaPort = Objects.requireNonNull(sagaPort, "sagaPort");
-        this.walletPort = Objects.requireNonNull(walletPort, "walletPort");
+        this.wallets = Objects.requireNonNull(wallets, "wallets");
         this.bankService = Objects.requireNonNull(bankService, "bankService");
         this.sagaTimeout = Objects.requireNonNull(sagaTimeout, "sagaTimeout");
     }
@@ -55,6 +62,11 @@ public final class EconomySagaCoordinator {
                     BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT, "Deposit amount must be positive.");
         }
 
+        Optional<ExternalWalletPort> found = wallets.walletFor(currency);
+        if (found.isEmpty()) {
+            return noWallet(currency);
+        }
+        ExternalWalletPort walletPort = found.get();
         Instant expiresAt = now.plus(sagaTimeout);
         EconomySagaRecord saga = EconomySagaRecord.start(
                 sagaId, playerUuid, profileId, islandId, SagaType.DEPOSIT, amountMinorUnits, currency, expiresAt, now);
@@ -74,7 +86,7 @@ public final class EconomySagaCoordinator {
         BankTransactionOutcome outcome;
         try {
             outcome = bankService.moveOnce(
-                    profileId, playerUuid, amountMinorUnits, "Player deposit", nodeId, forwardKey(sagaId));
+                    profileId, playerUuid, currency, amountMinorUnits, "Player deposit", nodeId, forwardKey(sagaId));
         } catch (RuntimeException unanswered) {
             // The move may have landed. Refunding now would pay the player twice if it did, so the
             // saga stays where it is and recovery asks the bank again under the same key.
@@ -111,6 +123,11 @@ public final class EconomySagaCoordinator {
                     BankTransactionOutcome.AuthorityRejected.Kind.INVALID_AMOUNT, "Withdraw amount must be positive.");
         }
 
+        Optional<ExternalWalletPort> found = wallets.walletFor(currency);
+        if (found.isEmpty()) {
+            return noWallet(currency);
+        }
+        ExternalWalletPort walletPort = found.get();
         Instant expiresAt = now.plus(sagaTimeout);
         EconomySagaRecord saga = EconomySagaRecord.start(
                 sagaId, playerUuid, profileId, islandId, SagaType.WITHDRAW, amountMinorUnits, currency, expiresAt, now);
@@ -120,7 +137,13 @@ public final class EconomySagaCoordinator {
         BankTransactionOutcome outcome;
         try {
             outcome = bankService.moveOnce(
-                    profileId, playerUuid, -amountMinorUnits, "Player withdrawal", nodeId, forwardKey(sagaId));
+                    profileId,
+                    playerUuid,
+                    currency,
+                    -amountMinorUnits,
+                    "Player withdrawal",
+                    nodeId,
+                    forwardKey(sagaId));
         } catch (RuntimeException unanswered) {
             // The bank may have paid out. Nothing reaches the wallet on a guess: recovery finds out
             // under the same key and puts back what was taken.
@@ -141,7 +164,7 @@ public final class EconomySagaCoordinator {
         // Compensation phase: refund Island Bank
         sagaPort.updateState(sagaId, SagaState.COMPENSATING, now);
         BankTransactionOutcome refundOutcome = bankService.moveOnce(
-                profileId, playerUuid, amountMinorUnits, "Withdrawal refund", nodeId, refundKey(sagaId));
+                profileId, playerUuid, currency, amountMinorUnits, "Withdrawal refund", nodeId, refundKey(sagaId));
         if (IslandBankService.landed(refundOutcome)) {
             sagaPort.updateState(sagaId, SagaState.ROLLED_BACK, now);
         } else {
@@ -177,12 +200,13 @@ public final class EconomySagaCoordinator {
                     if (saga.sagaType() == SagaType.DEPOSIT) {
                         // The refund had not started: that is written as REFUNDING_WALLET first.
                         sagaPort.updateState(saga.sagaId(), SagaState.REFUNDING_WALLET, now);
-                        boolean refunded = walletPort.deposit(saga.playerUuid(), saga.amountMinorUnits());
+                        boolean refunded = repay(saga);
                         sagaPort.updateState(saga.sagaId(), refunded ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
                     } else {
                         BankTransactionOutcome refund = bankService.moveOnce(
                                 saga.profileId(),
                                 saga.playerUuid(),
+                                saga.currency(),
                                 saga.amountMinorUnits(),
                                 "Withdrawal refund",
                                 nodeId,
@@ -233,6 +257,7 @@ public final class EconomySagaCoordinator {
         BankTransactionOutcome deposit = bankService.moveOnce(
                 saga.profileId(),
                 saga.playerUuid(),
+                saga.currency(),
                 saga.amountMinorUnits(),
                 "Player deposit",
                 nodeId,
@@ -242,8 +267,29 @@ public final class EconomySagaCoordinator {
             return;
         }
         sagaPort.updateState(saga.sagaId(), SagaState.REFUNDING_WALLET, now);
-        boolean refunded = walletPort.deposit(saga.playerUuid(), saga.amountMinorUnits());
+        boolean refunded = repay(saga);
         sagaPort.updateState(saga.sagaId(), refunded ? SagaState.ROLLED_BACK : SagaState.FAILED, now);
+    }
+
+    /**
+     * Gives a saga's amount back to the wallet it came from. A currency this server no longer has a wallet for
+     * cannot be given back, and says so for an operator to settle.
+     */
+    private boolean repay(EconomySagaRecord saga) {
+        Optional<ExternalWalletPort> wallet = wallets.walletFor(saga.currency());
+        if (wallet.isEmpty()) {
+            LOGGER.warning(() -> "Economy saga " + saga.sagaId() + " owes " + saga.amountMinorUnits() + " "
+                    + saga.currency() + " back to " + saga.playerUuid() + ", and this server has no wallet for that"
+                    + " currency. Check it by hand.");
+            return false;
+        }
+        return wallet.get().deposit(saga.playerUuid(), saga.amountMinorUnits());
+    }
+
+    private static BankTransactionOutcome noWallet(String currency) {
+        return new BankTransactionOutcome.AuthorityRejected(
+                BankTransactionOutcome.AuthorityRejected.Kind.WALLET_REFUSED,
+                "This server has no wallet for " + currency + ".");
     }
 
     /**
@@ -257,6 +303,7 @@ public final class EconomySagaCoordinator {
         BankTransactionOutcome taken = bankService.moveOnce(
                 saga.profileId(),
                 saga.playerUuid(),
+                saga.currency(),
                 -saga.amountMinorUnits(),
                 "Player withdrawal",
                 nodeId,
@@ -269,6 +316,7 @@ public final class EconomySagaCoordinator {
         BankTransactionOutcome refund = bankService.moveOnce(
                 saga.profileId(),
                 saga.playerUuid(),
+                saga.currency(),
                 saga.amountMinorUnits(),
                 "Withdrawal refund",
                 nodeId,

@@ -19,6 +19,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.integration.economy.BankWallets;
 import com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankService;
@@ -111,11 +112,29 @@ public final class IslandBankCommands {
 
         schedulerPort.async(() -> {
             Optional<Long> optBalance = islandBankService.getBalanceMinorUnits(profileId);
+            // Every other currency the bank keeps, under the money, so one line answers what the island has.
+            Optional<com.uxplima.uxmskyblock.core.domain.bank.IslandBank> bank =
+                    economyBridge.wallets().isPresent() ? islandBankService.findBank(profileId) : Optional.empty();
             schedulerPort.onEntity(playerUuid, () -> {
                 if (optBalance.isEmpty()) {
                     send(player, "error.no_island");
                 } else {
                     send(player, "bank.balance", Placeholder.unparsed("balance", money(optBalance.get())));
+                    bank.ifPresent(held -> economyBridge.wallets().ifPresent(known -> {
+                        for (BankWallets.Kept currency : known.currencies()) {
+                            send(
+                                    player,
+                                    "bank.held_balance",
+                                    Placeholder.unparsed(
+                                            "currency",
+                                            messages.words(
+                                                    player, currency.spec().displayName())),
+                                    Placeholder.unparsed(
+                                            "amount",
+                                            Long.toString(
+                                                    held.heldOf(currency.spec().id()))));
+                        }
+                    }));
                 }
             });
         });
@@ -240,6 +259,11 @@ public final class IslandBankCommands {
             return Cmd.OK;
         }
         String written = StringArgumentType.getString(ctx, "amount");
+        Optional<HeldMove> held = heldMove(written);
+        if (held.isPresent()) {
+            moveHeld(player, held.get(), true, IslandPermission.BANK_DEPOSIT);
+            return Cmd.OK;
+        }
         java.util.OptionalLong read = BankAmount.parse(written);
         if (read.isEmpty()) {
             send(player, "bank.amount_unreadable", Placeholder.unparsed("written", written));
@@ -325,6 +349,11 @@ public final class IslandBankCommands {
             return Cmd.OK;
         }
         String written = StringArgumentType.getString(ctx, "amount");
+        Optional<HeldMove> held = heldMove(written);
+        if (held.isPresent()) {
+            moveHeld(player, held.get(), false, IslandPermission.BANK_WITHDRAW);
+            return Cmd.OK;
+        }
         java.util.OptionalLong read = BankAmount.parse(written);
         if (read.isEmpty()) {
             send(player, "bank.amount_unreadable", Placeholder.unparsed("written", written));
@@ -353,6 +382,66 @@ public final class IslandBankCommands {
                 }));
 
         return Cmd.OK;
+    }
+
+    /** An amount of one of the operator's currencies, as {@code 50 experience} names it. */
+    private record HeldMove(BankWallets.Kept currency, String amount) {}
+
+    /**
+     * The currency a line ends with, and the amount before it, when it ends with one the bank keeps. A line that
+     * names none is the island's own money, as it always was.
+     */
+    private Optional<HeldMove> heldMove(String written) {
+        String line = written.strip();
+        int space = line.lastIndexOf(' ');
+        if (space < 0) {
+            return Optional.empty();
+        }
+        Optional<BankWallets> wallets = economyBridge.wallets();
+        String named = line.substring(space + 1);
+        return wallets.flatMap(known -> known.currency(named))
+                .map(currency -> new HeldMove(currency, line.substring(0, space).strip()));
+    }
+
+    /** Moves an amount of one of the operator's currencies in or out, when the caller's role allows it. */
+    private void moveHeld(Player player, HeldMove move, boolean intoTheBank, IslandPermission permission) {
+        String name = messages.words(player, move.currency().spec().displayName());
+        java.util.OptionalLong read = BankAmount.parse(move.amount());
+        if (read.isEmpty()) {
+            send(player, "bank.amount_unreadable", Placeholder.unparsed("written", move.amount()));
+            return;
+        }
+        long units = read.getAsLong();
+        Optional<ProfileId> optProfile = activeProfile(player);
+        if (optProfile.isEmpty()) {
+            send(player, "error.session_not_active");
+            return;
+        }
+        ProfileId profileId = optProfile.get();
+        TagResolver amount = Placeholder.unparsed("amount", Long.toString(units));
+        TagResolver currency = Placeholder.unparsed("currency", name);
+        ifTheRoleAllowsIt(
+                player,
+                profileId,
+                permission,
+                () -> economyBridge.moveHeld(
+                        player, profileId, move.currency().spec().id(), units, intoTheBank, serverNodeId, outcome -> {
+                            if (outcome instanceof BankTransactionOutcome.Success) {
+                                send(
+                                        player,
+                                        intoTheBank ? "bank.held_deposit_success" : "bank.held_withdraw_success",
+                                        amount,
+                                        currency);
+                            } else if (outcome instanceof BankTransactionOutcome.InsufficientFunds poor) {
+                                send(
+                                        player,
+                                        intoTheBank ? "bank.held_wallet_insufficient" : "bank.held_bank_insufficient",
+                                        Placeholder.unparsed("have", Long.toString(poor.currentBalance())),
+                                        currency);
+                            } else {
+                                send(player, "bank.held_refused", currency);
+                            }
+                        }));
     }
 
     private Optional<ProfileId> activeProfile(Player player) {

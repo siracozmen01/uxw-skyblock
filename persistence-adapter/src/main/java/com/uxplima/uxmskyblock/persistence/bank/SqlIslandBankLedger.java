@@ -51,7 +51,7 @@ final class SqlIslandBankLedger {
             ps.setString(1, islandId.value().toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return Optional.of(mapIslandBank(rs, islandId));
+                    return Optional.of(withHeld(mapIslandBank(rs, islandId), heldBalances(connection, islandId)));
                 }
                 return Optional.empty();
             }
@@ -74,7 +74,7 @@ final class SqlIslandBankLedger {
                     ps.setString(1, islandId.value().toString());
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
-                            IslandBank bank = mapIslandBank(rs, islandId);
+                            IslandBank bank = withHeld(mapIslandBank(rs, islandId), heldBalances(connection, islandId));
                             tx.commit(connection);
                             return bank;
                         }
@@ -154,6 +154,69 @@ final class SqlIslandBankLedger {
         } catch (SQLException e) {
             throw new IslandBankPersistenceException("Failed to query transaction history for island " + islandId, e);
         }
+    }
+
+    /**
+     * What the bank holds of one of the operator's currencies, read inside the transaction about to change it and,
+     * where the engine locks rows, locked until that transaction ends. A currency the island never held is zero.
+     */
+    long heldBalance(Connection connection, IslandId islandId, String currency) throws SQLException {
+        String sql = dialect == Dialect.SQLITE
+                ? "SELECT balance FROM island_bank_balances WHERE island_id = ? AND currency_id = ?"
+                : "SELECT balance FROM island_bank_balances WHERE island_id = ? AND currency_id = ? FOR UPDATE";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, islandId.value().toString());
+            ps.setString(2, currency);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong("balance") : 0L;
+            }
+        }
+    }
+
+    /** Writes what the bank holds of one of the operator's currencies, making its row the first time. */
+    void writeHeld(Connection connection, IslandId islandId, String currency, long balance) throws SQLException {
+        String sql = dialect == Dialect.MYSQL ? """
+                        INSERT INTO island_bank_balances (island_id, currency_id, balance, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON DUPLICATE KEY UPDATE balance = VALUES(balance), updated_at = CURRENT_TIMESTAMP
+                        """ : """
+                        INSERT INTO island_bank_balances (island_id, currency_id, balance, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT (island_id, currency_id)
+                        DO UPDATE SET balance = excluded.balance, updated_at = CURRENT_TIMESTAMP
+                        """;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, islandId.value().toString());
+            ps.setString(2, currency);
+            ps.setLong(3, balance);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Everything the bank holds of the operator's currencies, by id. */
+    java.util.Map<String, Long> heldBalances(Connection connection, IslandId islandId) throws SQLException {
+        java.util.Map<String, Long> held = new java.util.HashMap<>();
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT currency_id, balance FROM island_bank_balances WHERE island_id = ?")) {
+            ps.setString(1, islandId.value().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    held.put(rs.getString("currency_id"), rs.getLong("balance"));
+                }
+            }
+        }
+        return held;
+    }
+
+    private static IslandBank withHeld(IslandBank bank, java.util.Map<String, Long> held) {
+        return new IslandBank(
+                bank.islandId(),
+                bank.primaryBalanceMinorUnits(),
+                bank.crystalsBalance(),
+                bank.expBalance(),
+                bank.version(),
+                bank.updatedAt(),
+                held);
     }
 
     private static IslandBank mapIslandBank(ResultSet rs, IslandId islandId) throws SQLException {

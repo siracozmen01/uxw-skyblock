@@ -176,6 +176,38 @@ class IslandControlMenuTest extends MockBukkitHarness {
     }
 
     /** The tooltip of the tile at {@code slot}, its lines joined and its spacing evened, as one sentence. */
+    @Test
+    @DisplayName("The bank window reads what the island holds of every currency the operator lists")
+    void theBankReadsEveryCurrency(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dataDir) {
+        ProfileId profileId = new ProfileId(player.getUniqueId());
+        when(mockStorage.findIslandIdByProfileId(eq(profileId))).thenReturn(Optional.of(islandId));
+        when(mockStorage.findIslandById(eq(islandId))).thenReturn(Optional.of(sampleIsland));
+        when(mockBank.findBankByIslandId(eq(islandId)))
+                .thenReturn(Optional.of(new com.uxplima.uxmskyblock.core.domain.bank.IslandBank(
+                        islandId, 0L, 0L, 0L, 1L, java.time.Instant.now(), Map.of("experience", 42L))));
+        when(mockUpgrades.getUpgrades(eq(islandId))).thenReturn(Map.of());
+        when(mockLocations.resolveHome(eq(profileId))).thenReturn(Optional.empty());
+        SkyblockMenuEngine engine = ShippedTemplates.engineWith(dataDir, "island-bank.conf");
+        new BankCurrencyList(
+                        Messages.bundled(),
+                        () -> java.util.List.of(new com.uxplima.uxmskyblock.bukkit.config.BankCurrencySpec(
+                                "experience",
+                                com.uxplima.uxmskyblock.bukkit.config.BankCurrencySpec.Type.EXPERIENCE,
+                                10,
+                                true,
+                                "@bank.currencies.experience",
+                                "EXPERIENCE_BOTTLE",
+                                Map.of())))
+                .register(engine);
+        engine.install();
+        menu.useMenuEngine(engine);
+
+        menu.openWindow(player, "island-bank", () -> {});
+        settle(() -> loreAt(28).contains("In the bank"));
+
+        assertThat(loreAt(28)).contains("Experience").contains("In the bank 42");
+    }
+
     private String loreAt(int slot) {
         org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
         org.bukkit.inventory.ItemStack tile = top == null ? null : top.getItem(slot);

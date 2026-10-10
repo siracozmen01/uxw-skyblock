@@ -211,8 +211,15 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 (operationScope != null && !operationScope.isBlank()) ? operationScope.trim() : "ISLAND_BANK";
 
         String upperCurrency = currencyId.trim().toUpperCase(Locale.ROOT);
-        if (!upperCurrency.equals("PRIMARY") && !upperCurrency.equals("CRYSTALS") && !upperCurrency.equals("EXP")) {
-            throw new IllegalArgumentException("Unsupported currency ID: " + currencyId);
+        // Beside its three columns the bank holds every currency the operator lists, one row each, under the
+        // operator's own id in lower case.
+        boolean held =
+                !upperCurrency.equals("PRIMARY") && !upperCurrency.equals("CRYSTALS") && !upperCurrency.equals("EXP");
+        if (held) {
+            upperCurrency = currencyId.trim().toLowerCase(Locale.ROOT);
+            if (!com.uxplima.uxmskyblock.core.application.bank.BankCurrencies.isHeld(upperCurrency)) {
+                throw new IllegalArgumentException("Unsupported currency ID: " + currencyId);
+            }
         }
 
         try (Connection connection = database.connection()) {
@@ -331,6 +338,8 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     }
                 }
 
+                long heldBalance = held ? ledger.heldBalance(connection, islandId, upperCurrency) : 0L;
+
                 // Check OCC version
                 if (actualVersion != expectedVersion) {
                     updateProcessedOp(connection, operationId, "REJECTED", "STALE_OCC_VERSION");
@@ -339,8 +348,9 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                 }
 
                 // Balance check
-                long currentBal =
-                        switch (upperCurrency) {
+                long currentBal = held
+                        ? heldBalance
+                        : switch (upperCurrency) {
                             case "PRIMARY" -> primary;
                             case "CRYSTALS" -> crystals;
                             case "EXP" -> exp;
@@ -379,6 +389,10 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                         tx.rollbackQuietly(connection);
                         return new BankTransactionOutcome.StaleVersion(expectedVersion, actualVersion);
                     }
+                }
+
+                if (held) {
+                    ledger.writeHeld(connection, islandId, upperCurrency, newBal);
                 }
 
                 // Step 5.5: The write this charge pays for, in the same transaction or not at all.
@@ -428,11 +442,13 @@ public final class PlayerIslandBankAdapter implements IslandBankPort {
                     com.uxplima.uxmskyblock.persistence.event.OutboxSqlHelper.stageEvent(connection, outboxEvent);
                 }
 
+                java.util.Map<String, Long> heldNow = ledger.heldBalances(connection, islandId);
+
                 // Step 8: Commit transaction
                 tx.commit(connection);
 
-                IslandBank updatedBank =
-                        new IslandBank(islandId, newPrimary, newCrystals, newExp, expectedVersion + 1, Instant.now());
+                IslandBank updatedBank = new IslandBank(
+                        islandId, newPrimary, newCrystals, newExp, expectedVersion + 1, Instant.now(), heldNow);
                 BankTransaction transaction = new BankTransaction(
                         txId,
                         operationId,

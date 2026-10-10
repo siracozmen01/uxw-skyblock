@@ -219,6 +219,11 @@ public final class IslandControlMenu {
             @Nullable Map<UpgradeId, Integer> upgrades,
             int vaultPages) {
         Map<String, String> values = new HashMap<>(numbers(island, bank, upgrades, vaultPages));
+        // What the bank holds of each currency the operator lists, so its tile in the bank window reads it.
+        if (bank != null) {
+            bank.held()
+                    .forEach((currency, amount) -> values.put(BankCurrencyList.HELD + currency, Long.toString(amount)));
+        }
         UpgradeWords words = this.upgradeWords;
         if (words != null) {
             values.putAll(words.values(reader, upgrades != null ? upgrades : Map.of()));

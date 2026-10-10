@@ -28,7 +28,7 @@ import com.uxplima.uxmlib.storage.sql.Dialect;
 public final class SkyblockMigrations {
 
     /** The latest production schema version. */
-    public static final int LATEST_VERSION = 46;
+    public static final int LATEST_VERSION = 47;
 
     /** Human-readable description of migration V28. */
     public static final String V28_DESCRIPTION = "create profile cosmetics and island recycle operations";
@@ -80,6 +80,9 @@ public final class SkyblockMigrations {
 
     /** Human-readable description of migration V46. */
     public static final String V46_DESCRIPTION = "remove the rows a deleted island left behind on SQLite";
+
+    /** Human-readable description of migration V47. */
+    public static final String V47_DESCRIPTION = "keep each currency the operator lists in the island bank";
 
     /** Human-readable description of migration V39. */
     public static final String V39_DESCRIPTION =

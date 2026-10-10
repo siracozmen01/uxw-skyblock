@@ -62,7 +62,8 @@ class EconomySagaCoordinatorTest {
     void depositSuccess() {
         SagaId sagaId = SagaId.random();
         when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
-        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(successOutcome);
 
         BankTransactionOutcome outcome =
@@ -71,6 +72,37 @@ class EconomySagaCoordinatorTest {
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.Success.class);
         assertThat(sagaPort.findSagaById(sagaId)).isPresent();
         assertThat(sagaPort.findSagaById(sagaId).get().state()).isEqualTo(SagaState.COMMITTED);
+    }
+
+    @Test
+    @DisplayName("A currency moves through its own wallet and its own column, and one with no wallet moves nothing")
+    void eachCurrencyHasItsWallet() {
+        ExternalWalletPort experience = mock(ExternalWalletPort.class);
+        EconomySagaCoordinator byCurrency = new EconomySagaCoordinator(
+                sagaPort,
+                currency ->
+                        currency.equals("experience") ? java.util.Optional.of(experience) : java.util.Optional.empty(),
+                bankService,
+                Duration.ofSeconds(30));
+        SagaId sagaId = SagaId.random();
+        when(experience.withdraw(playerUuid, 40L)).thenReturn(true);
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "experience", 40L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+                .thenReturn(successOutcome);
+
+        assertThat(byCurrency.executeDeposit(sagaId, playerUuid, profileId, islandId, 40L, "experience", nodeId, now))
+                .isInstanceOf(BankTransactionOutcome.Success.class);
+        assertThat(sagaPort.findSagaById(sagaId).orElseThrow().currency()).isEqualTo("experience");
+        verify(walletPort, never()).withdraw(any(), any(Long.class));
+
+        SagaId nowhere = SagaId.random();
+        assertThat(byCurrency.executeDeposit(nowhere, playerUuid, profileId, islandId, 40L, "gems", nodeId, now))
+                .isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        assertThat(byCurrency.executeWithdraw(nowhere, playerUuid, profileId, islandId, 40L, "gems", nodeId, now))
+                .isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
+        assertThat(sagaPort.findSagaById(nowhere))
+                .describedAs("nothing is written for a currency with no wallet")
+                .isEmpty();
     }
 
     @Test
@@ -83,7 +115,7 @@ class EconomySagaCoordinatorTest {
                 coordinator.executeDeposit(sagaId, playerUuid, profileId, islandId, 1000L, "VAULT", nodeId, now);
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
-        verify(bankService, never()).moveOnce(any(), any(), any(Long.class), any(), any(), any());
+        verify(bankService, never()).moveOnce(any(), any(), any(String.class), any(Long.class), any(), any(), any());
         assertThat(sagaPort.findSagaById(sagaId).get().state()).isEqualTo(SagaState.FAILED);
     }
 
@@ -92,7 +124,8 @@ class EconomySagaCoordinatorTest {
     void depositBankFailsCompensated() {
         SagaId sagaId = SagaId.random();
         when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
-        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(new BankTransactionOutcome.AuthorityRejected("Bank full"));
         when(walletPort.deposit(playerUuid, 1000L)).thenReturn(true);
 
@@ -108,7 +141,8 @@ class EconomySagaCoordinatorTest {
     @DisplayName("executeWithdraw successfully commits saga when bank and wallet succeed")
     void withdrawSuccess() {
         SagaId sagaId = SagaId.random();
-        when(bankService.moveOnce(profileId, playerUuid, -1000L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", -1000L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(successOutcome);
         when(walletPort.deposit(playerUuid, 1000L)).thenReturn(true);
 
@@ -124,11 +158,18 @@ class EconomySagaCoordinatorTest {
     @DisplayName("executeWithdraw compensates and refunds bank when wallet deposit fails")
     void withdrawWalletFailsCompensated() {
         SagaId sagaId = SagaId.random();
-        when(bankService.moveOnce(profileId, playerUuid, -1000L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", -1000L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(successOutcome);
         when(walletPort.deposit(playerUuid, 1000L)).thenReturn(false);
         when(bankService.moveOnce(
-                        profileId, playerUuid, 1000L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value()))
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        1000L,
+                        "Withdrawal refund",
+                        nodeId,
+                        "saga-refund:" + sagaId.value()))
                 .thenReturn(successOutcome);
 
         BankTransactionOutcome outcome =
@@ -136,8 +177,51 @@ class EconomySagaCoordinatorTest {
 
         assertThat(outcome).isInstanceOf(BankTransactionOutcome.AuthorityRejected.class);
         verify(bankService)
-                .moveOnce(profileId, playerUuid, 1000L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value());
+                .moveOnce(
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        1000L,
+                        "Withdrawal refund",
+                        nodeId,
+                        "saga-refund:" + sagaId.value());
         assertThat(sagaPort.findSagaById(sagaId).get().state()).isEqualTo(SagaState.ROLLED_BACK);
+    }
+
+    @Test
+    @DisplayName("A recovered deposit is given back to its own currency's wallet, and one with no wallet left is "
+            + "left for the operator")
+    void recoveryRepaysTheRightWallet() {
+        ExternalWalletPort experience = mock(ExternalWalletPort.class);
+        EconomySagaCoordinator byCurrency = new EconomySagaCoordinator(
+                sagaPort,
+                currency ->
+                        currency.equals("experience") ? java.util.Optional.of(experience) : java.util.Optional.empty(),
+                bankService,
+                Duration.ofSeconds(30));
+        SagaId kept = SagaId.random();
+        SagaId orphan = SagaId.random();
+        for (SagaId id : new SagaId[] {kept, orphan}) {
+            sagaPort.createSaga(new EconomySagaRecord(
+                    id,
+                    playerUuid,
+                    profileId,
+                    islandId,
+                    SagaType.DEPOSIT,
+                    SagaState.COMPENSATING,
+                    70L,
+                    id == kept ? "experience" : "gems",
+                    now.minusSeconds(10),
+                    now.minusSeconds(60),
+                    now.minusSeconds(10)));
+        }
+        when(experience.deposit(playerUuid, 70L)).thenReturn(true);
+
+        assertThat(byCurrency.recoverIncompleteSagas(now, nodeId)).isEqualTo(2);
+
+        assertThat(sagaPort.findSagaById(kept).orElseThrow().state()).isEqualTo(SagaState.ROLLED_BACK);
+        assertThat(sagaPort.findSagaById(orphan).orElseThrow().state()).isEqualTo(SagaState.FAILED);
+        verify(walletPort, never()).deposit(any(), any(Long.class));
     }
 
     @Test
@@ -189,14 +273,27 @@ class EconomySagaCoordinatorTest {
         sagaPort.createSaga(stuck(sagaId, SagaType.WITHDRAW, SagaState.COMPENSATING, 700L));
         // The refund landed before the server stopped; the bank answers the same key as done.
         when(bankService.moveOnce(
-                        profileId, playerUuid, 700L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value()))
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        700L,
+                        "Withdrawal refund",
+                        nodeId,
+                        "saga-refund:" + sagaId.value()))
                 .thenReturn(new BankTransactionOutcome.DuplicateOperation(
                         UUID.randomUUID(), "already", "APPLIED", "SUCCESS", null));
 
         coordinator.recoverIncompleteSagas(now, nodeId);
 
         verify(bankService)
-                .moveOnce(profileId, playerUuid, 700L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value());
+                .moveOnce(
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        700L,
+                        "Withdrawal refund",
+                        nodeId,
+                        "saga-refund:" + sagaId.value());
         assertThat(sagaPort.findSagaById(sagaId).orElseThrow().state())
                 .describedAs("a refund that already landed settles the saga, it is not called a failure")
                 .isEqualTo(SagaState.ROLLED_BACK);
@@ -220,7 +317,8 @@ class EconomySagaCoordinatorTest {
     void theRefundIsMarkedBeforeTheWalletIsAsked() {
         SagaId sagaId = SagaId.random();
         when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
-        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", 1000L, "Player deposit", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(new BankTransactionOutcome.AuthorityRejected("Bank full"));
         List<SagaState> seenWhenAsked = new java.util.ArrayList<>();
         when(walletPort.deposit(playerUuid, 1000L)).thenAnswer(ask -> {
@@ -238,7 +336,8 @@ class EconomySagaCoordinatorTest {
     void aStoppedDepositIsFinished() {
         SagaId sagaId = SagaId.random();
         sagaPort.createSaga(stuck(sagaId, SagaType.DEPOSIT, SagaState.WALLET_DEBITED, 900L));
-        when(bankService.moveOnce(profileId, playerUuid, 900L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", 900L, "Player deposit", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(successOutcome);
 
         coordinator.recoverIncompleteSagas(now, nodeId);
@@ -252,7 +351,8 @@ class EconomySagaCoordinatorTest {
     void aStoppedDepositTheBankRefusesIsRefunded() {
         SagaId sagaId = SagaId.random();
         sagaPort.createSaga(stuck(sagaId, SagaType.DEPOSIT, SagaState.WALLET_DEBITED, 900L));
-        when(bankService.moveOnce(profileId, playerUuid, 900L, "Player deposit", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", 900L, "Player deposit", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(new BankTransactionOutcome.AuthorityRejected("no island"));
         when(walletPort.deposit(playerUuid, 900L)).thenReturn(true);
 
@@ -268,17 +368,31 @@ class EconomySagaCoordinatorTest {
         SagaId sagaId = SagaId.random();
         sagaPort.createSaga(stuck(sagaId, SagaType.WITHDRAW, SagaState.STARTED, 600L));
         // The bank move landed before the server stopped.
-        when(bankService.moveOnce(profileId, playerUuid, -600L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", -600L, "Player withdrawal", nodeId, "saga:" + sagaId.value()))
                 .thenReturn(new BankTransactionOutcome.DuplicateOperation(
                         UUID.randomUUID(), "already", "APPLIED", "SUCCESS", null));
         when(bankService.moveOnce(
-                        profileId, playerUuid, 600L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value()))
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        600L,
+                        "Withdrawal refund",
+                        nodeId,
+                        "saga-refund:" + sagaId.value()))
                 .thenReturn(successOutcome);
 
         coordinator.recoverIncompleteSagas(now, nodeId);
 
         verify(bankService)
-                .moveOnce(profileId, playerUuid, 600L, "Withdrawal refund", nodeId, "saga-refund:" + sagaId.value());
+                .moveOnce(
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        600L,
+                        "Withdrawal refund",
+                        nodeId,
+                        "saga-refund:" + sagaId.value());
         verify(walletPort, never()).deposit(any(), any(Long.class));
         assertThat(sagaPort.findSagaById(sagaId).orElseThrow().state()).isEqualTo(SagaState.ROLLED_BACK);
     }
@@ -292,7 +406,7 @@ class EconomySagaCoordinatorTest {
         coordinator.recoverIncompleteSagas(now, nodeId);
 
         verify(walletPort, never()).deposit(any(), any(Long.class));
-        verify(bankService, never()).moveOnce(any(), any(), any(Long.class), any(), any(), any());
+        verify(bankService, never()).moveOnce(any(), any(), any(String.class), any(Long.class), any(), any(), any());
         assertThat(sagaPort.findSagaById(sagaId).orElseThrow().state()).isEqualTo(SagaState.FAILED);
     }
 
@@ -302,7 +416,8 @@ class EconomySagaCoordinatorTest {
         SagaId deposit = SagaId.random();
         when(walletPort.withdraw(playerUuid, 1000L)).thenReturn(true);
         List<SagaState> whenBankAsked = new java.util.ArrayList<>();
-        when(bankService.moveOnce(profileId, playerUuid, 1000L, "Player deposit", nodeId, "saga:" + deposit.value()))
+        when(bankService.moveOnce(
+                        profileId, playerUuid, "VAULT", 1000L, "Player deposit", nodeId, "saga:" + deposit.value()))
                 .thenAnswer(ask -> {
                     whenBankAsked.add(
                             sagaPort.findSagaById(deposit).orElseThrow().state());
@@ -312,7 +427,13 @@ class EconomySagaCoordinatorTest {
 
         SagaId withdrawal = SagaId.random();
         when(bankService.moveOnce(
-                        profileId, playerUuid, -1000L, "Player withdrawal", nodeId, "saga:" + withdrawal.value()))
+                        profileId,
+                        playerUuid,
+                        "VAULT",
+                        -1000L,
+                        "Player withdrawal",
+                        nodeId,
+                        "saga:" + withdrawal.value()))
                 .thenReturn(successOutcome);
         List<SagaState> whenWalletAsked = new java.util.ArrayList<>();
         when(walletPort.deposit(playerUuid, 1000L)).thenAnswer(ask -> {

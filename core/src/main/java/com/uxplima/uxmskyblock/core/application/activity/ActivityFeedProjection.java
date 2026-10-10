@@ -32,6 +32,7 @@ public final class ActivityFeedProjection implements OutboxEventConsumer {
 
     private static final Pattern PLAYER = Pattern.compile("\"playerUuid\":\"([0-9a-fA-F-]{36})\"");
     private static final Pattern DELTA = Pattern.compile("\"deltaMinorUnits\":(-?\\d+)");
+    private static final Pattern CURRENCY = Pattern.compile("\"currency\":\"([A-Za-z0-9_-]+)\"");
     private static final Pattern REASON = Pattern.compile("\"reason\":\"((?:[^\"\\\\]|\\\\.)*)\"");
 
     private final ActivityFeedService feed;
@@ -70,14 +71,24 @@ public final class ActivityFeedProjection implements OutboxEventConsumer {
                 in ? "activity.bank_deposit" : "activity.bank_withdraw",
                 Map.of(
                         "player", playerNames.apply(playerUuid).orElse(playerUuid.toString()),
-                        "amount",
-                                BigDecimal.valueOf(Math.abs(minorUnits), 2)
-                                        .stripTrailingZeros()
-                                        .toPlainString(),
+                        "amount", amountOf(Math.abs(minorUnits), first(CURRENCY, event.payload())),
                         "reason",
                                 first(REASON, event.payload())
                                         .map(ActivityFeedProjection::unescaped)
                                         .orElse("")));
+    }
+
+    /**
+     * The amount as the feed writes it. The island's own money is kept in minor units and written as such; an
+     * operator currency is kept in whole units and written with its id, so fifty experience does not read as fifty
+     * coins.
+     */
+    private static String amountOf(long amount, Optional<String> currency) {
+        if (currency.isEmpty()
+                || com.uxplima.uxmskyblock.core.application.bank.BankCurrencies.isPrimary(currency.get())) {
+            return BigDecimal.valueOf(amount, 2).stripTrailingZeros().toPlainString();
+        }
+        return amount + " " + currency.get();
     }
 
     private static Optional<String> first(Pattern pattern, String payload) {

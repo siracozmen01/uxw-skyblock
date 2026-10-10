@@ -115,7 +115,10 @@ public final class IntegrationWiring implements AutoCloseable {
         this.messageProvider = this.messages.provider();
 
         this.economyBridge = SkyblockEconomyBridge.createDefault(
-                gameplay.bankService(), gameplay.scheduler(), persistence.economySagaPort());
+                gameplay.bankService(),
+                gameplay.scheduler(),
+                persistence.economySagaPort(),
+                config.bankConfig().currencies());
 
         this.bedrockDetector = LateBedrockDetector.forServer(plugin.getServer());
         this.bedrockScreen = LateBedrockScreen.forServer(plugin.getServer());

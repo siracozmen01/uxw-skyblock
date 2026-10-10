@@ -102,6 +102,17 @@ final class IslandCommandWiring {
         roleWindows.register();
         tree.windows().useRoles(roleWindows::openRoles);
         gameplay.membershipService().whenRolesChanged(roleWindows::rolesChanged);
+        // Each currency the bank keeps beside its money is a tile of the bank window, with a window of its own.
+        new com.uxplima.uxmskyblock.bukkit.menu.BankCurrencyList(
+                        integration.messages(),
+                        () -> integration
+                                .economyBridge()
+                                .wallets()
+                                .map(wallets -> wallets.currencies().stream()
+                                        .map(com.uxplima.uxmskyblock.bukkit.integration.economy.BankWallets.Kept::spec)
+                                        .toList())
+                                .orElse(java.util.List.of()))
+                .register(integration.menuEngine());
         // The homes and every leaderboard are windows, one tile each, rather than lines in chat.
         var homeList = new com.uxplima.uxmskyblock.bukkit.menu.HomeList(tree::typed);
         homeList.useMenuEngine(integration.menuEngine());

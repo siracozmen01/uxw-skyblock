@@ -56,6 +56,12 @@ public final class IslandBankService {
         return islandBankPort.findBankByIslandId(optIslandId.get()).map(IslandBank::primaryBalanceMinorUnits);
     }
 
+    /** The bank of the profile's island, everything it holds included, or nothing without an island or a bank. */
+    public Optional<IslandBank> findBank(ProfileId profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        return islandStoragePort.findIslandIdByProfileId(profileId).flatMap(islandBankPort::findBankByIslandId);
+    }
+
     public Optional<IslandId> findIslandIdByProfileId(ProfileId profileId) {
         Objects.requireNonNull(profileId, "profileId must not be null");
         return islandStoragePort.findIslandIdByProfileId(profileId);
@@ -129,7 +135,30 @@ public final class IslandBankService {
             String reason,
             ServerNodeId serverNodeId,
             String idempotencyKey) {
+        return moveOnce(
+                profileId,
+                playerUuid,
+                BankCurrencies.PRIMARY_MONEY,
+                deltaMinorUnits,
+                reason,
+                serverNodeId,
+                idempotencyKey);
+    }
+
+    /**
+     * The same, in {@code currency}: the island's own money under {@link BankCurrencies#PRIMARY_MONEY}, in minor
+     * units, or an operator currency under its id, in whole units.
+     */
+    public BankTransactionOutcome moveOnce(
+            ProfileId profileId,
+            PlayerUuid playerUuid,
+            String currency,
+            long deltaMinorUnits,
+            String reason,
+            ServerNodeId serverNodeId,
+            String idempotencyKey) {
         Objects.requireNonNull(profileId, "profileId must not be null");
+        Objects.requireNonNull(currency, "currency must not be null");
         Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
         Optional<IslandId> optIslandId = islandStoragePort.findIslandIdByProfileId(profileId);
         if (optIslandId.isEmpty()) {
@@ -142,6 +171,8 @@ public final class IslandBankService {
         return execute(
                 optIslandId.get(),
                 playerUuid,
+                BankCurrencies.columnOf(currency),
+                BankCurrencies.scaleOf(currency),
                 deltaMinorUnits,
                 reason,
                 serverNodeId,
@@ -169,6 +200,8 @@ public final class IslandBankService {
         return execute(
                 islandId,
                 playerUuid,
+                BankCurrencies.PRIMARY_COLUMN,
+                BankCurrencies.PRIMARY_SCALE,
                 amountMinorUnits,
                 reason,
                 serverNodeId,
@@ -179,12 +212,24 @@ public final class IslandBankService {
 
     private BankTransactionOutcome execute(
             IslandId islandId, PlayerUuid playerUuid, long deltaMinorUnits, String reason, ServerNodeId serverNodeId) {
-        return execute(islandId, playerUuid, deltaMinorUnits, reason, serverNodeId, null, null, "ISLAND_BANK");
+        return execute(
+                islandId,
+                playerUuid,
+                BankCurrencies.PRIMARY_COLUMN,
+                BankCurrencies.PRIMARY_SCALE,
+                deltaMinorUnits,
+                reason,
+                serverNodeId,
+                null,
+                null,
+                "ISLAND_BANK");
     }
 
     private BankTransactionOutcome execute(
             IslandId islandId,
             PlayerUuid playerUuid,
+            String column,
+            int scale,
             long deltaMinorUnits,
             String reason,
             ServerNodeId serverNodeId,
@@ -232,15 +277,19 @@ public final class IslandBankService {
                         "ISLAND_BANK_TRANSACTION",
                         islandId.value().toString(),
                         String.format(
-                                "{\"islandId\":\"%s\",\"playerUuid\":\"%s\",\"deltaMinorUnits\":%d,\"reason\":\"%s\"}",
-                                islandId.value(), playerUuid.value(), deltaMinorUnits, JsonText.escaped(reason)))
+                                "{\"islandId\":\"%s\",\"playerUuid\":\"%s\",\"deltaMinorUnits\":%d,\"currency\":\"%s\",\"reason\":\"%s\"}",
+                                islandId.value(),
+                                playerUuid.value(),
+                                deltaMinorUnits,
+                                column,
+                                JsonText.escaped(reason)))
                 : null;
 
         return islandBankPort.executeTransaction(
                 islandId,
                 playerUuid.value(),
-                "PRIMARY",
-                2,
+                column,
+                scale,
                 deltaMinorUnits,
                 reason,
                 serverNodeId.value(),
