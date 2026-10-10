@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.uxmlib.condition)
     implementation(libs.uxmlib.integration)
     implementation(libs.uxmlib.redis)
+    implementation(libs.uxmlib.schematic)
     implementation(libs.lettuce.core)
     implementation(libs.bstats.bukkit)
 

@@ -5,7 +5,7 @@ paper          = "26.2.build.112-stable"
 adventure      = "5.2.0"
 
 # UXPLIMA Toolkit
-uxmlib         = "0.157.0"                 # com.uxplima.uxmlib on repo.uxplima.com
+uxmlib         = "0.159.0"                 # com.uxplima.uxmlib on repo.uxplima.com
 
 # Usage statistics, shaded and relocated into the plugin jar
 bstats         = "3.0.2"
@@ -64,6 +64,7 @@ uxmlib-condition  = { module = "com.uxplima.uxmlib:uxmlib-condition",           
 uxmlib-integration = { module = "com.uxplima.uxmlib:uxmlib-integration",        version.ref = "uxmlib" }
 vault-api         = { module = "com.github.MilkBowl:VaultAPI",                          version.ref = "vault-api" }
 uxmlib-redis      = { module = "com.uxplima.uxmlib:uxmlib-redis",                version.ref = "uxmlib" }
+uxmlib-schematic  = { module = "com.uxplima.uxmlib:uxmlib-schematic",            version.ref = "uxmlib" }
 lettuce-core      = { module = "io.lettuce:lettuce-core",                                version.ref = "lettuce" }
 
 # Utilities & Infrastructure

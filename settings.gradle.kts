@@ -28,7 +28,8 @@ if (uxmLibDir != null) {
             listOf(
                 "uxmlib-bom", "uxmlib-common", "uxmlib-item", "uxmlib-gui",
                 "uxmlib-menu", "uxmlib-command", "uxmlib-storage", "uxmlib-hud",
-                "uxmlib-bedrock", "uxmlib-condition", "uxmlib-integration", "uxmlib-redis"
+                "uxmlib-bedrock", "uxmlib-condition", "uxmlib-integration", "uxmlib-redis",
+                "uxmlib-schematic"
             ).forEach { mod ->
                 substitute(module("com.github.UXPLIMA.uxm-lib:$mod")).using(project(":$mod"))
                 substitute(module("com.uxplima.uxmlib:$mod")).using(project(":$mod"))
