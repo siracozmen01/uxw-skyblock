@@ -17,8 +17,9 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalObserver;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.application.social.IslandSocialService;
 import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
@@ -36,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  * foot and by teleport, which is how most visitors come, and it is written once per arrival, never
  * on every step.
  */
-public final class IslandVisitRecorder implements Listener {
+public final class IslandVisitRecorder implements Listener, ArrivalObserver {
 
     private static final Logger LOGGER = Logger.getLogger(IslandVisitRecorder.class.getName());
 
@@ -72,9 +73,13 @@ public final class IslandVisitRecorder implements Listener {
         arrive(event.getPlayer(), to);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onTeleport(PlayerTeleportEvent event) {
-        arrive(event.getPlayer(), event.getTo());
+    /**
+     * A visit by teleport, home, warp, {@code /is visit} or a pearl. Folia announces none of them, so
+     * this follows the arrival watch rather than a teleport event.
+     */
+    @Override
+    public void arrived(Arrival arrival) {
+        arrive(arrival.player(), arrival.to());
     }
 
     @EventHandler

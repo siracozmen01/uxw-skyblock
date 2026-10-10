@@ -23,6 +23,7 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("core")) {
             pm.registerEvents(gameplayWiring.protectionListener(), plugin);
             pm.registerEvents(gameplayWiring.playerLifecycle(), plugin);
+            gameplayWiring.arrivalWatch().observe(gameplayWiring.playerLifecycle());
             // The island permissions the protection rules never asked for. They belong with the
             // protection listener, not behind a switch for something else.
             pm.registerEvents(gameplayWiring.actionPermissionListener(), plugin);
@@ -33,6 +34,9 @@ public final class BootstrapEventRegistrar {
         }
         if (gameplayWiring.chunkBlockWiring().enabled()) {
             pm.registerEvents(gameplayWiring.chunkBlockWiring().listener(), plugin);
+            gameplayWiring
+                    .arrivalWatch()
+                    .admit(gameplayWiring.chunkBlockWiring().listener());
         }
         if (gameplayWiring.boxedWiring().enabled()) {
             pm.registerEvents(gameplayWiring.boxedWiring().listener(), plugin);
@@ -80,6 +84,7 @@ public final class BootstrapEventRegistrar {
         }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("social")) {
             pm.registerEvents(gameplayWiring.visitRecorder(), plugin);
+            gameplayWiring.arrivalWatch().observe(gameplayWiring.visitRecorder());
         }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("missions")
                 && gameplayWiring.missionListener() != null) {
@@ -88,6 +93,8 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("boundary")
                 && gameplayWiring.boundaryListener() != null) {
             pm.registerEvents(gameplayWiring.boundaryListener(), plugin);
+            gameplayWiring.arrivalWatch().admit(gameplayWiring.boundaryListener());
+            gameplayWiring.arrivalWatch().observe(gameplayWiring.boundaryListener());
         }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("worth") && gameplayWiring.worthListener() != null) {
             pm.registerEvents(gameplayWiring.worthListener(), plugin);
@@ -102,6 +109,7 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("anti-abuse")
                 && gameplayWiring.antiAbuseListener() != null) {
             pm.registerEvents(gameplayWiring.antiAbuseListener(), plugin);
+            gameplayWiring.arrivalWatch().admit(gameplayWiring.antiAbuseListener());
         }
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("boosters")
                 && gameplayWiring.boosterListener() != null) {
@@ -110,6 +118,7 @@ public final class BootstrapEventRegistrar {
         if (featureModuleWiring.moduleRegistry().isModuleEnabled("bank-upkeep")
                 && gameplayWiring.bankruptcyListener() != null) {
             pm.registerEvents(gameplayWiring.bankruptcyListener(), plugin);
+            gameplayWiring.arrivalWatch().admit(gameplayWiring.bankruptcyListener());
         }
         if (configWiring.protectionConfig().obsidianRecoveryEnabled()
                 && configWiring.settingsConfig().obsidianToLava()) {
@@ -125,6 +134,7 @@ public final class BootstrapEventRegistrar {
         }
         if (configWiring.protectionConfig().kineticWardEnabled()) {
             pm.registerEvents(gameplayWiring.kineticWardListener(), plugin);
+            gameplayWiring.arrivalWatch().observe(gameplayWiring.kineticWardListener());
         }
         if (configWiring.settingsConfig().disableRedstoneOffline()) {
             pm.registerEvents(gameplayWiring.redstoneOptimizationListener(), plugin);
@@ -132,5 +142,8 @@ public final class BootstrapEventRegistrar {
         if (!configWiring.worldConfig().suppressedStructures().isEmpty()) {
             pm.registerEvents(gameplayWiring.structureSuppressionListener(), plugin);
         }
+        // Every rule about arrivals is in; the watch hears teleports on Paper and looks for them on Folia.
+        pm.registerEvents(gameplayWiring.arrivalWatch(), plugin);
+        gameplayWiring.startArrivals();
     }
 }

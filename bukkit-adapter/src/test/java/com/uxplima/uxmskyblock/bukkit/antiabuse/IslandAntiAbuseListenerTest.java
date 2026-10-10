@@ -23,6 +23,7 @@ import org.bukkit.inventory.ItemStack;
 
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
+import com.uxplima.uxmskyblock.bukkit.test.Arrivals;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.antiabuse.IslandAntiAbuseService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -132,7 +133,7 @@ class IslandAntiAbuseListenerTest extends MockBukkitHarness {
         PlayerTeleportEvent event = new PlayerTeleportEvent(
                 visitorPlayer, visitorPlayer.getLocation(), target, PlayerTeleportEvent.TeleportCause.COMMAND);
 
-        listener.onPlayerTeleport(event);
+        Arrivals.teleport(listener, event);
 
         assertThat(event.isCancelled()).isTrue();
     }
@@ -146,7 +147,7 @@ class IslandAntiAbuseListenerTest extends MockBukkitHarness {
         PlayerTeleportEvent event = new PlayerTeleportEvent(
                 ownerPlayer, ownerPlayer.getLocation(), target, PlayerTeleportEvent.TeleportCause.COMMAND);
 
-        listener.onPlayerTeleport(event);
+        Arrivals.teleport(listener, event);
 
         assertThat(event.isCancelled()).isFalse();
     }
@@ -164,7 +165,7 @@ class IslandAntiAbuseListenerTest extends MockBukkitHarness {
         PlayerTeleportEvent event = new PlayerTeleportEvent(
                 visitorPlayer, visitorPlayer.getLocation(), target, PlayerTeleportEvent.TeleportCause.COMMAND);
 
-        listener.onPlayerTeleport(event);
+        Arrivals.teleport(listener, event);
 
         assertThat(event.isCancelled()).isFalse();
     }

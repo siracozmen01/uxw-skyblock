@@ -13,10 +13,11 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalGate;
 import com.uxplima.uxmskyblock.bukkit.config.AntiAbuseConfiguration;
 import com.uxplima.uxmskyblock.bukkit.i18n.DurationText;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
@@ -33,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * 1. Cancels item dropping within quarantined island bounds.
  * 2. Locks visitor entry to quarantined islands until the quarantine window expires.
  */
-public final class IslandAntiAbuseListener implements Listener {
+public final class IslandAntiAbuseListener implements Listener, ArrivalGate {
 
     private final IslandAntiAbuseService antiAbuseService;
     private final AntiAbuseConfiguration configuration;
@@ -128,33 +129,33 @@ public final class IslandAntiAbuseListener implements Listener {
         });
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        Player player = event.getPlayer();
-        if (hasBypass(player)) {
-            return;
+    /**
+     * A visitor arriving on a quarantined island is turned away, however they came. Folia announces no
+     * teleport, so this answers the arrival watch rather than a teleport event.
+     */
+    @Override
+    public boolean refuses(Arrival arrival) {
+        Player player = arrival.player();
+        Location to = arrival.to();
+        if (hasBypass(player) || to.getWorld() == null) {
+            return false;
         }
-
-        Location to = event.getTo();
-        if (to == null || to.getWorld() == null) {
-            return;
+        Optional<Island> island = findIslandAt(to);
+        if (island.isEmpty()) {
+            return false;
         }
-
-        findIslandAt(to).ifPresent(island -> {
-            Instant now = antiAbuseService.clock().instant();
-            if (antiAbuseService.isIslandQuarantined(island.id(), now)) {
-                if (!isMemberOrOwner(island, player.getUniqueId())) {
-                    event.setCancelled(true);
-                    Duration remaining = antiAbuseService
-                            .getQuarantineRemaining(island.id(), now)
-                            .orElse(Duration.ZERO);
-                    messages.send(
-                            player,
-                            "protection.quarantine_no_visitors",
-                            Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining)));
-                }
-            }
-        });
+        Instant now = antiAbuseService.clock().instant();
+        if (!antiAbuseService.isIslandQuarantined(island.get().id(), now)
+                || isMemberOrOwner(island.get(), player.getUniqueId())) {
+            return false;
+        }
+        Duration remaining =
+                antiAbuseService.getQuarantineRemaining(island.get().id(), now).orElse(Duration.ZERO);
+        messages.send(
+                player,
+                "protection.quarantine_no_visitors",
+                Placeholder.unparsed("remaining", DurationText.of(messages, player, remaining)));
+        return true;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

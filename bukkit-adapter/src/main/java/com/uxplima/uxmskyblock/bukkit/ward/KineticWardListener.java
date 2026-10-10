@@ -9,12 +9,12 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Monster;
 import org.bukkit.entity.Tameable;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.util.Vector;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalObserver;
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
 import com.uxplima.uxmskyblock.core.application.ward.KineticWardService;
 import com.uxplima.uxmskyblock.core.application.ward.KineticWardService.TargetEntity;
@@ -26,7 +26,7 @@ import com.uxplima.uxmskyblock.core.domain.ward.KineticRepulsionResult.RepulsedE
  * Intercepts teleport arrivals and emits a non-destructive 5-block repulsive wave pushing hostile entities
  * away from the arrival coordinates with particle and sound cues, eliminating despawn anti-patterns.
  */
-public final class KineticWardListener implements Listener {
+public final class KineticWardListener implements Listener, ArrivalObserver {
 
     private final ProtectionConfiguration config;
     private final KineticWardService wardService;
@@ -63,18 +63,21 @@ public final class KineticWardListener implements Listener {
         this.wardService = Objects.requireNonNull(wardService, "wardService must not be null");
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        if (!config.kineticWardEnabled()) {
+    /**
+     * The wave where a player lands from a teleport or a pearl. Folia announces neither, so this follows
+     * the arrival watch rather than a teleport event. A login, a respawn and a ride are no landing.
+     */
+    @Override
+    public void arrived(Arrival arrival) {
+        if (!config.kineticWardEnabled()
+                || (arrival.cause() != ArrivalCause.TELEPORT && arrival.cause() != ArrivalCause.PEARL)) {
             return;
         }
-
-        Location dest = event.getTo();
-        if (dest == null || dest.getWorld() == null) {
+        Location dest = arrival.to();
+        if (dest.getWorld() == null) {
             return;
         }
-
-        triggerKineticWave(dest, event.getPlayer());
+        triggerKineticWave(dest, arrival.player());
     }
 
     /** The wave with nobody to show it to, for a caller that only has a place. */

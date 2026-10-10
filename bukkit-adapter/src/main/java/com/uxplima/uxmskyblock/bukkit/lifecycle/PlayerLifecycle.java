@@ -18,6 +18,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalObserver;
 import com.uxplima.uxmskyblock.core.application.lifecycle.LifecycleService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -33,7 +36,7 @@ import com.uxplima.uxmskyblock.core.domain.lifecycle.LifecycleEvent;
  * this server, and otherwise when their next session is made on any. A death is answered in the death
  * event itself, and a death that sends to spawn does so when the player respawns.
  */
-public final class PlayerLifecycle implements Listener {
+public final class PlayerLifecycle implements Listener, ArrivalObserver {
 
     private static final Logger LOGGER = Logger.getLogger(PlayerLifecycle.class.getName());
 
@@ -124,6 +127,19 @@ public final class PlayerLifecycle implements Listener {
     public void onRespawn(PlayerRespawnEvent event) {
         if (respawnAtSpawn.remove(event.getPlayer().getUniqueId())) {
             event.setRespawnLocation(spawn());
+        }
+    }
+
+    /**
+     * Folia fires no respawn event, so a death owed a trip to spawn left the player wherever they came
+     * back. The arrival watch sees the respawn, and they are sent on from there. On a server that fired
+     * the event the trip is already paid and nothing is left to send.
+     */
+    @Override
+    public void arrived(Arrival arrival) {
+        if (arrival.cause() == ArrivalCause.RESPAWN
+                && respawnAtSpawn.remove(arrival.player().getUniqueId())) {
+            var unused = arrival.player().teleportAsync(spawn());
         }
     }
 

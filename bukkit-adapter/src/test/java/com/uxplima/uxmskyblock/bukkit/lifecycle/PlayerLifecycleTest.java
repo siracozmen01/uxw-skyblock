@@ -17,10 +17,13 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.lifecycle.LifecycleOwedEffectsPort;
 import com.uxplima.uxmskyblock.core.application.lifecycle.LifecycleService;
@@ -61,7 +64,7 @@ class PlayerLifecycleTest extends MockBukkitHarness {
     @BeforeEach
     void setUpLifecycle() {
         server.addSimpleWorld("world");
-        player = createPlayer("Wanderer");
+        player = createMovingPlayer("Wanderer");
         profile = new ProfileId(UUID.randomUUID());
         LifecyclePolicy policy = new LifecyclePolicy(List.of(
                 new LifecycleRule(
@@ -74,6 +77,8 @@ class PlayerLifecycleTest extends MockBukkitHarness {
                         GameModeType.ONEBLOCK,
                         null,
                         Map.of(LifecycleEffect.KEEP_INVENTORY, true, LifecycleEffect.KEEP_EXPERIENCE, true)),
+                new LifecycleRule(
+                        LifecycleEvent.DEATH, GameModeType.SKYGRID, null, Map.of(LifecycleEffect.SEND_TO_SPAWN, true)),
                 new LifecycleRule(
                         LifecycleEvent.DEATH,
                         null,
@@ -174,6 +179,52 @@ class PlayerLifecycleTest extends MockBukkitHarness {
 
         verify(death, never()).setKeepInventory(true);
         verify(death, never()).setKeepLevel(true);
+    }
+
+    @Test
+    @DisplayName("A death owed a trip to spawn sends the player there when the respawn shows only as an arrival")
+    void aRespawnWithoutAnEventStillGoesToSpawn() {
+        modes.put(profile, GameModeType.SKYGRID);
+        lifecycle.onDeath(death());
+        Location fell = new Location(player.getWorld(), 400, 64, 400);
+        Location cameBack = new Location(player.getWorld(), 900, 70, 900);
+        player.setLocation(cameBack);
+
+        lifecycle.arrived(new Arrival(player, fell, cameBack, ArrivalCause.RESPAWN, false));
+
+        Location spawn = player.getWorld().getSpawnLocation();
+        assertThat(player.getLocation().getBlockX()).isEqualTo(spawn.getBlockX());
+        assertThat(player.getLocation().getBlockZ()).isEqualTo(spawn.getBlockZ());
+    }
+
+    @Test
+    @DisplayName("A teleport after such a death is no respawn, and moves nobody to spawn")
+    void aTeleportIsNoRespawn() {
+        modes.put(profile, GameModeType.SKYGRID);
+        lifecycle.onDeath(death());
+        Location there = new Location(player.getWorld(), 900, 70, 900);
+        player.setLocation(there);
+
+        lifecycle.arrived(new Arrival(player, null, there, ArrivalCause.TELEPORT, false));
+
+        assertThat(player.getLocation().getBlockX()).isEqualTo(900);
+    }
+
+    @Test
+    @DisplayName("Where the respawn event already sent the player, the arrival after it sends them nowhere again")
+    void aRespawnEventPaysOnce() {
+        modes.put(profile, GameModeType.SKYGRID);
+        lifecycle.onDeath(death());
+        org.bukkit.event.player.PlayerRespawnEvent respawn = mock(org.bukkit.event.player.PlayerRespawnEvent.class);
+        when(respawn.getPlayer()).thenReturn(player);
+        lifecycle.onRespawn(respawn);
+        verify(respawn).setRespawnLocation(any(Location.class));
+        Location there = new Location(player.getWorld(), 900, 70, 900);
+        player.setLocation(there);
+
+        lifecycle.arrived(new Arrival(player, null, there, ArrivalCause.RESPAWN, false));
+
+        assertThat(player.getLocation().getBlockX()).isEqualTo(900);
     }
 
     private PlayerDeathEvent death() {

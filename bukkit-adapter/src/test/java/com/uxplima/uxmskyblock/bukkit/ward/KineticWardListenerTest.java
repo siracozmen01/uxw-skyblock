@@ -8,6 +8,7 @@ import org.bukkit.entity.Zombie;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import com.uxplima.uxmskyblock.bukkit.config.ProtectionConfiguration;
+import com.uxplima.uxmskyblock.bukkit.test.Arrivals;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.ward.KineticWardService;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +45,7 @@ class KineticWardListenerTest extends MockBukkitHarness {
         PlayerTeleportEvent event = new PlayerTeleportEvent(
                 player, new Location(world, 100, 64, 100), destination, PlayerTeleportEvent.TeleportCause.COMMAND);
 
-        listener.onPlayerTeleport(event);
+        Arrivals.landed(listener, event);
 
         // Repulsion pushes zombie outwards in +X direction and lifts upwards
         assertThat(zombie.getVelocity().getX()).isGreaterThan(0.0);
@@ -73,7 +74,7 @@ class KineticWardListenerTest extends MockBukkitHarness {
         PlayerTeleportEvent event = new PlayerTeleportEvent(
                 player, new Location(world, 100, 64, 100), destination, PlayerTeleportEvent.TeleportCause.COMMAND);
 
-        listener.onPlayerTeleport(event);
+        Arrivals.landed(listener, event);
 
         // Velocity unchanged (zero x and z)
         assertThat(zombie.getVelocity().getX()).isZero();

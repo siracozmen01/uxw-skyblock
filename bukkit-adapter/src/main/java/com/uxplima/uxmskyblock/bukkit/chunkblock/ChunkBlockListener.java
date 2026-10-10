@@ -22,10 +22,12 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalGate;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.chunkblock.ChunkBlockService;
@@ -43,7 +45,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
  * <p>Every answer comes from memory, the island at the spot and its territory, so no step waits on the
  * database. Nothing built in a closed chunk is touched: it waits there for the chunk to open again.
  */
-public final class ChunkBlockListener implements Listener {
+public final class ChunkBlockListener implements Listener, ArrivalGate {
 
     /** How often one player is told a chunk is closed, so walking along the edge is not a flood. */
     private static final long TOLD_EVERY_MILLIS = 2_000;
@@ -112,9 +114,24 @@ public final class ChunkBlockListener implements Listener {
         refuseAt(event.getPlayer(), to, event);
     }
 
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onTeleport(PlayerTeleportEvent event) {
-        refuseAt(event.getPlayer(), event.getTo(), event);
+    /**
+     * Nobody arrives in a closed chunk, however they came. Folia announces no teleport, so this answers
+     * the arrival watch rather than a teleport event. A login or a respawn in a closed chunk has no
+     * earlier place to go back to, so it is put out to the island's spawn instead.
+     */
+    @Override
+    public boolean refuses(Arrival arrival) {
+        Player player = arrival.player();
+        Location to = arrival.to();
+        boolean nowhereToGoBack =
+                !arrival.before() && (arrival.cause() == ArrivalCause.JOIN || arrival.cause() == ArrivalCause.RESPAWN);
+        if (nowhereToGoBack) {
+            if (standsInClosed(player, to)) {
+                putOut(player, to);
+            }
+            return false;
+        }
+        return refuses(player, to);
     }
 
     /**
@@ -190,16 +207,22 @@ public final class ChunkBlockListener implements Listener {
     }
 
     private void refuseAt(Player player, Location location, Cancellable event) {
+        if (refuses(player, location)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Whether {@code location} is in a closed chunk this player may not enter, telling them so if it is. */
+    private boolean refuses(Player player, Location location) {
         Optional<Island> island = islands.findIslandAt(location);
         if (island.isEmpty()) {
-            return;
+            return false;
         }
         ChunkPos chunk = ChunkPos.ofBlock(location.getBlockX(), location.getBlockZ());
         boolean open = service.isOpen(island.get().id(), chunk).orElse(true);
         if (open || (!bypassPermission.isEmpty() && player.hasPermission(bypassPermission))) {
-            return;
+            return false;
         }
-        event.setCancelled(true);
         long now = System.currentTimeMillis();
         Long told = lastTold.get(player.getUniqueId());
         if (told == null || now - told >= TOLD_EVERY_MILLIS) {
@@ -209,5 +232,6 @@ public final class ChunkBlockListener implements Listener {
                     .orElse(0L);
             messages.send(player, "chunkblock.closed", Placeholder.unparsed("island_level", Long.toString(next)));
         }
+        return true;
     }
 }

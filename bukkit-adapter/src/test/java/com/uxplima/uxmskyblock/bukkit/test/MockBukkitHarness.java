@@ -42,6 +42,35 @@ public abstract class MockBukkitHarness {
     }
 
     /**
+     * A player whose asynchronous teleport lands at once and announces nothing, as on Folia.
+     * MockBukkit's own player answers {@code teleportAsync} as unimplemented.
+     */
+    protected PlayerMock createMovingPlayer(String name) {
+        PlayerMock player = new MovingPlayer(server, name);
+        server.addPlayer(player);
+        return player;
+    }
+
+    private static final class MovingPlayer extends PlayerMock {
+
+        MovingPlayer(org.mockbukkit.mockbukkit.ServerMock server, String name) {
+            super(
+                    server,
+                    name,
+                    java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        }
+
+        @Override
+        public java.util.concurrent.CompletableFuture<Boolean> teleportAsync(
+                org.bukkit.Location location,
+                org.bukkit.event.player.PlayerTeleportEvent.TeleportCause cause,
+                io.papermc.paper.entity.TeleportFlag... flags) {
+            setLocation(location);
+            return java.util.concurrent.CompletableFuture.completedFuture(true);
+        }
+    }
+
+    /**
      * A world that can say which generator made it.
      *
      * <p>MockBukkit's own world answers that question as unimplemented, and the plugin asks it at

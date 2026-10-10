@@ -18,13 +18,17 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalGate;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalObserver;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryPoint;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.identity.IslandId;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
 import com.uxplima.uxmskyblock.core.domain.island.Island;
 import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
@@ -33,7 +37,7 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandBounds;
  * Enforces boundary physics shielding against fluid spillover, piston pushing across borders,
  * ender pearl boundary breaches, and manages virtual WorldBorder synchronization.
  */
-public final class IslandBoundaryListener implements Listener {
+public final class IslandBoundaryListener implements Listener, ArrivalGate, ArrivalObserver {
 
     private static final Particle.DustOptions PERIMETER_DUST =
             new Particle.DustOptions(Color.fromRGB(0, 220, 255), 1.0f);
@@ -42,6 +46,13 @@ public final class IslandBoundaryListener implements Listener {
     private final IslandProtectionListener protectionListener;
     private final Messages messages;
     private volatile boolean stopBorderCrossing = false;
+    /**
+     * The island and world whose border each player was last shown, so a ride or a step inside it sends
+     * nothing. The world counts because a player's own border is gone once they change worlds.
+     */
+    private final java.util.Map<java.util.UUID, Shown> bordered = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record Shown(IslandId island, java.util.UUID world) {}
 
     public IslandBoundaryListener(
             IslandBoundaryService boundaryService, IslandProtectionListener protectionListener, Messages messages) {
@@ -127,21 +138,45 @@ public final class IslandBoundaryListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        if (event.getCause() != PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
-            return;
+    /**
+     * A pearl thrown from an island does not carry its thrower off it. Folia announces no pearl
+     * teleport, so this answers the arrival watch, which sends the thrower back where it cannot stop
+     * the landing.
+     */
+    @Override
+    public boolean refuses(Arrival arrival) {
+        Location from = arrival.from();
+        if (arrival.cause() != ArrivalCause.PEARL || from == null) {
+            return false;
         }
-        Location to = event.getTo();
-        if (to == null) {
-            return;
+        if (protectionListener.findIslandAt(from).isPresent()
+                && protectionListener.findIslandAt(arrival.to()).isEmpty()) {
+            messages.send(arrival.player(), "navigation.pearl_blocked");
+            return true;
         }
-        Optional<Island> fromIsland = protectionListener.findIslandAt(event.getFrom());
-        Optional<Island> toIsland = protectionListener.findIslandAt(to);
+        return false;
+    }
 
-        if (fromIsland.isPresent() && toIsland.isEmpty()) {
-            event.setCancelled(true);
-            messages.send(event.getPlayer(), "navigation.pearl_blocked");
+    /**
+     * The border of the island a player arrives on is drawn for them, and taken away when they arrive
+     * where no island is. Nearly every arrival on an island is a teleport, home, a visit or a warp, and
+     * the border used to follow only a walk across the edge, so it was almost never shown.
+     */
+    @Override
+    public void arrived(Arrival arrival) {
+        showBorder(arrival.player(), arrival.to(), protectionListener.findIslandAt(arrival.to()));
+    }
+
+    private void showBorder(Player player, Location at, Optional<Island> island) {
+        java.util.UUID id = player.getUniqueId();
+        PlayerUuid playerUuid = new PlayerUuid(id);
+        if (island.isPresent() && at.getWorld() != null) {
+            Shown shown = new Shown(island.get().id(), at.getWorld().getUID());
+            if (!shown.equals(bordered.put(id, shown))) {
+                boundaryService.handlePlayerEnterIsland(playerUuid, island.get().bounds());
+            }
+        } else if (bordered.remove(id) != null) {
+            boundaryService.handlePlayerExitIsland(playerUuid);
         }
     }
 
@@ -155,27 +190,22 @@ public final class IslandBoundaryListener implements Listener {
 
         Optional<Island> fromIsland = protectionListener.findIslandAt(from);
         Optional<Island> toIsland = protectionListener.findIslandAt(to);
-        PlayerUuid playerUuid = new PlayerUuid(event.getPlayer().getUniqueId());
 
-        if (fromIsland.isEmpty() && toIsland.isPresent()) {
-            boundaryService.handlePlayerEnterIsland(playerUuid, toIsland.get().bounds());
-        } else if (fromIsland.isPresent() && toIsland.isEmpty()) {
-            if (stopBorderCrossing && !event.getPlayer().hasPermission("uxmskyblock.admin.bypass")) {
-                event.setCancelled(true);
-                messages.send(event.getPlayer(), "navigation.void_blocked");
-                return;
-            }
-            boundaryService.handlePlayerExitIsland(playerUuid);
-        } else if (fromIsland.isPresent()
-                && toIsland.isPresent()
-                && !fromIsland.get().id().equals(toIsland.get().id())) {
-            boundaryService.handlePlayerEnterIsland(playerUuid, toIsland.get().bounds());
+        if (fromIsland.isPresent()
+                && toIsland.isEmpty()
+                && stopBorderCrossing
+                && !event.getPlayer().hasPermission("uxmskyblock.admin.bypass")) {
+            event.setCancelled(true);
+            messages.send(event.getPlayer(), "navigation.void_blocked");
+            return;
         }
+        showBorder(event.getPlayer(), to, toIsland);
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         PlayerUuid uuid = new PlayerUuid(event.getPlayer().getUniqueId());
+        bordered.remove(event.getPlayer().getUniqueId());
         boundaryService.disablePerimeter(uuid);
     }
 

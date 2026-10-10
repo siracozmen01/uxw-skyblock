@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 
 import com.uxplima.uxmlib.storage.migration.MigrationRunner;
 import com.uxplima.uxmlib.storage.sql.Database;
+import com.uxplima.uxmskyblock.bukkit.test.Arrivals;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
@@ -135,7 +136,8 @@ class AVisitorWhoStaysCanRateTest extends MockBukkitHarness {
     }
 
     private void arriveByTeleport(PlayerMock player) {
-        recorder.onTeleport(
+        Arrivals.landed(
+                recorder,
                 new PlayerTeleportEvent(player, new Location(world, 500, 64, 500), new Location(world, 1, 64, 1)));
     }
 

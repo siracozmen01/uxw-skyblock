@@ -29,6 +29,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import com.uxplima.uxmskyblock.bukkit.test.Arrivals;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.bank.IslandBankruptcyService;
 import com.uxplima.uxmskyblock.core.application.island.IslandStoragePort;
@@ -162,12 +163,12 @@ class IslandBankruptcyListenerTest extends MockBukkitHarness {
 
         // Visitor teleport
         PlayerTeleportEvent visitorTp = new PlayerTeleportEvent(visitorPlayer, new Location(world, 200, 64, 200), dest);
-        listener.onPlayerTeleport(visitorTp);
+        Arrivals.teleport(listener, visitorTp);
         assertThat(visitorTp.isCancelled()).isTrue();
 
         // Member teleport
         PlayerTeleportEvent memberTp = new PlayerTeleportEvent(ownerPlayer, new Location(world, 200, 64, 200), dest);
-        listener.onPlayerTeleport(memberTp);
+        Arrivals.teleport(listener, memberTp);
         assertThat(memberTp.isCancelled()).isFalse();
     }
 

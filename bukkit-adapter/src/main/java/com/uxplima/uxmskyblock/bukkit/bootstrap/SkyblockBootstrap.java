@@ -367,6 +367,7 @@ public final class SkyblockBootstrap implements AutoCloseable {
             this.restServer = null;
         }
         featureModuleWiring.close();
+        gameplayWiring.stopArrivals();
         gameplayWiring.missionService().flushDirtyProgress();
         gameplayWiring.oneBlockWiring().close();
         gameplayWiring.acidIslandWiring().close();

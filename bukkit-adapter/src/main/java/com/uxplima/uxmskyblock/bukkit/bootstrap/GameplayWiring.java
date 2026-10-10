@@ -119,6 +119,8 @@ public final class GameplayWiring {
     private final TradeWiring tradeWiring;
     private final TradeWindsWiring tradeWindsWiring;
     private final com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle;
+    private final com.uxplima.uxmskyblock.bukkit.arrival.ArrivalWatch arrivalWatch;
+    private @Nullable AutoCloseable arrivalRounds;
     private final IslandBorderService borderService;
     private final IslandMembershipService membershipService;
     private final EconomicWiring economicWiring;
@@ -243,6 +245,11 @@ public final class GameplayWiring {
                 scheduler,
                 authority.sessionCoordinator()::activeProfile);
         authority.sessionCoordinator().whenSessionActive(this.playerLifecycle::onSessionActive);
+        // Folia announces no teleport and no respawn; every rule about where a player arrives listens here.
+        this.arrivalWatch = new com.uxplima.uxmskyblock.bukkit.arrival.ArrivalWatch(
+                scheduler,
+                () -> org.bukkit.Bukkit.getWorlds().getFirst().getSpawnLocation(),
+                java.time.Clock.systemUTC());
 
         this.socialWiring = new SocialWiring(
                 config,
@@ -403,6 +410,31 @@ public final class GameplayWiring {
     }
 
     /** What carries out the operator's lifecycle rules on players. */
+    public com.uxplima.uxmskyblock.bukkit.arrival.ArrivalWatch arrivalWatch() {
+        return arrivalWatch;
+    }
+
+    /** Starts looking at where players are. Called once every rule is in. */
+    public void startArrivals() {
+        if (arrivalRounds == null) {
+            arrivalRounds = arrivalWatch.start();
+        }
+    }
+
+    /** Stops looking at where players are. */
+    public void stopArrivals() {
+        AutoCloseable rounds = arrivalRounds;
+        arrivalRounds = null;
+        if (rounds != null) {
+            try {
+                rounds.close();
+            } catch (Exception e) {
+                java.util.logging.Logger.getLogger(GameplayWiring.class.getName())
+                        .log(java.util.logging.Level.WARNING, "The arrival watch did not stop cleanly", e);
+            }
+        }
+    }
+
     public com.uxplima.uxmskyblock.bukkit.lifecycle.PlayerLifecycle playerLifecycle() {
         return playerLifecycle;
     }

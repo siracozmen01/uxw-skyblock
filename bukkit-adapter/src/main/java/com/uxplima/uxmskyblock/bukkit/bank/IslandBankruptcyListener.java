@@ -18,10 +18,11 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.SpawnerSpawnEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
+import com.uxplima.uxmskyblock.bukkit.arrival.Arrival;
+import com.uxplima.uxmskyblock.bukkit.arrival.ArrivalGate;
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
 import com.uxplima.uxmskyblock.bukkit.session.PlayerSessionCoordinator;
@@ -45,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>Warns members upon login of pending grace expiration or active lockout asynchronously.</li>
  * </ul>
  */
-public final class IslandBankruptcyListener implements Listener {
+public final class IslandBankruptcyListener implements Listener, ArrivalGate {
 
     private final IslandBankruptcyService bankruptcyService;
     private final Function<Location, Optional<Island>> islandLookup;
@@ -210,24 +211,25 @@ public final class IslandBankruptcyListener implements Listener {
         });
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        Location to = event.getTo();
-        if (to == null || to.getWorld() == null) {
-            return;
+    /**
+     * A visitor arriving on a bankrupt island is turned away, however they came. Folia announces no
+     * teleport, so this answers the arrival watch rather than a teleport event.
+     */
+    @Override
+    public boolean refuses(Arrival arrival) {
+        Location to = arrival.to();
+        Player player = arrival.player();
+        if (to.getWorld() == null || hasBypassPermission(player)) {
+            return false;
         }
-
-        Player player = event.getPlayer();
-        if (hasBypassPermission(player)) {
-            return;
+        Optional<Island> island = islandLookup.apply(to);
+        if (island.isPresent()
+                && bankruptcyService.isIslandLocked(island.get().id(), Instant.now(clock))
+                && !isMember(island.get(), player)) {
+            player.sendMessage(messages.render(player, "bank.locked_visitors"));
+            return true;
         }
-
-        islandLookup.apply(to).ifPresent(island -> {
-            if (bankruptcyService.isIslandLocked(island.id(), Instant.now(clock)) && !isMember(island, player)) {
-                event.setCancelled(true);
-                player.sendMessage(messages.render(player, "bank.locked_visitors"));
-            }
-        });
+        return false;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

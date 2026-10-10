@@ -21,6 +21,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 
 import com.uxplima.uxmskyblock.bukkit.i18n.Messages;
 import com.uxplima.uxmskyblock.bukkit.listener.IslandProtectionListener;
+import com.uxplima.uxmskyblock.bukkit.test.Arrivals;
 import com.uxplima.uxmskyblock.bukkit.test.MockBukkitHarness;
 import com.uxplima.uxmskyblock.core.application.boundary.IslandBoundaryService;
 import com.uxplima.uxmskyblock.core.application.boundary.WorldBorderPacketPort;
@@ -125,7 +126,7 @@ class IslandBoundaryListenerTest extends MockBukkitHarness {
 
         PlayerTeleportEvent event =
                 new PlayerTeleportEvent(player, from, toOutside, PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
-        boundaryListener.onPlayerTeleport(event);
+        Arrivals.teleport(boundaryListener, event);
 
         assertThat(event.isCancelled()).isTrue();
     }
@@ -146,6 +147,83 @@ class IslandBoundaryListenerTest extends MockBukkitHarness {
         boundaryListener.onPlayerMove(exitEvent);
 
         verify(worldBorderPort).resetWorldBorder(eq(uuid));
+    }
+
+    @Test
+    @DisplayName("A teleport onto an island draws its border, as nearly every arrival on one is a teleport")
+    void aTeleportOntoAnIslandDrawsItsBorder() {
+        Location inside = new Location(world, 0, 101, 0);
+
+        boundaryListener.arrived(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                player,
+                new Location(world, 500, 64, 500),
+                inside,
+                com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.TELEPORT,
+                false));
+
+        verify(worldBorderPort)
+                .sendWorldBorder(eq(new PlayerUuid(player.getUniqueId())), eq(0), eq(0), eq(10.0), eq(0.0), eq(0L));
+    }
+
+    @Test
+    @DisplayName("A login on an island draws its border, and a ride inside it draws it no second time")
+    void aLoginDrawsTheBorderOnce() {
+        Location inside = new Location(world, 0, 101, 0);
+        PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
+
+        boundaryListener.arrived(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                player, null, inside, com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.JOIN, false));
+        boundaryListener.arrived(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                player,
+                inside,
+                new Location(world, 4, 101, 4),
+                com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.VEHICLE,
+                false));
+
+        verify(worldBorderPort, org.mockito.Mockito.times(1))
+                .sendWorldBorder(eq(uuid), eq(0), eq(0), eq(10.0), eq(0.0), eq(0L));
+    }
+
+    @Test
+    @DisplayName("An arrival where no island is takes the border away, and coming back draws it again")
+    void theBorderFollowsTheWorld() {
+        Location inside = new Location(world, 0, 101, 0);
+        PlayerUuid uuid = new PlayerUuid(player.getUniqueId());
+        boundaryListener.arrived(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                player, null, inside, com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.TELEPORT, false));
+
+        boundaryListener.arrived(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                player,
+                inside,
+                new Location(world, 900, 64, 900),
+                com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.TELEPORT,
+                false));
+        verify(worldBorderPort).resetWorldBorder(eq(uuid));
+
+        boundaryListener.arrived(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                player, null, inside, com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.TELEPORT, false));
+        verify(worldBorderPort, org.mockito.Mockito.times(2))
+                .sendWorldBorder(eq(uuid), eq(0), eq(0), eq(10.0), eq(0.0), eq(0L));
+    }
+
+    @Test
+    @DisplayName("A pearl that already carried its thrower off an island is refused, so the watch sends them back")
+    void aLandedPearlOffTheIslandIsRefused() {
+        assertThat(boundaryListener.refuses(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                        player,
+                        new Location(world, 0, 64, 0),
+                        new Location(world, 50, 64, 50),
+                        com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.PEARL,
+                        false)))
+                .isTrue();
+        assertThat(boundaryListener.refuses(new com.uxplima.uxmskyblock.bukkit.arrival.Arrival(
+                        player,
+                        new Location(world, 0, 64, 0),
+                        new Location(world, 50, 64, 50),
+                        com.uxplima.uxmskyblock.bukkit.arrival.ArrivalCause.TELEPORT,
+                        false)))
+                .describedAs("a command teleport off an island is no pearl")
+                .isFalse();
     }
 
     @Test
