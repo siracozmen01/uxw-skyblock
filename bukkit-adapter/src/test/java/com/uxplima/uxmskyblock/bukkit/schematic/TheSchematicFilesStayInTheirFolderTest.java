@@ -65,6 +65,12 @@ class TheSchematicFilesStayInTheirFolderTest {
         assertThat(files.read("schematics/classic.schem").join())
                 .hasValueSatisfying(read -> assertThat(read.blockAt(0, 0, 0)).isEqualTo("minecraft:stone"));
         assertThat(files.list().join()).containsExactly("classic");
+        Path plain = Files.createFile(folder.resolve("schematics/plain.txt"));
+        if (plain.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            assertThat(Files.getPosixFilePermissions(folder.resolve("schematics/classic.schem")))
+                    .describedAs("the permissions any file made in the folder gets")
+                    .isEqualTo(Files.getPosixFilePermissions(plain));
+        }
         assertThat(files.read("schematics/none.schem").join()).isEmpty();
     }
 

@@ -195,7 +195,9 @@ public final class IslandSchematics {
         Path file = resolve(path);
         try {
             Files.createDirectories(file.getParent());
-            Path written = Files.createTempFile(file.getParent(), ".writing-", EXTENSION);
+            // Beside the file and with the folder's usual permissions: a temporary file is made readable by the
+            // server's own user alone, and an operator who copies schematics in over SFTP could not read it.
+            Path written = file.resolveSibling("." + file.getFileName() + ".writing");
             try {
                 try (OutputStream out = Files.newOutputStream(written)) {
                     SpongeSchematicWriter.write(schematic, out);

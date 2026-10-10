@@ -114,7 +114,7 @@ class IslandSchematicCommandsTest extends MockBukkitHarness {
         assertThat(saved)
                 .containsExactly(new Saved(new Vec3i(10, 65, 10), new Vec3i(12, 67, 13), new Vec3i(11, 64, 11)));
         assertThat(Files.exists(folder.resolve("schematics/island.schem"))).isTrue();
-        assertThat(said.getLast()).contains("Saved island", "3x3x4");
+        assertThat(said.getLast()).contains("Saved island", "3x3x4", "36 blocks", "0 block entities and 0 entities");
         assertThat(run(admin, "schematic list")).singleElement().asString().contains("island");
     }
 
