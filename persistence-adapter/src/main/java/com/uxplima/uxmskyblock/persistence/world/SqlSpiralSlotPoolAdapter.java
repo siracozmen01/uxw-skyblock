@@ -12,6 +12,7 @@ import java.util.Optional;
 import com.uxplima.uxmlib.storage.sql.Database;
 import com.uxplima.uxmskyblock.core.application.world.SpiralSlotPoolPort;
 import com.uxplima.uxmskyblock.core.domain.world.RecycledSlot;
+import com.uxplima.uxmskyblock.core.domain.world.SpiralGridCoordinateAllocator;
 
 /**
  * Production persistence adapter implementing {@link SpiralSlotPoolPort}.
@@ -147,12 +148,14 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
         Objects.requireNonNull(worldName, "worldName must not be null");
         String sql = """
                 SELECT COUNT(*) FROM spiral_slot_pool
-                WHERE world_name = ? AND is_allocated = ?
+                WHERE world_name = ? AND is_allocated = ? AND slot_index >= ?
                 """;
         try (Connection conn = database.connection();
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, worldName);
             setBoolean(stmt, 2, false);
+            // The centre is the world's spawn and is never handed out again, even once its island is gone.
+            stmt.setLong(3, SpiralGridCoordinateAllocator.FIRST_ISLAND_INDEX);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return rs.getLong(1);
@@ -189,7 +192,7 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
         String sql = """
                 SELECT slot_index, world_name, grid_x, grid_z
                 FROM spiral_slot_pool
-                WHERE world_name = ? AND is_allocated = ?
+                WHERE world_name = ? AND is_allocated = ? AND slot_index >= ?
                 ORDER BY slot_index ASC
                 LIMIT 1
                 """;
@@ -197,6 +200,8 @@ public final class SqlSpiralSlotPoolAdapter implements SpiralSlotPoolPort {
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, worldName);
             setBoolean(stmt, 2, false);
+            // The centre is the world's spawn and is never handed out again, even once its island is gone.
+            stmt.setLong(3, SpiralGridCoordinateAllocator.FIRST_ISLAND_INDEX);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return Optional.of(new CandidateSlot(

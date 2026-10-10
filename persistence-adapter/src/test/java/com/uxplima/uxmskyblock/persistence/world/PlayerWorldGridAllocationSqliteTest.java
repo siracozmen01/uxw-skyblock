@@ -79,9 +79,10 @@ class PlayerWorldGridAllocationSqliteTest {
         IslandId island1 = IslandId.of(UUID.randomUUID());
         WorldGridAllocation alloc1 = adapter.allocateNext(node1, "world", island1);
 
-        assertThat(alloc1.sequenceIndex()).isEqualTo(0L);
+        // The centre is the world's spawn, so the first island stands one step out from it.
+        assertThat(alloc1.sequenceIndex()).isEqualTo(1L);
         assertThat(alloc1.worldName()).isEqualTo("world");
-        assertThat(alloc1.centerX()).isEqualTo(0);
+        assertThat(alloc1.centerX()).isEqualTo(5120);
         assertThat(alloc1.centerZ()).isEqualTo(0);
         assertThat(alloc1.islandId()).contains(island1);
         assertThat(alloc1.allocatedByNode()).isEqualTo(node1);
@@ -89,9 +90,9 @@ class PlayerWorldGridAllocationSqliteTest {
         IslandId island2 = IslandId.of(UUID.randomUUID());
         WorldGridAllocation alloc2 = adapter.allocateNext(node2, "world", island2);
 
-        assertThat(alloc2.sequenceIndex()).isEqualTo(1L);
+        assertThat(alloc2.sequenceIndex()).isEqualTo(2L);
         assertThat(alloc2.centerX()).isEqualTo(5120);
-        assertThat(alloc2.centerZ()).isEqualTo(0);
+        assertThat(alloc2.centerZ()).isEqualTo(5120);
         assertThat(alloc2.islandId()).contains(island2);
         assertThat(alloc2.allocatedByNode()).isEqualTo(node2);
     }
@@ -101,12 +102,12 @@ class PlayerWorldGridAllocationSqliteTest {
     void reservesNextSequenceWithSpecifiedCoordinates() {
         IslandId island1 = IslandId.of(UUID.randomUUID());
         long seq1 = adapter.reserveNextSequence(node1, "world", 1000, 2000, island1);
-        assertThat(seq1).isEqualTo(0L);
+        assertThat(seq1).isEqualTo(1L);
 
         long seq2 = adapter.reserveNextSequence(node2, "world", 3000, 4000, null);
-        assertThat(seq2).isEqualTo(1L);
+        assertThat(seq2).isEqualTo(2L);
 
-        Optional<WorldGridAllocation> lookup = adapter.findBySequenceIndex(1L);
+        Optional<WorldGridAllocation> lookup = adapter.findBySequenceIndex(2L);
         assertThat(lookup).isPresent();
         assertThat(lookup.get().centerX()).isEqualTo(3000);
         assertThat(lookup.get().centerZ()).isEqualTo(4000);
@@ -184,7 +185,7 @@ class PlayerWorldGridAllocationSqliteTest {
         assertThat(errors).isEmpty();
         assertThat(sequenceIndexes).hasSize(totalAllocations);
         assertThat(sequenceIndexes)
-                .containsExactlyInAnyOrderElementsOf(java.util.stream.LongStream.range(0, totalAllocations)
+                .containsExactlyInAnyOrderElementsOf(java.util.stream.LongStream.rangeClosed(1, totalAllocations)
                         .boxed()
                         .toList());
     }

@@ -36,11 +36,11 @@ class TheGridSpacingIsTheOperatorsTest {
         assertThat(PersistenceWiring.useGridSpacing(persistence, root("grid { spacing = 2000 }")))
                 .isEqualTo(2000);
 
-        persistence.worldGridAllocationPort().allocateNext(NODE, "world", null);
-        WorldGridAllocation second = persistence.worldGridAllocationPort().allocateNext(NODE, "world", null);
+        // The first island stands one step out from the centre, which is the world's spawn.
+        WorldGridAllocation first = persistence.worldGridAllocationPort().allocateNext(NODE, "world", null);
 
-        assertThat(second.centerX()).isEqualTo(2000);
-        assertThat(second.centerZ()).isZero();
+        assertThat(first.centerX()).isEqualTo(2000);
+        assertThat(first.centerZ()).isZero();
         assertThat(persistence.gridAllocator().gridSpacing())
                 .describedAs("the grid the creation service reads is the one the islands were placed by")
                 .isEqualTo(2000);
@@ -57,7 +57,8 @@ class TheGridSpacingIsTheOperatorsTest {
                 .isEqualTo(SpiralGridCoordinateAllocator.DEFAULT_GRID_SPACING);
         WorldGridAllocation third = persistence.worldGridAllocationPort().allocateNext(NODE, "world", null);
 
-        assertThat(third.centerX()).isEqualTo(SpiralGridCoordinateAllocator.DEFAULT_GRID_SPACING);
+        // Slot three of the spiral, a step south of the centre at the spacing the first two were placed by.
+        assertThat(third.centerX()).isZero();
         assertThat(third.centerZ()).isEqualTo(SpiralGridCoordinateAllocator.DEFAULT_GRID_SPACING);
     }
 

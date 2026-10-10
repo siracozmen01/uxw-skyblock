@@ -29,6 +29,14 @@ public final class SpiralGridCoordinateAllocator {
     }
 
     /**
+     * The first slot an island is given. Slot 0 is the grid's centre, the world's own spawn, where every
+     * player who joins the world arrives: an island there put every newcomer on somebody's island, and a
+     * reset of that island wiped the spawn. An island already standing there keeps it; the centre is never
+     * handed out again.
+     */
+    public static final long FIRST_ISLAND_INDEX = 1;
+
+    /**
      * Maps a non-negative sequence index to grid coordinates.
      * Index 0 maps to (0, 0).
      */

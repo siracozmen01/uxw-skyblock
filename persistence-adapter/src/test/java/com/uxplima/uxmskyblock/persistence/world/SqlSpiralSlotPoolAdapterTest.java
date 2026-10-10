@@ -50,6 +50,18 @@ class SqlSpiralSlotPoolAdapterTest {
     }
 
     @Test
+    @DisplayName("The centre, the world's spawn, is not handed out again once the island that stood there is gone")
+    void theCentreIsNeverReclaimed() {
+        adapter.releaseSlot(0L, "skyblock_world", 0, 0);
+        adapter.releaseSlot(7L, "skyblock_world", 0, -5120);
+
+        assertThat(adapter.countAvailableSlots("skyblock_world")).isEqualTo(1);
+        assertThat(adapter.claimNextAvailableSlot("skyblock_world"))
+                .hasValueSatisfying(slot -> assertThat(slot.slotIndex()).isEqualTo(7L));
+        assertThat(adapter.claimNextAvailableSlot("skyblock_world")).isEmpty();
+    }
+
+    @Test
     @DisplayName("releaseSlot makes slot available and claimNextAvailableSlot claims lowest index")
     void releaseAndClaimSlot() {
         adapter.releaseSlot(10L, "skyblock_world", 1000, 2000);
@@ -107,7 +119,8 @@ class SqlSpiralSlotPoolAdapterTest {
     @DisplayName("concurrent workers claiming vacated slots receive distinct unique slots")
     void concurrentClaimsAreAtomicAndDisjoint() throws Exception {
         int totalSlots = 20;
-        for (int i = 0; i < totalSlots; i++) {
+        // From one: the centre is the world's spawn and is never handed out.
+        for (int i = 1; i <= totalSlots; i++) {
             adapter.releaseSlot(i, "skyblock_world", i * 100, i * 100);
         }
         assertThat(adapter.countAvailableSlots("skyblock_world")).isEqualTo(totalSlots);

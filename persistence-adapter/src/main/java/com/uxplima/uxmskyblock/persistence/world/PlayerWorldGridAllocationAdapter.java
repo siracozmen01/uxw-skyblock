@@ -305,10 +305,10 @@ public final class PlayerWorldGridAllocationAdapter implements WorldGridAllocati
             if (rs.next()) {
                 long max = rs.getLong(1);
                 if (!rs.wasNull()) {
-                    return max + 1;
+                    return Math.max(SpiralGridCoordinateAllocator.FIRST_ISLAND_INDEX, max + 1);
                 }
             }
-            return 0L;
+            return SpiralGridCoordinateAllocator.FIRST_ISLAND_INDEX;
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to query max world grid sequence index", e);
         }
