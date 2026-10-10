@@ -118,9 +118,28 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
 
         List<String> lines = run("limits");
 
-        assertThat(lines).anyMatch(line -> line.endsWith(" • HOPPER 8/10"));
-        assertThat(lines).anyMatch(line -> line.endsWith(" • VILLAGER 2/20"));
-        assertThat(lines).noneMatch(line -> line.contains("PISTON") || line.contains("BOAT"));
+        assertThat(lines).anyMatch(line -> line.endsWith(" • Hopper 8/10"));
+        assertThat(lines).anyMatch(line -> line.endsWith(" • Villager 2/20"));
+        assertThat(lines).noneMatch(line -> line.contains("Piston") || line.contains("Boats"));
+    }
+
+    @Test
+    @DisplayName("Every capped type is named in words: the game's own name, or the catalogue's for boats")
+    void noTypeIsNamedByItsConstant() throws Exception {
+        Map<LimitType, Integer> every = new java.util.EnumMap<>(LimitType.class);
+        for (LimitType type : LimitType.values()) {
+            every.put(type, 5);
+        }
+        when(limits.getCounts(ISLAND)).thenReturn(Map.of());
+        when(limits.getLimits(ISLAND)).thenReturn(every);
+
+        List<String> lines = run("limits");
+
+        assertThat(lines).anyMatch(line -> line.endsWith(" • Boats 0/5"));
+        assertThat(lines).anyMatch(line -> line.endsWith(" • Sticky Piston 0/5"));
+        for (LimitType type : LimitType.values()) {
+            assertThat(lines).noneMatch(line -> line.contains(type.name()));
+        }
     }
 
     @Test
@@ -129,7 +148,7 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
         when(limits.getCounts(ISLAND)).thenReturn(Map.of());
         when(limits.getLimits(ISLAND)).thenReturn(Map.of(LimitType.SPAWNER, 4));
 
-        assertThat(run("limits")).anyMatch(line -> line.endsWith(" • SPAWNER 0/4"));
+        assertThat(run("limits")).anyMatch(line -> line.endsWith(" • Monster Spawner 0/4"));
     }
 
     @Test
@@ -142,8 +161,8 @@ class WhatTheMechanicsCommandsSayTest extends MockBukkitHarness {
 
         int tiles = indexContaining(lines, "Blocks that work");
         int entities = indexContaining(lines, "Mobs and vehicles");
-        int hopper = indexContaining(lines, "HOPPER");
-        int villager = indexContaining(lines, "VILLAGER");
+        int hopper = indexContaining(lines, "Hopper");
+        int villager = indexContaining(lines, "Villager");
         assertThat(tiles).isLessThan(hopper);
         assertThat(hopper).isLessThan(entities);
         assertThat(entities).isLessThan(villager);

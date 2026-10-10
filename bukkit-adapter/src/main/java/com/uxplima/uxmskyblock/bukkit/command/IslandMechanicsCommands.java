@@ -391,7 +391,8 @@ public final class IslandMechanicsCommands {
             send(
                     player,
                     "limits.entry",
-                    Placeholder.unparsed("type", type.name()),
+                    Placeholder.component(
+                            "type", com.uxplima.uxmskyblock.bukkit.limit.LimitNames.of(messages, player, type)),
                     Placeholder.component("count", count),
                     Placeholder.unparsed("max", Integer.toString(max)));
         }

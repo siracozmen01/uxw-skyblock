@@ -120,7 +120,7 @@ public final class IslandLimitListener implements Listener {
             player.sendMessage(messages.render(
                     player,
                     "limits.reached",
-                    Placeholder.unparsed("type", limitType.name()),
+                    Placeholder.component("type", LimitNames.of(messages, player, limitType)),
                     Placeholder.unparsed("count", Integer.toString(current)),
                     Placeholder.unparsed("max", Integer.toString(max))));
             Location pLoc = player.getLocation();

@@ -135,6 +135,30 @@ class IslandLimitListenerTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("The refusal at the cap names the block in the reader's language, not by its constant")
+    void theRefusalNamesTheBlock() {
+        Block block = world.getBlockAt(0, 64, 0);
+        block.setType(Material.STICKY_PISTON);
+        when(mockLimitService.tryIncrement(islandId, LimitType.STICKY_PISTON, false))
+                .thenReturn(false);
+        when(mockLimitService.getEffectiveLimit(islandId, LimitType.STICKY_PISTON))
+                .thenReturn(32);
+
+        listener.onBlockPlace(new BlockPlaceEvent(
+                block,
+                block.getState(),
+                block,
+                new ItemStack(Material.STICKY_PISTON),
+                player,
+                true,
+                EquipmentSlot.HAND));
+
+        String said = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(((org.mockbukkit.mockbukkit.entity.PlayerMock) player).nextComponentMessage());
+        assertThat(said).contains("Sticky Piston").doesNotContain("STICKY_PISTON");
+    }
+
+    @Test
     @DisplayName("onBlockPlace allows exceeding limit when player has bypass permission")
     void blockPlaceAllowedWithBypass() {
         Block block = world.getBlockAt(0, 64, 0);
