@@ -113,11 +113,12 @@ public final class SkyblockTiles {
                 .build();
     }
 
-    /** The pane behind every free slot: a blank name, no lore, and nothing to say. */
+    /** The pane behind every free slot: no tooltip at all, so the cursor resting on it shows nothing. */
     public static ItemStack filler() {
         return ItemBuilder.of(Material.GRAY_STAINED_GLASS_PANE)
                 .name(Tiles.blankName())
                 .vanillaTooltip(false)
+                .hideTooltip(true)
                 .build();
     }
 

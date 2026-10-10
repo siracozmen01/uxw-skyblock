@@ -92,6 +92,18 @@ class ShippedMenuFilesAreReadTest {
     }
 
     @Test
+    @DisplayName("Every shipped filler shows no tooltip, not even a blank line, when the cursor rests on it")
+    void everyFillerHidesItsTooltip() throws IOException {
+        for (Path file : menuFiles()) {
+            com.uxplima.uxmlib.menu.spec.MenuItemSpec filler = java.util.Objects.requireNonNull(
+                    new MenuSpecLoader().load(file).items().get("__fill__"), "the filler of " + file.getFileName());
+            assertThat(filler.decor().meta().components().hideTooltip())
+                    .describedAs("the filler of %s hides its whole tooltip", file.getFileName())
+                    .hasValue(true);
+        }
+    }
+
+    @Test
     @DisplayName("Every menu a shipped file opens is a shipped file")
     void everyOpenReachesAMenuThatExists() throws IOException {
         List<String> ids = new ArrayList<>();
