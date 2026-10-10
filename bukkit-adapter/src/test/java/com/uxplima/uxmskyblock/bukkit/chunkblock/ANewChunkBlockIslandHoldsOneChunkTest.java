@@ -80,7 +80,7 @@ class ANewChunkBlockIslandHoldsOneChunkTest extends MockBukkitHarness {
         StarterPreset preset = shipped().catalogue().findById("chunkblock").orElseThrow();
         IslandId island = IslandId.of(UUID.randomUUID());
 
-        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset));
+        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset)).join();
 
         assertThat(world.getBlockAt(CENTER, Y, CENTER).getType()).isEqualTo(Material.OAK_LOG);
         assertThat(blocks).containsKey(island);

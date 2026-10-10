@@ -73,6 +73,9 @@ class IslandDimensionListenerTest extends MockBukkitHarness {
         upgradeStoragePort = mock(IslandUpgradeStoragePort.class);
         islandLocationService = mock(IslandLocationService.class);
         schematicEngine = mock(StarterSchematicEngine.class);
+        // The platform is built at once here; a pasted one finishing later is the engine's own test.
+        when(schematicEngine.build(any(), any()))
+                .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
 
         Map<IslandDimensionType, DimensionMapping> mappings = Map.of(
                 IslandDimensionType.OVERWORLD,

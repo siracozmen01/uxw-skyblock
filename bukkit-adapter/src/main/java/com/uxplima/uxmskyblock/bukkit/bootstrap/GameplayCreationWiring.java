@@ -33,6 +33,8 @@ public final class GameplayCreationWiring {
 
     private final StarterPresetCatalog presetCatalog;
     private final StarterSchematicEngine schematicEngine;
+    private final com.uxplima.uxmskyblock.bukkit.schematic.@org.jspecify.annotations.Nullable IslandSchematics
+            islandSchematics;
     private final SpiralGridCoordinateAllocator coordinateAllocator;
     private final SpiralWorldGridService gridService;
     private final CreateIslandUseCase createIslandUseCase;
@@ -55,6 +57,7 @@ public final class GameplayCreationWiring {
             IslandAccessService accessService,
             RewardInboxService rewardInboxService,
             IslandUpgradeService upgradeService,
+            com.uxplima.uxmskyblock.bukkit.schematic.@org.jspecify.annotations.Nullable IslandSchematics schematics,
             java.util.List<
                             com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider<
                                     com.uxplima.uxmskyblock.bukkit.schematic.IslandStart>>
@@ -68,7 +71,19 @@ public final class GameplayCreationWiring {
         Objects.requireNonNull(rewardInboxService, "rewardInboxService must not be null");
         Objects.requireNonNull(upgradeService, "upgradeService must not be null");
 
-        this.schematicEngine = new StarterSchematicEngine(backpressureController);
+        this.islandSchematics = schematics;
+        // A platform comes from the preset's schematic where one stands, and a dimension's from the one
+        // dimensions.conf names.
+        java.util.Map<
+                        com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType,
+                        com.uxplima.uxmskyblock.core.domain.dimension.DimensionMapping>
+                dimensions = config.dimensionConfig().mappings();
+        this.schematicEngine = new StarterSchematicEngine(
+                backpressureController,
+                schematics,
+                scheduler,
+                type -> java.util.Optional.ofNullable(dimensions.get(type))
+                        .map(com.uxplima.uxmskyblock.core.domain.dimension.DimensionMapping::schematic));
         gameModeStarts.forEach(schematicEngine.actions()::register);
         // A preset a switched-off game mode builds names an action nobody provides here, and is not offered.
         this.presetCatalog = config.presetConfig()
@@ -148,6 +163,11 @@ public final class GameplayCreationWiring {
 
     public StarterSchematicEngine schematicEngine() {
         return schematicEngine;
+    }
+
+    public com.uxplima.uxmskyblock.bukkit.schematic.@org.jspecify.annotations.Nullable IslandSchematics
+            islandSchematics() {
+        return islandSchematics;
     }
 
     public SpiralGridCoordinateAllocator coordinateAllocator() {

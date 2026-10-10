@@ -36,6 +36,9 @@ import com.uxplima.uxmskyblock.core.domain.island.IslandLocation;
  */
 public final class IslandDimensionListener implements Listener {
 
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(IslandDimensionListener.class.getName());
+
     private final IslandDimensionService dimensionService;
     private final IslandLocationService islandLocationService;
     private final StarterSchematicEngine schematicEngine;
@@ -257,37 +260,70 @@ public final class IslandDimensionListener implements Listener {
                 schedulerPort.onRegion(worldName, chunkX, chunkZ, () -> {
                     World w = Bukkit.getWorld(worldName);
                     if (w != null && allowed.schematicRequired() && placement.isPresent()) {
-                        schematicEngine.build(
-                                new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
-                                        w, islandId, centerX, targetY, centerZ, preset),
-                                placement.get().template().actions());
-                        dimensionService.markDimensionGenerated(islandId, targetDimension);
+                        // A pasted platform stands some ticks later, and the player arrives once it does.
+                        com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine.afterBuilt(
+                                schematicEngine.build(
+                                        new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
+                                                w, islandId, centerX, targetY, centerZ, preset),
+                                        placement.get().template().actions()),
+                                failure -> LOGGER.log(
+                                        java.util.logging.Level.WARNING,
+                                        failure,
+                                        () -> "Building " + islandId + " in " + worldName + " failed."),
+                                () -> {
+                                    dimensionService.markDimensionGenerated(islandId, targetDimension);
+                                    schedulerPort.onRegion(
+                                            worldName,
+                                            chunkX,
+                                            chunkZ,
+                                            () -> arriveIn(
+                                                    player,
+                                                    w,
+                                                    worldName,
+                                                    centerX,
+                                                    targetY,
+                                                    centerZ,
+                                                    preset,
+                                                    targetDimension));
+                                });
+                        return;
                     }
-                    // Where the player stands: on the platform the preset laid, or on land a mode brought
-                    // there, such as the Upside Down, which is not at the height the preset names.
-                    double arrivalY =
-                            w == null ? targetY + 1.0 : arrivalHeight(w, centerX, targetY + 1, centerZ, preset);
-
-                    schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
-                        if (!player.isOnline()) {
-                            return;
-                        }
-                        World destWorld = Bukkit.getWorld(worldName);
-                        if (destWorld == null) {
-                            send(player, "dimension.world_unloaded", Placeholder.unparsed("world", worldName));
-                            return;
-                        }
-                        Location pLoc = player.getLocation();
-                        float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
-                        float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
-                        Location targetLoc =
-                                new Location(destWorld, centerX + 0.5, arrivalY, centerZ + 0.5, yaw, pitch);
-                        var unused = player.teleportAsync(targetLoc);
-                        send(player, "dimension.arrived", dimensionName(player, targetDimension));
-                    });
+                    arriveIn(player, w, worldName, centerX, targetY, centerZ, preset, targetDimension);
                 });
             }
         }
+    }
+
+    /** Sends the player into the dimension, standing on what was built there, on the column's own thread. */
+    private void arriveIn(
+            Player player,
+            @org.jspecify.annotations.Nullable World w,
+            String worldName,
+            int centerX,
+            int targetY,
+            int centerZ,
+            com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset,
+            IslandDimensionType targetDimension) {
+        // Where the player stands: on the platform the preset laid, or on land a mode brought
+        // there, such as the Upside Down, which is not at the height the preset names.
+        double arrivalY = w == null ? targetY + 1.0 : arrivalHeight(w, centerX, targetY + 1, centerZ, preset);
+
+        schedulerPort.onEntity(new PlayerUuid(player.getUniqueId()), () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            World destWorld = Bukkit.getWorld(worldName);
+            if (destWorld == null) {
+                send(player, "dimension.world_unloaded", Placeholder.unparsed("world", worldName));
+                return;
+            }
+            Location pLoc = player.getLocation();
+            float yaw = pLoc != null ? pLoc.getYaw() : 0.0f;
+            float pitch = pLoc != null ? pLoc.getPitch() : 0.0f;
+            Location targetLoc = new Location(destWorld, centerX + 0.5, arrivalY, centerZ + 0.5, yaw, pitch);
+            var unused = player.teleportAsync(targetLoc);
+            send(player, "dimension.arrived", dimensionName(player, targetDimension));
+        });
     }
 
     /**

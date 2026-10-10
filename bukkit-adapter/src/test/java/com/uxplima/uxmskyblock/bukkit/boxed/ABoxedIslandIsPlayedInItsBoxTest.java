@@ -172,7 +172,8 @@ class ABoxedIslandIsPlayedInItsBoxTest extends MockBukkitHarness {
         StarterSchematicEngine engine = new StarterSchematicEngine();
         engine.actions().register(new BoxedStart(service, scheduler, changed::add));
 
-        engine.build(new IslandStart(boxedWorld, islandId, 0, 70, 0, preset()), List.of(BoxedStart.ACTION));
+        engine.build(new IslandStart(boxedWorld, islandId, 0, 70, 0, preset()), List.of(BoxedStart.ACTION))
+                .join();
 
         assertThat(service.radius(islandId)).hasValue(5);
         assertThat(changed).containsExactly(islandId);

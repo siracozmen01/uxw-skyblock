@@ -90,7 +90,8 @@ class ANewCaveBlockIslandIsInTheRockTest extends MockBukkitHarness {
         // Blocks already there, in rock no carving reaches and in the shell: the rock fills only air.
         world.getBlockAt(CENTER + 11, Y, CENTER + 11).setType(Material.GOLD_BLOCK);
         world.getBlockAt(CENTER + SHAPE.radius(), Y + 3, CENTER).setType(Material.GOLD_BLOCK);
-        engine.start(new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset()));
+        engine.start(new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset()))
+                .join();
 
         assertThat(world.getBlockAt(CENTER + 11, Y, CENTER + 11).getType()).isEqualTo(Material.GOLD_BLOCK);
         assertThat(world.getBlockAt(CENTER + SHAPE.radius(), Y + 3, CENTER).getType())
@@ -129,8 +130,9 @@ class ANewCaveBlockIslandIsInTheRockTest extends MockBukkitHarness {
         nether.setEnvironment(World.Environment.NETHER);
 
         engine.build(
-                new IslandStart(nether, IslandId.of(UUID.randomUUID()), CENTER, 70, CENTER, preset()),
-                List.of(CavernStart.ACTION));
+                        new IslandStart(nether, IslandId.of(UUID.randomUUID()), CENTER, 70, CENTER, preset()),
+                        List.of(CavernStart.ACTION))
+                .join();
 
         assertThat(count(nether, 62, 77)).containsKey(Material.NETHERRACK).doesNotContainKey(Material.STONE);
     }

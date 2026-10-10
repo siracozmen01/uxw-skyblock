@@ -182,6 +182,41 @@ public final class SkyblockBootstrap implements AutoCloseable {
     public void whenServerIsUp() {
         integrationWiring.whenServerIsUp();
         drawIslandsOnTheWebMap();
+        writeShippedPlatforms();
+    }
+
+    /**
+     * Writes the platform each preset and each dimension lays as the schematic file it names, where none
+     * stands yet, so the island a server ships is a file an operator can change.
+     */
+    @SuppressWarnings("deprecation") // UnsafeValues is where the server says which version its names are of
+    private void writeShippedPlatforms() {
+        java.util.Map<com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType, String> dimensions =
+                new java.util.EnumMap<>(com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.class);
+        configWiring.dimensionConfig().mappings().forEach((type, mapping) -> {
+            String schematic = mapping.schematic();
+            if (schematic != null && !schematic.isBlank()) {
+                dimensions.put(type, schematic);
+            }
+        });
+        var unused = gameplayWiring
+                .schematicEngine()
+                .writeShippedPlatforms(
+                        configWiring.presetConfig().presets(),
+                        dimensions,
+                        Bukkit.getUnsafe().getDataVersion())
+                .whenComplete((written, failure) -> {
+                    if (failure != null) {
+                        plugin.getLogger()
+                                .log(
+                                        java.util.logging.Level.WARNING,
+                                        "The shipped platforms could not be written as schematics.",
+                                        failure);
+                    } else if (!written.isEmpty()) {
+                        plugin.getLogger()
+                                .info("Wrote the shipped platforms as schematics: " + String.join(", ", written));
+                    }
+                });
     }
 
     /**

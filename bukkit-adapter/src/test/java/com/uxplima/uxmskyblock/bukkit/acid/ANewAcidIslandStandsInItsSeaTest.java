@@ -101,7 +101,7 @@ class ANewAcidIslandStandsInItsSeaTest extends MockBukkitHarness {
         StarterPreset preset = shipped().catalogue().findById("acid_island").orElseThrow();
         IslandId island = IslandId.of(UUID.randomUUID());
 
-        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset));
+        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset)).join();
 
         int surface = Y - SEA.belowIsland();
         assertThat(world.getBlockAt(CENTER + 15, surface, CENTER).getType()).isEqualTo(Material.WATER);

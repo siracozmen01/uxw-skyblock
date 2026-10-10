@@ -217,6 +217,7 @@ public final class GameplayWiring {
                 accessService,
                 this.economicWiring.rewardInboxService(),
                 this.economicWiring.upgradeService(),
+                islandSchematics(plugin, config, scheduler),
                 modeStartActions(config, scheduler));
         if (this.tradeWindsWiring.enabled()) {
             // The vessels that traded most, on the boards and to every plugin that reads them.
@@ -535,6 +536,27 @@ public final class GameplayWiring {
 
     public StarterPresetCatalog presetCatalog() {
         return creationWiring.presetCatalog();
+    }
+
+    /**
+     * The server's structure files, pasted and saved through uxmLib on the region that owns each chunk, with
+     * no WorldEdit or FAWE on the server.
+     */
+    private static com.uxplima.uxmskyblock.bukkit.schematic.IslandSchematics islandSchematics(
+            JavaPlugin plugin, ConfigurationWiring config, SchedulerPort scheduler) {
+        com.uxplima.uxmlib.scheduler.Scheduler regions = new com.uxplima.uxmlib.scheduler.PaperScheduler(plugin);
+        return new com.uxplima.uxmskyblock.bukkit.schematic.IslandSchematics(
+                plugin.getDataFolder().toPath(),
+                scheduler::async,
+                new com.uxplima.uxmlib.schematic.paper.SchematicPaster(regions)::paste,
+                new com.uxplima.uxmlib.schematic.paper.SchematicCapture(regions)::capture,
+                config.presetConfig().paste().options());
+    }
+
+    /** The server's structure files, which the admin's schematic command saves and pastes. */
+    public com.uxplima.uxmskyblock.bukkit.schematic.@org.jspecify.annotations.Nullable IslandSchematics
+            islandSchematics() {
+        return creationWiring.islandSchematics();
     }
 
     public StarterSchematicEngine schematicEngine() {

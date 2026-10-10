@@ -110,7 +110,8 @@ class ANewPoseidonIslandLiesUnderItsOceanTest extends MockBukkitHarness {
     void theIslandLiesUnderItsOcean() throws Exception {
         IslandId island = IslandId.of(UUID.randomUUID());
 
-        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset()));
+        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset()))
+                .join();
 
         int surface = Y + OCEAN.above();
         int bottom = Y - OCEAN.depth();

@@ -23,7 +23,7 @@ import org.spongepowered.configurate.ConfigurationNode;
  * <p>The four the plugin ships with were written in Java and there could never be a fifth. They are
  * the fallback now, and {@code modules/presets.conf} is where a server says what it offers.
  */
-public record PresetConfiguration(List<StarterPreset> presets, String defaultId) {
+public record PresetConfiguration(List<StarterPreset> presets, String defaultId, SchematicPasteConfiguration paste) {
 
     private static final java.util.logging.Logger LOGGER =
             java.util.logging.Logger.getLogger(PresetConfiguration.class.getName());
@@ -31,11 +31,20 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
     public PresetConfiguration {
         Objects.requireNonNull(presets, "presets must not be null");
         Objects.requireNonNull(defaultId, "defaultId must not be null");
+        Objects.requireNonNull(paste, "paste must not be null");
         presets = List.copyOf(presets);
     }
 
+    public PresetConfiguration(List<StarterPreset> presets, String defaultId) {
+        this(presets, defaultId, SchematicPasteConfiguration.DEFAULT);
+    }
+
     public static PresetConfiguration defaultConfiguration() {
-        return new PresetConfiguration(StarterPresetCatalog.shipped(), StarterPresetCatalog.CLASSIC.id());
+        return defaultConfiguration(SchematicPasteConfiguration.DEFAULT);
+    }
+
+    private static PresetConfiguration defaultConfiguration(SchematicPasteConfiguration paste) {
+        return new PresetConfiguration(StarterPresetCatalog.shipped(), StarterPresetCatalog.CLASSIC.id(), paste);
     }
 
     public static PresetConfiguration load(ConfigurationNode rootNode) {
@@ -69,10 +78,10 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
         }
 
         if (presets.isEmpty()) {
-            return defaultConfiguration();
+            return defaultConfiguration(SchematicPasteConfiguration.load(node.node("paste")));
         }
         String defaultId = node.node("default").getString(presets.get(0).id());
-        return new PresetConfiguration(presets, defaultId);
+        return new PresetConfiguration(presets, defaultId, SchematicPasteConfiguration.load(node.node("paste")));
     }
 
     /** An operator who writes a biome the server does not know gets plains rather than a failed start. */
@@ -146,9 +155,9 @@ public record PresetConfiguration(List<StarterPreset> presets, String defaultId)
         List<StarterPreset> startable =
                 presets.stream().filter(preset -> startable(preset, provided)).toList();
         if (startable.isEmpty()) {
-            return defaultConfiguration();
+            return defaultConfiguration(paste);
         }
-        return new PresetConfiguration(startable, defaultId);
+        return new PresetConfiguration(startable, defaultId, paste);
     }
 
     /** Whether the preset's own start and every dimension's start have providers. */

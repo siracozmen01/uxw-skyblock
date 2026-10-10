@@ -1,29 +1,80 @@
 package com.uxplima.uxmskyblock.bukkit.schematic;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.bukkit.Material;
+import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 
+import com.uxplima.uxmlib.schematic.paper.PasteReport;
+import com.uxplima.uxmlib.schematic.paper.Rotation;
 import com.uxplima.uxmskyblock.core.application.gamemode.CreationActionProvider;
 import com.uxplima.uxmskyblock.core.application.gamemode.CreationActions;
+import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
+import com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType;
 import com.uxplima.uxmskyblock.core.domain.preset.StarterPreset;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Schematic and structure generation engine for initializing starter islands.
+ * Builds a new island by the creation actions its preset names.
+ *
+ * <p>The starter platform comes from the preset's schematic file when one stands where the preset says,
+ * and is laid block by block otherwise. The plugin writes the platform it ships as that file on its first
+ * start, so an operator who wants another island edits a file rather than code, with any tool that writes
+ * a Sponge schematic, or with {@code /is schematic save}. A file that cannot be read is named in the log
+ * and the shipped platform is laid instead, so nobody arrives over the void.
  */
 public final class StarterSchematicEngine {
 
-    private final com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
+    private static final Logger LOGGER = Logger.getLogger(StarterSchematicEngine.class.getName());
+
+    /** Where the feature stands, from the centre. See {@link PlatformLayout#FEATURE_OFFSET}. */
+    static final int FEATURE_OFFSET = PlatformLayout.FEATURE_OFFSET;
+
+    private final com.uxplima.uxmskyblock.core.application.performance.@Nullable AdaptiveBackpressureController
             backpressureController;
+
+    private final @Nullable IslandSchematics schematics;
+    private final @Nullable SchedulerPort scheduler;
+    private final Function<IslandDimensionType, Optional<String>> dimensionSchematics;
+    private final Set<String> warned = ConcurrentHashMap.newKeySet();
 
     private final CreationActions<IslandStart> actions = new CreationActions<>();
 
     public StarterSchematicEngine(
-            com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController
+            com.uxplima.uxmskyblock.core.application.performance.@Nullable AdaptiveBackpressureController
                     backpressureController) {
+        this(backpressureController, null, null, dimension -> Optional.empty());
+    }
+
+    /**
+     * @param schematics the server's structure files, or nothing to lay every platform block by block
+     * @param scheduler what hands an action back to the region its island stands in after a paste
+     * @param dimensionSchematics the name of the schematic a dimension's platform is pasted from
+     */
+    public StarterSchematicEngine(
+            com.uxplima.uxmskyblock.core.application.performance.@Nullable AdaptiveBackpressureController
+                    backpressureController,
+            @Nullable IslandSchematics schematics,
+            @Nullable SchedulerPort scheduler,
+            Function<IslandDimensionType, Optional<String>> dimensionSchematics) {
         this.backpressureController = backpressureController;
+        this.schematics = schematics;
+        this.scheduler = scheduler;
+        this.dimensionSchematics = Objects.requireNonNull(dimensionSchematics, "dimensionSchematics must not be null");
         actions.register(new CreationActionProvider<>() {
             @Override
             public String actionId() {
@@ -33,6 +84,11 @@ public final class StarterSchematicEngine {
             @Override
             public void apply(IslandStart start) {
                 pastePreset(start.world(), start.centerX(), start.y(), start.centerZ(), start.preset());
+            }
+
+            @Override
+            public CompletableFuture<Void> applyThen(IslandStart start) {
+                return fromFile(start, Optional.of(start.preset().schematicPath()), () -> apply(start));
             }
         });
         actions.register(new CreationActionProvider<>() {
@@ -46,12 +102,29 @@ public final class StarterSchematicEngine {
                 pasteDimensionPlatform(
                         start.world(), start.centerX(), start.y(), start.centerZ(), dimensionOf(start.world()));
             }
+
+            @Override
+            public CompletableFuture<Void> applyThen(IslandStart start) {
+                Optional<String> path = StarterSchematicEngine.this
+                        .dimensionSchematics
+                        .apply(dimensionOf(start.world()))
+                        .flatMap(IslandSchematics::nameOf)
+                        .map(IslandSchematics::pathOf);
+                return fromFile(start, path, () -> apply(start));
+            }
         });
     }
 
-    /** Runs the named creation actions at the place the start describes, as a dimension's template does. */
-    public void build(IslandStart start, java.util.List<String> actions) {
-        this.actions.run(actions, start);
+    public StarterSchematicEngine() {
+        this(null);
+    }
+
+    /**
+     * Runs the named creation actions at the place the start describes, as a dimension's template does.
+     * Answers once the last of them stands.
+     */
+    public CompletableFuture<Void> build(IslandStart start, List<String> actions) {
+        return this.actions.runThen(actions, start, resume(start));
     }
 
     /** The creation actions this server provides; a game mode adds its own while the server starts. */
@@ -59,28 +132,77 @@ public final class StarterSchematicEngine {
         return actions;
     }
 
-    /** Builds a new island by running the creation actions its preset names, in the region that owns it. */
-    public void start(IslandStart start) {
-        actions.run(start.preset().start(), start);
+    /**
+     * Builds a new island by running the creation actions its preset names, in the region that owns it.
+     * Answers once the last of them stands, which for a pasted schematic is some ticks later.
+     */
+    public CompletableFuture<Void> start(IslandStart start) {
+        return actions.runThen(start.preset().start(), start, resume(start));
     }
 
-    public StarterSchematicEngine() {
-        this(null);
-    }
-
-    public com.uxplima.uxmskyblock.core.application.performance.@org.jspecify.annotations.Nullable AdaptiveBackpressureController backpressureController() {
+    public com.uxplima.uxmskyblock.core.application.performance.@Nullable AdaptiveBackpressureController
+            backpressureController() {
         return backpressureController;
     }
 
     /**
-     * Where the island's feature stands: a corner of the platform, away from where a player arrives.
-     *
-     * <p>It stood on the centre, which is the island's spawn and home: a player arrived inside the
-     * nether's glowstone, on the desert's cactus, and inside the trunk once the classic sapling had
-     * grown, and suffocated. From a corner a grown oak reaches neither the trunk's column nor the two
-     * blocks a player stands in at the centre.
+     * Writes the platform each preset that lays one would lay, and each dimension's, as the file it names,
+     * where no file stands yet. Answers the paths written.
      */
-    static final int FEATURE_OFFSET = -2;
+    public CompletableFuture<List<String>> writeShippedPlatforms(
+            List<StarterPreset> presets, Map<IslandDimensionType, String> dimensions, int dataVersion) {
+        IslandSchematics files = schematics;
+        if (files == null) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        Map<String, PlatformLayout> wanted = new LinkedHashMap<>();
+        for (StarterPreset preset : presets) {
+            boolean laysPlatform =
+                    preset.start().stream().anyMatch(action -> action.trim().equalsIgnoreCase(StarterPreset.PLATFORM));
+            if (laysPlatform) {
+                wanted.putIfAbsent(preset.schematicPath(), PlatformLayout.ofPreset(preset.id()));
+            }
+        }
+        dimensions.forEach((dimension, name) -> IslandSchematics.nameOf(name)
+                .ifPresent(valid ->
+                        wanted.putIfAbsent(IslandSchematics.pathOf(valid), PlatformLayout.ofDimension(dimension))));
+        List<CompletableFuture<Optional<String>>> writes = new ArrayList<>();
+        wanted.forEach((path, layout) -> writes.add(files.writeIfMissing(path, layout.schematic(dataVersion))
+                .thenApply(written -> written ? Optional.of(path) : Optional.<String>empty())));
+        return CompletableFuture.allOf(writes.toArray(CompletableFuture[]::new))
+                .thenApply(done -> writes.stream()
+                        .map(CompletableFuture::join)
+                        .flatMap(Optional::stream)
+                        .toList());
+    }
+
+    /**
+     * Runs {@code then} once {@code built} is done: at once when it already is, so a build done at once
+     * changes nothing about the order things happen in, and when it finishes otherwise. {@code failed}
+     * hears why a build failed before {@code then} runs anyway, since a player still has to arrive. What
+     * {@code then} throws after a later finish is written to the log rather than lost in the future.
+     */
+    public static void afterBuilt(CompletableFuture<Void> built, Consumer<Throwable> failed, Runnable then) {
+        if (built.isDone()) {
+            try {
+                built.join();
+            } catch (CompletionException | java.util.concurrent.CancellationException failure) {
+                failed.accept(failure);
+            }
+            then.run();
+            return;
+        }
+        var unused = built.whenComplete((done, failure) -> {
+            if (failure != null) {
+                failed.accept(failure);
+            }
+            try {
+                then.run();
+            } catch (RuntimeException thrown) {
+                LOGGER.log(Level.WARNING, "What follows a built island threw.", thrown);
+            }
+        });
+    }
 
     /**
      * The height of the platform's top for an island whose players arrive at {@code spawnY}: the block
@@ -94,115 +216,82 @@ public final class StarterSchematicEngine {
     public void pastePreset(World world, int centerX, int y, int centerZ, StarterPreset preset) {
         Objects.requireNonNull(world, "world");
         Objects.requireNonNull(preset, "preset");
-
-        Material primaryBlock =
-                switch (preset.id()) {
-                    case "desert", "poseidon", "poseidon_ruin", "poseidon_ruins" -> Material.SAND;
-                    case "nether" -> Material.NETHERRACK;
-                    case "cave", "caveblock" -> Material.DEEPSLATE;
-                    default -> Material.GRASS_BLOCK;
-                };
-
-        Material subBlock =
-                switch (preset.id()) {
-                    case "desert", "poseidon", "poseidon_ruin", "poseidon_ruins" -> Material.SANDSTONE;
-                    case "nether" -> Material.BASALT;
-                    case "cave", "caveblock" -> Material.STONE;
-                    default -> Material.DIRT;
-                };
-
-        // Create platform around center
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                world.getBlockAt(centerX + dx, y - 2, centerZ + dz).setType(Material.BEDROCK);
-                world.getBlockAt(centerX + dx, y - 1, centerZ + dz).setType(subBlock);
-                world.getBlockAt(centerX + dx, y, centerZ + dz).setType(primaryBlock);
-            }
-        }
-
-        // Center feature and starter chest
-        Block featureBlock = world.getBlockAt(centerX + FEATURE_OFFSET, y + 1, centerZ + FEATURE_OFFSET);
-        switch (preset.id()) {
-            case "desert" -> {
-                featureBlock.setType(Material.CACTUS);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-            case "nether" -> {
-                featureBlock.setType(Material.CRIMSON_FUNGUS);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-            case "poseidon", "poseidon_ruin", "poseidon_ruins" -> {
-                // A sapling cannot grow under water, and a sea lantern lights the sea floor.
-                featureBlock.setType(Material.SEA_LANTERN);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-            case "cave", "caveblock" -> {
-                featureBlock.setType(Material.LANTERN);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-            default -> {
-                featureBlock.setType(Material.OAK_SAPLING);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-        }
-    }
-
-    /** Which dimension a world is, by the environment the server gave it. */
-    private static com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType dimensionOf(World world) {
-        return switch (world.getEnvironment()) {
-            case NETHER -> com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.NETHER;
-            case THE_END -> com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.THE_END;
-            default -> com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType.OVERWORLD;
-        };
+        PlatformLayout.ofPreset(preset.id()).lay(world, centerX, y, centerZ);
     }
 
     public void pasteDimensionPlatform(
-            World world,
-            int centerX,
-            int y,
-            int centerZ,
-            com.uxplima.uxmskyblock.core.domain.dimension.IslandDimensionType dimensionType) {
+            World world, int centerX, int y, int centerZ, IslandDimensionType dimensionType) {
         Objects.requireNonNull(world, "world");
         Objects.requireNonNull(dimensionType, "dimensionType");
+        PlatformLayout.ofDimension(dimensionType).lay(world, centerX, y, centerZ);
+    }
 
-        Material primaryBlock =
-                switch (dimensionType) {
-                    case NETHER -> Material.NETHER_BRICKS;
-                    case THE_END -> Material.END_STONE_BRICKS;
-                    default -> Material.GRASS_BLOCK;
-                };
-
-        Material subBlock =
-                switch (dimensionType) {
-                    case NETHER -> Material.BASALT;
-                    case THE_END -> Material.END_STONE;
-                    default -> Material.DIRT;
-                };
-
-        // Create 5x5 platform around center
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                world.getBlockAt(centerX + dx, y - 2, centerZ + dz).setType(Material.BEDROCK);
-                world.getBlockAt(centerX + dx, y - 1, centerZ + dz).setType(subBlock);
-                world.getBlockAt(centerX + dx, y, centerZ + dz).setType(primaryBlock);
-            }
+    /**
+     * Pastes the file at {@code path} at the start's centre, or runs {@code laid} on the island's region
+     * when there is no file, or none that can be read or pasted.
+     */
+    private CompletableFuture<Void> fromFile(IslandStart start, Optional<String> path, Runnable laid) {
+        IslandSchematics files = schematics;
+        if (files == null || path.isEmpty()) {
+            laid.run();
+            return CompletableFuture.completedFuture(null);
         }
+        String file = path.get();
+        Executor region = resume(start);
+        Location at = new Location(start.world(), start.centerX(), start.y(), start.centerZ());
+        return files.read(file)
+                .thenCompose(found -> found.isPresent()
+                        ? files.paste(found.get(), at, Rotation.NONE).thenAccept(report -> noteChanges(file, report))
+                        : CompletableFuture.runAsync(laid, region))
+                .exceptionallyCompose(failure -> {
+                    if (warned.add("failed:" + file)) {
+                        LOGGER.log(
+                                Level.WARNING,
+                                "The schematic " + file + " could not be pasted, so the shipped platform is laid: "
+                                        + rootMessage(failure),
+                                failure);
+                    }
+                    return CompletableFuture.runAsync(laid, region);
+                });
+    }
 
-        // Add dimension specific center marker / chest
-        Block featureBlock = world.getBlockAt(centerX + FEATURE_OFFSET, y + 1, centerZ + FEATURE_OFFSET);
-        switch (dimensionType) {
-            case NETHER -> {
-                featureBlock.setType(Material.GLOWSTONE);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-            case THE_END -> {
-                featureBlock.setType(Material.END_ROD);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
-            default -> {
-                featureBlock.setType(Material.TORCH);
-                world.getBlockAt(centerX + 1, y + 1, centerZ).setType(Material.CHEST);
-            }
+    private void noteChanges(String file, PasteReport report) {
+        if (report.faithful() || !warned.add("changed:" + file)) {
+            return;
         }
+        LOGGER.warning(() -> "The schematic " + file + " was pasted with changes. Read as other blocks: "
+                + report.statesChanged() + ". Unknown blocks, left out: " + report.statesUnknown()
+                + ". Block entities with their defaults: " + report.blockEntitiesNotCarried()
+                + ". Entities not made: " + report.entitiesRefused()
+                + ". Blocks past the world's height: " + report.blocksOutsideWorld() + ".");
+    }
+
+    private static String rootMessage(Throwable failure) {
+        Throwable cause = failure;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return String.valueOf(cause.getMessage());
+    }
+
+    /** Hands a task to the region the start's centre stands in, or runs it at once without a scheduler. */
+    private Executor resume(IslandStart start) {
+        SchedulerPort port = scheduler;
+        if (port == null) {
+            return Runnable::run;
+        }
+        String world = start.world().getName();
+        int chunkX = start.centerX() >> 4;
+        int chunkZ = start.centerZ() >> 4;
+        return task -> port.onRegion(world, chunkX, chunkZ, task);
+    }
+
+    /** Which dimension a world is, by the environment the server gave it. */
+    private static IslandDimensionType dimensionOf(World world) {
+        return switch (world.getEnvironment()) {
+            case NETHER -> IslandDimensionType.NETHER;
+            case THE_END -> IslandDimensionType.THE_END;
+            default -> IslandDimensionType.OVERWORLD;
+        };
     }
 }

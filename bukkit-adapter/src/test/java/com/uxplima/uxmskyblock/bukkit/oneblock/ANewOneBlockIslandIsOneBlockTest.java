@@ -74,7 +74,7 @@ class ANewOneBlockIslandIsOneBlockTest extends MockBukkitHarness {
         StarterPreset preset = shippedPresets().findById("oneblock").orElseThrow();
         IslandId island = IslandId.of(UUID.randomUUID());
 
-        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset));
+        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset)).join();
 
         assertThat(world.getBlockAt(CENTER, Y, CENTER).getType()).isEqualTo(Material.OAK_LOG);
         assertThat(world.getBlockAt(CENTER + 1, Y, CENTER).getType())
@@ -101,7 +101,7 @@ class ANewOneBlockIslandIsOneBlockTest extends MockBukkitHarness {
         StarterPreset preset = shippedPresets().findById("classic").orElseThrow();
         IslandId island = IslandId.of(UUID.randomUUID());
 
-        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset));
+        engine.start(new IslandStart(world, island, CENTER, Y, CENTER, preset)).join();
 
         assertThat(world.getBlockAt(CENTER + 1, Y, CENTER).getType()).isEqualTo(Material.GRASS_BLOCK);
         assertThat(world.getBlockAt(CENTER, Y - 2, CENTER).getType()).isEqualTo(Material.BEDROCK);

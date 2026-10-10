@@ -74,7 +74,8 @@ class ANewSkyGridIslandIsAGridTest extends MockBukkitHarness {
         world.getBlockAt(CENTER + 4, Y + 4, CENTER).setType(Material.GOLD_BLOCK);
         StarterSchematicEngine engine = engine(config("STONE:1", List.of()));
 
-        engine.start(new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset()));
+        engine.start(new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset()))
+                .join();
         assertThat(world.getBlockAt(CENTER, Y, CENTER).getType())
                 .describedAs("set before the rest of the grid, so it is there when players arrive")
                 .isEqualTo(Material.GRASS_BLOCK);
@@ -104,7 +105,8 @@ class ANewSkyGridIslandIsAGridTest extends MockBukkitHarness {
         engine(config("CHEST:1", List.of()))
                 .build(
                         new IslandStart(world, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset()),
-                        List.of(SkyGridStart.ACTION));
+                        List.of(SkyGridStart.ACTION))
+                .join();
         regions.forEach(Runnable::run);
         regions.clear();
 
@@ -122,7 +124,8 @@ class ANewSkyGridIslandIsAGridTest extends MockBukkitHarness {
         engine(config("SPAWNER:1", List.of("BLAZE")))
                 .build(
                         new IslandStart(other, IslandId.of(UUID.randomUUID()), CENTER, Y, CENTER, preset()),
-                        List.of(SkyGridStart.ACTION));
+                        List.of(SkyGridStart.ACTION))
+                .join();
         regions.forEach(Runnable::run);
 
         CreatureSpawner spawner =
@@ -150,7 +153,8 @@ class ANewSkyGridIslandIsAGridTest extends MockBukkitHarness {
         engine(config)
                 .build(
                         new IslandStart(nether, IslandId.of(UUID.randomUUID()), CENTER, 70, CENTER, preset()),
-                        List.of(SkyGridStart.ACTION));
+                        List.of(SkyGridStart.ACTION))
+                .join();
         regions.forEach(Runnable::run);
 
         assertThat(nether.getBlockAt(CENTER + 4, 70, CENTER).getType()).isEqualTo(Material.SOUL_SAND);

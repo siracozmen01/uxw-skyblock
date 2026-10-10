@@ -293,6 +293,35 @@ public final class IslandLifecycleCommands {
         return moved;
     }
 
+    /** Sends the player who made the island onto it, standing at {@code standingY}, and tells them. */
+    private void arrive(
+            Player player,
+            PlayerUuid playerUuid,
+            World world,
+            CreateIslandUseCase.CreateIslandResult.Success success,
+            double standingY) {
+        schedulerPort.onEntity(playerUuid, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            Location destination = new Location(
+                    world,
+                    success.location().spawnX(),
+                    standingY,
+                    success.location().spawnZ(),
+                    0.0f,
+                    0.0f);
+            var unused = player.teleportAsync(destination).thenAccept(teleported -> {
+                if (Boolean.TRUE.equals(teleported)) {
+                    player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                    player.setFallDistance(0.0f);
+                }
+            });
+            send(player, "create.success", Placeholder.unparsed("preset", presetName(player, success.preset())));
+            fireMilestone("island-created", player);
+        });
+    }
+
     private int executeCreate(CommandContext<CommandSourceStack> ctx, String presetId) {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             send(ctx.getSource().getSender(), "error.players_only");
@@ -369,41 +398,33 @@ public final class IslandLifecycleCommands {
 
                         schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
                             World w = Bukkit.getWorld(targetWorld);
-                            double arrivalY = success.location().spawnY();
-                            if (w != null) {
-                                // The preset's own creation actions: a platform, a OneBlock island's block.
-                                schematicEngine.start(new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
-                                        w, success.island().id(), centerX, platformY, centerZ, success.preset()));
-                                arrivalY = arrivalOn(
-                                        w,
-                                        success.island().id(),
-                                        success.location(),
-                                        success.preset().mode().playedUnderwater());
-                            }
-                            double standingY = arrivalY;
-                            schedulerPort.onEntity(playerUuid, () -> {
-                                if (!player.isOnline()) {
-                                    return;
-                                }
-                                Location destination = new Location(
-                                        w != null ? w : resolvedWorld,
-                                        success.location().spawnX(),
-                                        standingY,
-                                        success.location().spawnZ(),
-                                        0.0f,
-                                        0.0f);
-                                var unused = player.teleportAsync(destination).thenAccept(teleported -> {
-                                    if (Boolean.TRUE.equals(teleported)) {
-                                        player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                                        player.setFallDistance(0.0f);
-                                    }
-                                });
-                                send(
+                            if (w == null) {
+                                arrive(
                                         player,
-                                        "create.success",
-                                        Placeholder.unparsed("preset", presetName(player, success.preset())));
-                                fireMilestone("island-created", player);
-                            });
+                                        playerUuid,
+                                        resolvedWorld,
+                                        success,
+                                        success.location().spawnY());
+                                return;
+                            }
+                            // The preset's own creation actions: a platform, a pasted schematic, a OneBlock
+                            // island's block. A schematic stands some ticks later, and the player arrives
+                            // once it does, on whatever it built.
+                            com.uxplima.uxmskyblock.bukkit.schematic.StarterSchematicEngine.afterBuilt(
+                                    schematicEngine.start(new com.uxplima.uxmskyblock.bukkit.schematic.IslandStart(
+                                            w, success.island().id(), centerX, platformY, centerZ, success.preset())),
+                                    failure -> LOGGER.log(
+                                            java.util.logging.Level.WARNING,
+                                            failure,
+                                            () -> "Building the island of " + player.getName() + " failed."),
+                                    () -> schedulerPort.onRegion(targetWorld, chunkX, chunkZ, () -> {
+                                        double arrivalY = arrivalOn(
+                                                w,
+                                                success.island().id(),
+                                                success.location(),
+                                                success.preset().mode().playedUnderwater());
+                                        arrive(player, playerUuid, w, success, arrivalY);
+                                    }));
                         });
                     } else {
                         send(player, "create.world_unloaded", Placeholder.unparsed("world", madeIn));
