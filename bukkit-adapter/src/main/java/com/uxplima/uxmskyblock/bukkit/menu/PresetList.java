@@ -82,7 +82,7 @@ public final class PresetList {
     List<MenuRow> rows(Player viewer) {
         PresetChoices current = choices.get();
         List<MenuRow> rows = new ArrayList<>();
-        for (StarterPreset preset : presets.get()) {
+        for (StarterPreset preset : current.ordered(presets.get())) {
             boolean open = current.allows(viewer, preset.id());
             rows.add(new MenuRow(
                     Map.of(

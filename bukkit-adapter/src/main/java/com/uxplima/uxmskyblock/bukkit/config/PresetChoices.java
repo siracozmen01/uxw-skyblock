@@ -44,14 +44,23 @@ public record PresetChoices(Map<String, Look> looks, WhenNoIsland whenNoIsland, 
      *
      * @param icon the item its tile wears
      * @param permission the node a player needs to start it, blank for everyone
+     * @param order where its tile stands among the others, the lowest first
      */
-    public record Look(String icon, String permission) {
+    public record Look(String icon, String permission, int order) {
         public Look {
             Objects.requireNonNull(icon, "icon must not be null");
             permission = Objects.requireNonNull(permission, "permission must not be null")
                     .strip();
         }
+
+        /** A kind drawn with {@code icon}, open to whoever holds {@code permission}, among the last. */
+        public Look(String icon, String permission) {
+            this(icon, permission, DEFAULT_ORDER);
+        }
     }
+
+    /** Where a kind whose file names no order stands: after every kind that names one. */
+    public static final int DEFAULT_ORDER = 1000;
 
     public PresetChoices {
         looks = Map.copyOf(Objects.requireNonNull(looks, "looks must not be null"));
@@ -62,6 +71,21 @@ public record PresetChoices(Map<String, Look> looks, WhenNoIsland whenNoIsland, 
     public Look lookOf(String presetId) {
         Look look = looks.get(presetId);
         return look != null ? look : new Look(iconOf(presetId), "");
+    }
+
+    /**
+     * {@code presets} in the order the file gives them. The file's own order cannot be read back, as the format
+     * keeps no order among the entries, so each names its place, and two of one place stand by their ids.
+     */
+    public java.util.List<com.uxplima.uxmskyblock.core.domain.preset.StarterPreset> ordered(
+            java.util.List<com.uxplima.uxmskyblock.core.domain.preset.StarterPreset> presets) {
+        java.util.List<com.uxplima.uxmskyblock.core.domain.preset.StarterPreset> sorted =
+                new java.util.ArrayList<>(presets);
+        sorted.sort(
+                java.util.Comparator.comparingInt((com.uxplima.uxmskyblock.core.domain.preset.StarterPreset preset) ->
+                                lookOf(preset.id()).order())
+                        .thenComparing(com.uxplima.uxmskyblock.core.domain.preset.StarterPreset::id));
+        return java.util.List.copyOf(sorted);
     }
 
     /** Whether {@code who} may start the kind {@code presetId}. */
@@ -81,7 +105,8 @@ public record PresetChoices(Map<String, Look> looks, WhenNoIsland whenNoIsland, 
                     id,
                     new Look(
                             preset.node("icon").getString(iconOf(id)).trim(),
-                            preset.node("permission").getString("")));
+                            preset.node("permission").getString(""),
+                            preset.node("order").getInt(DEFAULT_ORDER)));
         }
         String written = presets.node("when-no-island").getString("menu");
         WhenNoIsland whenNoIsland;

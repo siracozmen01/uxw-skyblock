@@ -37,6 +37,10 @@ class PresetChoicesTest {
                 .extracting(preset -> choices.lookOf(preset.id()).icon())
                 .doesNotHaveDuplicates();
         assertThat(choices.lookOf("oneblock").icon()).isEqualTo("GRASS_BLOCK");
+        assertThat(choices.ordered(presets.presets()))
+                .extracting(preset -> preset.id())
+                .describedAs("in the order the file names, which the format alone does not keep")
+                .startsWith("classic", "desert", "nether", "cave", "oneblock");
         assertThat(choices.lookOf("classic").permission()).isEmpty();
     }
 

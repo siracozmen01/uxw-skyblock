@@ -33,7 +33,10 @@ class TheKindsOfIslandAreAWindowTest extends MockBukkitHarness {
     private PlayerMock ada;
     private SkyblockMenuEngine engine;
     private final PresetChoices choices = new PresetChoices(
-            Map.of("nether", new PresetChoices.Look("CRIMSON_NYLIUM", "myserver.nether")),
+            Map.of(
+                    "classic", new PresetChoices.Look("OAK_SAPLING", "", 40),
+                    "desert", new PresetChoices.Look("SAND", "", 10),
+                    "nether", new PresetChoices.Look("CRIMSON_NYLIUM", "myserver.nether", 20)),
             PresetChoices.WhenNoIsland.MENU,
             true);
 
@@ -53,19 +56,21 @@ class TheKindsOfIslandAreAWindowTest extends MockBukkitHarness {
     }
 
     @Test
-    @DisplayName("A kind is a tile of its name, what it is, its item, and whether this player may start it")
+    @DisplayName("A kind is a tile of its name, what it is, its item and whether this player may start it, in the "
+            + "operator's order")
     void aKindIsATile() {
         List<MenuRow> rows = list().rows(ada);
 
         assertThat(rows)
                 .extracting(row -> row.words().get("id"))
-                .containsExactly("classic", "desert", "nether", "cave");
-        assertThat(rows.get(0).words())
+                .describedAs("by order, and a kind that names none after them")
+                .containsExactly("desert", "nether", "classic", "cave");
+        assertThat(rows.get(2).words())
                 .containsEntry("name", "Classic Skyblock")
                 .containsEntry("icon", "OAK_SAPLING")
                 .containsEntry("access", "Open");
-        assertThat(rows.get(2).words()).containsEntry("icon", "CRIMSON_NYLIUM").containsEntry("access", "Locked");
-        MenuContext drawn = MenuContext.of(ada, null, 0).withEntry(rows.get(1));
+        assertThat(rows.get(1).words()).containsEntry("icon", "CRIMSON_NYLIUM").containsEntry("access", "Locked");
+        MenuContext drawn = MenuContext.of(ada, null, 0).withEntry(rows.get(0));
         var renderer = ShippedTemplates.renderer(engine, Messages.bundled());
         var template = ShippedTemplates.template("island-create.conf", "presets");
         assertThat(ShippedTemplates.lore(renderer, template, drawn))
@@ -85,14 +90,14 @@ class TheKindsOfIslandAreAWindowTest extends MockBukkitHarness {
         ShippedTemplates.click(
                 engine,
                 PresetList.CREATE,
-                MenuContext.of(ada, null, 0).withEntry(rows.get(1)),
+                MenuContext.of(ada, null, 0).withEntry(rows.get(0)),
                 ada,
                 ClickKind.LEFT,
                 "");
         ShippedTemplates.click(
                 engine,
                 PresetList.CREATE,
-                MenuContext.of(ada, null, 0).withEntry(rows.get(2)),
+                MenuContext.of(ada, null, 0).withEntry(rows.get(1)),
                 ada,
                 ClickKind.LEFT,
                 "");
