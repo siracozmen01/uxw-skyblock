@@ -299,23 +299,41 @@ class IslandBankCommandsTest {
     }
 
     @Test
-    @DisplayName("Zero and negative amounts never reach the bank")
-    void zeroAndNegativeNeverReachTheBank() {
+    @DisplayName("Zero and negative amounts never reach the bank, and the player is told why")
+    void zeroAndNegativeNeverReachTheBank() throws Exception {
         for (String amount : new String[] {"0", "-1", "-1000"}) {
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> run("bank deposit " + amount, player))
-                    .describedAs("a deposit of %s must be refused by the argument type", amount)
-                    .isInstanceOf(Exception.class);
+            run("bank deposit " + amount, player);
+            assertThat(said()).describedAs("a deposit of %s", amount).contains(amount + " is not an amount");
         }
         verify(bridge, never()).depositToIslandBank(any(), any(), anyLong(), any(), any());
         verify(bridge, never()).withdrawFromIslandBank(any(), any(), anyLong(), any(), any());
     }
 
     @Test
-    @DisplayName("A word where an amount belongs never reaches the bank")
-    void aWordWhereAnAmountBelongsIsRefused() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> run("bank deposit lots", player))
-                .isInstanceOf(Exception.class);
+    @DisplayName("A word where an amount belongs never reaches the bank, and the player is told how to write one")
+    void aWordWhereAnAmountBelongsIsRefused() throws Exception {
+        run("bank deposit lots", player);
+
+        assertThat(said()).contains("lots is not an amount").contains("2.5k");
         verify(bridge, never()).depositToIslandBank(any(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    @DisplayName("An amount written with a k, an m or a b, or with its thousands grouped, moves that many")
+    void anAmountIsReadAsAPlayerWritesIt() throws Exception {
+        run("bank deposit 2.5k", player);
+        run("bank withdraw 1,500", player);
+        run("bank withdraw 2m", player);
+
+        verify(bridge).depositToIslandBank(any(), eq(PROFILE), eq(2_500L), any(ServerNodeId.class), any());
+        verify(bridge).withdrawFromIslandBank(any(), eq(PROFILE), eq(1_500L), any(ServerNodeId.class), any());
+        verify(bridge).withdrawFromIslandBank(any(), eq(PROFILE), eq(2_000_000L), any(ServerNodeId.class), any());
+    }
+
+    /** The next line the player was told, as they read it. */
+    private String said() {
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(java.util.Objects.requireNonNull(player.nextComponentMessage()));
     }
 
     @Test

@@ -14,7 +14,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
-import com.mojang.brigadier.arguments.LongArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.uxplima.uxmlib.command.Cmd;
@@ -89,10 +89,10 @@ public final class IslandBankCommands {
                 .then(Cmd.literal("upkeep").executes(this::executeBankStatus))
                 .then(Cmd.literal("paydebt").executes(this::executeBankPayDebt))
                 .then(Cmd.literal("deposit")
-                        .then(Cmd.argument("amount", LongArgumentType.longArg(1))
+                        .then(Cmd.argument("amount", StringArgumentType.greedyString())
                                 .executes(this::executeBankDeposit)))
                 .then(Cmd.literal("withdraw")
-                        .then(Cmd.argument("amount", LongArgumentType.longArg(1))
+                        .then(Cmd.argument("amount", StringArgumentType.greedyString())
                                 .executes(this::executeBankWithdraw)));
     }
 
@@ -239,7 +239,13 @@ public final class IslandBankCommands {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             return Cmd.OK;
         }
-        long amount = LongArgumentType.getLong(ctx, "amount");
+        String written = StringArgumentType.getString(ctx, "amount");
+        java.util.OptionalLong read = BankAmount.parse(written);
+        if (read.isEmpty()) {
+            send(player, "bank.amount_unreadable", Placeholder.unparsed("written", written));
+            return Cmd.OK;
+        }
+        long amount = read.getAsLong();
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
             send(player, "error.session_not_active");
@@ -318,7 +324,13 @@ public final class IslandBankCommands {
         if (!(ctx.getSource().getSender() instanceof Player player)) {
             return Cmd.OK;
         }
-        long amount = LongArgumentType.getLong(ctx, "amount");
+        String written = StringArgumentType.getString(ctx, "amount");
+        java.util.OptionalLong read = BankAmount.parse(written);
+        if (read.isEmpty()) {
+            send(player, "bank.amount_unreadable", Placeholder.unparsed("written", written));
+            return Cmd.OK;
+        }
+        long amount = read.getAsLong();
         Optional<ProfileId> optProfile = activeProfile(player);
         if (optProfile.isEmpty()) {
             send(player, "error.session_not_active");
