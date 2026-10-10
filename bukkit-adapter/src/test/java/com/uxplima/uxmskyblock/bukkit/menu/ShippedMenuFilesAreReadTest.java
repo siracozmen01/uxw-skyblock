@@ -104,6 +104,41 @@ class ShippedMenuFilesAreReadTest {
     }
 
     @Test
+    @DisplayName("A window of four buttons is three rows, its buttons spread along the middle one")
+    void fourButtonsSitInTheMiddleRow() throws IOException {
+        List<String> fours = new ArrayList<>();
+        for (Path file : menuFiles()) {
+            MenuSpec spec = new MenuSpecLoader().load(file);
+            List<Integer> buttons = spec.items().entrySet().stream()
+                    .filter(item ->
+                            !item.getKey().startsWith("__") && !item.getKey().equals("back"))
+                    .flatMap(item -> item.getValue().slots().slots().stream())
+                    .sorted()
+                    .toList();
+            if (buttons.size() != 4
+                    || spec.items().values().stream()
+                            .anyMatch(item -> item.list().isPresent())) {
+                continue;
+            }
+            fours.add(file.getFileName().toString());
+            assertThat(spec.rows())
+                    .describedAs("the rows of %s", file.getFileName())
+                    .isEqualTo(3);
+            assertThat(buttons)
+                    .describedAs("the buttons of %s", file.getFileName())
+                    .containsExactly(10, 12, 14, 16);
+            assertThat(java.util.Objects.requireNonNull(spec.items().get("back"))
+                            .slots()
+                            .slots())
+                    .describedAs("the way back of %s", file.getFileName())
+                    .containsExactly(22);
+        }
+        assertThat(fours)
+                .containsExactlyInAnyOrder(
+                        "island-homes.conf", "island-missions.conf", "island-top.conf", "island-warps.conf");
+    }
+
+    @Test
     @DisplayName("Every menu a shipped file opens is a shipped file")
     void everyOpenReachesAMenuThatExists() throws IOException {
         List<String> ids = new ArrayList<>();
