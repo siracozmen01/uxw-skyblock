@@ -171,7 +171,8 @@ class IslandInfoCommandsTest {
 
         String screen = allLines().replaceAll("\u00a7.", "");
         assertThat(screen)
-                .contains("Ada " + ISLAND.value().toString().substring(0, 8))
+                .describedAs("an island nobody named is called whose island it is, as the board calls it")
+                .contains("Owner adası")
                 .doesNotContain(ISLAND.value().toString())
                 .contains("Durum etkin")
                 .doesNotContain("active");

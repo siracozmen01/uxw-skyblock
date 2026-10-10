@@ -166,19 +166,12 @@ public final class IslandInfoCommands {
     }
 
     /**
-     * The island's own name, or the reader's words for an island nobody named: the leaderboard's
-     * "Island 533805ad" rather than the whole id.
+     * The island's own name, or whose island it is when nobody named it.
      */
     private net.kyori.adventure.text.Component nameOf(Player player, IslandId islandId) {
-        IslandNameService names = nameServiceProvider.get();
-        java.util.Optional<String> named = names == null
-                ? java.util.Optional.empty()
-                : names.getIslandName(islandId).map(name -> name.value());
-        return named.<net.kyori.adventure.text.Component>map(net.kyori.adventure.text.Component::text)
-                .orElseGet(() -> messages.renderPlain(
-                        player,
-                        "leaderboard.unnamed",
-                        Placeholder.unparsed("id", islandId.value().toString().substring(0, 8))));
+        IslandLabels labels = new IslandLabels(islandLocationService, messages);
+        labels.useNames(nameServiceProvider);
+        return labels.of(player, islandId);
     }
 
     /** The owner's name, or their uuid when the server has never seen them. */

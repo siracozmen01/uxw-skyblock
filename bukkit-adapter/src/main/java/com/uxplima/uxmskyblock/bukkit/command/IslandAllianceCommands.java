@@ -54,6 +54,7 @@ public final class IslandAllianceCommands {
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
+    private final IslandLabels labels;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandAllianceCommands(
@@ -68,7 +69,16 @@ public final class IslandAllianceCommands {
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.labels = new IslandLabels(islandLocationService, messages);
         this.sessionCoordinator = sessionCoordinator;
+    }
+
+    /** Where the names islands were given are read, so a list can call an island by its name. */
+    public void useIslandNames(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.core.application.name.@org.jspecify.annotations.Nullable IslandNameService>
+                    names) {
+        labels.useNames(names);
     }
 
     /** The same branch under another word, for the name a document publishes. */
@@ -98,17 +108,16 @@ public final class IslandAllianceCommands {
     private int executeList(CommandContext<CommandSourceStack> ctx) {
         return onOwnIsland(ctx, (player, service, islandId) -> {
             List<IslandId> allies = service.getAllies(islandId);
+            List<net.kyori.adventure.text.Component> named =
+                    allies.stream().map(ally -> labels.of(player, ally)).toList();
             onEntity(player, () -> {
                 send(player, "alliance.header", Placeholder.unparsed("count", Integer.toString(allies.size())));
                 if (allies.isEmpty()) {
                     send(player, "alliance.empty");
                     return;
                 }
-                for (IslandId ally : allies) {
-                    send(
-                            player,
-                            "alliance.entry",
-                            Placeholder.unparsed("island", ally.value().toString()));
+                for (net.kyori.adventure.text.Component ally : named) {
+                    send(player, "alliance.entry", Placeholder.component("island", ally));
                 }
             });
         });
@@ -117,18 +126,17 @@ public final class IslandAllianceCommands {
     private int executeInvites(CommandContext<CommandSourceStack> ctx) {
         return onOwnIsland(ctx, (player, service, islandId) -> {
             List<IslandAllianceInvite> invites = service.getPendingInvites(islandId);
+            List<net.kyori.adventure.text.Component> senders = invites.stream()
+                    .map(invite -> labels.of(player, invite.senderIslandId()))
+                    .toList();
             onEntity(player, () -> {
                 send(player, "alliance.invites_header");
                 if (invites.isEmpty()) {
                     send(player, "alliance.invites_empty");
                     return;
                 }
-                for (IslandAllianceInvite invite : invites) {
-                    send(
-                            player,
-                            "alliance.invite_entry",
-                            Placeholder.unparsed(
-                                    "island", invite.senderIslandId().value().toString()));
+                for (net.kyori.adventure.text.Component sender : senders) {
+                    send(player, "alliance.invite_entry", Placeholder.component("island", sender));
                 }
             });
         });

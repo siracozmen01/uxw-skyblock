@@ -188,6 +188,7 @@ final class CommandGroupBuilder {
         progressionCommands.useBiomeRules(tree.biomeConfiguration);
         progressionCommands.useRecalculationCooldown(tree.recalculationCooldown);
         progressionCommands.useLeaderboards(() -> tree.leaderboards);
+        progressionCommands.useIslandNames(() -> tree.nameService);
 
         IslandMechanicsCommands mechanicsCommands = new IslandMechanicsCommands(
                 tree.islandLocationService,
@@ -239,6 +240,7 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);
+        socialCommands.useIslandNames(() -> tree.nameService);
 
         IslandAllianceCommands allianceCommands = new IslandAllianceCommands(
                 () -> tree.allianceService,
@@ -246,6 +248,7 @@ final class CommandGroupBuilder {
                 tree.schedulerPort,
                 tree.messages,
                 tree.sessionCoordinator);
+        allianceCommands.useIslandNames(() -> tree.nameService);
 
         IslandRewardCommands rewardCommands = new IslandRewardCommands(
                 () -> tree.rewardInboxService, tree.schedulerPort, tree.messages, tree.sessionCoordinator);

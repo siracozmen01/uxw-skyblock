@@ -55,6 +55,7 @@ public final class IslandProgressionCommands {
     private final Supplier<@Nullable IslandWorthService> worthServiceProvider;
     private final Supplier<@Nullable IslandMissionService> missionServiceProvider;
     private final Messages messages;
+    private final IslandLabels labels;
 
     /**
      * Which biomes this server offers and what an island has to reach first.
@@ -94,6 +95,15 @@ public final class IslandProgressionCommands {
         this.missionServiceProvider =
                 Objects.requireNonNull(missionServiceProvider, "missionServiceProvider must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.labels = new IslandLabels(islandLocationService, messages);
+    }
+
+    /** Where the names islands were given are read, so a list can call an island by its name. */
+    public void useIslandNames(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.core.application.name.@org.jspecify.annotations.Nullable IslandNameService>
+                    names) {
+        labels.useNames(names);
     }
 
     /** The boards a plugin registered, which {@code /is top} shows by their metric id. */
@@ -371,6 +381,13 @@ public final class IslandProgressionCommands {
             // rank is read off the same cached board, not the database; only finding out which
             // island is theirs is a read, and only a player has one.
             Rank ownRank = rankOf(src.getSender(), cat);
+            // An island nobody named is called whose it is, which is a read, so it is done here.
+            java.util.Map<IslandId, Component> unnamed = new java.util.HashMap<>();
+            for (LeaderboardEntry entry : entries) {
+                if (!entry.named()) {
+                    unnamed.put(entry.islandId(), labels.of(src.getSender(), entry.islandId()));
+                }
+            }
             schedulerPort.onGlobal(() -> {
                 Audience audience = src.getSender();
                 Component categoryName = messages.renderPlain(
@@ -384,15 +401,7 @@ public final class IslandProgressionCommands {
                         // the reader's catalogue. The stored entry carries them in English for the API.
                         Component name = entry.named()
                                 ? Component.text(entry.islandName())
-                                : messages.renderPlain(
-                                        audience,
-                                        "leaderboard.unnamed",
-                                        Placeholder.unparsed(
-                                                "id",
-                                                entry.islandId()
-                                                        .value()
-                                                        .toString()
-                                                        .substring(0, 8)));
+                                : unnamed.getOrDefault(entry.islandId(), Component.empty());
                         Component score = cat == LeaderboardCategory.LEVEL
                                 ? messages.renderPlain(
                                         audience,

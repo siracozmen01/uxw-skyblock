@@ -68,6 +68,7 @@ public final class IslandSocialCommands {
     private final IslandLocationService islandLocationService;
     private final SchedulerPort schedulerPort;
     private final Messages messages;
+    private final IslandLabels labels;
     private final @Nullable PlayerSessionCoordinator sessionCoordinator;
 
     public IslandSocialCommands(
@@ -84,7 +85,16 @@ public final class IslandSocialCommands {
                 Objects.requireNonNull(islandLocationService, "islandLocationService must not be null");
         this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort must not be null");
         this.messages = Objects.requireNonNull(messages, "messages must not be null");
+        this.labels = new IslandLabels(islandLocationService, messages);
         this.sessionCoordinator = sessionCoordinator;
+    }
+
+    /** Where the names islands were given are read, so a list can call an island by its name. */
+    public void useIslandNames(
+            java.util.function.Supplier<
+                            com.uxplima.uxmskyblock.core.application.name.@org.jspecify.annotations.Nullable IslandNameService>
+                    names) {
+        labels.useNames(names);
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildGuestbook() {
@@ -293,19 +303,34 @@ public final class IslandSocialCommands {
         });
     }
 
+    /** A bookmarked island by its name or its owner, and any other kind of subject by its key. */
+    private net.kyori.adventure.text.Component nameOf(Player reader, SocialSubjectRef subject) {
+        if (SocialSubjectRef.ISLAND_TYPE.equals(subject.typeId())) {
+            try {
+                return labels.of(reader, IslandId.of(java.util.UUID.fromString(subject.key())));
+            } catch (IllegalArgumentException notAnIsland) {
+                // A key that is not an island id is shown as it was written.
+            }
+        }
+        return net.kyori.adventure.text.Component.text(subject.key());
+    }
+
     private int executeListBookmarks(CommandContext<CommandSourceStack> ctx) {
         return withService(
                 ctx,
                 (player, service, profileId) -> schedulerPort.async(() -> {
                     List<SocialSubjectRef> saved = service.listBookmarks(profileId);
+                    List<net.kyori.adventure.text.Component> named = saved.stream()
+                            .map(subject -> nameOf(player, subject))
+                            .toList();
                     onEntity(player, () -> {
                         send(player, "social.bookmarks_header");
                         if (saved.isEmpty()) {
                             send(player, "social.bookmarks_empty");
                             return;
                         }
-                        for (SocialSubjectRef subject : saved) {
-                            send(player, "social.bookmark_entry", Placeholder.unparsed("island", subject.key()));
+                        for (net.kyori.adventure.text.Component subject : named) {
+                            send(player, "social.bookmark_entry", Placeholder.component("island", subject));
                         }
                     });
                 }));
