@@ -27,6 +27,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.vehicle.VehicleExitEvent;
 
 import com.uxplima.uxmskyblock.core.application.scheduler.SchedulerPort;
 import com.uxplima.uxmskyblock.core.domain.identity.PlayerUuid;
@@ -61,6 +62,14 @@ public final class ArrivalWatch implements Listener {
     private final List<ArrivalObserver> observers = new CopyOnWriteArrayList<>();
     private final Map<UUID, Location> lastSeen = new ConcurrentHashMap<>();
     private final Set<UUID> died = ConcurrentHashMap.newKeySet();
+    /**
+     * Players being sent back from a refused arrival. Their return is no arrival of its own, so no rule
+     * may refuse it and leave them standing where they were refused.
+     */
+    private final Set<UUID> sendingBack = ConcurrentHashMap.newKeySet();
+    /** Players who got off something they rode, which carried them without a move event. */
+    private final Set<UUID> rode = ConcurrentHashMap.newKeySet();
+
     private final Map<UUID, Instant> pearlLanded = new ConcurrentHashMap<>();
 
     /**
@@ -122,6 +131,9 @@ public final class ArrivalWatch implements Listener {
         if (died.remove(id)) {
             return ArrivalCause.RESPAWN;
         }
+        if (rode.remove(id)) {
+            return ArrivalCause.VEHICLE;
+        }
         Instant landed = pearlLanded.remove(id);
         if (landed != null && !landed.plus(PEARL_WINDOW).isBefore(clock.instant())) {
             return ArrivalCause.PEARL;
@@ -131,6 +143,9 @@ public final class ArrivalWatch implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
+        if (sendingBack.remove(event.getPlayer().getUniqueId())) {
+            return;
+        }
         Arrival arrival = new Arrival(
                 event.getPlayer(),
                 event.getFrom(),
@@ -157,6 +172,31 @@ public final class ArrivalWatch implements Listener {
                         ? ArrivalCause.PEARL
                         : ArrivalCause.TELEPORT,
                 true));
+    }
+
+    /**
+     * A step that starts somewhere the player was not last seen follows a change of place nothing
+     * announced. It is judged here, before the step is recorded, or a teleport followed at once by a
+     * step would pass as a walk: the step would explain the place, and the look would find nothing new.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void beforeMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        UUID id = player.getUniqueId();
+        Location seen = lastSeen.get(id);
+        Location from = event.getFrom();
+        if (seen == null || player.isDead() || sameBlock(seen, from)) {
+            return;
+        }
+        Location here = from.clone();
+        lastSeen.put(id, here);
+        Arrival arrival = new Arrival(player, seen, here, causeOf(player), false);
+        if (refused(arrival)) {
+            event.setCancelled(true);
+            sendBack(arrival);
+            return;
+        }
+        tell(arrival);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -189,11 +229,20 @@ public final class ArrivalWatch implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDismount(VehicleExitEvent event) {
+        if (event.getExited() instanceof Player rider) {
+            rode.add(rider.getUniqueId());
+        }
+    }
+
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         UUID id = event.getPlayer().getUniqueId();
         lastSeen.remove(id);
         died.remove(id);
+        rode.remove(id);
+        sendingBack.remove(id);
         pearlLanded.remove(id);
     }
 
@@ -249,7 +298,9 @@ public final class ArrivalWatch implements Listener {
             player.leaveVehicle();
         }
         lastSeen.put(player.getUniqueId(), back.clone());
-        var unused = player.teleportAsync(back);
+        sendingBack.add(player.getUniqueId());
+        var unused =
+                player.teleportAsync(back).whenComplete((moved, failed) -> sendingBack.remove(player.getUniqueId()));
     }
 
     private static boolean sameBlock(Location a, Location b) {

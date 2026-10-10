@@ -98,11 +98,65 @@ class AnArrivalNobodyAnnouncedIsStillJudgedTest extends MockBukkitHarness {
     }
 
     @Test
+    @DisplayName("A teleport followed at once by a step is judged at the step, and a refusal stops the step")
+    void aStepRightAfterATeleportDoesNotHideIt() {
+        refuse = true;
+        Location landed = new Location(world, 5120, 101, 5120);
+        ada.setLocation(landed);
+        PlayerMoveEvent step = new PlayerMoveEvent(ada, landed, new Location(world, 5121, 101, 5120));
+
+        watch.beforeMove(step);
+        if (!step.isCancelled()) {
+            watch.onMove(step);
+        }
+        watch.sample(ada);
+
+        assertThat(judged)
+                .singleElement()
+                .satisfies(arrival -> assertThat(arrival.to().getBlockX()).isEqualTo(5120));
+        assertThat(step.isCancelled()).isTrue();
+        assertThat(ada.getLocation().getBlockX()).isZero();
+    }
+
+    @Test
+    @DisplayName("Getting off a ride somewhere else is a ride, not a teleport")
+    void aDismountIsARide() {
+        org.bukkit.event.vehicle.VehicleExitEvent exit = mock(org.bukkit.event.vehicle.VehicleExitEvent.class);
+        when(exit.getExited()).thenReturn(ada);
+        watch.onDismount(exit);
+        ada.setLocation(new Location(world, 60, 64, 0));
+
+        watch.sample(ada);
+
+        assertThat(judged)
+                .singleElement()
+                .satisfies(arrival -> assertThat(arrival.cause()).isEqualTo(ArrivalCause.VEHICLE));
+    }
+
+    @Test
+    @DisplayName("Being sent back is no arrival a rule may refuse, so nobody is left where they were refused")
+    void theWayBackIsNeverRefused() {
+        refuse = true;
+        PlayerMock paper = createAnnouncingPlayer("Paper");
+        watch.sample(paper);
+        Location home = paper.getLocation();
+        paper.setLocation(new Location(world, 5120, 101, 5120));
+
+        watch.sample(paper);
+
+        assertThat(paper.getLocation().getBlockX())
+                .describedAs("the teleport home was announced, and not refused")
+                .isEqualTo(home.getBlockX());
+    }
+
+    @Test
     @DisplayName("A walk explained by its move events is no arrival")
     void aWalkIsNoArrival() {
         Location from = ada.getLocation();
         Location to = new Location(world, 3, 64, 0);
-        watch.onMove(new PlayerMoveEvent(ada, from, to));
+        PlayerMoveEvent walk = new PlayerMoveEvent(ada, from, to);
+        watch.beforeMove(walk);
+        watch.onMove(walk);
         ada.setLocation(to);
 
         watch.sample(ada);
@@ -189,6 +243,31 @@ class AnArrivalNobodyAnnouncedIsStillJudgedTest extends MockBukkitHarness {
             assertThat(arrival.from()).isNull();
         });
         assertThat(late.getLocation().getBlockX()).isEqualTo(-7);
+    }
+
+    /**
+     * A player whose asynchronous teleport is announced first, as on Paper, and lands only if no
+     * listener cancelled it.
+     */
+    private PlayerMock createAnnouncingPlayer(String name) {
+        PlayerMock player = new PlayerMock(server, name, java.util.UUID.randomUUID()) {
+            @Override
+            public java.util.concurrent.CompletableFuture<Boolean> teleportAsync(
+                    Location location,
+                    PlayerTeleportEvent.TeleportCause cause,
+                    io.papermc.paper.entity.TeleportFlag... flags) {
+                PlayerTeleportEvent event = new PlayerTeleportEvent(this, getLocation(), location, cause);
+                watch.onTeleport(event);
+                if (event.isCancelled()) {
+                    return java.util.concurrent.CompletableFuture.completedFuture(false);
+                }
+                setLocation(location);
+                return java.util.concurrent.CompletableFuture.completedFuture(true);
+            }
+        };
+        server.addPlayer(player);
+        player.setLocation(new Location(world, 30, 64, 30));
+        return player;
     }
 
     @Test
