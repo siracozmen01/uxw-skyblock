@@ -576,7 +576,23 @@ public final class IslandCommandTree {
             // The operator turned the whole command off, which is how a server keeps only the menu.
             return;
         }
-        CommandRegistrar.register(plugin, buildRoot().build(), "Main Skyblock command tree", root.aliases());
+        CommandRegistrar.register(plugin, buildRoot().build(), "Main Skyblock command tree", names.rootAliases());
+        java.util.Map<String, java.util.List<String>> localized = names.rootLocalized();
+        if (!localized.isEmpty()) {
+            // A root word for one language is an alias anyone can type, kept out of other readers' command lists.
+            plugin.getServer()
+                    .getPluginManager()
+                    .registerEvents(
+                            new com.uxplima.uxmlib.command.annotation.LocalizedAliasVisibility(
+                                    localized, plugin.getName(), messages.locales(), plugin),
+                            plugin);
+        }
+    }
+
+    /** Whether {@code source} reads the language {@code tag} names. The console reads every one. */
+    private boolean reads(CommandSourceStack source, String tag) {
+        return !(source.getSender() instanceof org.bukkit.entity.Player player)
+                || ConfiguredCommandTree.readerOf(tag, messages.locales().localeOf(player));
     }
 
     /**
@@ -587,7 +603,7 @@ public final class IslandCommandTree {
      * a player types the line it guessed about.
      */
     public LiteralArgumentBuilder<CommandSourceStack> buildRoot() {
-        ConfiguredCommandTree<CommandSourceStack> names = new ConfiguredCommandTree<>(commandNames);
+        ConfiguredCommandTree<CommandSourceStack> names = new ConfiguredCommandTree<>(commandNames, this::reads);
         LiteralArgumentBuilder<CommandSourceStack> root =
                 names.apply(assembleRoot(new CommandGroupBuilder(this).build()));
         com.uxplima.uxmlib.command.annotation.ConfiguredCommands.Entry rootEntry = names.root();

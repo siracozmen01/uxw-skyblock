@@ -194,6 +194,11 @@ public final class Messages {
         return provider.styler();
     }
 
+    /** What language each reader reads, as this plugin decides it. */
+    public LocaleSource locales() {
+        return locales;
+    }
+
     /** The catalogs this plugin ships, which is the list of languages it has. */
     public MessageProvider provider() {
         return provider;
