@@ -76,6 +76,12 @@ class EveryMenuCommandParsesTest {
 
     /** The tree the plugin registers, built with stand-ins for everything it talks to. */
     static CommandDispatcher<CommandSourceStack> dispatcher() {
+        return dispatcher(com.uxplima.uxmskyblock.bukkit.command.IslandFeatures.none());
+    }
+
+    /** The same tree, with the features it is handed. */
+    static CommandDispatcher<CommandSourceStack> dispatcher(
+            com.uxplima.uxmskyblock.bukkit.command.IslandFeatures features) {
         IslandCommandTree tree = new IslandCommandTree(
                 mock(CreateIslandUseCase.class),
                 mock(IslandLocationService.class),
@@ -92,7 +98,9 @@ class EveryMenuCommandParsesTest {
                 Messages.of(new MessageProvider("en"), LanguageConfiguration.defaults()),
                 HomeConfiguration.defaults(),
                 ServerNodeId.of("node-1"),
-                "world");
+                "world",
+                mock(com.uxplima.uxmskyblock.bukkit.integration.economy.SkyblockEconomyBridge.class),
+                features);
         CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
         dispatcher.register(tree.buildRoot());
         return dispatcher;

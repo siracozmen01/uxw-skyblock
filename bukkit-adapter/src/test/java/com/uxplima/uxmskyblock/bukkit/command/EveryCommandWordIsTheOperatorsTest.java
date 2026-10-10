@@ -111,6 +111,18 @@ class EveryCommandWordIsTheOperatorsTest {
     }
 
     @Test
+    @DisplayName("The plural a player reaches for answers as the branch does: boosters, flags and roles")
+    void theShippedPluralsAnswer() {
+        CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
+        dispatcher.register(tree(ConfiguredCommands.load(SHIPPED)).buildRoot());
+
+        assertThat(parses(dispatcher, "island boosters")).isTrue();
+        assertThat(parses(dispatcher, "island flags")).isTrue();
+        assertThat(parses(dispatcher, "island roles")).isTrue();
+        assertThat(parses(dispatcher, "island roles member chest_open off")).isTrue();
+    }
+
+    @Test
     @DisplayName("A name another branch already answers to is refused, and the branch keeps its own word")
     void aNameAnotherBranchHasIsRefused() throws Exception {
         Path file = dir.resolve("commands.conf");

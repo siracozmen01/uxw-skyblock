@@ -671,7 +671,9 @@ public final class IslandCommandTree {
                 // word: /is ally, /is disband, /is settings, and /is explore beside /is warps.
                 .then(groups.allianceCommands().buildAlias("ally"))
                 .then(gated(groups.lifecycleCommands().buildDisband(), CatalogPermissions.ISLAND_DELETE))
-                .then(Cmd.literal("settings").executes(this::executeMenu))
+                // /is settings opened the island menu, not its settings.
+                .then(Cmd.literal("settings")
+                        .executes(ctx -> windows.openOr(ctx, "island-settings", this::executeMenu)))
                 .then(groups.rewardCommands().build())
                 .then(groups.flagCommands().build())
                 .then(gated(groups.visitorCommands().buildBan(), CatalogPermissions.ISLAND_BAN))
