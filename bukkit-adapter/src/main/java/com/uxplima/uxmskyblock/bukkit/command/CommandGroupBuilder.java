@@ -49,7 +49,8 @@ final class CommandGroupBuilder {
             IslandUpgradeCommands upgradeCommands,
             IslandShopCommands shopCommands,
             IslandTrustCommands trustCommands,
-            IslandDoctorCommands doctorCommands) {}
+            IslandDoctorCommands doctorCommands,
+            IslandSchematicCommands schematicCommands) {}
 
     CommandGroups build() {
         // One applier for every milestone in the tree. What each fires is the operator's list.
@@ -341,6 +342,7 @@ final class CommandGroupBuilder {
                 upgradeCommands,
                 shopCommands,
                 trustCommands,
-                new IslandDoctorCommands(() -> tree.healthChecks.get(), tree.schedulerPort, tree.messages));
+                new IslandDoctorCommands(() -> tree.healthChecks.get(), tree.schedulerPort, tree.messages),
+                new IslandSchematicCommands(() -> tree.schematics.get(), tree.schedulerPort, tree.messages));
     }
 }

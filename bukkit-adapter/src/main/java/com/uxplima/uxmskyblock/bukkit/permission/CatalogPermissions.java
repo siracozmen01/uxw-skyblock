@@ -25,6 +25,7 @@ public enum CatalogPermissions {
     // reached no permission plugin's list and had no declared default.
     ADMIN_RESTORE("uxmskyblock.admin.restore", "Back up and restore islands and the database", PermissionDefault.OP),
     ADMIN_BOOSTER("uxmskyblock.admin.booster", "Grant island boosters administratively", PermissionDefault.OP),
+    ADMIN_SCHEMATIC("uxmskyblock.admin.schematic", "Save and paste schematics", PermissionDefault.OP),
 
     ISLAND_CREATE("uxmskyblock.island.create", "Create a new skyblock island", PermissionDefault.TRUE),
     ISLAND_DELETE("uxmskyblock.island.delete", "Delete an island", PermissionDefault.TRUE),

@@ -194,6 +194,7 @@ final class IslandCommandWiring {
                         () -> plugin.getServer().getWorld(islandWorld) != null),
                 SkyblockHealth.economy(() -> integration.economyBridge().isEconomyAvailable()));
         tree.setHealthChecks(() -> checks);
+        tree.useSchematics(gameplay::islandSchematics);
         // Four subsystems that were running with no door. Every one of them had a service, a table
         // and a feature module, and no command a player could type.
         tree.setWarpService(gameplay.warpService());

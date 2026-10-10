@@ -486,6 +486,17 @@ public final class IslandCommandTree {
         this.seasonService = seasonService;
     }
 
+    /** The server's structure files, which {@code /is schematic} saves and pastes. */
+    volatile java.util.function.Supplier<com.uxplima.uxmskyblock.bukkit.schematic.@Nullable IslandSchematics>
+            schematics = () -> null;
+
+    /** Hands {@code /is schematic} the server's structure files. */
+    public void useSchematics(
+            java.util.function.Supplier<com.uxplima.uxmskyblock.bukkit.schematic.@Nullable IslandSchematics>
+                    schematics) {
+        this.schematics = java.util.Objects.requireNonNull(schematics, "schematics must not be null");
+    }
+
     /** Hands the doctor the checks it runs. */
     public void setHealthChecks(
             java.util.function.Supplier<java.util.List<com.uxplima.uxmlib.health.HealthCheck>> healthChecks) {
@@ -695,6 +706,7 @@ public final class IslandCommandTree {
                 .then(groups.seasonCommands().buildSeason())
                 .then(groups.reloadCommands().buildReload())
                 .then(groups.doctorCommands().buildDoctor())
+                .then(groups.schematicCommands().build())
                 .then(gated(groups.upgradeCommands().build(), CatalogPermissions.ISLAND_UPGRADE))
                 .then(groups.shopCommands().build())
                 // The menu file and the documents both say upgrades; a player typing the singular
